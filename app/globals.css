@@ -53,6 +53,24 @@
   --sidebar-ring: #a1a1a1;
 }
 
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0c1f1a;
+  --foreground: #f2f8f5;
+  --card: #152f27;
+  --card-foreground: #f2f8f5;
+  --popover: #152f27;
+  --popover-foreground: #f2f8f5;
+  --secondary: #24483d;
+  --secondary-foreground: #f2f8f5;
+  --muted: #1d3a31;
+  --muted-foreground: #adc1b9;
+  --accent: #2c5548;
+  --accent-foreground: #ffffff;
+  --border: #315348;
+  --input: #315348;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -106,3 +124,18 @@ input, button, select, textarea { font-size: 1rem; }
 
 button, a { transition: color .18s ease, background-color .18s ease, transform .18s ease; }
 button:active { transform: translateY(1px); }
+:focus-visible { outline: 3px solid #9bb93d; outline-offset: 2px; }
+
+[data-theme="dark"] .bg-white { background-color: var(--card); color: var(--card-foreground); }
+[data-theme="dark"] .bg-\[\#f4f7f5\] { background-color: var(--background); }
+[data-theme="dark"] .bg-\[\#f3f7f4\],
+[data-theme="dark"] .bg-\[\#f8faf8\],
+[data-theme="dark"] .bg-\[\#f1f5f2\] { background-color: var(--muted); }
+[data-theme="dark"] .border-\[\#dce8e1\],
+[data-theme="dark"] .border-\[\#e7eee9\],
+[data-theme="dark"] .border-\[\#e2ebe5\] { border-color: var(--border); }
+[data-theme="dark"] .text-\[\#61766f\],
+[data-theme="dark"] .text-\[\#6c847b\],
+[data-theme="dark"] .text-\[\#657b73\],
+[data-theme="dark"] .text-\[\#789087\],
+[data-theme="dark"] .text-\[\#82958e\] { color: var(--muted-foreground); }

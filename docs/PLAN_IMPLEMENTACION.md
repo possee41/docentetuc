@@ -58,8 +58,8 @@ El asistente recuperará primero documentos/publicaciones oficiales, responderá
 
 ## Fases
 
-1. **Home nativo y estabilidad:** estados de carga/error, reintento, panel personal, “Importante para vos”, fechas y últimas publicaciones.
-2. **Sistema visual:** tema claro/oscuro, navegación móvil refinada, accesibilidad y estados consistentes.
+1. **Home nativo y estabilidad — publicada:** estados de carga/error, reintento, panel personal, “Importante para vos”, fechas y últimas publicaciones.
+2. **Sistema visual — publicada:** tema claro/oscuro, navegación móvil refinada, accesibilidad y estados consistentes.
 3. **Consultas internas:** enriquecer detalles públicos de SIME/FDCI y extraer contenido estructurado permitido.
 4. **Buscador global:** resultados agrupados por categoría y búsquedas guardadas.
 5. **Agregador:** adaptadores separados, sincronización programada, reintentos y estado por fuente.

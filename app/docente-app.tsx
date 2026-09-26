@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import { Bell, BookOpen, Bookmark, BriefcaseBusiness, CalendarDays, ChevronRight, Clock3, Download, ExternalLink, GraduationCap, Home, Menu, RefreshCw, Search, SlidersHorizontal, Star, UserRound, WifiOff, X } from "lucide-react";
+import { Bell, BookOpen, Bookmark, BriefcaseBusiness, CalendarDays, ChevronRight, Clock3, Download, ExternalLink, GraduationCap, Home, Menu, Moon, RefreshCw, Search, SlidersHorizontal, Star, Sun, UserRound, WifiOff, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import { safeDate } from "@/lib/safe-date";
 import type { AppData, Profile, Publication, Saved } from "@/lib/types";
 
 type View = "inicio" | "vacantes" | "capacitaciones" | "junta" | "agenda" | "alertas" | "guardados" | "perfil";
+type Theme = "light" | "dark";
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
 const navigation: [View, string, typeof Home][] = [
@@ -58,6 +59,7 @@ export default function DocenteApp() {
   const [loadError, setLoadError] = useState("");
   const [sourceWarning, setSourceWarning] = useState("");
   const [offline, setOffline] = useState(false);
+  const [theme, setTheme] = useState<Theme>("light");
   const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(null);
 
   const load = async (syncIfEmpty = true) => {
@@ -88,6 +90,9 @@ export default function DocenteApp() {
   };
 
   useEffect(() => {
+    const preferred = localStorage.getItem("docentetuc-theme") as Theme | null;
+    const initial = preferred || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    setTheme(initial); document.documentElement.dataset.theme = initial;
     void load();
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js");
     const updateNetwork = () => setOffline(!navigator.onLine); updateNetwork();
@@ -138,6 +143,7 @@ export default function DocenteApp() {
   };
 
   const install = async () => { if (!installPrompt) return; await installPrompt.prompt(); const choice = await installPrompt.userChoice; if (choice.outcome === "accepted") setInstallPrompt(null); };
+  const toggleTheme = () => setTheme((current) => { const next = current === "dark" ? "light" : "dark"; localStorage.setItem("docentetuc-theme", next); document.documentElement.dataset.theme = next; return next; });
   const unread = data?.notifications.filter((notice) => !Boolean(notice.read)).length || 0;
   const items = filteredPublications();
   const levels = [...new Set((data?.publications || []).map((item) => item.level || item.junta).filter(Boolean))].slice(0, 12);
@@ -151,11 +157,12 @@ export default function DocenteApp() {
         <SidebarFooter className="p-5"><p className="text-xs leading-relaxed text-white/45">Herramienta independiente. La fuente oficial prevalece siempre.</p></SidebarFooter>
       </Sidebar>
 
-      <SidebarInset className="min-w-0 bg-[#f4f7f5] pb-20 text-[#17362d] md:pb-0">
-        <header className="sticky top-0 z-30 flex min-h-20 items-center gap-3 border-b border-[#dce8e1] bg-[#f4f7f5]/92 px-4 backdrop-blur md:px-8">
+      <SidebarInset className="min-w-0 bg-[#f4f7f5] pb-20 text-[var(--foreground)] md:pb-0">
+        <header className="sticky top-0 z-30 flex min-h-20 items-center gap-3 border-b border-[#dce8e1] bg-[#f4f7f5] px-4 md:px-8">
           <SidebarTrigger className="size-11 rounded-xl bg-white md:hidden"><Menu /></SidebarTrigger>
-          <div className="relative max-w-2xl flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#6c847b]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Buscar en DocenteTuc" placeholder="Buscar materia, localidad o institución" className="h-12 rounded-2xl border-[#dce8e1] bg-white pl-11 shadow-sm" />{query && <button aria-label="Limpiar búsqueda" onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div>
+          <div className="relative max-w-2xl flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#6c847b]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Buscar en DocenteTuc" placeholder="¿Qué estás buscando?" className="h-12 rounded-2xl border-[#dce8e1] bg-white pl-11 shadow-sm" />{query && <button aria-label="Limpiar búsqueda" onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div>
           {installPrompt && <Button onClick={install} variant="outline" className="hidden h-11 rounded-xl border-[#bdd0c6] bg-white sm:flex"><Download className="size-4" />Instalar</Button>}
+          <Button onClick={toggleTheme} size="icon" variant="outline" className="size-11 rounded-xl border-[#dce8e1] bg-white" aria-label={theme === "dark" ? "Usar modo claro" : "Usar modo oscuro"}>{theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}</Button>
           <Button onClick={() => setView("alertas")} size="icon" variant="outline" className="relative size-11 rounded-xl border-[#dce8e1] bg-white"><Bell className="size-5" />{unread > 0 && <span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-[#ee6a4b] text-[10px] font-bold text-white">{Math.min(unread, 9)}</span>}<span className="sr-only">Alertas</span></Button>
         </header>
 
@@ -169,8 +176,8 @@ export default function DocenteApp() {
           </>}
         </div>
 
-        <nav className="fixed inset-x-0 bottom-0 z-40 flex h-[72px] overflow-x-auto border-t border-[#dce8e1] bg-white px-1 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Navegación móvil">
-          {navigation.filter(([id]) => id !== "guardados").map(([id, label, Icon]) => <button key={id} onClick={() => setView(id)} className={`flex min-w-[72px] flex-1 flex-col items-center justify-center gap-1 text-[11px] font-semibold ${view === id ? "text-[#0f3d32]" : "text-[#789087]"}`}><Icon className={`size-5 ${view === id ? "stroke-[2.6]" : ""}`} /><span>{label.replace("Junta / Padrones", "Junta")}</span></button>)}
+        <nav className="fixed inset-x-3 bottom-3 z-40 flex h-[68px] rounded-2xl border border-[#dce8e1] bg-white px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_12px_40px_rgba(15,61,50,.18)] md:hidden" aria-label="Navegación móvil">
+          {navigation.filter(([id]) => ["inicio", "vacantes", "capacitaciones", "guardados", "perfil"].includes(id)).map(([id, label, Icon]) => <button key={id} onClick={() => setView(id)} aria-current={view === id ? "page" : undefined} className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-semibold ${view === id ? "bg-[#d9f36a] text-[#17362d]" : "text-[#789087]"}`}><Icon className={`size-5 ${view === id ? "stroke-[2.6]" : ""}`} /><span className="max-w-full truncate px-1">{label.replace("Mis guardados", "Guardados")}</span></button>)}
         </nav>
       </SidebarInset>
 
