@@ -55,30 +55,35 @@ export default function DocenteApp() {
   const [selected, setSelected] = useState<Publication | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [sourceWarning, setSourceWarning] = useState("");
   const [offline, setOffline] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(null);
 
   const load = async (syncIfEmpty = true) => {
     setLoading(true);
+    setLoadError("");
     try {
       const response = await fetch("/api/app", { cache: "no-store", headers: apiHeaders() });
       if (!response.ok) throw new Error("No se pudo cargar la información");
       const result = await response.json() as AppData;
       setData(result);
       if (syncIfEmpty && result.publications.length === 0) await syncSources(false);
-    } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo cargar la información"); }
+    } catch (error) { const message = error instanceof Error ? error.message : "No se pudo cargar la información"; setLoadError(message); toast.error(message); }
     finally { setLoading(false); }
   };
 
   const syncSources = async (notify = true) => {
     setSyncing(true);
+    setSourceWarning("");
     try {
       const response = await fetch("/api/sync", { method: "POST", headers: apiHeaders() });
-      const result = await response.json() as { error?: string; skipped?: boolean; count?: number };
+      const result = await response.json() as { error?: string; skipped?: boolean; count?: number; failures?: number };
       if (!response.ok) throw new Error(result.error || "No se pudo actualizar");
-      if (notify) toast.success(result.skipped ? "Las fuentes ya estaban actualizadas" : `${result.count ?? 0} publicaciones verificadas`);
+      if (result.failures) setSourceWarning("No pudimos actualizar todas las fuentes. El resto de la aplicación sigue disponible.");
+      if (notify) result.failures ? toast.warning("Algunas fuentes oficiales no respondieron") : toast.success(result.skipped ? "Las fuentes ya estaban actualizadas" : `${result.count ?? 0} publicaciones verificadas`);
       await load(false);
-    } catch (error) { if (notify) toast.error(error instanceof Error ? error.message : "No se pudo actualizar"); }
+    } catch (error) { const message = error instanceof Error ? error.message : "No se pudo actualizar"; setSourceWarning(message); if (notify) toast.error(message); }
     finally { setSyncing(false); }
   };
 
@@ -157,7 +162,7 @@ export default function DocenteApp() {
         {offline && <div className="flex items-center justify-center gap-2 bg-[#fff3dd] px-4 py-2 text-sm font-semibold text-[#7d541b]"><WifiOff className="size-4" />Sin conexión. Podés consultar la última información cargada.</div>}
 
         <div className="mx-auto w-full max-w-7xl p-4 md:p-8">
-          {view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} matches={matches} greeting={greeting} syncing={syncing} onSync={() => void syncSources()} onOpen={(publication) => setSelected(publication)} onView={setView} loading={loading} /> : view === "perfil" ? <ProfileForm profile={profile} onSaved={() => void load(false)} /> : view === "alertas" ? <Alerts data={data} onOpen={(publication) => setSelected(publication)} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} /> : view === "agenda" ? <Agenda publications={data?.publications || []} savedMap={savedMap} onOpen={setSelected} /> : <>
+          {view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} matches={matches} greeting={greeting} syncing={syncing} onSync={() => void syncSources()} onRetry={() => void load()} onOpen={(publication) => setSelected(publication)} onView={setView} loading={loading} error={loadError} warning={sourceWarning} /> : view === "perfil" ? <ProfileForm profile={profile} onSaved={() => void load(false)} /> : view === "alertas" ? <Alerts data={data} onOpen={(publication) => setSelected(publication)} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} /> : view === "agenda" ? <Agenda publications={data?.publications || []} savedMap={savedMap} onOpen={setSelected} /> : <>
             <PageHeader view={view} count={items.length} syncing={syncing} onSync={() => void syncSources()} />
             <Filters filter={filter} setFilter={setFilter} level={level} setLevel={setLevel} character={character} setCharacter={setCharacter} levels={levels} kind={view} />
             <PublicationList items={items} loading={loading} savedMap={savedMap} matches={matches} onOpen={setSelected} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} />
@@ -175,18 +180,26 @@ export default function DocenteApp() {
   );
 }
 
-function Dashboard({ data, profile, savedMap, matches, greeting, syncing, onSync, onOpen, onView, loading }: { data: AppData | null; profile?: Profile; savedMap: Map<string, Saved>; matches: (item: Publication) => boolean; greeting: string; syncing: boolean; onSync: () => void; onOpen: (item: Publication) => void; onView: (view: View) => void; loading: boolean }) {
+function Dashboard({ data, profile, savedMap, matches, greeting, syncing, onSync, onRetry, onOpen, onView, loading, error, warning }: { data: AppData | null; profile?: Profile; savedMap: Map<string, Saved>; matches: (item: Publication) => boolean; greeting: string; syncing: boolean; onSync: () => void; onRetry: () => void; onOpen: (item: Publication) => void; onView: (view: View) => void; loading: boolean; error: string; warning: string }) {
   const publications = data?.publications || [], upcoming = publications.filter((item) => item.ends_at && new Date(item.ends_at).getTime() > Date.now()).sort((a, b) => new Date(a.ends_at!).getTime() - new Date(b.ends_at!).getTime());
   const matchedVacancies = publications.filter((item) => item.kind === "vacante" && item.status === "vigente" && matches(item));
   const training = publications.filter((item) => item.kind === "capacitacion" && item.status === "inscripción abierta");
   const board = publications.filter((item) => item.kind === "junta" && (!profile?.junta || normalize(item.junta).includes(normalize(profile.junta))));
-  const latest = publications.filter(matches).sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()).slice(0, 6);
-  const cards = [["vacantes", `${matchedVacancies.length}`, "Vacantes para tu perfil", BriefcaseBusiness, "bg-[#ffe9e4] text-[#ba4c35]"], ["capacitaciones", `${training.length}`, "Capacitaciones abiertas", GraduationCap, "bg-[#e5f1ff] text-[#356ca8]"], ["junta", `${board.length}`, "Documentos de tu Junta", BookOpen, "bg-[#e9f5e9] text-[#3c7b54]"], ["agenda", upcoming[0] ? dateLabel(upcoming[0].ends_at) : "—", "Próximo vencimiento", CalendarDays, "bg-[#fff3dd] text-[#9a641f]"]] as const;
+  const latest = [...publications].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()).slice(0, 6);
+  const important = publications.filter(matches).sort((a, b) => Number(Boolean(b.ends_at)) - Number(Boolean(a.ends_at)) || new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()).slice(0, 4);
+  const cards = [["vacantes", `${matchedVacancies.length}`, "Designaciones para tu perfil", BriefcaseBusiness, "bg-[#ffe9e4] text-[#ba4c35]"], ["capacitaciones", `${training.length}`, "Inscripciones abiertas", GraduationCap, "bg-[#e5f1ff] text-[#356ca8]"], ["junta", `${board.length}`, "Padrones y documentos", BookOpen, "bg-[#e9f5e9] text-[#3c7b54]"], ["agenda", upcoming[0] ? dateLabel(upcoming[0].ends_at) : "—", "Próxima fecha importante", CalendarDays, "bg-[#fff3dd] text-[#9a641f]"]] as const;
+  if (error && !data) return <section className="grid min-h-[65vh] place-items-center"><div className="max-w-lg rounded-3xl border border-[#ead6b8] bg-white p-8 text-center shadow-sm"><WifiOff className="mx-auto size-10 text-[#b57828]" /><h1 className="mt-4 text-2xl font-black">No pudimos cargar tu panel</h1><p className="mt-2 text-[#61766f]">{error}. Revisá tu conexión y volvé a intentarlo.</p><Button onClick={onRetry} className="mt-6 h-11 rounded-xl bg-[#17362d] px-6 text-white"><RefreshCw className="size-4" />Reintentar</Button></div></section>;
   return <>
     <div className="mb-7 flex flex-wrap items-end justify-between gap-4"><div><p suppressHydrationWarning className="mb-1 text-sm font-bold uppercase tracking-wide text-[#70867f]">{new Intl.DateTimeFormat("es-AR", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</p><h1 suppressHydrationWarning className="text-3xl font-black tracking-tight md:text-4xl">{greeting}, {profile?.name?.split(" ")[0] || "docente"}</h1><p className="mt-2 text-[#61766f]">Estas coincidencias son orientativas; la habilitación se verifica en los sistemas oficiales.</p></div><Button onClick={onSync} disabled={syncing || loading} className="h-11 rounded-xl bg-[#17362d] px-5 text-white hover:bg-[#275548]"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />{syncing ? "Actualizando…" : "Actualizar fuentes"}</Button></div>
+    {(error || warning) && <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#ead6b8] bg-[#fff8eb] p-4 text-sm font-semibold text-[#7d541b]"><span>{warning || "No pudimos actualizar esta sección. Mostramos la información disponible."}</span><button onClick={onRetry} className="rounded-lg bg-white px-3 py-2 font-bold">Reintentar</button></div>}
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{cards.map(([target, value, label, Icon, color]) => <button key={label} onClick={() => onView(target)} className="rounded-3xl border border-[#dce8e1] bg-white p-5 text-left shadow-[0_8px_30px_rgba(20,64,52,.06)] hover:-translate-y-0.5"><div className="mb-7 flex items-start justify-between"><span className={`grid size-11 place-items-center rounded-2xl ${color}`}><Icon className="size-5" /></span><ChevronRight className="size-5 text-[#9aaca5]" /></div><p className="text-2xl font-black">{loading ? "…" : value}</p><p className="mt-1 text-sm text-[#61766f]">{label}</p></button>)}</section>
-    <section className="mt-7 rounded-3xl border border-[#dce8e1] bg-white p-5 md:p-7"><div className="mb-5 flex items-end justify-between gap-3"><div><h2 className="text-xl font-bold">Últimas novedades para vos</h2><p className="mt-1 text-sm text-[#6c847b]">Ordenadas según las preferencias de tu perfil.</p></div>{data?.sync[0] && <span className="hidden text-xs text-[#789087] sm:block">Actualizado {dateLabel(`${data.sync[0].synced_at}Z`, true)}</span>}</div>{loading ? <LoadingCards /> : latest.length ? <div className="divide-y divide-[#e7eee9]">{latest.map((item) => <CompactItem key={item.id} item={item} saved={savedMap.has(item.id)} onOpen={() => onOpen(item)} />)}</div> : <Empty title="Todavía no hay coincidencias" text={publications.length ? "Completá tu perfil para personalizar las novedades." : "Actualizá las fuentes para cargar información oficial."} />}</section>
+    <div className="mt-7 grid gap-5 xl:grid-cols-2"><HomeSection title="Importante para vos" subtitle="Priorizado según tu perfil docente" items={important} loading={loading} savedMap={savedMap} onOpen={onOpen} empty="Completá tu perfil para recibir información priorizada." /><HomeSection title="Próximas fechas" subtitle="Vencimientos e inscripciones cercanas" items={upcoming.slice(0, 4)} loading={loading} savedMap={savedMap} onOpen={onOpen} empty="No hay fechas próximas informadas." /></div>
+    <section className="mt-5 rounded-3xl border border-[#dce8e1] bg-white p-5 md:p-7"><div className="mb-5 flex items-end justify-between gap-3"><div><h2 className="text-xl font-bold">Últimas publicaciones</h2><p className="mt-1 text-sm text-[#6c847b]">Novedades oficiales reunidas en un solo lugar.</p></div>{data?.sync[0] && <span className="hidden text-xs text-[#789087] sm:block">Actualizado {dateLabel(`${data.sync[0].synced_at}Z`, true)}</span>}</div>{loading ? <LoadingCards /> : latest.length ? <div className="divide-y divide-[#e7eee9]">{latest.map((item) => <CompactItem key={item.id} item={item} saved={savedMap.has(item.id)} onOpen={() => onOpen(item)} />)}</div> : <Empty title="Todavía no hay publicaciones" text="Actualizá las fuentes para cargar información oficial." />}</section>
   </>;
+}
+
+function HomeSection({ title, subtitle, items, loading, savedMap, onOpen, empty }: { title: string; subtitle: string; items: Publication[]; loading: boolean; savedMap: Map<string, Saved>; onOpen: (item: Publication) => void; empty: string }) {
+  return <section className="rounded-3xl border border-[#dce8e1] bg-white p-5 md:p-7"><h2 className="text-xl font-bold">{title}</h2><p className="mt-1 text-sm text-[#6c847b]">{subtitle}</p><div className="mt-4">{loading ? <LoadingRows /> : items.length ? <div className="divide-y divide-[#e7eee9]">{items.map((item) => <CompactItem key={item.id} item={item} saved={savedMap.has(item.id)} onOpen={() => onOpen(item)} />)}</div> : <Empty title="Sin novedades" text={empty} />}</div></section>;
 }
 
 function PageHeader({ view, count, syncing = false, onSync }: { view: View; count: number; syncing?: boolean; onSync?: () => void }) { const [title, subtitle] = viewTitles[view]; return <div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-3xl font-black tracking-tight">{title}</h1><p className="mt-1 text-[#61766f]">{subtitle} · {count} resultados</p></div>{onSync && <Button onClick={onSync} disabled={syncing} variant="outline" className="rounded-xl border-[#bfd1c7] bg-white"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />Actualizar</Button>}</div>; }
@@ -225,6 +238,7 @@ function PublicationSheet({ publication, saved, match, onClose, onSave, onAgenda
 }
 
 function Empty({ title, text }: { title: string; text: string }) { return <div className="grid min-h-64 place-items-center rounded-2xl border border-dashed border-[#cbdad2] bg-[#f8faf8] p-8 text-center"><div><Search className="mx-auto mb-3 size-7 text-[#799087]" /><p className="font-bold">{title}</p><p className="mx-auto mt-1 max-w-md text-sm text-[#6c847b]">{text}</p></div></div>; }
+function LoadingRows() { return <div className="space-y-3">{[1, 2, 3].map((item) => <div key={item} className="flex animate-pulse items-center gap-4 py-3"><div className="size-11 rounded-2xl bg-[#e8efeb]" /><div className="flex-1"><div className="h-4 w-4/5 rounded bg-[#e8efeb]" /><div className="mt-2 h-3 w-2/5 rounded bg-[#eef3f0]" /></div></div>)}</div>; }
 function LoadingCards() { return <div className="grid gap-4 md:grid-cols-2">{[1, 2, 3, 4].map((item) => <div key={item} className="h-52 animate-pulse rounded-3xl border border-[#dce8e1] bg-white p-5"><div className="h-5 w-24 rounded bg-[#e8efeb]" /><div className="mt-8 h-6 w-4/5 rounded bg-[#e8efeb]" /><div className="mt-3 h-4 w-full rounded bg-[#eef3f0]" /></div>)}</div>; }
 
 declare global { interface Document { readonly modelContext?: { registerTool(tool: { name: string; title?: string; description: string; inputSchema: object; annotations?: { readOnlyHint?: boolean; untrustedContentHint?: boolean }; execute(input: unknown): unknown | Promise<unknown> }, options?: { signal?: AbortSignal }): void | Promise<void> } } }
