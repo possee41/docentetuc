@@ -16,7 +16,7 @@ export const publications = sqliteTable("publications", {
   level: text("level").notNull().default(""), area: text("area").notNull().default(""), junta: text("junta").notNull().default(""),
   location: text("location").notNull().default(""), shift: text("shift").notNull().default(""), character: text("character").notNull().default(""),
   startsAt: text("starts_at"), endsAt: text("ends_at"), status: text("status").notNull().default("vigente"), officialUrl: text("official_url").notNull(),
-  contentHash: text("content_hash").notNull(), sourceUpdatedAt: text("source_updated_at"), firstSeenAt: text("first_seen_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  metadata: text("metadata").notNull().default("{}"), contentHash: text("content_hash").notNull(), sourceUpdatedAt: text("source_updated_at"), firstSeenAt: text("first_seen_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [index("idx_publications_kind_ends").on(table.kind, table.endsAt), index("idx_publications_source_external").on(table.source, table.externalId)]);
 

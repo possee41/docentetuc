@@ -6,7 +6,7 @@ export type Profile = {
 export type Publication = {
   id: string; source: string; external_id: string; kind: "vacante" | "capacitacion" | "junta"; category: string;
   title: string; summary: string; level: string; area: string; junta: string; location: string; shift: string; character: string;
-  starts_at: string | null; ends_at: string | null; status: string; official_url: string; first_seen_at: string; updated_at: string;
+  starts_at: string | null; ends_at: string | null; status: string; official_url: string; metadata: string; first_seen_at: string; updated_at: string;
 };
 
 export type Saved = { publication_id: string; in_agenda: number | boolean; followed: number | boolean; saved_at: string };

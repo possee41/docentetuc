@@ -1,13 +1,14 @@
 import { getD1 } from "@/db";
 import { authError, currentUser } from "@/lib/current-user";
 import { matchesProfile } from "@/lib/matching";
+import { mergeTrainingData } from "@/lib/training";
 
 export const dynamic = "force-dynamic";
 
 type Publication = {
   id: string; source: string; externalId: string; kind: string; category: string; title: string; summary: string;
   level: string; area: string; junta: string; location: string; shift: string; character: string;
-  startsAt: string | null; endsAt: string | null; status: string; officialUrl: string; contentHash: string; sourceUpdatedAt: string | null;
+  startsAt: string | null; endsAt: string | null; status: string; officialUrl: string; metadata?: string; contentHash: string; sourceUpdatedAt: string | null;
 };
 
 const juntas = [
@@ -29,7 +30,6 @@ const documents = [
   ["res-valoracion", "Decreto 292/5 — Valoración de títulos y antecedentes", "Resoluciones", "Todas", "https://padrones.educaciontuc.gov.ar/2020/DECRETO_292.pdf"],
 ] as const;
 
-const clean = (html = "") => html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 const hash = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 const simeDate = (value?: string) => {
   if (!value) return null;
@@ -63,18 +63,16 @@ async function simePublications() {
 
 async function trainingPublications() {
   const base = "https://apicapacitaciones.educaciontuc.edu.ar/api";
-  const [catalogue, active] = await Promise.all([
-    getJson<Record<string, unknown>[]>(`${base}/capa/listado?nivel=TODOS`),
+  const [courses, active] = await Promise.all([
+    getJson<Record<string, unknown>[]>(`${base}/gestionCapas/getRestoCapas`),
     getJson<Record<string, unknown>[]>(`${base}/gestionCapas/getCapaActivas`),
   ]);
-  const activeById = new Map(active.map((item) => [String(item.capacitacion_id), item]));
-  return Promise.all(catalogue.map(async (course): Promise<Publication> => {
-    const externalId = String(course.capacitacion_id), commission = activeById.get(externalId) || {};
-    const endsAt = commission.fecha_cierre_preinscripcion ? `${commission.fecha_cierre_preinscripcion}`.replace(" ", "T") + "-03:00" : null;
-    const startsAt = commission.fecha_apertura_preinscripcion ? `${commission.fecha_apertura_preinscripcion}`.replace(" ", "T") + "-03:00" : null;
-    const token = String(course.token || ""), slug = String(course.slug || "");
-    return { id: `fdci:${externalId}`, source: "Capacitación Docente", externalId, kind: "capacitacion", category: "Capacitación", title: String(course.nombre || "Capacitación docente"), summary: clean(String(course.descripcion || course.contenido || "")).slice(0, 1000), level: String(course.niveles || ""), area: String(course.eje_prioritario || ""), junta: "", location: String(commission.lugar || commission.direccion || ""), shift: "", character: String(course.modalidad || ""), startsAt, endsAt, status: activeById.has(externalId) && isOpen(endsAt) ? "inscripción abierta" : "consultar", officialUrl: `https://capacitaciondocente.educaciontuc.gov.ar/capacitaciones/${token}/${slug}`, contentHash: await hash(JSON.stringify({ course, commission })), sourceUpdatedAt: String(commission.updated_at || "") || null };
-  }));
+  return Promise.all(mergeTrainingData(courses, active).map(async (item): Promise<Publication> => ({
+    id: item.id, source: "Capacitación Docente", externalId: item.externalId, kind: "capacitacion", category: item.metadata.entity === "commission" ? `Comisión #${item.metadata.commissionId}` : "Capacitación",
+    title: item.title, summary: item.summary, level: item.level, area: item.area, junta: "", location: item.location, shift: "", character: item.modality,
+    startsAt: item.startsAt, endsAt: item.endsAt, status: item.status, officialUrl: item.officialUrl, metadata: JSON.stringify(item.metadata),
+    contentHash: await hash(JSON.stringify(item.raw)), sourceUpdatedAt: item.sourceUpdatedAt,
+  })));
 }
 
 async function boardPublications() {
@@ -85,7 +83,7 @@ async function boardPublications() {
       const response = await fetch(`https://docs.google.com/document/d/${docId}/export?format=html`);
       if (response.ok) fingerprint = await response.text();
     }
-    return { id: `padrones:${externalId}`, source: "Padrones y Comunicados", externalId, kind: "junta", category, title, summary: `Documento público oficial de la Junta ${junta}.`, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: "vigente", officialUrl, contentHash: await hash(fingerprint), sourceUpdatedAt: null };
+    return { id: `padrones:${externalId}`, source: "Padrones y Comunicados", externalId, kind: "junta", category, title, summary: `Documento público oficial de la Junta ${junta}.`, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: "vigente", officialUrl, metadata: "{}", contentHash: await hash(fingerprint), sourceUpdatedAt: null };
   }));
 }
 
@@ -99,7 +97,11 @@ async function runSync() {
   const changed = publications.filter((item) => old.has(item.id) && old.get(item.id) !== item.contentHash);
   const fresh = publications.filter((item) => !old.has(item.id));
   for (let offset = 0; offset < publications.length; offset += 40) {
-    await db.batch(publications.slice(offset, offset + 40).map((item) => db.prepare(`INSERT INTO publications (id, source, external_id, kind, category, title, summary, level, area, junta, location, shift, character, starts_at, ends_at, status, official_url, content_hash, source_updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET source=excluded.source, category=excluded.category, title=excluded.title, summary=excluded.summary, level=excluded.level, area=excluded.area, junta=excluded.junta, location=excluded.location, shift=excluded.shift, character=excluded.character, starts_at=excluded.starts_at, ends_at=excluded.ends_at, status=excluded.status, official_url=excluded.official_url, content_hash=excluded.content_hash, source_updated_at=excluded.source_updated_at, updated_at=CURRENT_TIMESTAMP`).bind(item.id, item.source, item.externalId, item.kind, item.category, item.title, item.summary, item.level, item.area, item.junta, item.location, item.shift, item.character, item.startsAt, item.endsAt, item.status, item.officialUrl, item.contentHash, item.sourceUpdatedAt)));
+    await db.batch(publications.slice(offset, offset + 40).map((item) => db.prepare(`INSERT INTO publications (id, source, external_id, kind, category, title, summary, level, area, junta, location, shift, character, starts_at, ends_at, status, official_url, metadata, content_hash, source_updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET source=excluded.source, category=excluded.category, title=excluded.title, summary=excluded.summary, level=excluded.level, area=excluded.area, junta=excluded.junta, location=excluded.location, shift=excluded.shift, character=excluded.character, starts_at=excluded.starts_at, ends_at=excluded.ends_at, status=excluded.status, official_url=excluded.official_url, metadata=excluded.metadata, content_hash=excluded.content_hash, source_updated_at=excluded.source_updated_at, updated_at=CURRENT_TIMESTAMP`).bind(item.id, item.source, item.externalId, item.kind, item.category, item.title, item.summary, item.level, item.area, item.junta, item.location, item.shift, item.character, item.startsAt, item.endsAt, item.status, item.officialUrl, item.metadata || "{}", item.contentHash, item.sourceUpdatedAt)));
+  }
+  if (results[1].status === "fulfilled") {
+    await db.prepare("INSERT OR IGNORE INTO saved_publications (user_id, publication_id, in_agenda, followed, saved_at) SELECT s.user_id, 'fdci:course:' || p.external_id, s.in_agenda, s.followed, s.saved_at FROM saved_publications s JOIN publications p ON p.id=s.publication_id JOIN publications replacement ON replacement.id='fdci:course:' || p.external_id WHERE p.id LIKE 'fdci:%' AND p.id NOT LIKE 'fdci:course:%' AND p.id NOT LIKE 'fdci:commission:%'").run();
+    await db.prepare("DELETE FROM publications WHERE id LIKE 'fdci:%' AND id NOT LIKE 'fdci:course:%' AND id NOT LIKE 'fdci:commission:%'").run();
   }
   const sourceCounts = new Map<string, number>();
   publications.forEach((item) => sourceCounts.set(item.source, (sourceCounts.get(item.source) || 0) + 1));
