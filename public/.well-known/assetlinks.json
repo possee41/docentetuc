@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "ar.com.docentetuc.app",
+      "sha256_cert_fingerprints": [
+        "5C:D9:73:3F:43:F3:5A:C4:68:E1:6A:1E:1A:D0:53:40:A8:5C:87:A8:02:20:EB:F4:4C:83:97:72:5F:C5:58:B3"
+      ]
+    }
+  }
+]
