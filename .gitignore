@@ -46,4 +46,10 @@ next-env.d.ts
 /work/
 /.git-incomplete-backup/
 /docentetuc-site.zip
+/*.apk
+/*.tar.gz
 *.tsbuildinfo
+/.android-toolchain/
+/android/.gradle/
+/android/local.properties
+/android/app/build/

@@ -31,6 +31,11 @@ const viewTitles: Record<View, [string, string]> = {
 };
 
 const normalize = (value = "") => value.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const apiHeaders = (json = false) => {
+  let deviceId = localStorage.getItem("docentetuc-device-id");
+  if (!deviceId) { deviceId = crypto.randomUUID(); localStorage.setItem("docentetuc-device-id", deviceId); }
+  return { "X-DocenteTuc-Device": deviceId, ...(json ? { "Content-Type": "application/json" } : {}) };
+};
 const dateLabel = (value: string | null, withTime = false) => value ? new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "short", ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}) }).format(new Date(value.includes("T") ? value : `${value}T12:00:00-03:00`)) : "Sin fecha informada";
 const fromNow = (value: string | null) => {
   if (!value) return ""; const hours = Math.ceil((new Date(value).getTime() - Date.now()) / 36e5);
@@ -53,7 +58,7 @@ export default function DocenteApp() {
   const load = async (syncIfEmpty = true) => {
     setLoading(true);
     try {
-      const response = await fetch("/api/app", { cache: "no-store" });
+      const response = await fetch("/api/app", { cache: "no-store", headers: apiHeaders() });
       if (!response.ok) throw new Error("No se pudo cargar la información");
       const result = await response.json() as AppData;
       setData(result);
@@ -65,7 +70,7 @@ export default function DocenteApp() {
   const syncSources = async (notify = true) => {
     setSyncing(true);
     try {
-      const response = await fetch("/api/sync", { method: "POST" });
+      const response = await fetch("/api/sync", { method: "POST", headers: apiHeaders() });
       const result = await response.json() as { error?: string; skipped?: boolean; count?: number };
       if (!response.ok) throw new Error(result.error || "No se pudo actualizar");
       if (notify) toast.success(result.skipped ? "Las fuentes ya estaban actualizadas" : `${result.count ?? 0} publicaciones verificadas`);
@@ -120,7 +125,7 @@ export default function DocenteApp() {
       if (action !== "save" || enabled) saved = [...saved, { publication_id: publication.id, in_agenda: action === "agenda" ? enabled : existing?.in_agenda || false, followed: action === "follow" ? enabled : existing?.followed || false, saved_at: existing?.saved_at || new Date().toISOString() }];
       return { ...current, saved };
     });
-    const response = await fetch("/api/app", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, publicationId: publication.id, enabled }) });
+    const response = await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action, publicationId: publication.id, enabled }) });
     if (!response.ok) { toast.error("No se pudo guardar el cambio"); await load(false); } else toast.success(action === "save" ? (enabled ? "Guardado" : "Quitado de guardados") : action === "agenda" ? "Agenda actualizada" : "Seguimiento actualizado");
   };
 
@@ -149,7 +154,7 @@ export default function DocenteApp() {
         {offline && <div className="flex items-center justify-center gap-2 bg-[#fff3dd] px-4 py-2 text-sm font-semibold text-[#7d541b]"><WifiOff className="size-4" />Sin conexión. Podés consultar la última información cargada.</div>}
 
         <div className="mx-auto w-full max-w-7xl p-4 md:p-8">
-          {view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} matches={matches} greeting={greeting} syncing={syncing} onSync={() => void syncSources()} onOpen={(publication) => setSelected(publication)} onView={setView} loading={loading} /> : view === "perfil" ? <ProfileForm profile={profile} onSaved={() => void load(false)} /> : view === "alertas" ? <Alerts data={data} onOpen={(publication) => setSelected(publication)} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} /> : view === "agenda" ? <Agenda publications={data?.publications || []} savedMap={savedMap} onOpen={setSelected} /> : <>
+          {view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} matches={matches} greeting={greeting} syncing={syncing} onSync={() => void syncSources()} onOpen={(publication) => setSelected(publication)} onView={setView} loading={loading} /> : view === "perfil" ? <ProfileForm profile={profile} onSaved={() => void load(false)} /> : view === "alertas" ? <Alerts data={data} onOpen={(publication) => setSelected(publication)} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} /> : view === "agenda" ? <Agenda publications={data?.publications || []} savedMap={savedMap} onOpen={setSelected} /> : <>
             <PageHeader view={view} count={items.length} syncing={syncing} onSync={() => void syncSources()} />
             <Filters filter={filter} setFilter={setFilter} level={level} setLevel={setLevel} character={character} setCharacter={setCharacter} levels={levels} kind={view} />
             <PublicationList items={items} loading={loading} savedMap={savedMap} matches={matches} onOpen={setSelected} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} />
@@ -208,7 +213,7 @@ function ProfileForm({ profile, onSaved }: { profile?: Profile; onSaved: () => v
   const [form, setForm] = useState(profile || null); useEffect(() => setForm(profile || null), [profile]);
   if (!form) return <LoadingCards />;
   const field = (key: keyof Profile, label: string, placeholder: string) => <div className="space-y-2"><Label htmlFor={String(key)}>{label}</Label><Input id={String(key)} value={String(form[key] || "")} onChange={(event) => setForm({ ...form, [key]: event.target.value })} placeholder={placeholder} className="h-11 rounded-xl border-[#cddbd3] bg-white" /></div>;
-  const save = async () => { const response = await fetch("/api/app", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "save_profile", name: form.name, level: form.level, area: form.area, subjects: form.subjects, junta: form.junta, department: form.department, locality: form.locality, shifts: form.shifts, wantsInterim: Boolean(form.wants_interim), wantsSubstitute: Boolean(form.wants_substitute), trainingInterests: form.training_interests }) }); if (response.ok) { toast.success("Perfil actualizado"); onSaved(); } else toast.error("No se pudo actualizar el perfil"); };
+  const save = async () => { const response = await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "save_profile", name: form.name, level: form.level, area: form.area, subjects: form.subjects, junta: form.junta, department: form.department, locality: form.locality, shifts: form.shifts, wantsInterim: Boolean(form.wants_interim), wantsSubstitute: Boolean(form.wants_substitute), trainingInterests: form.training_interests }) }); if (response.ok) { toast.success("Perfil actualizado"); onSaved(); } else toast.error("No se pudo actualizar el perfil"); };
   return <><PageHeader view="perfil" count={0} syncing={false} onSync={() => undefined} /><form onSubmit={(event) => { event.preventDefault(); void save(); }} className="grid gap-5 rounded-3xl border border-[#dce8e1] bg-white p-5 md:grid-cols-2 md:p-8">{field("name", "Nombre", "Tu nombre")}{field("level", "Nivel educativo", "Ej. Secundario")}{field("area", "Área", "Ej. Ciencias Sociales")}{field("subjects", "Materias o espacios de interés", "Separá varios con comas")}{field("junta", "Junta correspondiente", "Ej. Secundaria")}{field("department", "Departamento / zona", "Ej. Capital")}{field("locality", "Localidad", "Ej. San Miguel de Tucumán")}{field("shifts", "Turnos de interés", "Mañana, tarde, noche")}{field("training_interests", "Capacitaciones de interés", "Temas separados por comas")}<div className="flex flex-col justify-center gap-4 rounded-2xl bg-[#f3f7f4] p-4"><label className="flex items-center justify-between gap-4"><span><strong className="block">Interinatos</strong><small className="text-[#6c847b]">Incluir en coincidencias</small></span><Switch checked={Boolean(form.wants_interim)} onCheckedChange={(checked) => setForm({ ...form, wants_interim: checked })} /></label><label className="flex items-center justify-between gap-4"><span><strong className="block">Suplencias</strong><small className="text-[#6c847b]">Incluir en coincidencias</small></span><Switch checked={Boolean(form.wants_substitute)} onCheckedChange={(checked) => setForm({ ...form, wants_substitute: checked })} /></label></div><div className="md:col-span-2 flex flex-wrap items-center justify-between gap-4 border-t border-[#e2ebe5] pt-5"><p className="max-w-xl text-sm text-[#6c847b]">Las coincidencias no certifican habilitación legal. Nunca solicitamos tu contraseña de SIME.</p><Button type="submit" className="h-11 rounded-xl bg-[#17362d] px-6 text-white">Guardar preferencias</Button></div></form></>;
 }
 

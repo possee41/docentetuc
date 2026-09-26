@@ -5,9 +5,9 @@ export const dynamic = "force-dynamic";
 
 const value = (input: unknown, max = 300) => typeof input === "string" ? input.trim().slice(0, max) : "";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const user = await currentUser();
+    const user = await currentUser(request);
     const db = getD1();
     await db.prepare("INSERT INTO profiles (user_id, name, email) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET email=excluded.email").bind(user.userId, user.fullName || user.displayName.split("@")[0], user.email).run();
     const [profile, publications, saved, notifications, sync] = await Promise.all([
@@ -25,7 +25,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const user = await currentUser();
+    const user = await currentUser(request);
     const body = await request.json() as Record<string, unknown>;
     const action = value(body.action, 30);
     const db = getD1();

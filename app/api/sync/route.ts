@@ -117,9 +117,9 @@ async function runSync() {
   return { count: publications.length, fresh: fresh.length, changed: changed.length, failures: results.filter((result) => result.status === "rejected").length };
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
-    await currentUser();
+    await currentUser(request);
     const db = getD1();
     const latest = await db.prepare("SELECT MAX(synced_at) AS synced_at FROM sync_state").first<{ synced_at: string | null }>();
     if (latest?.synced_at && Date.now() - new Date(`${latest.synced_at}Z`).getTime() < 5 * 60_000) return Response.json({ ok: true, skipped: true });
