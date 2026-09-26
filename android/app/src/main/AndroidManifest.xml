@@ -10,21 +10,12 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
         <activity
-            android:name="androidx.browser.trusted.LauncherActivity"
+            android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="portrait">
-            <meta-data
-                android:name="android.support.customtabs.trusted.DEFAULT_URL"
-                android:value="https://docentetuc.possee41.chatgpt.site" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="docentetuc.possee41.chatgpt.site" />
             </intent-filter>
         </activity>
     </application>

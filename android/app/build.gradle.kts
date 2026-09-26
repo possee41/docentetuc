@@ -10,11 +10,7 @@ android {
         applicationId = "ar.com.docentetuc.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
     }
-}
-
-dependencies {
-    implementation("androidx.browser:browser:1.8.0")
 }
