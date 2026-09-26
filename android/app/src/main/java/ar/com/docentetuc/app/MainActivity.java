@@ -10,7 +10,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         startActivity(new Intent(Intent.ACTION_VIEW,
-                Uri.parse("https://docentetuc.possee41.chatgpt.site")));
+                Uri.parse("https://docentetuc.possee41.workers.dev")));
         finish();
     }
 }
