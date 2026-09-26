@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     if (!message || message.length > 1000) return Response.json({ error: "La consulta debe tener entre 1 y 1000 caracteres." }, { status: 400 });
     const settings = env as unknown as Record<string, string | undefined>;
     const providerName = settings.AI_PROVIDER?.toLowerCase() || "", apiKey = settings.AI_API_KEY || "", model = settings.AI_MODEL || "";
-    if (!providerName || !apiKey || !model) return Response.json({ error: "DocenteTuc IA todavía no está configurada. Faltan AI_PROVIDER, AI_API_KEY y AI_MODEL." }, { status: 503 });
+    if (!providerName || !apiKey || !model) { console.warn("ai_provider_not_configured", { provider: Boolean(providerName), apiKey: Boolean(apiKey), model: Boolean(model) }); return Response.json({ error: "DocenteTuc IA todavía no está configurada." }, { status: 503 }); }
     const db = getD1(), bucket = `${user.userId}:${Math.floor(Date.now() / 900000)}`, expiresAt = new Date(Date.now() + 900000).toISOString();
     await db.prepare("INSERT INTO ai_rate_limits (user_bucket, request_count, expires_at) VALUES (?, 1, ?) ON CONFLICT(user_bucket) DO UPDATE SET request_count=request_count+1").bind(bucket, expiresAt).run();
     const usage = await db.prepare("SELECT request_count FROM ai_rate_limits WHERE user_bucket=?").bind(bucket).first<{ request_count: number }>();

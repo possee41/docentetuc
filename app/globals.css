@@ -127,11 +127,55 @@ button, a { transition: color .18s ease, background-color .18s ease, transform .
 button:active { transform: translateY(1px); }
 :focus-visible { outline: 3px solid #2eb6f3; outline-offset: 2px; }
 
+.app-background {
+  position: relative;
+  min-height: 100svh;
+  overflow: clip;
+  background: linear-gradient(145deg, rgb(238 248 255 / .94), rgb(255 255 255 / .9) 50%, rgb(224 244 255 / .94));
+}
+.app-watermark {
+  position: fixed;
+  inset: 5rem 1rem 5.5rem;
+  z-index: 0;
+  pointer-events: none;
+  background: url("/docentetuc-logo.png") center / min(74vw, 780px) auto no-repeat;
+  opacity: .08;
+}
+.app-topbar { background: rgb(244 250 255 / .88); backdrop-filter: blur(8px); }
+.app-background .bg-white, .app-detail-surface .bg-white { background-color: rgb(255 255 255 / .84); backdrop-filter: blur(7px); }
+.app-detail-surface { background: linear-gradient(rgb(238 248 255 / .92), rgb(255 255 255 / .9)), url("/docentetuc-logo.png") center / contain no-repeat fixed; }
+.ai-fab {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: calc(6.25rem + env(safe-area-inset-bottom));
+  z-index: 60;
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / .65);
+  border-radius: 999px;
+  color: white;
+  background: linear-gradient(145deg, #35b9ef, #0878be 58%, #063967);
+  box-shadow: 0 12px 30px rgb(6 57 103 / .3), 0 0 0 4px rgb(244 185 66 / .16);
+}
+.ai-fab:hover { transform: translateY(-2px) scale(1.03); }
+.ai-fab:active { transform: scale(.96); }
+
+@media (min-width: 768px) {
+  .app-watermark { inset: 5rem 2rem 2rem 17rem; background-size: min(58vw, 820px) auto; }
+  .ai-fab { right: 2rem; bottom: calc(2rem + env(safe-area-inset-bottom)); }
+}
+
 [data-theme="dark"] .bg-white { background-color: var(--card); color: var(--card-foreground); }
 [data-theme="dark"] .bg-\[\#f4f7f5\] { background-color: var(--background); }
 [data-theme="dark"] .bg-\[\#f3f7f4\],
 [data-theme="dark"] .bg-\[\#f8faf8\],
-[data-theme="dark"] .bg-\[\#f1f5f2\] { background-color: var(--muted); }
+[data-theme="dark"] .bg-\[\#f1f5f2\],
+[data-theme="dark"] .bg-\[\#f6f9fb\],
+[data-theme="dark"] .bg-\[\#edf6fc\],
+[data-theme="dark"] .bg-\[\#dceffc\],
+[data-theme="dark"] .bg-\[\#e5f6ff\] { background-color: var(--muted); }
 [data-theme="dark"] .border-\[\#dce8e1\],
 [data-theme="dark"] .border-\[\#e7eee9\],
 [data-theme="dark"] .border-\[\#e2ebe5\] { border-color: var(--border); }
@@ -145,6 +189,13 @@ button:active { transform: translateY(1px); }
 [data-theme="dark"] .text-\[\#52708c\] { color: #a9cee5; }
 [data-theme="dark"] .border-\[\#c8e1f1\],
 [data-theme="dark"] .border-\[\#dcecf6\] { border-color: var(--border); }
+[data-theme="dark"] .app-background { background: linear-gradient(145deg, #03172d, #062b55 55%, #041d38); }
+[data-theme="dark"] .app-watermark { opacity: .07; filter: saturate(.75) brightness(1.2); }
+[data-theme="dark"] .app-topbar { background: rgb(3 23 45 / .88); }
+[data-theme="dark"] .app-background .bg-white, [data-theme="dark"] .app-detail-surface .bg-white { background-color: rgb(8 41 74 / .84); }
+[data-theme="dark"] .app-detail-surface { background: linear-gradient(rgb(3 23 45 / .94), rgb(6 43 85 / .92)), url("/docentetuc-logo.png") center / contain no-repeat fixed; }
+[data-theme="dark"] .upcoming-card { background: rgb(8 41 74 / .9); border-color: #8c742b; }
+[data-theme="dark"] .upcoming-card .text-\[\#a66b00\], [data-theme="dark"] .upcoming-card .text-\[\#8b5b00\] { color: #f6ce6e; }
 
 /* Compatibilidad visual mientras los componentes conservan sus clases históricas. */
 .bg-\[\#17362d\] { background-color: #0878be; }
