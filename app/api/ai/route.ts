@@ -6,6 +6,11 @@ import type { Profile, Publication } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+export async function GET() {
+  const settings = env as unknown as Record<string, string | undefined>;
+  return Response.json({ configured: Boolean(settings.AI_PROVIDER && settings.AI_API_KEY && settings.AI_MODEL) });
+}
+
 export async function POST(request: Request) {
   try {
     const user = await currentUser(request), body = await request.json() as Record<string, unknown>;
