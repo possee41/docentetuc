@@ -5,6 +5,7 @@ export type TrainingMetadata = {
   trainingId: string;
   commissionId?: string;
   registrationOpensAt?: string;
+  registrationHasTime?: boolean;
   registrationClosesAt?: string;
   courseEndsAt?: string;
   address?: string;
@@ -52,11 +53,27 @@ export function trainingStatus(commission: OfficialCommission | undefined, now =
   return Number(commission.comision_cerrada) ? "inscripción cerrada" : "consultar";
 }
 
+export function openingCountdown(opensAt: string, now = new Date(), hasTime = true) {
+  const difference = new Date(opensAt).getTime() - now.getTime();
+  if (difference <= 0) return "Abre hoy";
+  const sameDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+  const today = sameDay.format(now), openingDay = sameDay.format(new Date(opensAt));
+  if (today === openingDay) {
+    if (!hasTime) return "Abre hoy";
+    const minutes = Math.ceil(difference / 60000), hours = Math.floor(minutes / 60);
+    return hours ? `Abre en ${hours} h ${minutes % 60} min` : `Abre en ${minutes} min`;
+  }
+  const days = Math.ceil(difference / 86400000);
+  return days === 1 ? "Abre mañana" : `Abre en ${days} días`;
+}
+
 function opportunity(course: OfficialCourse, commission?: OfficialCommission, now = new Date()): TrainingOpportunity {
   const trainingId = text(commission?.capacitacion_id || course.capacitacion_id);
   const commissionId = commission?.id == null ? "" : text(commission.id);
   const token = text(course.token || commission?.token), slug = text(course.slug || commission?.slug);
-  const registrationOpensAt = localDateTime(commission?.fecha_apertura_preinscripcion);
+  const rawOpening = commission?.fecha_apertura_preinscripcion || course.proxima_fecha_preinscripcion;
+  const registrationOpensAt = localDateTime(rawOpening);
+  const registrationHasTime = /\d{1,2}:\d{2}/.test(text(rawOpening));
   const registrationClosesAt = localDateTime(commission?.fecha_cierre_preinscripcion);
   const courseStartsAt = localDateTime(commission?.fecha_inicio);
   const courseEndsAt = localDateTime(commission?.fecha_fin, true);
@@ -72,11 +89,11 @@ function opportunity(course: OfficialCourse, commission?: OfficialCommission, no
     level: text(course.niveles), area: text(course.areas || course.eje_prioritario),
     location: text(commission?.lugar), modality: text(course.modalidad || commission?.modalidad),
     startsAt: courseStartsAt || null, endsAt: registrationClosesAt || null,
-    status: trainingStatus(commission, now), officialUrl,
+    status: commission ? trainingStatus(commission, now) : registrationOpensAt && new Date(registrationOpensAt).getTime() > now.getTime() ? "próximamente" : "consultar", officialUrl,
     sourceUpdatedAt: text(commission?.updated_at) || null,
     metadata: {
       entity: commissionId ? "commission" : "course", trainingId, ...(commissionId ? { commissionId } : {}),
-      ...(registrationOpensAt ? { registrationOpensAt } : {}), ...(registrationClosesAt ? { registrationClosesAt } : {}),
+      ...(registrationOpensAt ? { registrationOpensAt, registrationHasTime } : {}), ...(registrationClosesAt ? { registrationClosesAt } : {}),
       ...(courseEndsAt ? { courseEndsAt } : {}), ...(commission?.direccion ? { address: text(commission.direccion) } : {}),
       ...(number(commission?.cupo) != null ? { capacity: number(commission?.cupo) } : {}),
       ...(number(commission?.cupo_preinscripcion) != null ? { preCapacity: number(commission?.cupo_preinscripcion) } : {}),

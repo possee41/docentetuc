@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mergeTrainingData, trainingStatus } from "./training.ts";
+import { mergeTrainingData, openingCountdown, trainingStatus } from "./training.ts";
 
 const now = new Date("2026-09-26T12:00:00-03:00");
 const course = { capacitacion_id: 10, nombre: "Curso oficial", token: "abc", slug: "curso-oficial", niveles: "Secundario" };
@@ -32,6 +32,18 @@ test("mantiene una capacitación sin comisión como consultable", () => {
   const [result] = mergeTrainingData([course], [], now);
   assert.equal(result.status, "consultar");
   assert.equal(result.metadata.entity, "course");
+});
+
+test("detecta una próxima apertura publicada en la capacitación", () => {
+  const [result] = mergeTrainingData([{ ...course, proxima_fecha_preinscripcion: "2026-09-27 23:00:00" }], [], now);
+  assert.equal(result.status, "próximamente");
+  assert.equal(result.metadata.registrationOpensAt, "2026-09-27T23:00:00-03:00");
+  assert.equal(result.metadata.registrationHasTime, true);
+});
+
+test("calcula la cuenta regresiva sin inventar hora", () => {
+  assert.equal(openingCountdown("2026-09-26T14:35:00-03:00", new Date("2026-09-26T12:00:00-03:00")), "Abre en 2 h 35 min");
+  assert.equal(openingCountdown("2026-09-27T00:00:00-03:00", now, false), "Abre mañana");
 });
 
 test("admite respuestas oficiales vacías", () => assert.deepEqual(mergeTrainingData([], [], now), []));

@@ -110,7 +110,18 @@ async function runSync() {
   const profiles = await db.prepare("SELECT * FROM profiles").all<Record<string, unknown>>();
   const interesting = [...fresh.slice(0, 60), ...changed];
   for (const profile of profiles.results) {
-    const statements = interesting.filter((item) => matchesProfile(item, { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") })).map((item) => {
+    const match = (item: Publication) => {
+      const fullProfile = { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") };
+      if (item.kind !== "capacitacion") return matchesProfile(item, fullProfile);
+      if (!Boolean(profile.notify_new_trainings)) return false;
+      const scope = String(profile.training_notify_scope || "relevant");
+      if (scope === "all") return true;
+      if (scope === "level") return matchesProfile(item, { level: fullProfile.level });
+      if (scope === "area") return matchesProfile(item, { area: fullProfile.area, subjects: fullProfile.subjects });
+      if (scope === "interests") return matchesProfile(item, { trainingInterests: fullProfile.trainingInterests });
+      return matchesProfile(item, fullProfile);
+    };
+    const statements = interesting.filter(match).map((item) => {
       const type = old.has(item.id) ? (item.kind === "junta" ? "PADRON_ACTUALIZADO" : "FECHA_IMPORTANTE") : item.kind === "vacante" ? "VACANTE_NUEVA" : item.kind === "capacitacion" ? "CAPACITACION_NUEVA" : item.category === "Comunicados" ? "COMUNICADO_NUEVO" : "PADRON_NUEVO";
       return db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) VALUES (?, ?, ?)").bind(String(profile.user_id), item.id, type);
     });

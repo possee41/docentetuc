@@ -7,6 +7,7 @@ export const profiles = sqliteTable("profiles", {
   junta: text("junta").notNull().default(""), department: text("department").notNull().default(""), locality: text("locality").notNull().default(""),
   shifts: text("shifts").notNull().default(""), wantsInterim: integer("wants_interim", { mode: "boolean" }).notNull().default(true),
   wantsSubstitute: integer("wants_substitute", { mode: "boolean" }).notNull().default(true), trainingInterests: text("training_interests").notNull().default(""),
+  notifyNewTrainings: integer("notify_new_trainings", { mode: "boolean" }).notNull().default(false), trainingNotifyScope: text("training_notify_scope").notNull().default("relevant"),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -34,4 +35,14 @@ export const notifications = sqliteTable("notifications", {
 
 export const syncState = sqliteTable("sync_state", {
   source: text("source").primaryKey(), syncedAt: text("synced_at").notNull(), itemCount: integer("item_count").notNull().default(0), error: text("error"),
+});
+
+export const trainingReminders = sqliteTable("training_reminders", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), trainingId: text("training_id").notNull(), publicationId: text("publication_id").notNull(),
+  opensAt: text("opens_at").notNull(), precision: text("precision").notNull(), advanceMinutes: integer("advance_minutes"), remindAt: text("remind_at").notNull(),
+  notified: integer("notified", { mode: "boolean" }).notNull().default(false), createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [index("idx_training_reminders_user").on(table.userId), index("idx_training_reminders_due").on(table.remindAt, table.notified)]);
+
+export const aiRateLimits = sqliteTable("ai_rate_limits", {
+  userBucket: text("user_bucket").primaryKey(), requestCount: integer("request_count").notNull().default(0), expiresAt: text("expires_at").notNull(),
 });
