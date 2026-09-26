@@ -139,10 +139,10 @@ export default function DocenteApp() {
   const greeting = new Date().getHours() < 12 ? "Buenos días" : new Date().getHours() < 20 ? "Buenas tardes" : "Buenas noches";
 
   return (
-    <SidebarProvider style={{ "--sidebar-width": "17rem" } as CSSProperties}>
+    <SidebarProvider style={{ "--sidebar-width": "17rem", "--sidebar": "#0f3d32", "--sidebar-foreground": "#ffffff", "--sidebar-accent": "#d9f36a", "--sidebar-accent-foreground": "#17362d" } as CSSProperties}>
       <Sidebar className="border-r border-white/10 bg-[#0f3d32] text-white" collapsible="offcanvas">
         <SidebarHeader className="p-5"><button onClick={() => setView("inicio")} className="flex items-center gap-3 text-left"><span className="grid size-11 place-items-center rounded-2xl bg-[#d9f36a] text-xl font-black text-[#17362d]">D</span><span><span className="block text-xl font-black">DocenteTuc</span><span className="block text-xs text-white/55">Información docente</span></span></button></SidebarHeader>
-        <SidebarContent className="px-3"><SidebarMenu>{navigation.map(([id, label, Icon]) => <SidebarMenuItem key={id}><SidebarMenuButton isActive={view === id} onClick={() => { setView(id); setQuery(""); setFilter(id === "guardados" ? "todas" : "para-mi"); }} className="h-11 rounded-xl px-3 text-white/75 hover:bg-white/10 hover:text-white data-[active=true]:bg-white data-[active=true]:font-bold data-[active=true]:text-[#17362d]"><Icon className="size-5" /><span>{label}</span>{id === "alertas" && unread > 0 && <Badge className="ml-auto bg-[#f5b86d] text-[#17362d]">{unread}</Badge>}</SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarContent>
+        <SidebarContent className="px-3"><SidebarMenu>{navigation.map(([id, label, Icon]) => <SidebarMenuItem key={id}><SidebarMenuButton isActive={view === id} onClick={() => { setView(id); setQuery(""); setFilter(id === "guardados" ? "todas" : "para-mi"); }} className="h-11 rounded-xl bg-white/10 px-3 font-semibold text-white hover:bg-white/20 hover:text-white data-[active=true]:bg-[#d9f36a] data-[active=true]:font-black data-[active=true]:text-[#17362d]"><Icon className="size-5" /><span>{label}</span>{id === "alertas" && unread > 0 && <Badge className="ml-auto bg-[#f5b86d] text-[#17362d]">{unread}</Badge>}</SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarContent>
         <SidebarFooter className="p-5"><p className="text-xs leading-relaxed text-white/45">Herramienta independiente. La fuente oficial prevalece siempre.</p></SidebarFooter>
       </Sidebar>
 
