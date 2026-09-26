@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { matchesProfile } from "@/lib/matching";
+import { safeDate } from "@/lib/safe-date";
 import type { AppData, Profile, Publication, Saved } from "@/lib/types";
 
 type View = "inicio" | "vacantes" | "capacitaciones" | "junta" | "agenda" | "alertas" | "guardados" | "perfil";
@@ -36,9 +37,9 @@ const apiHeaders = (json = false) => {
   if (!deviceId) { deviceId = crypto.randomUUID(); localStorage.setItem("docentetuc-device-id", deviceId); }
   return { "X-DocenteTuc-Device": deviceId, ...(json ? { "Content-Type": "application/json" } : {}) };
 };
-const dateLabel = (value: string | null, withTime = false) => value ? new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "short", ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}) }).format(new Date(value.includes("T") ? value : `${value}T12:00:00-03:00`)) : "Sin fecha informada";
+const dateLabel = (value: string | null, withTime = false) => { const date = safeDate(value); return date ? new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "short", ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}) }).format(date) : "Sin fecha informada"; };
 const fromNow = (value: string | null) => {
-  if (!value) return ""; const hours = Math.ceil((new Date(value).getTime() - Date.now()) / 36e5);
+  const date = safeDate(value); if (!date) return "Sin fecha informada"; const hours = Math.ceil((date.getTime() - Date.now()) / 36e5);
   return hours <= 0 ? "Finalizó" : hours < 24 ? `Vence en ${hours} h` : `Vence en ${Math.ceil(hours / 24)} días`;
 };
 
@@ -180,7 +181,7 @@ function Dashboard({ data, profile, savedMap, matches, greeting, syncing, onSync
   const latest = publications.filter(matches).sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()).slice(0, 6);
   const cards = [["vacantes", `${matchedVacancies.length}`, "Vacantes para tu perfil", BriefcaseBusiness, "bg-[#ffe9e4] text-[#ba4c35]"], ["capacitaciones", `${training.length}`, "Capacitaciones abiertas", GraduationCap, "bg-[#e5f1ff] text-[#356ca8]"], ["junta", `${board.length}`, "Documentos de tu Junta", BookOpen, "bg-[#e9f5e9] text-[#3c7b54]"], ["agenda", upcoming[0] ? dateLabel(upcoming[0].ends_at) : "—", "Próximo vencimiento", CalendarDays, "bg-[#fff3dd] text-[#9a641f]"]] as const;
   return <>
-    <div className="mb-7 flex flex-wrap items-end justify-between gap-4"><div><p className="mb-1 text-sm font-bold uppercase tracking-wide text-[#70867f]">{new Intl.DateTimeFormat("es-AR", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</p><h1 className="text-3xl font-black tracking-tight md:text-4xl">{greeting}, {profile?.name?.split(" ")[0] || "docente"}</h1><p className="mt-2 text-[#61766f]">Estas coincidencias son orientativas; la habilitación se verifica en los sistemas oficiales.</p></div><Button onClick={onSync} disabled={syncing || loading} className="h-11 rounded-xl bg-[#17362d] px-5 text-white hover:bg-[#275548]"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />{syncing ? "Actualizando…" : "Actualizar fuentes"}</Button></div>
+    <div className="mb-7 flex flex-wrap items-end justify-between gap-4"><div><p suppressHydrationWarning className="mb-1 text-sm font-bold uppercase tracking-wide text-[#70867f]">{new Intl.DateTimeFormat("es-AR", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</p><h1 suppressHydrationWarning className="text-3xl font-black tracking-tight md:text-4xl">{greeting}, {profile?.name?.split(" ")[0] || "docente"}</h1><p className="mt-2 text-[#61766f]">Estas coincidencias son orientativas; la habilitación se verifica en los sistemas oficiales.</p></div><Button onClick={onSync} disabled={syncing || loading} className="h-11 rounded-xl bg-[#17362d] px-5 text-white hover:bg-[#275548]"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />{syncing ? "Actualizando…" : "Actualizar fuentes"}</Button></div>
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{cards.map(([target, value, label, Icon, color]) => <button key={label} onClick={() => onView(target)} className="rounded-3xl border border-[#dce8e1] bg-white p-5 text-left shadow-[0_8px_30px_rgba(20,64,52,.06)] hover:-translate-y-0.5"><div className="mb-7 flex items-start justify-between"><span className={`grid size-11 place-items-center rounded-2xl ${color}`}><Icon className="size-5" /></span><ChevronRight className="size-5 text-[#9aaca5]" /></div><p className="text-2xl font-black">{loading ? "…" : value}</p><p className="mt-1 text-sm text-[#61766f]">{label}</p></button>)}</section>
     <section className="mt-7 rounded-3xl border border-[#dce8e1] bg-white p-5 md:p-7"><div className="mb-5 flex items-end justify-between gap-3"><div><h2 className="text-xl font-bold">Últimas novedades para vos</h2><p className="mt-1 text-sm text-[#6c847b]">Ordenadas según las preferencias de tu perfil.</p></div>{data?.sync[0] && <span className="hidden text-xs text-[#789087] sm:block">Actualizado {dateLabel(`${data.sync[0].synced_at}Z`, true)}</span>}</div>{loading ? <LoadingCards /> : latest.length ? <div className="divide-y divide-[#e7eee9]">{latest.map((item) => <CompactItem key={item.id} item={item} saved={savedMap.has(item.id)} onOpen={() => onOpen(item)} />)}</div> : <Empty title="Todavía no hay coincidencias" text={publications.length ? "Completá tu perfil para personalizar las novedades." : "Actualizá las fuentes para cargar información oficial."} />}</section>
   </>;
