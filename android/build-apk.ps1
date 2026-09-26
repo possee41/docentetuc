@@ -58,6 +58,7 @@ try {
 }
 
 $apk = Join-Path $project "app\build\outputs\apk\debug\app-debug.apk"
-$output = Join-Path $root "DocenteTuc-1.0.4-debug.apk"
+$output = Join-Path $root "DocenteTuc-1.0.5-debug.apk"
 Copy-Item -LiteralPath $apk -Destination $output -Force
+Copy-Item -LiteralPath $apk -Destination (Join-Path $root "public\DocenteTuc-1.0.5.apk") -Force
 Write-Output $output
