@@ -40,8 +40,8 @@ test("GeminiProvider usa el endpoint backend y la clave sólo en el header", asy
   let requestUrl = "", requestInit: RequestInit | undefined;
   globalThis.fetch = async (input, init) => { requestUrl = String(input); requestInit = init; return Response.json({ candidates: [{ content: { parts: [{ text: "Respuesta real" }] } }] }); };
   try {
-    assert.equal(await new GeminiProvider("secret-test", "gemini-2.5-flash-lite").generate("Hola", "Sistema"), "Respuesta real");
-    assert.match(requestUrl, /gemini-2\.5-flash-lite:generateContent$/);
+    assert.equal(await new GeminiProvider("secret-test", "gemini-3.5-flash-lite").generate("Hola", "Sistema"), "Respuesta real");
+    assert.match(requestUrl, /gemini-3\.5-flash-lite:generateContent$/);
     assert.doesNotMatch(requestUrl, /secret-test/);
     assert.equal((requestInit?.headers as Record<string, string>)["x-goog-api-key"], "secret-test");
     assert.match(String(requestInit?.body), /systemInstruction/);

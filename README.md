@@ -18,7 +18,7 @@ El asistente funciona exclusivamente desde el backend y admite OpenAI o Gemini. 
 
 ```text
 AI_PROVIDER=gemini
-AI_MODEL=gemini-2.5-flash-lite
+AI_MODEL=gemini-3.5-flash-lite
 AI_API_KEY=
 ```
 
