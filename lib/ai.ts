@@ -3,7 +3,7 @@ import { parseTrainingMetadata } from "./training.ts";
 import type { Profile, Publication } from "./types.ts";
 
 export type AIConfig = { provider: string; apiKey: string; model: string };
-export type AISource = { id: string; title: string; source: string; url: string; updatedAt: string; status: string };
+export type AISource = { id: string; title: string; source: string; sourceType: "official" | "internal" | "complementary"; url: string; updatedAt: string; status: string };
 export type AIIntent = "capacitaciones" | "vacantes" | "designaciones" | "agenda" | "perfil" | "novedades" | "documentos" | "busqueda_general" | "conversacion_general";
 export type AIContextInput = { type: string; id?: string; title?: string };
 export type AIContextOptions = { profile?: Profile; agendaIds?: string[]; context?: AIContextInput; now?: Date };
@@ -123,7 +123,7 @@ export function retrievePublications(question: string, publications: Publication
 
 export function buildAIContext(question: string, publications: Publication[], options: AIContextOptions = {}) {
   const selected = retrievePublications(question, publications, 8, options);
-  const sources: AISource[] = selected.map((item) => ({ id: item.id, title: item.title, source: item.source, url: item.official_url, updatedAt: item.updated_at, status: item.status }));
+  const sources: AISource[] = selected.map((item) => ({ id: item.id, title: item.title, source: item.source, sourceType: "official", url: item.official_url, updatedAt: item.updated_at, status: item.status }));
   const configuredProfile = options.profile ? matchProfile(options.profile) : null;
   const records = selected.map((item, index) => {
     const training = item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata) : null;
