@@ -43,8 +43,8 @@ const FDCI_LOGIN = "https://capacitaciondocente.educaciontuc.gov.ar/docentes";
 const EDUCATION_LEVELS = ["Inicial", "Primario", "Secundario", "Superior"];
 
 function AppSidebarNavigation({ view, unread, onNavigate }: { view: View; unread: number; onNavigate: (view: View) => void }) {
-  const { isMobile, setOpenMobile } = useSidebar();
-  return <SidebarMenu>{navigation.map(([id, label, Icon]) => <SidebarMenuItem key={id}><SidebarMenuButton isActive={view === id} onClick={() => { onNavigate(id); if (isMobile) setOpenMobile(false); }} className="h-11 rounded-xl bg-white/8 px-3 font-semibold text-white hover:bg-white/15 hover:text-white data-[active=true]:bg-[#2eb6f3] data-[active=true]:font-black data-[active=true]:text-white"><Icon className="size-5" /><span>{label}</span>{id === "alertas" && unread > 0 && <Badge className="ml-auto bg-[#f4b942] text-[#062b55]">{unread}</Badge>}</SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu>;
+  const { setOpen, setOpenMobile } = useSidebar();
+  return <SidebarMenu>{navigation.map(([id, label, Icon]) => <SidebarMenuItem key={id}><SidebarMenuButton isActive={view === id} onClick={() => { onNavigate(id); setOpen(false); setOpenMobile(false); }} className="h-11 rounded-xl bg-white/8 px-3 font-semibold text-white hover:bg-white/15 hover:text-white data-[active=true]:bg-[#2eb6f3] data-[active=true]:font-black data-[active=true]:text-white"><Icon className="size-5" /><span>{label}</span>{id === "alertas" && unread > 0 && <Badge className="ml-auto bg-[#f4b942] text-[#062b55]">{unread}</Badge>}</SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu>;
 }
 
 const normalize = (value = "") => value.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -212,7 +212,7 @@ export default function DocenteApp() {
   const trainingSync = data?.sync.find((item) => item.source === "Capacitación Docente");
   const greeting = new Date().getHours() < 12 ? "Buenos días" : new Date().getHours() < 20 ? "Buenas tardes" : "Buenas noches";
   return (
-    <SidebarProvider style={{ "--sidebar-width": "17rem" } as CSSProperties}>
+    <SidebarProvider defaultOpen={false} className="mobile-preview-shell" style={{ "--sidebar-width": "17rem" } as CSSProperties}>
       <Sidebar className="border-r border-white/10 text-white backdrop-blur-xl" collapsible="offcanvas">
         <SidebarHeader className="p-5"><button onClick={() => setView("inicio")} className="flex items-center gap-3 text-left"><img src="/icon-192.png" alt="" className="size-12 rounded-2xl shadow-sm" /><span><span className="block text-xl font-black">DocenteTuc</span><span className="block text-xs text-white/55">Información docente</span></span></button></SidebarHeader>
         <SidebarContent className="px-3"><AppSidebarNavigation view={view} unread={unread} onNavigate={(id) => { setView(id); setQuery(""); setFilter(id === "capacitaciones" ? "proximamente" : id === "guardados" ? "todas" : "para-mi"); }} /></SidebarContent>
