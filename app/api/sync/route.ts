@@ -1,7 +1,8 @@
+import { env } from "cloudflare:workers";
 import { getD1 } from "@/db";
 import { authError, currentUser } from "@/lib/current-user";
 import { matchesProfile } from "@/lib/matching";
-import { mergeTrainingData } from "@/lib/training";
+import { mergeTrainingData, parseTrainingMetadata } from "@/lib/training";
 
 export const dynamic = "force-dynamic";
 
@@ -89,12 +90,12 @@ async function boardPublications() {
 
 async function runSync() {
   const db = getD1();
-  const previous = await db.prepare("SELECT id, content_hash FROM publications").all<{ id: string; content_hash: string }>();
-  const old = new Map(previous.results.map((row) => [row.id, row.content_hash]));
+  const previous = await db.prepare("SELECT id, content_hash, starts_at, ends_at, metadata FROM publications").all<{ id: string; content_hash: string; starts_at: string | null; ends_at: string | null; metadata: string }>();
+  const old = new Map(previous.results.map((row) => [row.id, row]));
   const results = await Promise.allSettled([simePublications(), trainingPublications(), boardPublications()]);
   const publications = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   if (!publications.length) throw new Error("Las fuentes no respondieron.");
-  const changed = publications.filter((item) => old.has(item.id) && old.get(item.id) !== item.contentHash);
+  const changed = publications.filter((item) => old.has(item.id) && old.get(item.id)?.content_hash !== item.contentHash);
   const fresh = publications.filter((item) => !old.has(item.id));
   for (let offset = 0; offset < publications.length; offset += 40) {
     await db.batch(publications.slice(offset, offset + 40).map((item) => db.prepare(`INSERT INTO publications (id, source, external_id, kind, category, title, summary, level, area, junta, location, shift, character, starts_at, ends_at, status, official_url, metadata, content_hash, source_updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET source=excluded.source, category=excluded.category, title=excluded.title, summary=excluded.summary, level=excluded.level, area=excluded.area, junta=excluded.junta, location=excluded.location, shift=excluded.shift, character=excluded.character, starts_at=excluded.starts_at, ends_at=excluded.ends_at, status=excluded.status, official_url=excluded.official_url, metadata=excluded.metadata, content_hash=excluded.content_hash, source_updated_at=excluded.source_updated_at, updated_at=CURRENT_TIMESTAMP`).bind(item.id, item.source, item.externalId, item.kind, item.category, item.title, item.summary, item.level, item.area, item.junta, item.location, item.shift, item.character, item.startsAt, item.endsAt, item.status, item.officialUrl, item.metadata || "{}", item.contentHash, item.sourceUpdatedAt)));
@@ -122,7 +123,9 @@ async function runSync() {
       return matchesProfile(item, fullProfile);
     };
     const statements = interesting.filter(match).map((item) => {
-      const type = old.has(item.id) ? (item.kind === "junta" ? "PADRON_ACTUALIZADO" : "FECHA_IMPORTANTE") : item.kind === "vacante" ? "VACANTE_NUEVA" : item.kind === "capacitacion" ? "CAPACITACION_NUEVA" : item.category === "Comunicados" ? "COMUNICADO_NUEVO" : "PADRON_NUEVO";
+      const metadata = item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata) : null, previous = old.get(item.id), previousMetadata = item.kind === "capacitacion" ? parseTrainingMetadata(previous?.metadata) : null;
+      const dateChanged = Boolean(previous && [previous.starts_at, previous.ends_at, previousMetadata?.registrationOpensAt, previousMetadata?.registrationClosesAt].join("|") !== [item.startsAt, item.endsAt, metadata?.registrationOpensAt, metadata?.registrationClosesAt].join("|"));
+      const type = old.has(item.id) ? (item.kind === "junta" ? "PADRON_ACTUALIZADO" : dateChanged ? "FECHA_CAMBIADA" : "FECHA_IMPORTANTE") : item.kind === "vacante" ? "VACANTE_NUEVA" : metadata?.entity === "commission" ? "COMISION_NUEVA" : item.kind === "capacitacion" ? "CAPACITACION_NUEVA" : item.category === "Comunicados" ? "COMUNICADO_NUEVO" : "PADRON_NUEVO";
       return db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) VALUES (?, ?, ?)").bind(String(profile.user_id), item.id, type);
     });
     for (let offset = 0; offset < statements.length; offset += 40) await db.batch(statements.slice(offset, offset + 40));
@@ -132,7 +135,8 @@ async function runSync() {
 
 export async function POST(request: Request) {
   try {
-    await currentUser(request);
+    const scheduled = Boolean(env.CRON_SECRET) && request.headers.get("x-docentetuc-cron") === env.CRON_SECRET;
+    if (!scheduled) await currentUser(request);
     const db = getD1();
     const latest = await db.prepare("SELECT MAX(synced_at) AS synced_at FROM sync_state").first<{ synced_at: string | null }>();
     if (latest?.synced_at && Date.now() - new Date(`${latest.synced_at}Z`).getTime() < 5 * 60_000) return Response.json({ ok: true, skipped: true });

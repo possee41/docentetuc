@@ -46,3 +46,25 @@ export const trainingReminders = sqliteTable("training_reminders", {
 export const aiRateLimits = sqliteTable("ai_rate_limits", {
   userBucket: text("user_bucket").primaryKey(), requestCount: integer("request_count").notNull().default(0), expiresAt: text("expires_at").notNull(),
 });
+
+export const pushSubscriptions = sqliteTable("push_subscriptions", {
+  endpoint: text("endpoint").primaryKey(), userId: text("user_id").notNull(), deviceId: text("device_id").notNull(), p256dh: text("p256dh").notNull(), auth: text("auth").notNull(),
+  expirationTime: integer("expiration_time"), userAgent: text("user_agent").notNull().default(""), active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`), lastSeenAt: text("last_seen_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [index("idx_push_subscriptions_user").on(table.userId, table.active)]);
+
+export const pushPreferences = sqliteTable("push_preferences", {
+  userId: text("user_id").primaryKey(), enabled: integer("enabled", { mode: "boolean" }).notNull().default(true), vacancies: integer("vacancies", { mode: "boolean" }).notNull().default(true),
+  trainings: integer("trainings", { mode: "boolean" }).notNull().default(true), commissions: integer("commissions", { mode: "boolean" }).notNull().default(true), reminders: integer("reminders", { mode: "boolean" }).notNull().default(true),
+  dateChanges: integer("date_changes", { mode: "boolean" }).notNull().default(true), closingSoon: integer("closing_soon", { mode: "boolean" }).notNull().default(true), boards: integer("boards", { mode: "boolean" }).notNull().default(false),
+  quietStart: text("quiet_start").notNull().default("22:00"), quietEnd: text("quiet_end").notNull().default("07:00"), timezone: text("timezone").notNull().default("America/Argentina/Buenos_Aires"), updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const pushDeliveries = sqliteTable("push_deliveries", {
+  id: integer("id").primaryKey({ autoIncrement: true }), endpoint: text("endpoint").notNull(), notificationId: integer("notification_id").notNull(), eventKey: text("event_key").notNull(),
+  status: text("status").notNull().default("pending"), attempts: integer("attempts").notNull().default(0), lastError: text("last_error"), sentAt: text("sent_at"), nextAttemptAt: text("next_attempt_at"), createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [uniqueIndex("idx_push_deliveries_unique").on(table.endpoint, table.eventKey), index("idx_push_deliveries_retry").on(table.status, table.nextAttemptAt)]);
+
+export const pushRateLimits = sqliteTable("push_rate_limits", {
+  userBucket: text("user_bucket").primaryKey(), requestCount: integer("request_count").notNull().default(0), expiresAt: text("expires_at").notNull(),
+});
