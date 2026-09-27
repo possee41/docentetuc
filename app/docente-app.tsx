@@ -186,7 +186,7 @@ export default function DocenteApp() {
   const trainingLocations = [...new Set((data?.publications || []).filter((item) => item.kind === "capacitacion").map((item) => item.location).filter(Boolean))].slice(0, 30);
   const trainingSync = data?.sync.find((item) => item.source === "Capacitación Docente");
   const greeting = new Date().getHours() < 12 ? "Buenos días" : new Date().getHours() < 20 ? "Buenas tardes" : "Buenas noches";
-  const aiContext: AIContext = selected ? { type: selected.kind, id: selected.id, title: selected.title } : { type: viewTitles[view][0] };
+  const aiContext: AIContext = selected ? { type: selected.kind, id: selected.id, title: selected.title } : { type: view, title: viewTitles[view][0] };
 
   return (
     <SidebarProvider style={{ "--sidebar-width": "17rem" } as CSSProperties}>

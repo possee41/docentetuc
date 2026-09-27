@@ -17,12 +17,12 @@ La aplicación usa D1 mediante el binding `DB`. El acceso alojado se apoya en la
 El asistente funciona exclusivamente desde el backend y admite OpenAI o Gemini. Para activarlo en el entorno de despliegue se requieren estas variables:
 
 ```text
-AI_PROVIDER=openai
-AI_API_KEY=clave_del_proveedor
-AI_MODEL=modelo_habilitado_en_la_cuenta
+AI_PROVIDER=gemini
+AI_MODEL=gemini-2.5-flash-lite
+AI_API_KEY=
 ```
 
-`AI_PROVIDER` también puede ser `gemini`. La clave nunca debe agregarse al frontend ni a variables públicas. Si falta cualquiera de estos valores, la API responde que el asistente todavía no está configurado y no genera respuestas simuladas.
+La clave nunca debe agregarse al frontend ni a variables públicas. En Cloudflare se configura desde la carpeta del proyecto con `npx wrangler secret put AI_API_KEY --config wrangler.cloudflare.jsonc`. Si falta cualquiera de estos valores, la API responde que el asistente todavía no está configurado y no genera respuestas simuladas.
 
 ## Verificación
 

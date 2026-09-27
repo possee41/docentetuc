@@ -3,6 +3,10 @@
   "main": "dist/server/index.js",
   "compatibility_date": "2026-05-15",
   "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "AI_PROVIDER": "gemini",
+    "AI_MODEL": "gemini-2.5-flash-lite"
+  },
   "no_bundle": true,
   "rules": [{ "type": "ESModule", "globs": ["**/*.js", "**/*.mjs"] }],
   "assets": { "directory": "dist/client" },
