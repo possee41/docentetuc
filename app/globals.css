@@ -60,7 +60,22 @@
   --input-background: rgb(255 255 255 / .68);
   --accent-soft: rgb(204 236 255 / .78);
   --accent-text: #075f99;
-  --success-text: #20633d;
+  --text-on-accent: #ffffff;
+  --badge-bg: #e8f2f8;
+  --badge-text: #254966;
+  --badge-border: #b8d4e6;
+  --success-bg: #e2f5e8;
+  --success-text: #17643b;
+  --success-border: #add7bc;
+  --warning-bg: #fff2cd;
+  --warning-text: #6f4c00;
+  --warning-border: #e7c96f;
+  --info-bg: #dff2ff;
+  --info-text: #075f99;
+  --info-border: #9fd5f3;
+  --danger-bg: #fee7e2;
+  --danger-text: #8b3025;
+  --danger-border: #e6afa4;
 }
 
 [data-theme="dark"] {
@@ -88,7 +103,22 @@
   --input-background: rgb(12 56 96 / .76);
   --accent-soft: rgb(16 81 131 / .82);
   --accent-text: #8ad8ff;
-  --success-text: #8ee3af;
+  --text-on-accent: #ffffff;
+  --badge-bg: #163e60;
+  --badge-text: #e6f5ff;
+  --badge-border: #42789f;
+  --success-bg: #123e2b;
+  --success-text: #b6f3ca;
+  --success-border: #2d6a48;
+  --warning-bg: #493b13;
+  --warning-text: #ffe29a;
+  --warning-border: #806d2d;
+  --info-bg: #0f456e;
+  --info-text: #c6edff;
+  --info-border: #347aaa;
+  --danger-bg: #522520;
+  --danger-text: #ffd0c8;
+  --danger-border: #8c4d44;
   --sidebar: rgb(3 32 62 / .84);
 }
 
@@ -146,6 +176,7 @@ input, button, select, textarea { font-size: 1rem; }
 
 button, a { transition: color .18s ease, background-color .18s ease, transform .18s ease; }
 button:active { transform: translateY(1px); }
+button:disabled { opacity: .68; }
 :focus-visible { outline: 3px solid #2eb6f3; outline-offset: 2px; }
 
 .app-background {
@@ -169,6 +200,7 @@ button:active { transform: translateY(1px); }
 .ai-panel { position: fixed; inset: 0 0 0 auto; z-index: 70; display: flex; width: min(100%, 27rem); flex-direction: column; border-left: 1px solid var(--border); color: var(--text-primary); background: linear-gradient(rgb(238 248 255 / .66), rgb(255 255 255 / .62)), url("/docentetuc-logo.png") center / 92% auto no-repeat; box-shadow: -18px 0 45px rgb(6 57 103 / .22); backdrop-filter: blur(14px); transition: transform .28s ease, visibility .28s; }
 .ai-panel footer > div:first-child { scrollbar-width: none; }
 .ai-panel footer > div:first-child::-webkit-scrollbar { display: none; }
+.ai-panel button:disabled { opacity: .7; }
 .ai-fab {
   position: fixed;
   right: max(1rem, env(safe-area-inset-right));
@@ -186,6 +218,19 @@ button:active { transform: translateY(1px); }
 }
 .ai-fab:hover { transform: translateY(-2px) scale(1.03); }
 .ai-fab:active { transform: scale(.96); }
+
+.badge-neutral, .badge-success, .badge-warning, .badge-info, .badge-danger { border: 1px solid; }
+.badge-neutral { background: var(--badge-bg); color: var(--badge-text); border-color: var(--badge-border); }
+.badge-success { background: var(--success-bg); color: var(--success-text); border-color: var(--success-border); }
+.badge-warning { background: var(--warning-bg); color: var(--warning-text); border-color: var(--warning-border); }
+.badge-info { background: var(--info-bg); color: var(--info-text); border-color: var(--info-border); }
+.badge-danger { background: var(--danger-bg); color: var(--danger-text); border-color: var(--danger-border); }
+
+.push-settings {
+  background: linear-gradient(145deg, rgb(255 255 255 / .72), rgb(237 248 255 / .64));
+  border-color: var(--border);
+  backdrop-filter: blur(10px);
+}
 
 @media (min-width: 768px) {
   .app-watermark { inset: 5rem 2rem 2rem 17rem; background-size: min(58vw, 820px) auto; }
@@ -220,6 +265,7 @@ button:active { transform: translateY(1px); }
 [data-theme="dark"] .app-background .bg-white, [data-theme="dark"] .app-detail-surface .bg-white { background-color: var(--surface-primary); }
 [data-theme="dark"] .app-detail-surface { background: linear-gradient(rgb(3 23 45 / .7), rgb(6 43 85 / .66)), url("/docentetuc-logo.png") center / contain no-repeat fixed; }
 [data-theme="dark"] .ai-panel { background: linear-gradient(rgb(3 23 45 / .7), rgb(6 43 85 / .66)), url("/docentetuc-logo.png") center / 92% auto no-repeat; }
+[data-theme="dark"] .push-settings { background: linear-gradient(145deg, rgb(8 41 74 / .74), rgb(6 43 85 / .64)); }
 [data-theme="dark"] .upcoming-card { background: rgb(8 41 74 / .9); border-color: #8c742b; }
 [data-theme="dark"] .upcoming-card .text-\[\#a66b00\], [data-theme="dark"] .upcoming-card .text-\[\#8b5b00\] { color: #f6ce6e; }
 
@@ -233,8 +279,25 @@ button:active { transform: translateY(1px); }
 .border-\[\#dce8e1\], .border-\[\#e7eee9\], .border-\[\#e2ebe5\] { border-color: var(--border); }
 .text-\[\#61766f\], .text-\[\#6c847b\], .text-\[\#657b73\], .text-\[\#789087\], .text-\[\#82958e\] { color: var(--muted-foreground); }
 
-.app-background input, .app-background textarea, .app-background button, .app-detail-surface, .ai-panel { color: var(--text-primary); }
+.app-background input, .app-background textarea, .app-detail-surface, .ai-panel { color: var(--text-primary); }
 .app-background input::placeholder, .app-background textarea::placeholder, .ai-panel textarea::placeholder { color: var(--text-muted); opacity: 1; }
 [data-theme="dark"] .text-\[\#17362d\], [data-theme="dark"] .text-\[\#1f5f4e\], [data-theme="dark"] .text-\[\#315d7a\], [data-theme="dark"] .text-\[\#356053\] { color: var(--text-primary); }
 [data-theme="dark"] [data-slot="select-content"], [data-theme="dark"] [data-slot="dialog-content"] { background: rgb(8 41 74 / .96); color: var(--text-primary); border-color: var(--border); }
-[data-theme="dark"] button:disabled, [data-theme="dark"] input:disabled, [data-theme="dark"] textarea:disabled { color: var(--text-muted); opacity: .72; }
+[data-theme="dark"] input:disabled, [data-theme="dark"] textarea:disabled { color: var(--text-muted); opacity: .72; }
+
+/* Estados heredados enlazados a tokens para conservar los componentes actuales. */
+.bg-\[\#edf4ef\], .bg-\[\#eef2f5\] { background-color: var(--badge-bg); }
+.text-\[\#356053\], .text-\[\#607384\], .text-\[\#7e7462\] { color: var(--badge-text); }
+.border-\[\#dfd8c9\] { border-color: var(--badge-border); }
+.bg-\[\#edf8f0\], .bg-\[\#dff6e7\], .bg-\[\#dff5e8\] { background-color: var(--success-bg); }
+.text-\[\#34724b\], .text-\[\#277044\], .text-\[\#17643b\] { color: var(--success-text); }
+.border-\[\#b9d9c4\] { border-color: var(--success-border); }
+.bg-\[\#fff7dd\], .bg-\[\#fff3d1\], .bg-\[\#fff3d2\], .bg-\[\#fff4d6\], .bg-\[\#fff3dd\] { background-color: var(--warning-bg); }
+.text-\[\#8b6500\], .text-\[\#8b5b00\], .text-\[\#7b5700\], .text-\[\#7b5500\], .text-\[\#7d541b\], .text-\[\#6f4c00\], .text-\[\#9a641f\] { color: var(--warning-text); }
+.border-\[\#f0d58b\] { border-color: var(--warning-border); }
+.bg-\[\#e5f6ff\], .bg-\[\#edf6fc\], .bg-\[\#e2f4ff\], .bg-\[\#dff7ff\], .bg-\[\#e8efff\] { background-color: var(--info-bg); }
+.text-\[\#1b4e96\] { color: var(--info-text); }
+.bg-\[\#ffe5df\], .bg-\[\#fff0ec\] { background-color: var(--danger-bg); }
+.text-\[\#9a3528\], .text-\[\#8b3a2d\], .text-\[\#b44b3f\] { color: var(--danger-text); }
+.text-\[\#5f756d\], .text-\[\#6d879d\], .text-\[\#80938c\], .text-\[\#8aa9bf\] { color: var(--text-muted); }
+.bg-\[\#e8efeb\], .bg-\[\#eef3f0\] { background-color: var(--badge-bg); }
