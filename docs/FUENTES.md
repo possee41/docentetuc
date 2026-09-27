@@ -57,19 +57,19 @@ Comunicados, padrones, llamados abiertos y normativa de las cuatro Juntas. Inclu
 **MÉTODO DE OBTENCIÓN**  
 El índice es HTML estático generado con Nicepage. Enlaza cuatro Google Docs públicos para comunicados, carpetas públicas de Google Drive para padrones/llamados y PDF alojados en el dominio oficial.
 
-Los Docs admiten exportación pública con `https://docs.google.com/document/d/{documentId}/export?format=html`. DocenteTuc la usa sólo para calcular una huella; el usuario siempre abre el original. Las carpetas Drive quedan como enlaces oficiales porque no existe un JSON público y estable para enumerarlas sin Google Drive API.
+Los Docs admiten exportación pública con `https://docs.google.com/document/d/{documentId}/export?format=html`. DocenteTuc sanea esa exportación y muestra el texto legible dentro de la aplicación, conservando siempre el original como fuente. Las carpetas públicas de Drive exponen sus elementos directos en la propia página pública: DocenteTuc indexa sus nombres y enlaces sin credenciales. Los Google Docs encontrados allí también pueden leerse; PDF y subcarpetas conservan el enlace oficial porque no existe un feed público estable ni un extractor PDF en el Worker.
 
 **CAMPOS DISPONIBLES**  
 Del índice: Junta, tipo, URL, `documentId` o `folderId`. En los Docs pueden aparecer títulos, fechas, tablas y enlaces, pero la estructura editorial es libre. Los PDF aportan URL y título visible; sus metadatos internos varían.
 
 **IDENTIFICADORES Y CAMBIOS**  
-El ID de Docs/Drive y la URL de PDF identifican cada contenedor. Una referencia nueva se detecta al comparar enlaces del índice. Una modificación de un Doc seguido se detecta por SHA-256 de la exportación HTML. Sin API oficial autenticada, la V1 no enumera de forma robusta cada archivo de una carpeta Drive.
+El ID de Docs/Drive y la URL de PDF identifican cada contenedor. Los elementos públicos directos de una carpeta usan su ID de Drive. Una modificación se detecta por SHA-256 del contenido exportado o de los metadatos públicos visibles.
 
 **PAGINACIÓN Y FILTROS**  
 El índice no tiene paginación ni filtros programáticos. La separación por Junta y categoría está codificada en HTML. Drive maneja su propia navegación.
 
 **LIMITACIONES**  
-Los comunicados son documentos acumulativos grandes; no se observó `ETag` o `Last-Modified` útil. Drive es una interfaz dinámica, no un feed. Extraer cada anuncio desde contenido libre puede generar fechas ambiguas, por eso la V1 trata cada documento/carpeta como publicación seguida.
+Los comunicados son documentos acumulativos grandes; no se observó `ETag` o `Last-Modified` útil. Drive es una interfaz dinámica, no un feed documentado, y puede cambiar. Extraer fechas desde contenido libre puede generar ambigüedad, por eso DocenteTuc conserva el texto y no inventa fechas ni estados. Si Drive deja de exponer el índice público, se mantiene la última copia válida.
 
 **ESTRATEGIA DE ACTUALIZACIÓN**  
 Revisar el índice cada 30 minutos. Calcular la huella de Docs cada 30–60 minutos, secuencialmente y con límites. Avisar `PADRON_ACTUALIZADO` sólo si cambia una publicación seguida. Para una V2, acordar un feed con el Ministerio o usar Drive API con autorización explícita.

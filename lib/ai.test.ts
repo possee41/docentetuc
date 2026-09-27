@@ -6,6 +6,8 @@ import type { Profile, Publication } from "./types.ts";
 const base = { source: "Capacitación Docente", external_id: "1", kind: "capacitacion", category: "Capacitación", summary: "", level: "Secundario", area: "", junta: "", location: "", shift: "", character: "", starts_at: null, ends_at: null, official_url: "https://oficial.test/1", metadata: "{}", first_seen_at: "2026-09-01", updated_at: "2026-09-26" } as Publication;
 const records = [{ ...base, id: "next", title: "Curso próximo", status: "próximamente" }, { ...base, id: "open", title: "Curso abierto", status: "inscripción abierta" }] as Publication[];
 const vacancy = { ...base, id: "vacancy", kind: "vacante", category: "Vacante", title: "Horas de Filosofía", status: "vigente" } as Publication;
+const publicDocument = { ...base, id: "comunicado", kind: "junta", category: "Comunicados", title: "Comunicado Secundaria", summary: "Presentación de documentación hasta el 30 de septiembre", status: "vigente" } as Publication;
+const openCall = { ...base, id: "llamado", kind: "junta", category: "Llamados abiertos", title: "Convocatoria abierta de Inicial", status: "vigente" } as Publication;
 
 test("recupera primero la próxima inscripción usando datos reales", () => assert.equal(retrievePublications("¿Qué capacitación abre primero?", records)[0]?.id, "next"));
 test("una conversación general no adjunta fuentes irrelevantes", () => assert.equal(buildAIContext("Hola", records).sources.length, 0));
@@ -66,6 +68,12 @@ test("incluye el seguimiento personal de designaciones sin convertirlo en fuente
   const result = buildAIContext("¿Dónde me inscribí?", [...records, vacancy], { designations: [{ id: "u:v", publication_id: "v", status: "INSCRIPTO", role: "Profesor de Psicología", subject: "Psicología", school: "Escuela X", address: "", locality: "Capital", applied_at: "2026-09-27T12:00:00Z", appointment_at: null, shift: "Mañana", board: "Secundaria", documentation: "", order_number: "", notes: "Llevar DNI", official_url: "https://example.com", reminder_at: null, reminder_notified: false, created_at: "2026-09-27", updated_at: "2026-09-27" }] });
   assert.match(result.context, /SEGUIMIENTO PERSONAL DE DESIGNACIONES/);
   assert.match(result.context, /Escuela X/);
+});
+
+test("recupera texto de comunicados y llamados desde el mismo RAG", () => {
+  assert.deepEqual(retrievePublications("¿Qué comunicado pide documentación?", [publicDocument, openCall]).map((item) => item.id), ["comunicado"]);
+  assert.deepEqual(retrievePublications("¿Qué llamados abiertos hay?", [publicDocument, openCall]).map((item) => item.id), ["llamado"]);
+  assert.match(buildAIContext("documentación", [publicDocument]).context, /30 de septiembre/);
 });
 
 test("GeminiProvider usa el endpoint backend y la clave sólo en el header", async () => {

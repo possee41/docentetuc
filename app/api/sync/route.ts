@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { getD1 } from "@/db";
 import { authError, currentUser } from "@/lib/current-user";
 import { matchesProfile, profileMatch } from "@/lib/matching";
+import { driveEntryUrl, htmlToText, parsePublicDriveFolder } from "@/lib/public-documents";
 import { mergeTrainingData, parseTrainingMetadata } from "@/lib/training";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,8 @@ const juntas = [
   [1, "Inicial y Primaria"], [2, "Secundaria"], [3, "Técnica, Agrotécnica y No Formal"], [4, "Superior, Especial y Artística"],
 ] as const;
 
-const documents = [
+type DocumentSource = readonly [externalId: string, title: string, category: string, junta: string, officialUrl: string];
+const documents: readonly DocumentSource[] = [
   ["com-primaria", "Comunicados de Educación Inicial y Primaria", "Comunicados", "Inicial y Primaria", "https://docs.google.com/document/d/1Oo-LmX9DyPBfhZNHPRYYiRf6MJiN837VoSXK2F-LIZE/edit?usp=sharing"],
   ["com-secundaria", "Comunicados de Educación Secundaria", "Comunicados", "Secundaria", "https://docs.google.com/document/d/1PTKViYaH7i8CHcng99I51lKbZIkjwLnc3ctrJC5898g/edit?usp=sharing"],
   ["com-tecnica", "Comunicados de Educación Técnica, Agrotécnica y No Formal", "Comunicados", "Técnica, Agrotécnica y No Formal", "https://docs.google.com/document/d/1k0dIv5PJ-CuWabcKhL6mEf-lqfZbGps6V7VdS-ao1F8/edit?usp=sharing"],
@@ -25,8 +27,8 @@ const documents = [
   ["pad-secundaria", "Padrones de Educación Secundaria", "Padrones", "Secundaria", "https://drive.google.com/drive/folders/0B9nsld8DcxkydjZkRTBGV1JzSVE?resourcekey=0-71bD600USZEczBSRONjj-w"],
   ["pad-tecnica", "Padrones de Educación Técnica, Agrotécnica y No Formal", "Padrones", "Técnica, Agrotécnica y No Formal", "https://drive.google.com/drive/folders/0B9nsld8DcxkySC1NUWdSMkdlY2s?resourcekey=0-yI1BMkZQzYW4hFwVMbdvHA"],
   ["pad-superior", "Padrones de Educación Superior, Especial y Artística", "Padrones", "Superior, Especial y Artística", "https://drive.google.com/drive/folders/0B9nsld8DcxkyNzloZnlCbHZhUVE?resourcekey=0-QSoeQ-4hqb9joCnl8FgDrg"],
-  ["abiertos-primaria", "Llamados abiertos de Inicial y Primaria", "Convocatorias", "Inicial y Primaria", "https://drive.google.com/drive/folders/1z9S807nunn8JiDl7C8VtBwPlrqb_OESq"],
-  ["abiertos-superior", "Padrones de llamados abiertos", "Convocatorias", "Superior, Especial y Artística", "https://drive.google.com/drive/folders/1Cm6ICwm8v2wrmLcjq-yd-U2Bb2MEO6Fx"],
+  ["abiertos-primaria", "Llamados abiertos de Inicial y Primaria", "Llamados abiertos", "Inicial y Primaria", "https://drive.google.com/drive/folders/1z9S807nunn8JiDl7C8VtBwPlrqb_OESq"],
+  ["abiertos-superior", "Padrones de llamados abiertos", "Llamados abiertos", "Superior, Especial y Artística", "https://drive.google.com/drive/folders/1Cm6ICwm8v2wrmLcjq-yd-U2Bb2MEO6Fx"],
   ["res-ascenso", "Decreto 2926/5 — Ascenso de Jerarquía", "Resoluciones", "Todas", "https://padrones.educaciontuc.gov.ar/2020/ascenso.pdf"],
   ["res-valoracion", "Decreto 292/5 — Valoración de títulos y antecedentes", "Resoluciones", "Todas", "https://padrones.educaciontuc.gov.ar/2020/DECRETO_292.pdf"],
 ] as const;
@@ -56,7 +58,7 @@ async function simePublications() {
       const first = vacancy.cargos.split(", ")[0].replace(/^\[[^\]]+\]\s*/, "");
       const title = first.split(/\s+\[[^\]]*(?:TURNO|#)/i)[0].slice(0, 220);
       const shift = vacancy.cargos.match(/TURNO\s+([^\]]+)/i)?.[1]?.trim() || "";
-      items.push({ id: `sime:${vacancy.id}`, source: "SIME", externalId: String(vacancy.id), kind: "vacante", category: "Vacante", title, summary: vacancy.cargos, level: junta, area: title, junta, location: "", shift, character: vacancy.caracter, startsAt, endsAt, status: isOpen(endsAt) ? "vigente" : "cerrada", officialUrl: `https://sime.educaciontuc.gov.ar/Vacantes/Detalle/${vacancy.id}?seleccionado=${juntaId - 1}&tab=1&accion=-1`, contentHash: await hash(JSON.stringify(vacancy)), sourceUpdatedAt: startsAt });
+      items.push({ id: `sime:${vacancy.id}`, source: "SIME", externalId: String(vacancy.id), kind: "vacante", category: vacancy.abierto ? "Llamado abierto" : "Vacante", title, summary: vacancy.cargos, level: junta, area: title, junta, location: "", shift, character: vacancy.caracter, startsAt, endsAt, status: isOpen(endsAt) ? "vigente" : "cerrada", officialUrl: `https://sime.educaciontuc.gov.ar/Vacantes/Detalle/${vacancy.id}?seleccionado=${juntaId - 1}&tab=1&accion=-1`, contentHash: await hash(JSON.stringify(vacancy)), sourceUpdatedAt: startsAt });
     }
   }
   return items;
@@ -77,15 +79,49 @@ async function trainingPublications() {
 }
 
 async function boardPublications() {
-  return Promise.all(documents.map(async ([externalId, title, category, junta, officialUrl]): Promise<Publication> => {
-    let fingerprint: string = officialUrl;
+  const publications: Publication[] = [];
+  let exportedDriveDocs = 0;
+  for (const [externalId, title, category, junta, officialUrl] of documents) {
+    let fingerprint = officialUrl, summary = `Documento público oficial de la Junta ${junta}.`, metadata = "{}";
     if (officialUrl.includes("docs.google.com/document/")) {
       const docId = officialUrl.split("/d/")[1].split("/")[0];
       const response = await fetch(`https://docs.google.com/document/d/${docId}/export?format=html`);
-      if (response.ok) fingerprint = await response.text();
+      if (response.ok) { fingerprint = await response.text(); summary = htmlToText(fingerprint) || summary; metadata = JSON.stringify({ contentAvailable: true, format: "google-doc" }); }
+    } else if (officialUrl.includes("drive.google.com/drive/folders/")) {
+      const folderId = officialUrl.split("/folders/")[1].split(/[?/#]/)[0], queue = [folderId], visited = new Set<string>(), indexed = new Map<string, ReturnType<typeof parsePublicDriveFolder>[number]>();
+      // ponytail: cuatro páginas públicas por fuente; usar Drive API oficial si hace falta recorrer árboles más profundos.
+      while (queue.length && visited.size < 4) {
+        const current = queue.shift()!;
+        if (visited.has(current)) continue;
+        visited.add(current);
+        const response = await fetch(current === folderId ? officialUrl : `https://drive.google.com/drive/folders/${current}`);
+        if (!response.ok) continue;
+        for (const entry of parsePublicDriveFolder(await response.text(), current)) {
+          indexed.set(entry.id, entry);
+          if (entry.mimeType === "application/vnd.google-apps.folder" && !visited.has(entry.id)) queue.push(entry.id);
+        }
+      }
+      const entries = [...indexed.values()];
+      if (visited.size) {
+        fingerprint = JSON.stringify(entries);
+        summary = `Carpeta pública oficial con ${entries.length} elementos indexados. Abrí cada resultado para consultar su nombre y fuente.`;
+        metadata = JSON.stringify({ contentAvailable: true, format: "drive-folder", itemCount: entries.length });
+        for (const entry of entries) {
+          const entryUrl = driveEntryUrl(entry), isGoogleDoc = entry.mimeType === "application/vnd.google-apps.document";
+          let entrySummary = `${entry.name}. Archivo público oficial disponible en Google Drive.`, contentAvailable = false;
+          // ponytail: límite de subconsultas; usar Drive API oficial si el Ministerio publica un feed estable.
+          if (isGoogleDoc && exportedDriveDocs < 4) {
+            const documentResponse = await fetch(`https://docs.google.com/document/d/${entry.id}/export?format=html`);
+            exportedDriveDocs++;
+            if (documentResponse.ok) { entrySummary = htmlToText(await documentResponse.text()) || entrySummary; contentAvailable = true; }
+          }
+          publications.push({ id: `drive:${externalId}:${entry.id}`, source: "Padrones y Comunicados", externalId: entry.id, kind: "junta", category, title: entry.name, summary: entrySummary, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: "vigente", officialUrl: entryUrl, metadata: JSON.stringify({ contentAvailable, format: entry.mimeType, parent: externalId }), contentHash: await hash([entry.name, entry.mimeType, entry.updatedAt, entrySummary].join("|")), sourceUpdatedAt: entry.updatedAt });
+        }
+      }
     }
-    return { id: `padrones:${externalId}`, source: "Padrones y Comunicados", externalId, kind: "junta", category, title, summary: `Documento público oficial de la Junta ${junta}.`, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: "vigente", officialUrl, metadata: "{}", contentHash: await hash(fingerprint), sourceUpdatedAt: null };
-  }));
+    publications.push({ id: `padrones:${externalId}`, source: "Padrones y Comunicados", externalId, kind: "junta", category, title, summary, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: "vigente", officialUrl, metadata, contentHash: await hash(fingerprint), sourceUpdatedAt: null });
+  }
+  return publications;
 }
 
 async function runSync() {
@@ -109,7 +145,7 @@ async function runSync() {
   await db.batch([...sourceCounts].map(([source, count]) => db.prepare("INSERT INTO sync_state (source, synced_at, item_count, error) VALUES (?, CURRENT_TIMESTAMP, ?, NULL) ON CONFLICT(source) DO UPDATE SET synced_at=CURRENT_TIMESTAMP, item_count=excluded.item_count, error=NULL").bind(source, count)));
 
   const profiles = await db.prepare("SELECT * FROM profiles").all<Record<string, unknown>>();
-  const interesting = [...fresh.slice(0, 60), ...changed];
+  const interesting = [...fresh.filter((item) => !item.id.startsWith("drive:")).slice(0, 60), ...changed.filter((item) => !item.id.startsWith("drive:"))];
   for (const profile of profiles.results) {
     const match = (item: Publication) => {
       const fullProfile = { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), roles: String(profile.roles || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") };

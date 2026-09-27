@@ -4,7 +4,7 @@ import type { DesignationTracking, Profile, Publication } from "./types.ts";
 
 export type AIConfig = { provider: string; apiKey: string; model: string };
 export type AISource = { id: string; title: string; source: string; sourceType: "official" | "internal" | "complementary"; url: string; updatedAt: string; status: string };
-export type AIIntent = "capacitaciones" | "vacantes" | "designaciones" | "agenda" | "perfil" | "novedades" | "documentos" | "busqueda_general" | "conversacion_general";
+export type AIIntent = "capacitaciones" | "vacantes" | "designaciones" | "llamados" | "agenda" | "perfil" | "novedades" | "documentos" | "busqueda_general" | "conversacion_general";
 export type AIContextInput = { type: string; id?: string; title?: string };
 export type AIContextOptions = { profile?: Profile; agendaIds?: string[]; designations?: DesignationTracking[]; context?: AIContextInput; now?: Date };
 export interface AIProvider { generate(input: string, instructions: string): Promise<string>; }
@@ -71,11 +71,12 @@ export function detectIntent(question: string): AIIntent {
   const query = normalize(question);
   if (/\b(mi agenda|mis eventos|que tengo|proximo evento|agend)/.test(query)) return "agenda";
   if (/\b(designacion|donde me inscribi|presentarme|obtuve|cargo.*inscrib)/.test(query)) return "designaciones";
+  if (/\b(llamad[^ ]* abiert|convocatoria)/.test(query)) return "llamados";
   if (/\b(capacit|curso|inscrip|cupo)/.test(query)) return "capacitaciones";
   if (/\b(vacant|cargo|horas? catedra)/.test(query)) return "vacantes";
   if (/\b(mi perfil|para mi perfil|coincide conmigo|que me sirve)/.test(query)) return "perfil";
   if (/\b(novedad|ultima|reciente)/.test(query)) return "novedades";
-  if (/\b(document|padron|resolucion|junta)/.test(query)) return "documentos";
+  if (/\b(document|padron|comunicado|resolucion|junta)/.test(query)) return "documentos";
   if (/^(hola|buenas|buen dia|gracias|chau)[!. ]*$/.test(query)) return "conversacion_general";
   return "busqueda_general";
 }
@@ -103,6 +104,7 @@ export function retrievePublications(question: string, publications: Publication
     if (wantsAgenda && !agenda.has(item.id)) return { item, score: -1 };
     if (wantsTraining && item.kind !== "capacitacion") return { item, score: -1 };
     if (wantsVacancy && !wantsTraining && item.kind !== "vacante") return { item, score: -1 };
+    if (intent === "llamados" && !normalize(item.category).includes("llamado")) return { item, score: -1 };
     if (intent === "documentos" && item.kind !== "junta") return { item, score: -1 };
     const eventDate = item.ends_at || item.starts_at || (item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata)?.registrationOpensAt : undefined);
     if (requested && (!eventDate || dayKey(eventDate) !== requested)) return { item, score: -1 };
@@ -128,7 +130,7 @@ export function buildAIContext(question: string, publications: Publication[], op
   const records = selected.map((item, index) => {
     const training = item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata) : null;
     const match = configuredProfile ? profileMatch(forMatch(item), configuredProfile) : null;
-    return `[${index + 1}] ${item.title}\nTipo: ${item.kind}. Estado: ${item.status}. Nivel: ${item.level || "No informado"}. Área: ${item.area || "No informada"}. Lugar: ${item.location || "No informado"}. Inicio: ${item.starts_at || "No informado"}. Cierre: ${item.ends_at || "No informado"}. Apertura de inscripción: ${training?.registrationOpensAt || "No informada"}. Cierre de inscripción: ${training?.registrationClosesAt || "No informado"}. Cupo: ${training?.capacity ?? training?.preCapacity ?? "No informado"}. Requisitos: No informados. Puntaje: No informado.${match ? ` Coincidencia calculada por DocenteTuc: ${match.score}% (${match.status}).` : ""} Detalle: ${(item.summary || "No informado").slice(0, 900)}\nFuente: ${item.source}. URL: ${item.official_url}`;
+    return `[${index + 1}] ${item.title}\nTipo: ${item.category || item.kind}. Estado: ${item.status}. Nivel: ${item.level || "No informado"}. Área: ${item.area || "No informada"}. Lugar: ${item.location || "No informado"}. Inicio: ${item.starts_at || "No informado"}. Cierre: ${item.ends_at || "No informado"}. Apertura de inscripción: ${training?.registrationOpensAt || "No informada"}. Cierre de inscripción: ${training?.registrationClosesAt || "No informado"}. Cupo: ${training?.capacity ?? training?.preCapacity ?? "No informado"}. Requisitos: No informados. Puntaje: No informado.${match ? ` Coincidencia calculada por DocenteTuc: ${match.score}% (${match.status}).` : ""} Detalle: ${(item.summary || "No informado").slice(0, item.kind === "junta" ? 6000 : 900)}\nFuente: ${item.source}. URL: ${item.official_url}`;
   }).join("\n\n");
   const profileText = options.profile ? `Perfil autorizado: niveles ${options.profile.levels.join(", ") || "no informados"}; áreas ${options.profile.areas.join(", ") || "no informadas"}; materias ${options.profile.subjects.join(", ") || "no informadas"}; cargos ${options.profile.roles?.join(", ") || "no informados"}; localidad ${options.profile.locality || "no informada"}; intereses ${options.profile.training_interests.join(", ") || "no informados"}.` : "El usuario no autorizó usar su perfil.";
   const trackingText = options.designations?.length ? `\n\nSEGUIMIENTO PERSONAL DE DESIGNACIONES (datos ingresados por el usuario):\n${options.designations.map((item) => `${item.role || "Cargo no informado"} · ${item.school || "Establecimiento no informado"} · estado ${item.status} · inscripción ${item.applied_at || "no informada"} · designación ${item.appointment_at || "no informada"} · notas ${item.notes || "sin notas"}`).join("\n")}` : "";

@@ -44,7 +44,7 @@ export async function POST(request: Request) {
 
     const useProfile = body.useProfile === true, context = validContext(body.context);
     const [publicationRows, profileRow, agendaRows, designationRows, syncRows] = await Promise.all([
-      db.prepare("SELECT * FROM publications ORDER BY updated_at DESC LIMIT 500").all<Publication>(),
+      db.prepare("SELECT * FROM publications ORDER BY updated_at DESC LIMIT 1500").all<Publication>(),
       useProfile ? db.prepare("SELECT * FROM profiles WHERE user_id=?").bind(user.userId).first<Record<string, unknown>>() : Promise.resolve(null),
       db.prepare("SELECT publication_id FROM saved_publications WHERE user_id=? AND in_agenda=1").bind(user.userId).all<{ publication_id: string }>(),
       db.prepare("SELECT * FROM designation_tracking WHERE user_id=? ORDER BY COALESCE(appointment_at, applied_at, updated_at) DESC LIMIT 100").bind(user.userId).all<DesignationTracking>(),
