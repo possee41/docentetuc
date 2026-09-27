@@ -49,7 +49,7 @@ export function isQuietTime(date: Date, start: string, end: string, timezone: st
 
 export type PushCategory = "vacancies" | "trainings" | "commissions" | "reminders" | "date_changes" | "closing_soon" | "boards";
 export function categoryForNotification(type: string): PushCategory {
-  if (type === "VACANTE_NUEVA") return "vacancies";
+  if (type === "VACANTE_NUEVA" || type.startsWith("DESIGNACION_")) return type === "DESIGNACION_RECORDATORIO" ? "reminders" : type === "DESIGNACION_CAMBIO" ? "date_changes" : "vacancies";
   if (type === "COMISION_NUEVA") return "commissions";
   if (["CAPACITACION_ABRE", "CAPACITACION_PROXIMA", "CAPACITACION_ABRE_MANANA", "CAPACITACION_ABRE_HOY", "CAPACITACION_ABIERTA"].includes(type)) return "reminders";
   if (type === "CIERRE_PROXIMO") return "closing_soon";
@@ -60,7 +60,7 @@ export function categoryForNotification(type: string): PushCategory {
 
 export function notificationMessage(type: string, title: string): PushMessage {
   const copy: Record<string, [string, string]> = {
-    VACANTE_NUEVA: ["Nueva vacante compatible", title], CAPACITACION_NUEVA: ["Nueva capacitación compatible", title], COMISION_NUEVA: ["Nueva comisión disponible", title],
+    VACANTE_NUEVA: ["Nueva designación compatible", title], DESIGNACION_NUEVA: ["Nueva designación para vos", title], DESIGNACION_EXACTA_GENERAL: ["Coincidencia exacta", title], DESIGNACION_EXACTA_CARGO: ["Nuevo cargo de interés", title], DESIGNACION_PARCIAL_GENERAL: ["Coincidencia parcial", title], DESIGNACION_PARCIAL_CARGO: ["Nuevo cargo de interés", title], DESIGNACION_CAMBIO: ["Cambió una designación", title], DESIGNACION_RECORDATORIO: ["Recordatorio de designación", title], CAPACITACION_NUEVA: ["Nueva capacitación compatible", title], COMISION_NUEVA: ["Nueva comisión disponible", title],
     CAPACITACION_ABRE: ["Recordatorio de inscripción", `Revisá la apertura de ${title}`], CAPACITACION_PROXIMA: ["Inscripción próxima", title], CAPACITACION_ABRE_MANANA: ["La inscripción abre mañana", title],
     CAPACITACION_ABRE_HOY: ["La inscripción abre hoy", title], CAPACITACION_ABIERTA: ["Inscripción abierta", title], CIERRE_PROXIMO: ["Cierra pronto", title],
     FECHA_IMPORTANTE: ["Actualización de fecha", title], FECHA_CAMBIADA: ["Cambió una fecha", title], COMUNICADO_NUEVO: ["Nuevo comunicado", title], PADRON_NUEVO: ["Nuevo padrón", title], PADRON_ACTUALIZADO: ["Padrón actualizado", title],
@@ -74,12 +74,14 @@ type ProfileRow = Record<string, unknown> & { user_id: string };
 const dayInTucuman = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(date);
 
 function matches(publication: PublicationRow, profile: ProfileRow) {
-  return matchesProfile(publication, { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") });
+  return matchesProfile(publication, { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), roles: String(profile.roles || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") });
 }
 
 export async function materializeScheduledNotifications(db: D1Database, now = new Date()) {
   await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'CAPACITACION_ABRE' FROM training_reminders WHERE notified=0 AND datetime(remind_at)<=datetime(?)").bind(now.toISOString()).run();
   await db.prepare("UPDATE training_reminders SET notified=1, updated_at=CURRENT_TIMESTAMP WHERE notified=0 AND datetime(remind_at)<=datetime(?)").bind(now.toISOString()).run();
+  await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'DESIGNACION_RECORDATORIO' FROM designation_tracking WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?)").bind(now.toISOString()).run();
+  await db.prepare("UPDATE designation_tracking SET reminder_notified=1, updated_at=CURRENT_TIMESTAMP WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?)").bind(now.toISOString()).run();
 
   const [profiles, publications] = await Promise.all([
     db.prepare("SELECT * FROM profiles").all<ProfileRow>(),
@@ -106,7 +108,7 @@ export async function materializeScheduledNotifications(db: D1Database, now = ne
   return statements.length;
 }
 
-type DeliveryRow = { notification_id: number; endpoint: string; user_id: string; p256dh: string; auth: string; expiration_time: number | null; type: string; title: string; publication_id: string; quiet_start: string; quiet_end: string; timezone: string; enabled: number; vacancies: number; trainings: number; commissions: number; reminders: number; date_changes: number; closing_soon: number; boards: number; attempts: number | null };
+type DeliveryRow = { notification_id: number; endpoint: string; user_id: string; p256dh: string; auth: string; expiration_time: number | null; type: string; title: string; publication_id: string; quiet_start: string; quiet_end: string; timezone: string; enabled: number; vacancies: number; trainings: number; commissions: number; reminders: number; date_changes: number; closing_soon: number; boards: number; designation_exact: number; designation_partial: number; designation_roles: number; attempts: number | null };
 
 export async function dispatchPushNotifications(db: D1Database, environment: PushEnvironment, now = new Date()) {
   if (!environment.VAPID_PUBLIC_KEY || !environment.VAPID_PRIVATE_KEY || !environment.VAPID_SUBJECT) throw new Error("VAPID_NOT_CONFIGURED");
@@ -114,6 +116,7 @@ export async function dispatchPushNotifications(db: D1Database, environment: Pus
   const rows = await db.prepare(`SELECT n.id notification_id, n.user_id, n.publication_id, n.type, p.title, s.endpoint, s.p256dh, s.auth, s.expiration_time,
     COALESCE(pref.enabled,1) enabled, COALESCE(pref.vacancies,1) vacancies, COALESCE(pref.trainings,1) trainings, COALESCE(pref.commissions,1) commissions,
     COALESCE(pref.reminders,1) reminders, COALESCE(pref.date_changes,1) date_changes, COALESCE(pref.closing_soon,1) closing_soon, COALESCE(pref.boards,0) boards,
+    COALESCE(pref.designation_exact,1) designation_exact, COALESCE(pref.designation_partial,1) designation_partial, COALESCE(pref.designation_roles,1) designation_roles,
     COALESCE(pref.quiet_start,'22:00') quiet_start, COALESCE(pref.quiet_end,'07:00') quiet_end, COALESCE(pref.timezone,'America/Argentina/Buenos_Aires') timezone, d.attempts
     FROM notifications n JOIN publications p ON p.id=n.publication_id JOIN push_subscriptions s ON s.user_id=n.user_id AND s.active=1
     LEFT JOIN push_preferences pref ON pref.user_id=n.user_id LEFT JOIN push_deliveries d ON d.endpoint=s.endpoint AND d.event_key='notice:' || n.id
@@ -123,7 +126,8 @@ export async function dispatchPushNotifications(db: D1Database, environment: Pus
   for (const row of rows.results) {
     const category = categoryForNotification(row.type);
     const eventKey = `notice:${row.notification_id}`, message = notificationMessage(row.type, row.title);
-    if (!row.enabled || !row[category]) {
+    const designationAllowed = !row.type.startsWith("DESIGNACION_") || row.type === "DESIGNACION_RECORDATORIO" || row.type === "DESIGNACION_CAMBIO" || (row.type.includes("EXACTA") && Boolean(row.designation_exact)) || (row.type.includes("PARCIAL") && Boolean(row.designation_partial)) || (row.type.endsWith("_CARGO") && Boolean(row.designation_roles));
+    if (!row.enabled || !row[category] || !designationAllowed) {
       await db.prepare("INSERT OR IGNORE INTO push_deliveries (endpoint, notification_id, event_key, status, attempts) VALUES (?, ?, ?, 'skipped', 0)").bind(row.endpoint, row.notification_id, eventKey).run();
       continue;
     }

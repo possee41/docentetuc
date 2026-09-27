@@ -2,6 +2,7 @@ import { getD1 } from "@/db";
 import { authError, currentUser } from "@/lib/current-user";
 import { parseTrainingMetadata } from "@/lib/training";
 import { hydrateProfile, profileStorage } from "@/lib/profile";
+import { DESIGNATION_STATUSES } from "@/lib/designations";
 
 export const dynamic = "force-dynamic";
 
@@ -14,15 +15,16 @@ export async function GET(request: Request) {
     await db.prepare("INSERT INTO profiles (user_id, name, email) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET email=excluded.email").bind(user.userId, user.fullName || user.displayName.split("@")[0], user.email).run();
     await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'CAPACITACION_ABRE' FROM training_reminders WHERE user_id=? AND notified=0 AND datetime(remind_at)<=datetime('now')").bind(user.userId).run();
     await db.prepare("UPDATE training_reminders SET notified=1, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND notified=0 AND datetime(remind_at)<=datetime('now')").bind(user.userId).run();
-    const [profile, publications, saved, notifications, reminders, sync] = await Promise.all([
+    const [profile, publications, saved, notifications, reminders, designations, sync] = await Promise.all([
       db.prepare("SELECT * FROM profiles WHERE user_id=?").bind(user.userId).first(),
       db.prepare("SELECT * FROM publications ORDER BY COALESCE(ends_at, starts_at, updated_at) DESC LIMIT 500").all(),
       db.prepare("SELECT publication_id, in_agenda, followed, saved_at FROM saved_publications WHERE user_id=?").bind(user.userId).all(),
       db.prepare("SELECT n.*, p.title, p.kind FROM notifications n JOIN publications p ON p.id=n.publication_id WHERE n.user_id=? ORDER BY n.created_at DESC LIMIT 100").bind(user.userId).all(),
       db.prepare("SELECT id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified FROM training_reminders WHERE user_id=? ORDER BY opens_at").bind(user.userId).all(),
+      db.prepare("SELECT id, publication_id, status, role, subject, school, address, locality, applied_at, appointment_at, shift, board, documentation, order_number, notes, official_url, reminder_at, reminder_notified, created_at, updated_at FROM designation_tracking WHERE user_id=? ORDER BY COALESCE(appointment_at, applied_at, updated_at) DESC").bind(user.userId).all(),
       db.prepare("SELECT * FROM sync_state ORDER BY source").all(),
     ]);
-    return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publications: publications.results, saved: saved.results, notifications: notifications.results, reminders: reminders.results, sync: sync.results });
+    return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publications: publications.results, saved: saved.results, notifications: notifications.results, reminders: reminders.results, designations: designations.results, sync: sync.results });
   } catch (error) {
     return Response.json({ error: authError(error) ? "Iniciá sesión para continuar." : "No se pudieron cargar los datos." }, { status: authError(error) ? 401 : 500 });
   }
@@ -35,8 +37,21 @@ export async function POST(request: Request) {
     const action = value(body.action, 30);
     const db = getD1();
     if (action === "save_profile") {
-      await db.prepare(`UPDATE profiles SET name=?, level=?, area=?, subjects=?, junta=?, department=?, locality=?, shifts=?, wants_interim=?, wants_substitute=?, training_interests=?, notify_new_trainings=?, training_notify_scope=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?`)
-        .bind(value(body.name, 100) || "Docente", profileStorage(body.levels ?? body.level, 120), profileStorage(body.areas ?? body.area, 180), profileStorage(body.subjects), profileStorage(body.boards ?? body.junta, 180), value(body.department, 100), value(body.locality, 100), profileStorage(body.shifts, 100), body.wantsInterim === false ? 0 : 1, body.wantsSubstitute === false ? 0 : 1, profileStorage(body.trainingInterests), body.notifyNewTrainings === true ? 1 : 0, value(body.trainingNotifyScope, 20) || "relevant", user.userId).run();
+      await db.prepare(`UPDATE profiles SET name=?, level=?, area=?, subjects=?, junta=?, roles=?, department=?, locality=?, shifts=?, wants_interim=?, wants_substitute=?, training_interests=?, notify_new_trainings=?, training_notify_scope=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?`)
+        .bind(value(body.name, 100) || "Docente", profileStorage(body.levels ?? body.level, 120), profileStorage(body.areas ?? body.area, 180), profileStorage(body.subjects), profileStorage(body.boards ?? body.junta, 180), profileStorage(body.roles, 300), value(body.department, 100), value(body.locality, 100), profileStorage(body.shifts, 100), body.wantsInterim === false ? 0 : 1, body.wantsSubstitute === false ? 0 : 1, profileStorage(body.trainingInterests), body.notifyNewTrainings === true ? 1 : 0, value(body.trainingNotifyScope, 20) || "relevant", user.userId).run();
+    } else if (action === "save_designation") {
+      const publicationId = value(body.publicationId, 120), status = value(body.status, 30).toUpperCase();
+      if (!DESIGNATION_STATUSES.includes(status as typeof DESIGNATION_STATUSES[number])) return Response.json({ error: "Estado de designación inválido." }, { status: 400 });
+      const publication = await db.prepare("SELECT id, official_url FROM publications WHERE id=? AND kind='vacante'").bind(publicationId).first<{ id: string; official_url: string }>();
+      if (!publication) return Response.json({ error: "Designación inválida." }, { status: 400 });
+      const optionalDate = (input: unknown) => { const raw = value(input, 40); if (!raw) return null; const date = new Date(raw); return Number.isNaN(date.getTime()) ? null : date.toISOString(); };
+      const reminderAt = optionalDate(body.reminderAt), id = `${user.userId}:${publicationId}`;
+      await db.prepare(`INSERT INTO designation_tracking (id, user_id, publication_id, status, role, subject, school, address, locality, applied_at, appointment_at, shift, board, documentation, order_number, notes, official_url, reminder_at, reminder_notified)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        ON CONFLICT(id) DO UPDATE SET status=excluded.status, role=excluded.role, subject=excluded.subject, school=excluded.school, address=excluded.address, locality=excluded.locality,
+        applied_at=excluded.applied_at, appointment_at=excluded.appointment_at, shift=excluded.shift, board=excluded.board, documentation=excluded.documentation, order_number=excluded.order_number,
+        notes=excluded.notes, official_url=excluded.official_url, reminder_at=excluded.reminder_at, reminder_notified=CASE WHEN designation_tracking.reminder_at IS excluded.reminder_at THEN designation_tracking.reminder_notified ELSE 0 END, updated_at=CURRENT_TIMESTAMP`)
+        .bind(id, user.userId, publicationId, status, value(body.role, 200), value(body.subject, 200), value(body.school, 250), value(body.address, 250), value(body.locality, 120), optionalDate(body.appliedAt), optionalDate(body.appointmentAt), value(body.shift, 80), value(body.board, 180), value(body.documentation, 500), value(body.orderNumber, 120), value(body.notes, 1000), publication.official_url, reminderAt).run();
     } else if (action === "set_training_reminder") {
       const publicationId = value(body.publicationId, 120);
       const publication = await db.prepare("SELECT id, metadata FROM publications WHERE id=? AND kind='capacitacion'").bind(publicationId).first<{ id: string; metadata: string }>();

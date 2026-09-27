@@ -51,3 +51,12 @@ test("múltiples áreas y materias coinciden por al menos una selección", () =>
   assert.equal(profileMatch({ kind: "capacitacion", title: "Ciudadanía digital", area: "Construcción de Ciudadanía" }, multi).criteria[0]?.matched, true);
   assert.equal(profileMatch({ kind: "capacitacion", title: "Matemática", area: "Matemática" }, multi).criteria[0]?.matched, false);
 });
+
+test("una designación considera varios cargos de interés sin aceptar una coincidencia débil", () => {
+  const result = profileMatch({ kind: "vacante", title: "Escuela X - Profesor de Psicología", level: "Secundaria", area: "Psicología" }, { levels: ["Secundaria"], areas: ["Ciencias Sociales"], subjects: ["Psicología"], roles: ["Preceptor", "Profesor"] });
+  assert.equal(result.criteria.find((item) => item.key === "role")?.matched, true);
+  assert.equal(result.status, "exact");
+  const weak = profileMatch({ kind: "vacante", title: "Profesor", level: "Primaria", area: "Matemática" }, { levels: ["Secundaria"], subjects: ["Psicología"], roles: ["Profesor"] });
+  assert.equal(weak.status, "partial");
+  assert.ok(weak.score < 50);
+});

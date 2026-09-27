@@ -12,7 +12,7 @@ test("una conversación general no adjunta fuentes irrelevantes", () => assert.e
 test("recupera capacitaciones que abren próximamente", () => assert.equal(retrievePublications("¿Qué capacitaciones abren próximamente?", records)[0]?.id, "next"));
 test("no agrega el perfil al contexto sin autorización", () => assert.match(buildAIContext("capacitaciones", records).context, /no autorizó usar su perfil/));
 
-const profile = { user_id: "u", name: "Docente", level: "Secundario", levels: ["Secundario"], area: "", areas: [], subjects: [], junta: "", boards: [], department: "", locality: "", shifts: [], wants_interim: true, wants_substitute: true, training_interests: [], notify_new_trainings: false, training_notify_scope: "relevant" } as Profile;
+const profile = { user_id: "u", name: "Docente", level: "Secundario", levels: ["Secundario"], area: "", areas: [], subjects: [], junta: "", boards: [], roles: [], department: "", locality: "", shifts: [], wants_interim: true, wants_substitute: true, training_interests: [], notify_new_trainings: false, training_notify_scope: "relevant" } as Profile;
 
 test("usa el matching real y conserva su porcentaje", () => {
   const result = buildAIContext("¿Qué capacitaciones coinciden con mi perfil?", records, { profile });
@@ -60,6 +60,12 @@ test("una publicación declarada inexistente no hereda el contexto de pantalla",
   const result = buildAIContext("¿Cuándo abre una capacitación que no existe?", records, { context: { type: "capacitacion", id: "next" } });
   assert.equal(result.sources.length, 0);
   assert.match(result.context, /No se recuperaron registros oficiales suficientes/);
+});
+
+test("incluye el seguimiento personal de designaciones sin convertirlo en fuente oficial", () => {
+  const result = buildAIContext("¿Dónde me inscribí?", [...records, vacancy], { designations: [{ id: "u:v", publication_id: "v", status: "INSCRIPTO", role: "Profesor de Psicología", subject: "Psicología", school: "Escuela X", address: "", locality: "Capital", applied_at: "2026-09-27T12:00:00Z", appointment_at: null, shift: "Mañana", board: "Secundaria", documentation: "", order_number: "", notes: "Llevar DNI", official_url: "https://example.com", reminder_at: null, reminder_notified: false, created_at: "2026-09-27", updated_at: "2026-09-27" }] });
+  assert.match(result.context, /SEGUIMIENTO PERSONAL DE DESIGNACIONES/);
+  assert.match(result.context, /Escuela X/);
 });
 
 test("GeminiProvider usa el endpoint backend y la clave sólo en el header", async () => {

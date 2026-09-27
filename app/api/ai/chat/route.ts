@@ -4,7 +4,7 @@ import { AIProviderError, buildAIContext, createAIProvider } from "@/lib/ai";
 import type { AIContextInput } from "@/lib/ai";
 import { authError, currentUser } from "@/lib/current-user";
 import { hydrateProfile } from "@/lib/profile";
-import type { Publication } from "@/lib/types";
+import type { DesignationTracking, Publication } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -43,10 +43,11 @@ export async function POST(request: Request) {
     if ((usage?.request_count || 0) > 10) return Response.json({ error: "Alcanzaste el límite temporal de consultas. Probá nuevamente en unos minutos." }, { status: 429 });
 
     const useProfile = body.useProfile === true, context = validContext(body.context);
-    const [publicationRows, profileRow, agendaRows, syncRows] = await Promise.all([
+    const [publicationRows, profileRow, agendaRows, designationRows, syncRows] = await Promise.all([
       db.prepare("SELECT * FROM publications ORDER BY updated_at DESC LIMIT 500").all<Publication>(),
       useProfile ? db.prepare("SELECT * FROM profiles WHERE user_id=?").bind(user.userId).first<Record<string, unknown>>() : Promise.resolve(null),
       db.prepare("SELECT publication_id FROM saved_publications WHERE user_id=? AND in_agenda=1").bind(user.userId).all<{ publication_id: string }>(),
+      db.prepare("SELECT * FROM designation_tracking WHERE user_id=? ORDER BY COALESCE(appointment_at, applied_at, updated_at) DESC LIMIT 100").bind(user.userId).all<DesignationTracking>(),
       db.prepare("SELECT source, error FROM sync_state").all<{ source: string; error?: string }>(),
     ]);
     const publications = [...publicationRows.results];
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
       if (focused) publications.unshift(focused);
     }
     const profile = profileRow ? hydrateProfile(profileRow) : undefined;
-    const { context: retrievedContext, sources, intent } = buildAIContext(message, publications, { profile, agendaIds: agendaRows.results.map((item) => item.publication_id), context });
+    const { context: retrievedContext, sources, intent } = buildAIContext(message, publications, { profile, agendaIds: agendaRows.results.map((item) => item.publication_id), designations: designationRows.results, context });
     const history = Array.isArray(body.history) ? body.history.slice(-6).filter((item): item is { role: string; content: string } => typeof item === "object" && item !== null && ["user", "assistant"].includes(String((item as Record<string, unknown>).role)) && typeof (item as Record<string, unknown>).content === "string").map((item) => `${item.role === "assistant" ? "Asistente" : "Usuario"}: ${item.content.slice(0, 700)}`).join("\n") : "";
     const cacheable = !useProfile && !history && !context?.id && !["agenda", "perfil", "conversacion_general"].includes(intent);
     const cacheKey = cacheable ? `${intent}:${message.toLocaleLowerCase("es")}:${publications[0]?.updated_at || "empty"}` : "";

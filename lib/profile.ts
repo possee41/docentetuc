@@ -17,7 +17,7 @@ export function hydrateProfile(record: Record<string, unknown>): Profile {
   return {
     ...record,
     user_id: String(record.user_id || ""), name: String(record.name || "Docente"), email: record.email ? String(record.email) : undefined,
-    level: levels.join(", "), levels, area: areas.join(", "), areas, subjects: profileList(record.subjects), junta: boards.join(", "), boards,
+    level: levels.join(", "), levels, area: areas.join(", "), areas, subjects: profileList(record.subjects), junta: boards.join(", "), boards, roles: profileList(record.roles),
     department: String(record.department || ""), locality: String(record.locality || ""), shifts: profileList(record.shifts),
     wants_interim: Boolean(record.wants_interim), wants_substitute: Boolean(record.wants_substitute), training_interests: profileList(record.training_interests),
     notify_new_trainings: Boolean(record.notify_new_trainings), training_notify_scope: (record.training_notify_scope || "relevant") as Profile["training_notify_scope"],

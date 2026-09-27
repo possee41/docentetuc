@@ -1,6 +1,6 @@
 export type Profile = {
   user_id: string; name: string; email?: string; level: string; levels: string[]; area: string; areas: string[]; subjects: string[]; junta: string; boards: string[];
-  department: string; locality: string; shifts: string[]; wants_interim: number | boolean; wants_substitute: number | boolean; training_interests: string[];
+  roles: string[]; department: string; locality: string; shifts: string[]; wants_interim: number | boolean; wants_substitute: number | boolean; training_interests: string[];
   notify_new_trainings: number | boolean; training_notify_scope: "all" | "level" | "area" | "interests" | "relevant";
 };
 
@@ -14,4 +14,5 @@ export type Saved = { publication_id: string; in_agenda: number | boolean; follo
 export type Notice = { id: number; publication_id: string; type: string; created_at: string; read: number | boolean; title: string; kind: string };
 export type SyncStatus = { source: string; synced_at: string; item_count: number; error?: string };
 export type TrainingReminder = { id: string; training_id: string; publication_id: string; opens_at: string; precision: "date" | "datetime"; advance_minutes: number | null; remind_at: string; notified: number | boolean };
-export type AppData = { profile: Profile; publications: Publication[]; saved: Saved[]; notifications: Notice[]; reminders: TrainingReminder[]; sync: SyncStatus[] };
+export type DesignationTracking = { id: string; publication_id: string; status: string; role: string; subject: string; school: string; address: string; locality: string; applied_at: string | null; appointment_at: string | null; shift: string; board: string; documentation: string; order_number: string; notes: string; official_url: string; reminder_at: string | null; reminder_notified: number | boolean; created_at: string; updated_at: string };
+export type AppData = { profile: Profile; publications: Publication[]; saved: Saved[]; notifications: Notice[]; reminders: TrainingReminder[]; designations: DesignationTracking[]; sync: SyncStatus[] };

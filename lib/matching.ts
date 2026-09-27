@@ -1,6 +1,6 @@
 export type MatchProfile = {
   level?: string; levels?: string[]; area?: string; areas?: string[]; subjects?: string | string[]; junta?: string; boards?: string[]; department?: string;
-  locality?: string; shifts?: string | string[]; wantsInterim?: boolean; wantsSubstitute?: boolean; trainingInterests?: string | string[];
+  locality?: string; shifts?: string | string[]; roles?: string | string[]; wantsInterim?: boolean; wantsSubstitute?: boolean; trainingInterests?: string | string[];
 };
 
 export type MatchPublication = {
@@ -27,6 +27,7 @@ export function profileMatch(publication: MatchPublication, profile: MatchProfil
 
   add("level", "Nivel", profile.levels?.length ? profile.levels : profile.level, [publication.level, publication.junta, publication.title, publication.summary]);
   add("area", "Área o materia", together(profile.areas?.length ? profile.areas : profile.area, profile.subjects), [publication.area, publication.title, publication.summary]);
+  if (publication.kind === "vacante") add("role", "Cargo o rol", profile.roles, [publication.area, publication.title, publication.summary]);
   if (publication.kind !== "capacitacion") add("junta", "Junta", profile.boards?.length ? profile.boards : profile.junta, [publication.junta, publication.level, publication.summary]);
   add("location", "Localidad o departamento", together(profile.locality, profile.department), [publication.location, publication.summary]);
   add("shift", "Turno", profile.shifts, [publication.shift, publication.summary]);

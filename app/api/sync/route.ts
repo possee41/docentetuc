@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { getD1 } from "@/db";
 import { authError, currentUser } from "@/lib/current-user";
-import { matchesProfile } from "@/lib/matching";
+import { matchesProfile, profileMatch } from "@/lib/matching";
 import { mergeTrainingData, parseTrainingMetadata } from "@/lib/training";
 
 export const dynamic = "force-dynamic";
@@ -112,7 +112,7 @@ async function runSync() {
   const interesting = [...fresh.slice(0, 60), ...changed];
   for (const profile of profiles.results) {
     const match = (item: Publication) => {
-      const fullProfile = { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") };
+      const fullProfile = { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), roles: String(profile.roles || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") };
       if (item.kind !== "capacitacion") return matchesProfile(item, fullProfile);
       if (!Boolean(profile.notify_new_trainings)) return false;
       const scope = String(profile.training_notify_scope || "relevant");
@@ -125,7 +125,9 @@ async function runSync() {
     const statements = interesting.filter(match).map((item) => {
       const metadata = item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata) : null, previous = old.get(item.id), previousMetadata = item.kind === "capacitacion" ? parseTrainingMetadata(previous?.metadata) : null;
       const dateChanged = Boolean(previous && [previous.starts_at, previous.ends_at, previousMetadata?.registrationOpensAt, previousMetadata?.registrationClosesAt].join("|") !== [item.startsAt, item.endsAt, metadata?.registrationOpensAt, metadata?.registrationClosesAt].join("|"));
-      const type = old.has(item.id) ? (item.kind === "junta" ? "PADRON_ACTUALIZADO" : dateChanged ? "FECHA_CAMBIADA" : "FECHA_IMPORTANTE") : item.kind === "vacante" ? "VACANTE_NUEVA" : metadata?.entity === "commission" ? "COMISION_NUEVA" : item.kind === "capacitacion" ? "CAPACITACION_NUEVA" : item.category === "Comunicados" ? "COMUNICADO_NUEVO" : "PADRON_NUEVO";
+      const designationMatch = item.kind === "vacante" ? profileMatch(item, { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), roles: String(profile.roles || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute) }) : null;
+      const designationType = designationMatch ? `DESIGNACION_${designationMatch.status === "exact" ? "EXACTA" : "PARCIAL"}_${designationMatch.criteria.some((criterion) => criterion.key === "role" && criterion.matched) ? "CARGO" : "GENERAL"}` : "DESIGNACION_NUEVA";
+      const type = old.has(item.id) ? (item.kind === "junta" ? "PADRON_ACTUALIZADO" : item.kind === "vacante" ? "DESIGNACION_CAMBIO" : dateChanged ? "FECHA_CAMBIADA" : "FECHA_IMPORTANTE") : item.kind === "vacante" ? designationType : metadata?.entity === "commission" ? "COMISION_NUEVA" : item.kind === "capacitacion" ? "CAPACITACION_NUEVA" : item.category === "Comunicados" ? "COMUNICADO_NUEVO" : "PADRON_NUEVO";
       return db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) VALUES (?, ?, ?)").bind(String(profile.user_id), item.id, type);
     });
     for (let offset = 0; offset < statements.length; offset += 40) await db.batch(statements.slice(offset, offset + 40));

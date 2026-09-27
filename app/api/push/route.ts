@@ -45,11 +45,12 @@ export async function POST(request: Request) {
       const endpoint = typeof body.endpoint === "string" ? body.endpoint : "";
       await db.prepare("UPDATE push_subscriptions SET active=0, updated_at=CURRENT_TIMESTAMP WHERE endpoint=? AND user_id=? AND device_id=?").bind(endpoint, user.userId, id).run();
     } else if (action === "preferences") {
-      await db.prepare(`INSERT INTO push_preferences (user_id, enabled, vacancies, trainings, commissions, reminders, date_changes, closing_soon, boards, quiet_start, quiet_end, timezone)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET enabled=excluded.enabled, vacancies=excluded.vacancies, trainings=excluded.trainings,
+      await db.prepare(`INSERT INTO push_preferences (user_id, enabled, vacancies, trainings, commissions, reminders, date_changes, closing_soon, boards, designation_exact, designation_partial, designation_roles, quiet_start, quiet_end, timezone)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET enabled=excluded.enabled, vacancies=excluded.vacancies, trainings=excluded.trainings,
         commissions=excluded.commissions, reminders=excluded.reminders, date_changes=excluded.date_changes, closing_soon=excluded.closing_soon, boards=excluded.boards,
+        designation_exact=excluded.designation_exact, designation_partial=excluded.designation_partial, designation_roles=excluded.designation_roles,
         quiet_start=excluded.quiet_start, quiet_end=excluded.quiet_end, timezone=excluded.timezone, updated_at=CURRENT_TIMESTAMP`)
-        .bind(user.userId, boolean(body.enabled), boolean(body.vacancies), boolean(body.trainings), boolean(body.commissions), boolean(body.reminders), boolean(body.dateChanges), boolean(body.closingSoon), boolean(body.boards, false), time(body.quietStart, "22:00"), time(body.quietEnd, "07:00"), "America/Argentina/Buenos_Aires").run();
+        .bind(user.userId, boolean(body.enabled), boolean(body.vacancies), boolean(body.trainings), boolean(body.commissions), boolean(body.reminders), boolean(body.dateChanges), boolean(body.closingSoon), boolean(body.boards, false), boolean(body.designationExact), boolean(body.designationPartial), boolean(body.designationRoles), time(body.quietStart, "22:00"), time(body.quietEnd, "07:00"), "America/Argentina/Buenos_Aires").run();
     } else if (action === "test") {
       if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY || !env.VAPID_SUBJECT) return Response.json({ error: "Las claves push todavía no están configuradas." }, { status: 503 });
       const bucket = `${user.userId}:push-test:${new Date().toISOString().slice(0, 10)}`;

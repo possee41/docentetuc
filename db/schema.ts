@@ -4,7 +4,7 @@ import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "driz
 export const profiles = sqliteTable("profiles", {
   userId: text("user_id").primaryKey(), name: text("name").notNull().default("Docente"), email: text("email"),
   level: text("level").notNull().default(""), area: text("area").notNull().default(""), subjects: text("subjects").notNull().default(""),
-  junta: text("junta").notNull().default(""), department: text("department").notNull().default(""), locality: text("locality").notNull().default(""),
+  junta: text("junta").notNull().default(""), roles: text("roles").notNull().default(""), department: text("department").notNull().default(""), locality: text("locality").notNull().default(""),
   shifts: text("shifts").notNull().default(""), wantsInterim: integer("wants_interim", { mode: "boolean" }).notNull().default(true),
   wantsSubstitute: integer("wants_substitute", { mode: "boolean" }).notNull().default(true), trainingInterests: text("training_interests").notNull().default(""),
   notifyNewTrainings: integer("notify_new_trainings", { mode: "boolean" }).notNull().default(false), trainingNotifyScope: text("training_notify_scope").notNull().default("relevant"),
@@ -43,6 +43,14 @@ export const trainingReminders = sqliteTable("training_reminders", {
   notified: integer("notified", { mode: "boolean" }).notNull().default(false), createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [index("idx_training_reminders_user").on(table.userId), index("idx_training_reminders_due").on(table.remindAt, table.notified)]);
 
+export const designationTracking = sqliteTable("designation_tracking", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), publicationId: text("publication_id").notNull().references(() => publications.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("GUARDADO"), role: text("role").notNull().default(""), subject: text("subject").notNull().default(""), school: text("school").notNull().default(""),
+  address: text("address").notNull().default(""), locality: text("locality").notNull().default(""), appliedAt: text("applied_at"), appointmentAt: text("appointment_at"), shift: text("shift").notNull().default(""), board: text("board").notNull().default(""),
+  documentation: text("documentation").notNull().default(""), orderNumber: text("order_number").notNull().default(""), notes: text("notes").notNull().default(""), officialUrl: text("official_url").notNull().default(""),
+  reminderAt: text("reminder_at"), reminderNotified: integer("reminder_notified", { mode: "boolean" }).notNull().default(false), createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [index("idx_designation_tracking_user").on(table.userId, table.appointmentAt), index("idx_designation_tracking_reminder").on(table.reminderAt, table.reminderNotified)]);
+
 export const aiRateLimits = sqliteTable("ai_rate_limits", {
   userBucket: text("user_bucket").primaryKey(), requestCount: integer("request_count").notNull().default(0), expiresAt: text("expires_at").notNull(),
 });
@@ -57,6 +65,7 @@ export const pushPreferences = sqliteTable("push_preferences", {
   userId: text("user_id").primaryKey(), enabled: integer("enabled", { mode: "boolean" }).notNull().default(true), vacancies: integer("vacancies", { mode: "boolean" }).notNull().default(true),
   trainings: integer("trainings", { mode: "boolean" }).notNull().default(true), commissions: integer("commissions", { mode: "boolean" }).notNull().default(true), reminders: integer("reminders", { mode: "boolean" }).notNull().default(true),
   dateChanges: integer("date_changes", { mode: "boolean" }).notNull().default(true), closingSoon: integer("closing_soon", { mode: "boolean" }).notNull().default(true), boards: integer("boards", { mode: "boolean" }).notNull().default(false),
+  designationExact: integer("designation_exact", { mode: "boolean" }).notNull().default(true), designationPartial: integer("designation_partial", { mode: "boolean" }).notNull().default(true), designationRoles: integer("designation_roles", { mode: "boolean" }).notNull().default(true),
   quietStart: text("quiet_start").notNull().default("22:00"), quietEnd: text("quiet_end").notNull().default("07:00"), timezone: text("timezone").notNull().default("America/Argentina/Buenos_Aires"), updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 

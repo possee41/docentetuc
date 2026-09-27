@@ -542,6 +542,7 @@ button:disabled { opacity: .68; }
 .home-source-warning span { display: grid; }
 .home-source-warning button { min-height: 2.35rem; padding-inline: .6rem; border-radius: .65rem; background: var(--surface-primary); font-weight: 900; }
 .home-empty-line { padding: .8rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: .78rem; }
+.home-search-kind { display: inline-flex; margin: .65rem .8rem 0; border-radius: 999px; background: var(--accent-soft); padding: .25rem .6rem; color: var(--accent-text); font-size: .62rem; font-weight: 900; letter-spacing: .08em; }
 .home-skeleton { display: grid; gap: .45rem; padding: .75rem; border-top: 1px solid var(--border); }
 .home-skeleton span { height: 1.2rem; border-radius: .45rem; background: var(--badge-bg); animation: pulse 2s cubic-bezier(.4,0,.6,1) infinite; }
 .home-skeleton span:nth-child(1) { width: 42%; }
