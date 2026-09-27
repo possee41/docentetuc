@@ -3,6 +3,7 @@ import { getD1 } from "@/db";
 import { createAIProvider, buildAIContext } from "@/lib/ai";
 import { authError, currentUser } from "@/lib/current-user";
 import type { Profile, Publication } from "@/lib/types";
+import { hydrateProfile } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
     if ((usage?.request_count || 0) > 10) return Response.json({ error: "Alcanzaste el límite temporal de consultas. Probá nuevamente en unos minutos." }, { status: 429 });
     const [publicationRows, profile] = await Promise.all([
       db.prepare("SELECT * FROM publications ORDER BY updated_at DESC LIMIT 500").all<Publication>(),
-      body.useProfile === true ? db.prepare("SELECT * FROM profiles WHERE user_id=?").bind(user.userId).first<Profile>() : Promise.resolve(null),
+      body.useProfile === true ? db.prepare("SELECT * FROM profiles WHERE user_id=?").bind(user.userId).first<Record<string, unknown>>().then((row) => row ? hydrateProfile(row) : null) : Promise.resolve(null),
     ]);
     const { context, sources } = buildAIContext(message, publicationRows.results, profile || undefined);
     const history = Array.isArray(body.history) ? body.history.slice(-6).filter((item): item is { role: string; content: string } => typeof item === "object" && item !== null && ["user", "assistant"].includes(String((item as Record<string, unknown>).role)) && typeof (item as Record<string, unknown>).content === "string").map((item) => `${item.role === "assistant" ? "Asistente" : "Usuario"}: ${item.content.slice(0, 700)}`).join("\n") : "";

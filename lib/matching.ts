@@ -1,6 +1,6 @@
 export type MatchProfile = {
-  level?: string; area?: string; subjects?: string; junta?: string; department?: string;
-  locality?: string; shifts?: string; wantsInterim?: boolean; wantsSubstitute?: boolean; trainingInterests?: string;
+  level?: string; levels?: string[]; area?: string; areas?: string[]; subjects?: string | string[]; junta?: string; boards?: string[]; department?: string;
+  locality?: string; shifts?: string | string[]; wantsInterim?: boolean; wantsSubstitute?: boolean; trainingInterests?: string | string[];
 };
 
 export type MatchPublication = {
@@ -12,20 +12,23 @@ export type MatchCriterion = { key: string; label: string; expected: string; mat
 export type MatchResult = { status: "exact" | "partial" | "none" | "unconfigured"; score: number; matched: number; total: number; criteria: MatchCriterion[] };
 
 const normalize = (value = "") => value.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
-const alternatives = (value = "") => value.split(/[,;|]/).map(normalize).filter((term) => term.length > 2);
+type ProfileValue = string | string[] | undefined;
+const values = (value: ProfileValue) => (Array.isArray(value) ? value : (value || "").split(/[,;|]/)).map((term) => term.trim()).filter((term) => term.length > 2);
+const alternatives = (value: ProfileValue) => values(value).map(normalize);
+const together = (...groups: ProfileValue[]) => groups.flatMap(values);
 
 export function profileMatch(publication: MatchPublication, profile: MatchProfile): MatchResult {
   const criteria: MatchCriterion[] = [];
-  const add = (key: string, label: string, expected: string | undefined, actual: (string | undefined)[], required = true) => {
+  const add = (key: string, label: string, expected: ProfileValue, actual: (string | undefined)[], required = true) => {
     const wanted = alternatives(expected), visible = normalize(actual.filter(Boolean).join(" "));
     if (!wanted.length) return;
-    criteria.push({ key, label, expected: wanted.join(" o "), matched: Boolean(visible) && wanted.some((term) => visible.includes(term)), available: Boolean(visible), required });
+    criteria.push({ key, label, expected: values(expected).join(" o "), matched: Boolean(visible) && wanted.some((term) => visible.includes(term)), available: Boolean(visible), required });
   };
 
-  add("level", "Nivel", profile.level, [publication.level, publication.junta, publication.title, publication.summary]);
-  add("area", "Área o materia", [profile.area, profile.subjects].filter(Boolean).join(","), [publication.area, publication.title, publication.summary]);
-  if (publication.kind !== "capacitacion") add("junta", "Junta", profile.junta, [publication.junta, publication.level, publication.summary]);
-  add("location", "Localidad o departamento", [profile.locality, profile.department].filter(Boolean).join(","), [publication.location, publication.summary]);
+  add("level", "Nivel", profile.levels?.length ? profile.levels : profile.level, [publication.level, publication.junta, publication.title, publication.summary]);
+  add("area", "Área o materia", together(profile.areas?.length ? profile.areas : profile.area, profile.subjects), [publication.area, publication.title, publication.summary]);
+  if (publication.kind !== "capacitacion") add("junta", "Junta", profile.boards?.length ? profile.boards : profile.junta, [publication.junta, publication.level, publication.summary]);
+  add("location", "Localidad o departamento", together(profile.locality, profile.department), [publication.location, publication.summary]);
   add("shift", "Turno", profile.shifts, [publication.shift, publication.summary]);
   if (publication.kind === "capacitacion") add("training", "Interés de capacitación", profile.trainingInterests, [publication.area, publication.title, publication.summary]);
 

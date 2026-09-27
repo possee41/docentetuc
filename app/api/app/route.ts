@@ -1,6 +1,7 @@
 import { getD1 } from "@/db";
 import { authError, currentUser } from "@/lib/current-user";
 import { parseTrainingMetadata } from "@/lib/training";
+import { hydrateProfile, profileStorage } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
       db.prepare("SELECT id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified FROM training_reminders WHERE user_id=? ORDER BY opens_at").bind(user.userId).all(),
       db.prepare("SELECT * FROM sync_state ORDER BY source").all(),
     ]);
-    return Response.json({ profile, publications: publications.results, saved: saved.results, notifications: notifications.results, reminders: reminders.results, sync: sync.results });
+    return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publications: publications.results, saved: saved.results, notifications: notifications.results, reminders: reminders.results, sync: sync.results });
   } catch (error) {
     return Response.json({ error: authError(error) ? "Iniciá sesión para continuar." : "No se pudieron cargar los datos." }, { status: authError(error) ? 401 : 500 });
   }
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
     const db = getD1();
     if (action === "save_profile") {
       await db.prepare(`UPDATE profiles SET name=?, level=?, area=?, subjects=?, junta=?, department=?, locality=?, shifts=?, wants_interim=?, wants_substitute=?, training_interests=?, notify_new_trainings=?, training_notify_scope=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?`)
-        .bind(value(body.name, 100) || "Docente", value(body.level, 80), value(body.area, 120), value(body.subjects), value(body.junta, 120), value(body.department, 100), value(body.locality, 100), value(body.shifts, 100), body.wantsInterim === false ? 0 : 1, body.wantsSubstitute === false ? 0 : 1, value(body.trainingInterests), body.notifyNewTrainings === true ? 1 : 0, value(body.trainingNotifyScope, 20) || "relevant", user.userId).run();
+        .bind(value(body.name, 100) || "Docente", profileStorage(body.levels ?? body.level, 120), profileStorage(body.areas ?? body.area, 180), profileStorage(body.subjects), profileStorage(body.boards ?? body.junta, 180), value(body.department, 100), value(body.locality, 100), profileStorage(body.shifts, 100), body.wantsInterim === false ? 0 : 1, body.wantsSubstitute === false ? 0 : 1, profileStorage(body.trainingInterests), body.notifyNewTrainings === true ? 1 : 0, value(body.trainingNotifyScope, 20) || "relevant", user.userId).run();
     } else if (action === "set_training_reminder") {
       const publicationId = value(body.publicationId, 120);
       const publication = await db.prepare("SELECT id, metadata FROM publications WHERE id=? AND kind='capacitacion'").bind(publicationId).first<{ id: string; metadata: string }>();

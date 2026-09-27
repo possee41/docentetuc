@@ -31,3 +31,23 @@ test("una preferencia de carácter deshabilitada impide la coincidencia exacta",
   assert.equal(result.status, "partial");
   assert.equal(result.criteria.find((criterion) => criterion.key === "character")?.matched, false);
 });
+
+test("un perfil multinivel coincide con cualquiera de sus niveles", () => {
+  const multi = { levels: ["Secundario", "Superior"] };
+  assert.equal(profileMatch({ kind: "vacante", title: "Cargo", level: "Secundario" }, multi).criteria[0]?.matched, true);
+  assert.equal(profileMatch({ kind: "vacante", title: "Cargo", level: "Superior" }, multi).criteria[0]?.matched, true);
+  assert.equal(profileMatch({ kind: "vacante", title: "Cargo", level: "Primario" }, multi).criteria[0]?.matched, false);
+});
+
+test("un perfil Inicial y Secundario coincide con ambos, no con Primario", () => {
+  const multi = { levels: ["Inicial", "Secundario"] };
+  assert.equal(profileMatch({ kind: "capacitacion", title: "Curso", level: "Inicial" }, multi).criteria[0]?.matched, true);
+  assert.equal(profileMatch({ kind: "capacitacion", title: "Curso", level: "Secundario" }, multi).criteria[0]?.matched, true);
+  assert.equal(profileMatch({ kind: "capacitacion", title: "Curso", level: "Primario" }, multi).criteria[0]?.matched, false);
+});
+
+test("múltiples áreas y materias coinciden por al menos una selección", () => {
+  const multi = { areas: ["Psicología", "Ciencias Sociales"], subjects: ["Construcción de Ciudadanía"] };
+  assert.equal(profileMatch({ kind: "capacitacion", title: "Ciudadanía digital", area: "Construcción de Ciudadanía" }, multi).criteria[0]?.matched, true);
+  assert.equal(profileMatch({ kind: "capacitacion", title: "Matemática", area: "Matemática" }, multi).criteria[0]?.matched, false);
+});
