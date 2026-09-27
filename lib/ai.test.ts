@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildAIContext, GeminiProvider, retrievePublications } from "./ai.ts";
+import { buildAIContext, detectIntent, GeminiProvider, retrievePublications } from "./ai.ts";
 import type { Profile, Publication } from "./types.ts";
 
 const base = { source: "Capacitación Docente", external_id: "1", kind: "capacitacion", category: "Capacitación", summary: "", level: "Secundario", area: "", junta: "", location: "", shift: "", character: "", starts_at: null, ends_at: null, official_url: "https://oficial.test/1", metadata: "{}", first_seen_at: "2026-09-01", updated_at: "2026-09-26" } as Publication;
@@ -33,6 +33,33 @@ test("limita la agenda a los eventos guardados", () => {
 test("prioriza la publicación abierta desde su detalle", () => {
   const result = retrievePublications("¿Cuándo abre esta?", records, 8, { context: { type: "capacitacion", id: "open" } });
   assert.equal(result[0]?.id, "open");
+});
+
+test("clasifica localmente las intenciones principales", () => {
+  assert.equal(detectIntent("¿Qué capacitaciones abren esta semana?"), "capacitaciones");
+  assert.equal(detectIntent("¿Qué vacantes coinciden conmigo?"), "vacantes");
+  assert.equal(detectIntent("¿Qué tengo mañana?"), "agenda");
+  assert.equal(detectIntent("Buscá un padrón docente"), "documentos");
+  assert.equal(detectIntent("Hola"), "conversacion_general");
+});
+
+test("agenda distingue mañana de otros eventos guardados", () => {
+  const dated = [{ ...records[0], id: "tomorrow", ends_at: "2026-09-28T12:00:00-03:00" }, { ...records[1], id: "later", ends_at: "2026-10-02T12:00:00-03:00" }] as Publication[];
+  const result = retrievePublications("¿Qué tengo mañana?", dated, 8, { agendaIds: ["tomorrow", "later"], now: new Date("2026-09-27T10:00:00-03:00") });
+  assert.deepEqual(result.map((item) => item.id), ["tomorrow"]);
+});
+
+test("expone como no informados los campos ausentes para evitar alucinaciones", () => {
+  const context = buildAIContext("¿Cuántos cupos, requisitos y puntaje tiene este curso?", records, { context: { type: "capacitacion", id: "next" } }).context;
+  assert.match(context, /Cupo: No informado/);
+  assert.match(context, /Requisitos: No informados/);
+  assert.match(context, /Puntaje: No informado/);
+});
+
+test("una publicación declarada inexistente no hereda el contexto de pantalla", () => {
+  const result = buildAIContext("¿Cuándo abre una capacitación que no existe?", records, { context: { type: "capacitacion", id: "next" } });
+  assert.equal(result.sources.length, 0);
+  assert.match(result.context, /No se recuperaron registros oficiales suficientes/);
 });
 
 test("GeminiProvider usa el endpoint backend y la clave sólo en el header", async () => {

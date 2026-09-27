@@ -4,8 +4,9 @@ import type { Profile, Publication } from "./types.ts";
 
 export type AIConfig = { provider: string; apiKey: string; model: string };
 export type AISource = { id: string; title: string; source: string; url: string; updatedAt: string; status: string };
+export type AIIntent = "capacitaciones" | "vacantes" | "designaciones" | "agenda" | "perfil" | "novedades" | "documentos" | "busqueda_general" | "conversacion_general";
 export type AIContextInput = { type: string; id?: string; title?: string };
-export type AIContextOptions = { profile?: Profile; agendaIds?: string[]; context?: AIContextInput };
+export type AIContextOptions = { profile?: Profile; agendaIds?: string[]; context?: AIContextInput; now?: Date };
 export interface AIProvider { generate(input: string, instructions: string): Promise<string>; }
 
 export class AIProviderError extends Error {
@@ -64,17 +65,48 @@ const normalize = (value = "") => value.toLocaleLowerCase("es").normalize("NFD")
 const tokens = (question: string) => [...new Set(normalize(question).split(/[^a-z0-9]+/).filter((word) => word.length > 3 && !["para", "esta", "este", "tengo", "cuales", "sobre", "alguna"].includes(word)))];
 const forMatch = (item: Publication) => ({ kind: item.kind, title: item.title, summary: item.summary, level: item.level, area: item.area, junta: item.junta, location: item.location, shift: item.shift, character: item.character });
 const matchProfile = (profile: Profile) => ({ levels: profile.levels, areas: profile.areas, subjects: profile.subjects, boards: profile.boards, department: profile.department, locality: profile.locality, shifts: profile.shifts, wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: profile.training_interests });
+const dayKey = (value: Date | string) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(typeof value === "string" ? new Date(value) : value);
+
+export function detectIntent(question: string): AIIntent {
+  const query = normalize(question);
+  if (/\b(mi agenda|mis eventos|que tengo|proximo evento|agend)/.test(query)) return "agenda";
+  if (/\b(capacit|curso|inscrip|cupo)/.test(query)) return "capacitaciones";
+  if (/\b(designacion)/.test(query)) return "designaciones";
+  if (/\b(vacant|cargo|horas? catedra)/.test(query)) return "vacantes";
+  if (/\b(mi perfil|para mi perfil|coincide conmigo|que me sirve)/.test(query)) return "perfil";
+  if (/\b(novedad|ultima|reciente)/.test(query)) return "novedades";
+  if (/\b(document|padron|resolucion|junta)/.test(query)) return "documentos";
+  if (/^(hola|buenas|buen dia|gracias|chau)[!. ]*$/.test(query)) return "conversacion_general";
+  return "busqueda_general";
+}
+
+function requestedDay(question: string, now: Date) {
+  const query = normalize(question), date = new Date(now);
+  if (/\bmanana\b/.test(query)) date.setDate(date.getDate() + 1);
+  else if (!/\bhoy\b/.test(query)) {
+    const weekdays = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
+    const wanted = weekdays.findIndex((day) => new RegExp(`\\b${day}\\b`).test(query));
+    if (wanted < 0) return null;
+    date.setDate(date.getDate() + ((wanted - date.getDay() + 7) % 7));
+  }
+  return dayKey(date);
+}
 
 export function retrievePublications(question: string, publications: Publication[], limit = 8, options: AIContextOptions = {}) {
-  const query = normalize(question), words = tokens(question), agenda = new Set(options.agendaIds || []);
-  const wantsTraining = /capacit|curso|inscrip|abre/.test(query), wantsVacancy = /vacant|designacion|cargo|hora/.test(query);
-  const wantsAgenda = /mi agenda|mis eventos|que tengo/.test(query);
+  const query = normalize(question), words = tokens(question), agenda = new Set(options.agendaIds || []), intent = detectIntent(question);
+  if (/\b(no existe|inexistente|fictici|inventad)/.test(query)) return [];
+  const wantsTraining = intent === "capacitaciones", wantsVacancy = ["vacantes", "designaciones"].includes(intent);
+  const wantsAgenda = intent === "agenda", now = options.now || new Date(), requested = wantsAgenda ? requestedDay(question, now) : null;
   const wantsMatches = /coincid|compatible|sirve|para mi perfil/.test(query);
   const configuredProfile = options.profile ? matchProfile(options.profile) : null;
   return publications.map((item) => {
     if (wantsAgenda && !agenda.has(item.id)) return { item, score: -1 };
     if (wantsTraining && item.kind !== "capacitacion") return { item, score: -1 };
     if (wantsVacancy && !wantsTraining && item.kind !== "vacante") return { item, score: -1 };
+    if (intent === "documentos" && item.kind !== "junta") return { item, score: -1 };
+    const eventDate = item.ends_at || item.starts_at || (item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata)?.registrationOpensAt : undefined);
+    if (requested && (!eventDate || dayKey(eventDate) !== requested)) return { item, score: -1 };
+    if (wantsAgenda && /esta semana/.test(query) && (!eventDate || new Date(eventDate).getTime() < now.getTime() || new Date(eventDate).getTime() > now.getTime() + 7 * 86400000)) return { item, score: -1 };
     const match = configuredProfile ? profileMatch(forMatch(item), configuredProfile) : null;
     if (wantsMatches && (!match || !["exact", "partial"].includes(match.status))) return { item, score: -1 };
     const haystack = normalize([item.title, item.summary, item.kind, item.category, item.level, item.area, item.location, item.status].join(" "));
@@ -96,9 +128,9 @@ export function buildAIContext(question: string, publications: Publication[], op
   const records = selected.map((item, index) => {
     const training = item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata) : null;
     const match = configuredProfile ? profileMatch(forMatch(item), configuredProfile) : null;
-    return `[${index + 1}] ${item.title}\nTipo: ${item.kind}. Estado: ${item.status}. Nivel: ${item.level || "no informado"}. Área: ${item.area || "no informada"}. Lugar: ${item.location || "no informado"}. Inicio: ${item.starts_at || "no informado"}. Cierre: ${item.ends_at || "no informado"}. Apertura de inscripción: ${training?.registrationOpensAt || "no informada"}. Cierre de inscripción: ${training?.registrationClosesAt || "no informado"}.${match ? ` Coincidencia calculada por DocenteTuc: ${match.score}% (${match.status}).` : ""} Detalle: ${(item.summary || "no informado").slice(0, 900)}\nFuente: ${item.source}. URL: ${item.official_url}`;
+    return `[${index + 1}] ${item.title}\nTipo: ${item.kind}. Estado: ${item.status}. Nivel: ${item.level || "No informado"}. Área: ${item.area || "No informada"}. Lugar: ${item.location || "No informado"}. Inicio: ${item.starts_at || "No informado"}. Cierre: ${item.ends_at || "No informado"}. Apertura de inscripción: ${training?.registrationOpensAt || "No informada"}. Cierre de inscripción: ${training?.registrationClosesAt || "No informado"}. Cupo: ${training?.capacity ?? training?.preCapacity ?? "No informado"}. Requisitos: No informados. Puntaje: No informado.${match ? ` Coincidencia calculada por DocenteTuc: ${match.score}% (${match.status}).` : ""} Detalle: ${(item.summary || "No informado").slice(0, 900)}\nFuente: ${item.source}. URL: ${item.official_url}`;
   }).join("\n\n");
   const profileText = options.profile ? `Perfil autorizado: niveles ${options.profile.levels.join(", ") || "no informados"}; áreas ${options.profile.areas.join(", ") || "no informadas"}; materias ${options.profile.subjects.join(", ") || "no informadas"}; localidad ${options.profile.locality || "no informada"}; intereses ${options.profile.training_interests.join(", ") || "no informados"}.` : "El usuario no autorizó usar su perfil.";
   const panelContext = options.context ? `Contexto del panel: tipo ${options.context.type}; identificador ${options.context.id || "sin identificador"}; título ${options.context.title || "sin título"}.` : "Contexto del panel no informado.";
-  return { sources, context: `${panelContext}\n${profileText}\n\nREGISTROS OFICIALES RECUPERADOS:\n${records || "No se recuperaron registros oficiales suficientes."}` };
+  return { intent: detectIntent(question), sources, context: `${panelContext}\n${profileText}\n\nREGISTROS OFICIALES RECUPERADOS:\n${records || "No se recuperaron registros oficiales suficientes."}` };
 }
