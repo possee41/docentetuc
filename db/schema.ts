@@ -24,6 +24,7 @@ export const publications = sqliteTable("publications", {
 export const savedPublications = sqliteTable("saved_publications", {
   userId: text("user_id").notNull(), publicationId: text("publication_id").notNull().references(() => publications.id, { onDelete: "cascade" }),
   inAgenda: integer("in_agenda", { mode: "boolean" }).notNull().default(false), followed: integer("followed", { mode: "boolean" }).notNull().default(false),
+  agendaAt: text("agenda_at"), agendaNotes: text("agenda_notes").notNull().default(""), agendaReminderAt: text("agenda_reminder_at"), agendaReminderNotified: integer("agenda_reminder_notified", { mode: "boolean" }).notNull().default(false),
   savedAt: text("saved_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [primaryKey({ columns: [table.userId, table.publicationId] }), index("idx_saved_user").on(table.userId)]);
 

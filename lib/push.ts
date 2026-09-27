@@ -49,6 +49,7 @@ export function isQuietTime(date: Date, start: string, end: string, timezone: st
 
 export type PushCategory = "vacancies" | "trainings" | "commissions" | "reminders" | "date_changes" | "closing_soon" | "boards";
 export function categoryForNotification(type: string): PushCategory {
+  if (type === "AGENDA_RECORDATORIO") return "reminders";
   if (type === "VACANTE_NUEVA" || type.startsWith("DESIGNACION_")) return type === "DESIGNACION_RECORDATORIO" ? "reminders" : type === "DESIGNACION_CAMBIO" ? "date_changes" : "vacancies";
   if (type === "COMISION_NUEVA") return "commissions";
   if (["CAPACITACION_ABRE", "CAPACITACION_PROXIMA", "CAPACITACION_ABRE_MANANA", "CAPACITACION_ABRE_HOY", "CAPACITACION_ABIERTA"].includes(type)) return "reminders";
@@ -60,7 +61,7 @@ export function categoryForNotification(type: string): PushCategory {
 
 export function notificationMessage(type: string, title: string): PushMessage {
   const copy: Record<string, [string, string]> = {
-    VACANTE_NUEVA: ["Nueva designación compatible", title], DESIGNACION_NUEVA: ["Nueva designación para vos", title], DESIGNACION_EXACTA_GENERAL: ["Coincidencia exacta", title], DESIGNACION_EXACTA_CARGO: ["Nuevo cargo de interés", title], DESIGNACION_PARCIAL_GENERAL: ["Coincidencia parcial", title], DESIGNACION_PARCIAL_CARGO: ["Nuevo cargo de interés", title], DESIGNACION_CAMBIO: ["Cambió una designación", title], DESIGNACION_RECORDATORIO: ["Recordatorio de designación", title], CAPACITACION_NUEVA: ["Nueva capacitación compatible", title], COMISION_NUEVA: ["Nueva comisión disponible", title],
+    VACANTE_NUEVA: ["Nueva designación compatible", title], DESIGNACION_NUEVA: ["Nueva designación para vos", title], DESIGNACION_EXACTA_GENERAL: ["Coincidencia exacta", title], DESIGNACION_EXACTA_CARGO: ["Nuevo cargo de interés", title], DESIGNACION_PARCIAL_GENERAL: ["Coincidencia parcial", title], DESIGNACION_PARCIAL_CARGO: ["Nuevo cargo de interés", title], DESIGNACION_CAMBIO: ["Cambió una designación", title], DESIGNACION_RECORDATORIO: ["Recordatorio de designación", title], AGENDA_RECORDATORIO: ["Recordatorio de Agenda", title], CAPACITACION_NUEVA: ["Nueva capacitación compatible", title], COMISION_NUEVA: ["Nueva comisión disponible", title],
     CAPACITACION_ABRE: ["Recordatorio de inscripción", `Revisá la apertura de ${title}`], CAPACITACION_PROXIMA: ["Inscripción próxima", title], CAPACITACION_ABRE_MANANA: ["La inscripción abre mañana", title],
     CAPACITACION_ABRE_HOY: ["La inscripción abre hoy", title], CAPACITACION_ABIERTA: ["Inscripción abierta", title], CIERRE_PROXIMO: ["Cierra pronto", title],
     FECHA_IMPORTANTE: ["Actualización de fecha", title], FECHA_CAMBIADA: ["Cambió una fecha", title], COMUNICADO_NUEVO: ["Nuevo comunicado", title], PADRON_NUEVO: ["Nuevo padrón", title], PADRON_ACTUALIZADO: ["Padrón actualizado", title],
@@ -82,6 +83,8 @@ export async function materializeScheduledNotifications(db: D1Database, now = ne
   await db.prepare("UPDATE training_reminders SET notified=1, updated_at=CURRENT_TIMESTAMP WHERE notified=0 AND datetime(remind_at)<=datetime(?)").bind(now.toISOString()).run();
   await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'DESIGNACION_RECORDATORIO' FROM designation_tracking WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?)").bind(now.toISOString()).run();
   await db.prepare("UPDATE designation_tracking SET reminder_notified=1, updated_at=CURRENT_TIMESTAMP WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?)").bind(now.toISOString()).run();
+  await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'AGENDA_RECORDATORIO' FROM saved_publications WHERE in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime(?)").bind(now.toISOString()).run();
+  await db.prepare("UPDATE saved_publications SET agenda_reminder_notified=1 WHERE in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime(?)").bind(now.toISOString()).run();
 
   const [profiles, publications] = await Promise.all([
     db.prepare("SELECT * FROM profiles").all<ProfileRow>(),

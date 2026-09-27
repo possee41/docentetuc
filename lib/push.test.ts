@@ -11,6 +11,7 @@ test("notification types map to user-facing categories", () => {
   assert.equal(categoryForNotification("VACANTE_NUEVA"), "vacancies");
   assert.equal(categoryForNotification("DESIGNACION_EXACTA_CARGO"), "vacancies");
   assert.equal(categoryForNotification("DESIGNACION_RECORDATORIO"), "reminders");
+  assert.equal(categoryForNotification("AGENDA_RECORDATORIO"), "reminders");
   assert.equal(categoryForNotification("COMISION_NUEVA"), "commissions");
   assert.equal(categoryForNotification("CIERRE_PROXIMO"), "closing_soon");
 });

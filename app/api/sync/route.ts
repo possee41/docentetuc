@@ -4,6 +4,7 @@ import { authError, currentUser } from "@/lib/current-user";
 import { matchesProfile, profileMatch } from "@/lib/matching";
 import { driveEntryUrl, htmlToText, parsePublicDriveFolder } from "@/lib/public-documents";
 import { mergeTrainingData, parseTrainingMetadata } from "@/lib/training";
+import { usefulInformation } from "@/lib/useful-information";
 
 export const dynamic = "force-dynamic";
 
@@ -124,11 +125,20 @@ async function boardPublications() {
   return publications;
 }
 
+async function usefulPublications(): Promise<Publication[]> {
+  return Promise.all(usefulInformation.map(async (item) => ({
+    id: `info:${item.id}`, source: "Información oficial Tucumán", externalId: item.id, kind: "informacion", category: item.category,
+    title: item.title, summary: item.summary, level: "", area: item.metadata.aliases?.join(", ") || "", junta: "", location: item.metadata.address || "", shift: "", character: item.metadata.recordType,
+    startsAt: null, endsAt: null, status: item.metadata.sourceStatus === "partial" ? "verificación parcial" : "verificado", officialUrl: item.officialUrl,
+    metadata: JSON.stringify(item.metadata), contentHash: await hash(JSON.stringify(item)), sourceUpdatedAt: item.metadata.lastVerified,
+  })));
+}
+
 async function runSync() {
   const db = getD1();
   const previous = await db.prepare("SELECT id, content_hash, starts_at, ends_at, metadata FROM publications").all<{ id: string; content_hash: string; starts_at: string | null; ends_at: string | null; metadata: string }>();
   const old = new Map(previous.results.map((row) => [row.id, row]));
-  const results = await Promise.allSettled([simePublications(), trainingPublications(), boardPublications()]);
+  const results = await Promise.allSettled([simePublications(), trainingPublications(), boardPublications(), usefulPublications()]);
   const publications = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   if (!publications.length) throw new Error("Las fuentes no respondieron.");
   const changed = publications.filter((item) => old.has(item.id) && old.get(item.id)?.content_hash !== item.contentHash);
@@ -145,7 +155,7 @@ async function runSync() {
   await db.batch([...sourceCounts].map(([source, count]) => db.prepare("INSERT INTO sync_state (source, synced_at, item_count, error) VALUES (?, CURRENT_TIMESTAMP, ?, NULL) ON CONFLICT(source) DO UPDATE SET synced_at=CURRENT_TIMESTAMP, item_count=excluded.item_count, error=NULL").bind(source, count)));
 
   const profiles = await db.prepare("SELECT * FROM profiles").all<Record<string, unknown>>();
-  const interesting = [...fresh.filter((item) => !item.id.startsWith("drive:")).slice(0, 60), ...changed.filter((item) => !item.id.startsWith("drive:"))];
+  const interesting = [...fresh.filter((item) => !item.id.startsWith("drive:") && item.kind !== "informacion").slice(0, 60), ...changed.filter((item) => !item.id.startsWith("drive:") && item.kind !== "informacion")];
   for (const profile of profiles.results) {
     const match = (item: Publication) => {
       const fullProfile = { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), roles: String(profile.roles || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") };

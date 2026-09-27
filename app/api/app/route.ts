@@ -15,10 +15,12 @@ export async function GET(request: Request) {
     await db.prepare("INSERT INTO profiles (user_id, name, email) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET email=excluded.email").bind(user.userId, user.fullName || user.displayName.split("@")[0], user.email).run();
     await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'CAPACITACION_ABRE' FROM training_reminders WHERE user_id=? AND notified=0 AND datetime(remind_at)<=datetime('now')").bind(user.userId).run();
     await db.prepare("UPDATE training_reminders SET notified=1, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND notified=0 AND datetime(remind_at)<=datetime('now')").bind(user.userId).run();
+    await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'AGENDA_RECORDATORIO' FROM saved_publications WHERE user_id=? AND in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime('now')").bind(user.userId).run();
+    await db.prepare("UPDATE saved_publications SET agenda_reminder_notified=1 WHERE user_id=? AND in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime('now')").bind(user.userId).run();
     const [profile, publications, saved, notifications, reminders, designations, sync] = await Promise.all([
       db.prepare("SELECT * FROM profiles WHERE user_id=?").bind(user.userId).first(),
       db.prepare("SELECT * FROM publications ORDER BY COALESCE(ends_at, starts_at, updated_at) DESC LIMIT 1500").all(),
-      db.prepare("SELECT publication_id, in_agenda, followed, saved_at FROM saved_publications WHERE user_id=?").bind(user.userId).all(),
+      db.prepare("SELECT publication_id, in_agenda, followed, agenda_at, agenda_notes, agenda_reminder_at, agenda_reminder_notified, saved_at FROM saved_publications WHERE user_id=?").bind(user.userId).all(),
       db.prepare("SELECT n.*, p.title, p.kind FROM notifications n JOIN publications p ON p.id=n.publication_id WHERE n.user_id=? ORDER BY n.created_at DESC LIMIT 100").bind(user.userId).all(),
       db.prepare("SELECT id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified FROM training_reminders WHERE user_id=? ORDER BY opens_at").bind(user.userId).all(),
       db.prepare("SELECT id, publication_id, status, role, subject, school, address, locality, applied_at, appointment_at, shift, board, documentation, order_number, notes, official_url, reminder_at, reminder_notified, created_at, updated_at FROM designation_tracking WHERE user_id=? ORDER BY COALESCE(appointment_at, applied_at, updated_at) DESC").bind(user.userId).all(),
@@ -73,7 +75,13 @@ export async function POST(request: Request) {
       if (action === "save" && !enabled) await db.prepare("DELETE FROM saved_publications WHERE user_id=? AND publication_id=?").bind(user.userId, id).run();
       else {
         await db.prepare("INSERT INTO saved_publications (user_id, publication_id) VALUES (?, ?) ON CONFLICT(user_id, publication_id) DO NOTHING").bind(user.userId, id).run();
-        if (action === "agenda") await db.prepare("UPDATE saved_publications SET in_agenda=? WHERE user_id=? AND publication_id=?").bind(enabled, user.userId, id).run();
+        if (action === "agenda") {
+          const rawAgendaAt = value(body.agendaAt, 40), agendaDate = rawAgendaAt ? new Date(rawAgendaAt) : null;
+          if (rawAgendaAt && (!agendaDate || Number.isNaN(agendaDate.getTime()))) return Response.json({ error: "Fecha de agenda inválida." }, { status: 400 });
+          const rawReminderAt = value(body.agendaReminderAt, 40), reminderDate = rawReminderAt ? new Date(rawReminderAt) : null;
+          if (rawReminderAt && (!reminderDate || Number.isNaN(reminderDate.getTime()) || (agendaDate && reminderDate > agendaDate))) return Response.json({ error: "Recordatorio de agenda inválido." }, { status: 400 });
+          await db.prepare("UPDATE saved_publications SET in_agenda=?, agenda_at=?, agenda_notes=?, agenda_reminder_at=?, agenda_reminder_notified=0 WHERE user_id=? AND publication_id=?").bind(enabled, enabled && agendaDate ? agendaDate.toISOString() : null, enabled ? value(body.agendaNotes, 1000) : "", enabled && reminderDate ? reminderDate.toISOString() : null, user.userId, id).run();
+        }
         if (action === "follow") await db.prepare("UPDATE saved_publications SET followed=? WHERE user_id=? AND publication_id=?").bind(enabled, user.userId, id).run();
       }
     } else if (action === "read_notification") {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildAIContext, detectIntent, GeminiProvider, retrievePublications } from "./ai.ts";
+import { usefulInformation } from "./useful-information.ts";
 import type { Profile, Publication } from "./types.ts";
 
 const base = { source: "Capacitación Docente", external_id: "1", kind: "capacitacion", category: "Capacitación", summary: "", level: "Secundario", area: "", junta: "", location: "", shift: "", character: "", starts_at: null, ends_at: null, official_url: "https://oficial.test/1", metadata: "{}", first_seen_at: "2026-09-01", updated_at: "2026-09-26" } as Publication;
@@ -8,6 +9,7 @@ const records = [{ ...base, id: "next", title: "Curso próximo", status: "próxi
 const vacancy = { ...base, id: "vacancy", kind: "vacante", category: "Vacante", title: "Horas de Filosofía", status: "vigente" } as Publication;
 const publicDocument = { ...base, id: "comunicado", kind: "junta", category: "Comunicados", title: "Comunicado Secundaria", summary: "Presentación de documentación hasta el 30 de septiembre", status: "vigente" } as Publication;
 const openCall = { ...base, id: "llamado", kind: "junta", category: "Llamados abiertos", title: "Convocatoria abierta de Inicial", status: "vigente" } as Publication;
+const usefulRecords = usefulInformation.map((item) => ({ ...base, id: `info:${item.id}`, external_id: item.id, kind: "informacion", category: item.category, title: item.title, summary: item.summary, level: "", area: (item.metadata.aliases || []).join(" · "), status: "vigente", official_url: item.officialUrl, metadata: JSON.stringify(item.metadata) })) as Publication[];
 
 test("recupera primero la próxima inscripción usando datos reales", () => assert.equal(retrievePublications("¿Qué capacitación abre primero?", records)[0]?.id, "next"));
 test("una conversación general no adjunta fuentes irrelevantes", () => assert.equal(buildAIContext("Hola", records).sources.length, 0));
@@ -42,7 +44,24 @@ test("clasifica localmente las intenciones principales", () => {
   assert.equal(detectIntent("¿Qué vacantes coinciden conmigo?"), "vacantes");
   assert.equal(detectIntent("¿Qué tengo mañana?"), "agenda");
   assert.equal(detectIntent("Buscá un padrón docente"), "documentos");
+  assert.equal(detectIntent("Me liquidaron mal el sueldo"), "informacion");
   assert.equal(detectIntent("Hola"), "conversacion_general");
+});
+
+test("recupera trámites y contactos oficiales sin inventar campos ausentes", () => {
+  const cases = [
+    ["No cobré el sueldo", "info:novedades-salariales"],
+    ["Necesito hacer mi legajo", "info:legajo"],
+    ["¿Dónde consulto mi expediente?", "info:expedientes"],
+    ["Tengo problemas con mi certificado FDCI", "info:certificacion-fdci"],
+    ["¿Qué oficinas hay en CIIDEPT?", "info:ciidept"],
+  ];
+  for (const [question, expected] of cases) {
+    const result = buildAIContext(question, usefulRecords);
+    assert.equal(result.sources[0]?.id, expected, question);
+    assert.match(result.context, /Datos oficiales publicados:/);
+  }
+  assert.match(buildAIContext("Tengo problemas con mi certificado FDCI", usefulRecords).context, /no publicado/);
 });
 
 test("agenda distingue mañana de otros eventos guardados", () => {
