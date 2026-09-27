@@ -349,6 +349,13 @@ function ProfileForm({ profile, onSaved }: { profile?: Profile; onSaved: () => v
 type PushPreferenceState = { enabled: boolean; vacancies: boolean; trainings: boolean; commissions: boolean; reminders: boolean; dateChanges: boolean; closingSoon: boolean; boards: boolean; quietStart: string; quietEnd: string };
 const defaultPushPreferences: PushPreferenceState = { enabled: true, vacancies: true, trainings: true, commissions: true, reminders: true, dateChanges: true, closingSoon: true, boards: false, quietStart: "22:00", quietEnd: "07:00" };
 const decodeVapidKey = (value: string) => { const padded = value + "=".repeat((4 - value.length % 4) % 4), binary = atob(padded.replace(/-/g, "+").replace(/_/g, "/")), bytes = new Uint8Array(binary.length); for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index); return bytes; };
+const pushActivationMessage = (error: unknown) => {
+  const message = error instanceof Error ? error.message : "";
+  if (/registration failed|push service error/i.test(message)) return "El servicio push del navegador está desactivado o no responde. En Brave activá ‘Usar servicios de Google para mensajería push’; también podés probar Chrome o Samsung Internet.";
+  if (error instanceof DOMException && error.name === "NotAllowedError") return "El navegador bloqueó las notificaciones. Permitilas en la configuración del sitio y volvé a intentarlo.";
+  if (error instanceof DOMException && error.name === "AbortError") return "El navegador no pudo conectarse con su servicio de notificaciones. Verificá la conexión y los servicios de Google del teléfono.";
+  return message || "No se pudieron activar las alertas";
+};
 
 function PushSettings() {
   const [available, setAvailable] = useState(true), [subscribed, setSubscribed] = useState(false), [permission, setPermission] = useState<NotificationPermission>("default"), [busy, setBusy] = useState(false), [preferences, setPreferences] = useState(defaultPushPreferences);
@@ -379,7 +386,7 @@ function PushSettings() {
       const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: decodeVapidKey(config.vapidPublicKey) });
       await request({ action: "subscribe", subscription: subscription.toJSON() });
       setSubscribed(true); toast.success("Alertas activadas en este dispositivo");
-    } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudieron activar las alertas"); }
+    } catch (error) { toast.error(pushActivationMessage(error), { duration: 9000 }); }
     finally { setBusy(false); }
   };
   const deactivate = async () => {

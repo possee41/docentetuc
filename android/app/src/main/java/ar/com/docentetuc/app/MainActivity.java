@@ -1,16 +1,18 @@
 package ar.com.docentetuc.app;
 
-import android.app.Activity;
-import android.content.Intent;
-import android.net.Uri;
-import android.os.Bundle;
+import android.content.pm.PackageManager;
 
-public class MainActivity extends Activity {
+import com.google.androidbrowserhelper.trusted.LauncherActivity;
+import com.google.androidbrowserhelper.trusted.TwaLauncher;
+
+public class MainActivity extends LauncherActivity {
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        startActivity(new Intent(Intent.ACTION_VIEW,
-                Uri.parse("https://docentetuc.possee41.workers.dev")));
-        finish();
+    protected TwaLauncher createTwaLauncher() {
+        try {
+            getPackageManager().getPackageInfo("com.android.chrome", 0);
+            return new TwaLauncher(this, "com.android.chrome");
+        } catch (PackageManager.NameNotFoundException ignored) {
+            return super.createTwaLauncher();
+        }
     }
 }

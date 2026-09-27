@@ -7,8 +7,10 @@ $downloads = Join-Path $tools "downloads"
 $jdk = Join-Path $tools "jdk"
 $sdk = Join-Path $tools "sdk"
 $gradle = Join-Path $tools "gradle-8.9"
+$gradleUser = Join-Path $tools "user"
+$temporary = Join-Path $tools "temp"
 
-New-Item -ItemType Directory -Force $downloads | Out-Null
+New-Item -ItemType Directory -Force $downloads, $gradleUser, $temporary | Out-Null
 
 if (-not (Test-Path (Join-Path $jdk "bin\java.exe"))) {
     $archive = Join-Path $downloads "jdk17.zip"
@@ -42,6 +44,9 @@ if (-not (Test-Path (Join-Path $gradle "bin\gradle.bat"))) {
 $env:JAVA_HOME = $jdk
 $env:ANDROID_HOME = $sdk
 $env:ANDROID_SDK_ROOT = $sdk
+$env:GRADLE_USER_HOME = $gradleUser
+$env:TEMP = $temporary
+$env:TMP = $temporary
 $sdkManager = Join-Path $sdk "cmdline-tools\latest\bin\sdkmanager.bat"
 
 if (-not (Test-Path (Join-Path $sdk "platforms\android-35\android.jar"))) {
@@ -58,7 +63,8 @@ try {
 }
 
 $apk = Join-Path $project "app\build\outputs\apk\debug\app-debug.apk"
-$output = Join-Path $root "DocenteTuc-1.0.5-debug.apk"
+$dist = Join-Path $root "dist"
+New-Item -ItemType Directory -Force $dist | Out-Null
+$output = Join-Path $dist "DocenteTuc-debug.apk"
 Copy-Item -LiteralPath $apk -Destination $output -Force
-Copy-Item -LiteralPath $apk -Destination (Join-Path $root "public\DocenteTuc-1.0.5.apk") -Force
 Write-Output $output
