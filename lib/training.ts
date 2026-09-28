@@ -7,7 +7,11 @@ export type TrainingMetadata = {
   registrationOpensAt?: string;
   registrationHasTime?: boolean;
   registrationClosesAt?: string;
+  courseStartsAt?: string;
   courseEndsAt?: string;
+  source?: string;
+  sourceUrl?: string;
+  dateStatus?: "confirmed" | "tentative";
   address?: string;
   capacity?: number;
   preCapacity?: number;
@@ -94,7 +98,8 @@ function opportunity(course: OfficialCourse, commission?: OfficialCommission, no
     metadata: {
       entity: commissionId ? "commission" : "course", trainingId, ...(commissionId ? { commissionId } : {}),
       ...(registrationOpensAt ? { registrationOpensAt, registrationHasTime } : {}), ...(registrationClosesAt ? { registrationClosesAt } : {}),
-      ...(courseEndsAt ? { courseEndsAt } : {}), ...(commission?.direccion ? { address: text(commission.direccion) } : {}),
+      ...(courseStartsAt ? { courseStartsAt } : {}), ...(courseEndsAt ? { courseEndsAt } : {}), source: "FDCI Tucumán", sourceUrl: officialUrl, dateStatus: "confirmed",
+      ...(commission?.direccion ? { address: text(commission.direccion) } : {}),
       ...(number(commission?.cupo) != null ? { capacity: number(commission?.cupo) } : {}),
       ...(number(commission?.cupo_preinscripcion) != null ? { preCapacity: number(commission?.cupo_preinscripcion) } : {}),
       ...(number(course.horas_catedra) != null ? { hours: number(course.horas_catedra) } : {}),

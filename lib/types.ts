@@ -2,6 +2,7 @@ export type Profile = {
   user_id: string; name: string; email?: string; level: string; levels: string[]; area: string; areas: string[]; subjects: string[]; junta: string; boards: string[];
   roles: string[]; department: string; locality: string; shifts: string[]; wants_interim: number | boolean; wants_substitute: number | boolean; training_interests: string[];
   notify_new_trainings: number | boolean; training_notify_scope: "all" | "level" | "area" | "interests" | "relevant";
+  training_match_threshold: number;
 };
 
 export type Publication = {

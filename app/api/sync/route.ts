@@ -4,7 +4,9 @@ import { authError, currentUser } from "@/lib/current-user";
 import { matchesProfile, profileMatch } from "@/lib/matching";
 import { driveEntryUrl, htmlToText, parsePublicDriveFolder } from "@/lib/public-documents";
 import { mergeTrainingData, parseTrainingMetadata } from "@/lib/training";
+import { parseCenetTrainings, parseInfdCatalog, parseInfdTrainings, type PublicTraining } from "@/lib/external-trainings";
 import { usefulInformation } from "@/lib/useful-information";
+import { registrationState } from "@/lib/home-dashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +50,19 @@ async function getJson<T>(url: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function getHtml(url: string) {
+  const response = await fetch(url, { headers: { Accept: "text/html", "User-Agent": "DocenteTuc/1.0 (+agregador de fuentes publicas)" } });
+  if (!response.ok) throw new Error(`${response.status} ${url}`);
+  return response.text();
+}
+
+const publicTrainingPublications = (items: PublicTraining[], source: string) => Promise.all(items.map(async (item): Promise<Publication> => ({
+  id: item.id, source, externalId: item.externalId, kind: "capacitacion", category: source,
+  title: item.title, summary: item.summary, level: item.level, area: item.area, junta: "", location: "Online", shift: "", character: item.modality,
+  startsAt: item.startsAt, endsAt: item.endsAt, status: item.status, officialUrl: item.officialUrl, metadata: JSON.stringify(item.metadata),
+  contentHash: await hash(item.raw), sourceUpdatedAt: null,
+})));
+
 async function simePublications() {
   const items: Publication[] = [];
   for (const [juntaId, junta] of juntas) {
@@ -77,6 +92,17 @@ async function trainingPublications() {
     startsAt: item.startsAt, endsAt: item.endsAt, status: item.status, officialUrl: item.officialUrl, metadata: JSON.stringify(item.metadata),
     contentHash: await hash(JSON.stringify(item.raw)), sourceUpdatedAt: item.sourceUpdatedAt,
   })));
+}
+
+async function cenetPublications() {
+  const url = "https://cenet.inet.edu.ar/mod/page/view.php?id=30493";
+  return publicTrainingPublications(parseCenetTrainings(await getHtml(url)), "CeNET / INET");
+}
+
+async function infdPublications() {
+  const catalogUrl = "https://red.infd.edu.ar/cursos-nacionales-2/", catalogHtml = await getHtml(catalogUrl), catalog = parseInfdCatalog(catalogHtml);
+  const pages = await Promise.allSettled(catalog.pages.map(async (url) => parseInfdTrainings(await getHtml(url), url, catalog)));
+  return publicTrainingPublications(pages.flatMap((result) => result.status === "fulfilled" ? result.value : []), "INFoD / AulaS-TIC");
 }
 
 async function boardPublications() {
@@ -138,7 +164,7 @@ async function runSync() {
   const db = getD1();
   const previous = await db.prepare("SELECT id, content_hash, starts_at, ends_at, metadata FROM publications").all<{ id: string; content_hash: string; starts_at: string | null; ends_at: string | null; metadata: string }>();
   const old = new Map(previous.results.map((row) => [row.id, row]));
-  const results = await Promise.allSettled([simePublications(), trainingPublications(), boardPublications(), usefulPublications()]);
+  const results = await Promise.allSettled([simePublications(), trainingPublications(), boardPublications(), usefulPublications(), cenetPublications(), infdPublications()]);
   const publications = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   if (!publications.length) throw new Error("Las fuentes no respondieron.");
   const changed = publications.filter((item) => old.has(item.id) && old.get(item.id)?.content_hash !== item.contentHash);
@@ -166,7 +192,8 @@ async function runSync() {
       if (scope === "level") return matchesProfile(item, { level: fullProfile.level });
       if (scope === "area") return matchesProfile(item, { area: fullProfile.area, subjects: fullProfile.subjects });
       if (scope === "interests") return matchesProfile(item, { trainingInterests: fullProfile.trainingInterests });
-      return matchesProfile(item, fullProfile);
+      const metadata = parseTrainingMetadata(item.metadata), state = registrationState(metadata?.registrationOpensAt, metadata?.registrationClosesAt, new Date());
+      return ["today", "tomorrow", "two-three", "four-seven", "eight-fourteen"].includes(state) && profileMatch(item, fullProfile).score >= Math.min(100, Math.max(0, Number(profile.training_match_threshold) || 80));
     };
     const statements = interesting.filter(match).map((item) => {
       const metadata = item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata) : null, previous = old.get(item.id), previousMetadata = item.kind === "capacitacion" ? parseTrainingMetadata(previous?.metadata) : null;

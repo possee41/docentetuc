@@ -21,5 +21,6 @@ export function hydrateProfile(record: Record<string, unknown>): Profile {
     department: String(record.department || ""), locality: String(record.locality || ""), shifts: profileList(record.shifts),
     wants_interim: Boolean(record.wants_interim), wants_substitute: Boolean(record.wants_substitute), training_interests: profileList(record.training_interests),
     notify_new_trainings: Boolean(record.notify_new_trainings), training_notify_scope: (record.training_notify_scope || "relevant") as Profile["training_notify_scope"],
+    training_match_threshold: Math.min(100, Math.max(0, Number(record.training_match_threshold) || 80)),
   };
 }

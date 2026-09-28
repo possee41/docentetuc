@@ -8,6 +8,7 @@ export const profiles = sqliteTable("profiles", {
   shifts: text("shifts").notNull().default(""), wantsInterim: integer("wants_interim", { mode: "boolean" }).notNull().default(true),
   wantsSubstitute: integer("wants_substitute", { mode: "boolean" }).notNull().default(true), trainingInterests: text("training_interests").notNull().default(""),
   notifyNewTrainings: integer("notify_new_trainings", { mode: "boolean" }).notNull().default(false), trainingNotifyScope: text("training_notify_scope").notNull().default("relevant"),
+  trainingMatchThreshold: integer("training_match_threshold").notNull().default(80),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 

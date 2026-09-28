@@ -497,6 +497,16 @@ button:disabled { opacity: .68; }
 .home-search > button:disabled { color: var(--text-muted); border-color: var(--border); }
 .home-search small { grid-column: 1 / -1; margin-top: -.2rem; padding-left: .15rem; color: var(--text-muted); font-size: .68rem; }
 .home-section, .home-ai, .home-split > button, .home-profile-nudge, .home-source-warning, .home-alert { border: 1px solid var(--border); background: var(--surface-primary); backdrop-filter: blur(10px); }
+.home-next-registration { overflow: hidden; border: 1px solid var(--warning-border); border-radius: 1.15rem; background: linear-gradient(135deg, color-mix(in srgb, var(--warning-bg) 82%, transparent), var(--surface-primary)); box-shadow: 0 10px 28px rgb(6 57 103 / .1); backdrop-filter: blur(12px); }
+.home-next-main { display: grid; width: 100%; gap: .28rem; padding: 1rem; text-align: left; }
+.home-next-main > strong { color: var(--text-primary); font-size: 1.05rem; line-height: 1.25; }
+.home-next-main > small, .home-next-dates, .home-next-profile { color: var(--text-secondary); font-size: .78rem; }
+.home-next-eyebrow { color: var(--warning-text); font-size: .72rem; font-weight: 950; letter-spacing: .08em; }
+.home-next-tentative { width: fit-content; border-radius: 999px; background: var(--warning-bg); padding: .22rem .5rem; color: var(--warning-text); font-size: .62rem; font-weight: 900; }
+.home-next-actions { display: flex; gap: .45rem; padding: 0 1rem .8rem; }
+.home-next-actions button { display: flex; min-height: 2.55rem; flex: 1; align-items: center; justify-content: center; gap: .3rem; border-radius: .75rem; background: var(--accent); color: var(--text-on-accent); font-size: .78rem; font-weight: 900; }
+.home-next-actions button + button { border: 1px solid var(--info-border); background: var(--surface-primary); color: var(--info-text); }
+.home-next-more { display: flex; min-height: 2.7rem; width: 100%; align-items: center; justify-content: center; gap: .15rem; border-top: 1px solid var(--warning-border); color: var(--accent-text); font-size: .76rem; font-weight: 900; }
 .home-section { overflow: hidden; border-radius: 1.15rem; box-shadow: 0 7px 22px rgb(6 57 103 / .06); }
 .home-section-title { display: flex; min-height: 3.35rem; align-items: center; justify-content: space-between; gap: .6rem; padding: .65rem .8rem .55rem; }
 .home-section-title p, .home-kicker { color: var(--accent-text); font-size: .66rem; font-weight: 900; letter-spacing: .11em; }

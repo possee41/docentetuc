@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calendarDayDistance, compareHomePriority, homePriority, type HomePriorityCandidate } from "./home-dashboard.ts";
+import { calendarDayDistance, compareHomePriority, homePriority, registrationState, trainingPriorityScore, type HomePriorityCandidate } from "./home-dashboard.ts";
 
 const now = new Date("2026-09-27T12:00:00-03:00");
 const candidate = (overrides: Partial<HomePriorityCandidate>): HomePriorityCandidate => ({ kind: "junta", matched: false, inAgenda: false, updatedAt: "2026-09-27T10:00:00-03:00", ...overrides });
@@ -19,5 +19,23 @@ test("prioriza aperturas antes que vacantes, agenda y novedades", () => {
     candidate({ kind: "capacitacion", registrationOpensAt: "2026-09-28T09:00:00-03:00", matched: true }),
     candidate({ kind: "capacitacion", registrationOpensAt: "2026-09-27T17:00:00-03:00", matched: true }),
   ].sort((left, right) => compareHomePriority(left, right, now));
-  assert.deepEqual(ordered.map((item) => homePriority(item, now)), [0, 1, 2, 3, 4, 5]);
+  assert.deepEqual(ordered.map((item) => homePriority(item, now)), [0, 1, 2, 6, 7, 8]);
+});
+
+test("clasifica toda la ventana de inscripción y descarta cerradas", () => {
+  assert.equal(registrationState("2026-09-27T17:00:00-03:00", "2026-10-01T23:59:59-03:00", now), "today");
+  assert.equal(registrationState("2026-09-28T00:00:00-03:00", null, now), "tomorrow");
+  assert.equal(registrationState("2026-09-30T00:00:00-03:00", null, now), "two-three");
+  assert.equal(registrationState("2026-10-07T00:00:00-03:00", null, now), "eight-fourteen");
+  assert.equal(registrationState("2026-10-17T00:00:00-03:00", null, now), "future");
+  assert.equal(registrationState("2026-09-20T00:00:00-03:00", "2026-09-30T23:59:59-03:00", now), "open");
+  assert.equal(registrationState("2026-09-20T00:00:00-03:00", "2026-09-26T23:59:59-03:00", now), "closed");
+});
+
+test("combina compatibilidad y urgencia aun sin perfil", () => {
+  const strong = candidate({ kind: "capacitacion", registrationOpensAt: "2026-10-01T00:00:00-03:00", matchScore: 95 });
+  const urgent = candidate({ kind: "capacitacion", registrationOpensAt: "2026-09-28T00:00:00-03:00", matchScore: 40 });
+  assert.ok(trainingPriorityScore(strong, now) > trainingPriorityScore(urgent, now));
+  assert.ok(compareHomePriority(strong, urgent, now) < 0);
+  assert.ok(trainingPriorityScore(candidate({ kind: "capacitacion", registrationOpensAt: "2026-10-01T00:00:00-03:00" }), now) > 0);
 });

@@ -7,14 +7,16 @@ Investigación técnica realizada el 25 de septiembre de 2026. Se inspeccionaron
 **FUENTE**  
 SIME — Sistema Integrado del Ministerio de Educación de Tucumán.
 
-**URL**  
+**URL**
+
 Página pública: <https://sime.educaciontuc.gov.ar/Vacantes/Index>  
 Detalle oficial: `https://sime.educaciontuc.gov.ar/Vacantes/Detalle/{id}`
 
 **TIPO DE INFORMACIÓN**  
 Pedidos públicos de cobertura de las cuatro Juntas: Inicial y Primaria (`id=1`), Secundaria (`id=2`), Técnica/Agrotécnica/No Formal (`id=3`) y Superior/Especial/Artística (`id=4`). Distingue interinatos, suplencias y comunicados; también identifica llamados abiertos.
 
-**MÉTODO DE OBTENCIÓN**  
+**MÉTODO DE OBTENCIÓN**
+
 La página se renderiza en HTML y monta una interfaz Vue. El listado se carga desde endpoints JSON públicos del mismo dominio:
 
 - `GET /Vacantes/ObtenerPeriodos/{junta}?caracter={-1|1|2|3}&tab={tab}`
@@ -37,7 +39,8 @@ En el detalle: descripción, fecha de designación, estado, establecimiento, car
 **PAGINACIÓN Y FILTROS**  
 No se observó paginación: el endpoint devuelve el arreglo completo para la combinación elegida. Los filtros nativos son Junta, carácter, pestaña y período mes/año. DocenteTuc aplica filtros por nivel, materia, turno, estado, coincidencia y guardados.
 
-**LIMITACIONES**  
+**LIMITACIONES**
+
 La localidad y el departamento no están de forma confiable en el listado; requieren consultar cada establecimiento. `cargos` es texto compuesto y puede incluir varios cargos. `abierto` identifica llamados abiertos, no la vigencia por fecha. Los contratos JSON no están documentados y podrían cambiar.
 
 **ESTRATEGIA DE ACTUALIZACIÓN**  
@@ -113,6 +116,33 @@ No se observó paginación. `/capa/listado` filtra por nivel; el frontend separa
 
 **ESTRATEGIA DE ACTUALIZACIÓN**  
 Consultar catálogo y comisiones cada 30 minutos; reducir a dos horas si no hay inscripciones abiertas. Guardar por `fdci:{capacitacion_id}`, sanear HTML a texto, comparar huella y preservar URL oficial. Respetar `429` y nunca enviar inscripciones.
+
+## 4. CeNET / INET
+
+**URL**  
+Catálogo y calendario público: <https://cenet.inet.edu.ar/mod/page/view.php?id=30493>
+
+**MÉTODO DE OBTENCIÓN**  
+DocenteTuc consulta el HTML público en cada sincronización. Recupera automáticamente los atributos publicados de cada curso (título, familia profesional, nivel, destinatarios, carga horaria, descripción y enlace de inscripción) y el calendario anual de cohortes. Selecciona la próxima cohorte cuyo cierre aún no pasó y normaliza apertura, cierre, inicio y finalización. Si CeNET declara el calendario tentativo, conserva y muestra esa condición.
+
+**LIMITACIONES**  
+No se ingresa a Moodle ni se usan cuentas. La estructura no es un API documentado; si cambia, DocenteTuc conserva la última copia válida y señala el fallo de fuente.
+
+## 5. INFoD / AulaS-TIC
+
+**URL**
+
+Catálogo público: <https://red.infd.edu.ar/cursos-nacionales-2/>
+
+Acceso oficial: <https://aulastic.infd.edu.ar/>
+
+**MÉTODO DE OBTENCIÓN**
+
+DocenteTuc consulta el catálogo público y sus fichas enlazadas. Recupera automáticamente la ventana de inscripción, el inicio de cursado, títulos, destinatarios, modalidad y descripciones públicas; después los incorpora al mismo modelo normalizado que FDCI y CeNET.
+
+**LIMITACIONES**
+
+No se accede al campus privado, no se automatizan inscripciones y no se almacenan credenciales. Las fechas comunes se muestran únicamente cuando están publicadas en el catálogo oficial.
 
 ## Política común
 

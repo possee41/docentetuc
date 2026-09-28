@@ -39,8 +39,11 @@ export async function POST(request: Request) {
     const action = value(body.action, 30);
     const db = getD1();
     if (action === "save_profile") {
-      await db.prepare(`UPDATE profiles SET name=?, level=?, area=?, subjects=?, junta=?, roles=?, department=?, locality=?, shifts=?, wants_interim=?, wants_substitute=?, training_interests=?, notify_new_trainings=?, training_notify_scope=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?`)
-        .bind(value(body.name, 100) || "Docente", profileStorage(body.levels ?? body.level, 120), profileStorage(body.areas ?? body.area, 180), profileStorage(body.subjects), profileStorage(body.boards ?? body.junta, 180), profileStorage(body.roles, 300), value(body.department, 100), value(body.locality, 100), profileStorage(body.shifts, 100), body.wantsInterim === false ? 0 : 1, body.wantsSubstitute === false ? 0 : 1, profileStorage(body.trainingInterests), body.notifyNewTrainings === true ? 1 : 0, value(body.trainingNotifyScope, 20) || "relevant", user.userId).run();
+      await db.prepare(`UPDATE profiles SET name=?, level=?, area=?, subjects=?, junta=?, roles=?, department=?, locality=?, shifts=?, wants_interim=?, wants_substitute=?, training_interests=?, notify_new_trainings=?, training_notify_scope=?, training_match_threshold=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?`)
+        .bind(value(body.name, 100) || "Docente", profileStorage(body.levels ?? body.level, 120), profileStorage(body.areas ?? body.area, 180), profileStorage(body.subjects), profileStorage(body.boards ?? body.junta, 180), profileStorage(body.roles, 300), value(body.department, 100), value(body.locality, 100), profileStorage(body.shifts, 100), body.wantsInterim === false ? 0 : 1, body.wantsSubstitute === false ? 0 : 1, profileStorage(body.trainingInterests), body.notifyNewTrainings === true ? 1 : 0, value(body.trainingNotifyScope, 20) || "relevant", Math.min(100, Math.max(0, Number(body.trainingMatchThreshold) || 80)), user.userId).run();
+    } else if (action === "set_training_alert_preferences") {
+      await db.prepare("UPDATE profiles SET notify_new_trainings=?, training_match_threshold=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?")
+        .bind(body.enabled === true ? 1 : 0, Math.min(100, Math.max(50, Number(body.threshold) || 80)), user.userId).run();
     } else if (action === "save_designation") {
       const publicationId = value(body.publicationId, 120), status = value(body.status, 30).toUpperCase();
       if (!DESIGNATION_STATUSES.includes(status as typeof DESIGNATION_STATUSES[number])) return Response.json({ error: "Estado de designación inválido." }, { status: 400 });
@@ -59,13 +62,14 @@ export async function POST(request: Request) {
       const publication = await db.prepare("SELECT id, metadata FROM publications WHERE id=? AND kind='capacitacion'").bind(publicationId).first<{ id: string; metadata: string }>();
       const metadata = parseTrainingMetadata(publication?.metadata);
       if (!publication || !metadata?.registrationOpensAt || !metadata.trainingId) return Response.json({ error: "La fuente oficial no informó una apertura válida." }, { status: 400 });
-      const mode = value(body.mode, 20), opens = new Date(metadata.registrationOpensAt);
-      if (!metadata.registrationHasTime && mode === "one_hour") return Response.json({ error: "El sitio oficial no informa el horario exacto." }, { status: 400 });
-      const advance = mode === "one_day" ? 1440 : mode === "one_hour" ? 60 : mode === "at_open" ? 0 : null;
-      const custom = value(body.customRemindAt, 40), remindAt = advance == null ? new Date(custom) : new Date(opens.getTime() - advance * 60000);
-      if (Number.isNaN(remindAt.getTime()) || remindAt.getTime() > opens.getTime()) return Response.json({ error: "Elegí un recordatorio válido, anterior a la apertura." }, { status: 400 });
-      const id = `${user.userId}:${metadata.trainingId}`;
-      await db.prepare("INSERT INTO training_reminders (id, user_id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0) ON CONFLICT(id) DO UPDATE SET publication_id=excluded.publication_id, opens_at=excluded.opens_at, precision=excluded.precision, advance_minutes=excluded.advance_minutes, remind_at=excluded.remind_at, notified=0, updated_at=CURRENT_TIMESTAMP").bind(id, user.userId, metadata.trainingId, publicationId, metadata.registrationOpensAt, metadata.registrationHasTime ? "datetime" : "date", advance, remindAt.toISOString()).run();
+      const advances = Array.isArray(body.advanceMinutes) ? [...new Set(body.advanceMinutes.map(Number))] : [];
+      if (!advances.length || advances.some((advance) => ![10080, 4320, 1440, 0].includes(advance))) return Response.json({ error: "Elegí al menos un aviso válido." }, { status: 400 });
+      const opens = new Date(metadata.registrationOpensAt);
+      await db.prepare("DELETE FROM training_reminders WHERE user_id=? AND training_id=?").bind(user.userId, metadata.trainingId).run();
+      await db.batch(advances.map((advance) => {
+        const remindAt = new Date(opens.getTime() - advance * 60000), id = `${user.userId}:${metadata.trainingId}:${advance}`;
+        return db.prepare("INSERT INTO training_reminders (id, user_id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)").bind(id, user.userId, metadata.trainingId, publicationId, metadata.registrationOpensAt, metadata.registrationHasTime ? "datetime" : "date", advance, remindAt.toISOString());
+      }));
     } else if (action === "remove_training_reminder") {
       await db.prepare("DELETE FROM training_reminders WHERE user_id=? AND training_id=?").bind(user.userId, value(body.trainingId, 80)).run();
     } else if (["save", "agenda", "follow"].includes(action)) {
