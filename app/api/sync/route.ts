@@ -7,6 +7,7 @@ import { mergeTrainingData, parseTrainingMetadata } from "@/lib/training";
 import { parseCenetTrainings, parseInfdCatalog, parseInfdTrainings, type PublicTraining } from "@/lib/external-trainings";
 import { usefulInformation } from "@/lib/useful-information";
 import { registrationState } from "@/lib/home-dashboard";
+import { diffByHash } from "@/lib/sync-diff";
 
 export const dynamic = "force-dynamic";
 
@@ -167,18 +168,19 @@ async function runSync() {
   const results = await Promise.allSettled([simePublications(), trainingPublications(), boardPublications(), usefulPublications(), cenetPublications(), infdPublications()]);
   const publications = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   if (!publications.length) throw new Error("Las fuentes no respondieron.");
-  const changed = publications.filter((item) => old.has(item.id) && old.get(item.id)?.content_hash !== item.contentHash);
-  const fresh = publications.filter((item) => !old.has(item.id));
-  for (let offset = 0; offset < publications.length; offset += 40) {
-    await db.batch(publications.slice(offset, offset + 40).map((item) => db.prepare(`INSERT INTO publications (id, source, external_id, kind, category, title, summary, level, area, junta, location, shift, character, starts_at, ends_at, status, official_url, metadata, content_hash, source_updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET source=excluded.source, category=excluded.category, title=excluded.title, summary=excluded.summary, level=excluded.level, area=excluded.area, junta=excluded.junta, location=excluded.location, shift=excluded.shift, character=excluded.character, starts_at=excluded.starts_at, ends_at=excluded.ends_at, status=excluded.status, official_url=excluded.official_url, metadata=excluded.metadata, content_hash=excluded.content_hash, source_updated_at=excluded.source_updated_at, updated_at=CURRENT_TIMESTAMP`).bind(item.id, item.source, item.externalId, item.kind, item.category, item.title, item.summary, item.level, item.area, item.junta, item.location, item.shift, item.character, item.startsAt, item.endsAt, item.status, item.officialUrl, item.metadata || "{}", item.contentHash, item.sourceUpdatedAt)));
+  const { fresh, changed, unchanged, writes } = diffByHash(old, publications);
+  let rowsWritten = 0;
+  const countWrites = (results: unknown) => { for (const result of Array.isArray(results) ? results : [results]) rowsWritten += Number((result as { meta?: { rows_written?: number } })?.meta?.rows_written || 0); };
+  for (let offset = 0; offset < writes.length; offset += 40) {
+    countWrites(await db.batch(writes.slice(offset, offset + 40).map((item) => db.prepare(`INSERT INTO publications (id, source, external_id, kind, category, title, summary, level, area, junta, location, shift, character, starts_at, ends_at, status, official_url, metadata, content_hash, source_updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET source=excluded.source, category=excluded.category, title=excluded.title, summary=excluded.summary, level=excluded.level, area=excluded.area, junta=excluded.junta, location=excluded.location, shift=excluded.shift, character=excluded.character, starts_at=excluded.starts_at, ends_at=excluded.ends_at, status=excluded.status, official_url=excluded.official_url, metadata=excluded.metadata, content_hash=excluded.content_hash, source_updated_at=excluded.source_updated_at, updated_at=CURRENT_TIMESTAMP`).bind(item.id, item.source, item.externalId, item.kind, item.category, item.title, item.summary, item.level, item.area, item.junta, item.location, item.shift, item.character, item.startsAt, item.endsAt, item.status, item.officialUrl, item.metadata || "{}", item.contentHash, item.sourceUpdatedAt))));
   }
   if (results[1].status === "fulfilled") {
-    await db.prepare("INSERT OR IGNORE INTO saved_publications (user_id, publication_id, in_agenda, followed, saved_at) SELECT s.user_id, 'fdci:course:' || p.external_id, s.in_agenda, s.followed, s.saved_at FROM saved_publications s JOIN publications p ON p.id=s.publication_id JOIN publications replacement ON replacement.id='fdci:course:' || p.external_id WHERE p.id LIKE 'fdci:%' AND p.id NOT LIKE 'fdci:course:%' AND p.id NOT LIKE 'fdci:commission:%'").run();
-    await db.prepare("DELETE FROM publications WHERE id LIKE 'fdci:%' AND id NOT LIKE 'fdci:course:%' AND id NOT LIKE 'fdci:commission:%'").run();
+    countWrites(await db.prepare("INSERT OR IGNORE INTO saved_publications (user_id, publication_id, in_agenda, followed, saved_at) SELECT s.user_id, 'fdci:course:' || p.external_id, s.in_agenda, s.followed, s.saved_at FROM saved_publications s JOIN publications p ON p.id=s.publication_id JOIN publications replacement ON replacement.id='fdci:course:' || p.external_id WHERE p.id LIKE 'fdci:%' AND p.id NOT LIKE 'fdci:course:%' AND p.id NOT LIKE 'fdci:commission:%'").run());
+    countWrites(await db.prepare("DELETE FROM publications WHERE id LIKE 'fdci:%' AND id NOT LIKE 'fdci:course:%' AND id NOT LIKE 'fdci:commission:%'").run());
   }
   const sourceCounts = new Map<string, number>();
   publications.forEach((item) => sourceCounts.set(item.source, (sourceCounts.get(item.source) || 0) + 1));
-  await db.batch([...sourceCounts].map(([source, count]) => db.prepare("INSERT INTO sync_state (source, synced_at, item_count, error) VALUES (?, CURRENT_TIMESTAMP, ?, NULL) ON CONFLICT(source) DO UPDATE SET synced_at=CURRENT_TIMESTAMP, item_count=excluded.item_count, error=NULL").bind(source, count)));
+  countWrites(await db.batch([...sourceCounts].map(([source, count]) => db.prepare("INSERT INTO sync_state (source, synced_at, item_count, error) VALUES (?, CURRENT_TIMESTAMP, ?, NULL) ON CONFLICT(source) DO UPDATE SET synced_at=CURRENT_TIMESTAMP, item_count=excluded.item_count, error=NULL").bind(source, count))));
 
   const profiles = await db.prepare("SELECT * FROM profiles").all<Record<string, unknown>>();
   const interesting = [...fresh.filter((item) => !item.id.startsWith("drive:") && item.kind !== "informacion").slice(0, 60), ...changed.filter((item) => !item.id.startsWith("drive:") && item.kind !== "informacion")];
@@ -203,9 +205,12 @@ async function runSync() {
       const type = old.has(item.id) ? (item.kind === "junta" ? "PADRON_ACTUALIZADO" : item.kind === "vacante" ? "DESIGNACION_CAMBIO" : dateChanged ? "FECHA_CAMBIADA" : "FECHA_IMPORTANTE") : item.kind === "vacante" ? designationType : metadata?.entity === "commission" ? "COMISION_NUEVA" : item.kind === "capacitacion" ? "CAPACITACION_NUEVA" : item.category === "Comunicados" ? "COMUNICADO_NUEVO" : "PADRON_NUEVO";
       return db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) VALUES (?, ?, ?)").bind(String(profile.user_id), item.id, type);
     });
-    for (let offset = 0; offset < statements.length; offset += 40) await db.batch(statements.slice(offset, offset + 40));
+    for (let offset = 0; offset < statements.length; offset += 40) countWrites(await db.batch(statements.slice(offset, offset + 40)));
   }
-  return { count: publications.length, fresh: fresh.length, changed: changed.length, failures: results.filter((result) => result.status === "rejected").length };
+  const sourceMetrics = [...sourceCounts].map(([source, recovered]) => ({ source, recovered, fresh: fresh.filter((item) => item.source === source).length, changed: changed.filter((item) => item.source === source).length, unchanged: unchanged.filter((item) => item.source === source).length }));
+  const metrics = { count: publications.length, fresh: fresh.length, changed: changed.length, unchanged: unchanged.length, failures: results.filter((result) => result.status === "rejected").length, rowsWritten, sources: sourceMetrics };
+  console.log("sync_completed", metrics);
+  return metrics;
 }
 
 export async function POST(request: Request) {
@@ -214,7 +219,7 @@ export async function POST(request: Request) {
     if (!scheduled) await currentUser(request);
     const db = getD1();
     const latest = await db.prepare("SELECT MAX(synced_at) AS synced_at FROM sync_state").first<{ synced_at: string | null }>();
-    if (latest?.synced_at && Date.now() - new Date(`${latest.synced_at}Z`).getTime() < 5 * 60_000) return Response.json({ ok: true, skipped: true });
+    if (!scheduled && latest?.synced_at && Date.now() - new Date(`${latest.synced_at}Z`).getTime() < 60 * 60_000) return Response.json({ ok: true, skipped: true, reason: "central_sync_recent" });
     return Response.json({ ok: true, ...(await runSync()) });
   } catch (error) {
     console.error("sync_failed", error);

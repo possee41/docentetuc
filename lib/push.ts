@@ -1,5 +1,5 @@
 import { buildPushPayload, type PushSubscription, type VapidKeys } from "@block65/webcrypto-web-push";
-import { matchesProfile } from "./matching.ts";
+import { matchesProfile, profileMatch } from "./matching.ts";
 import { parseTrainingMetadata } from "./training.ts";
 
 export type PushEnvironment = { VAPID_PUBLIC_KEY?: string; VAPID_PRIVATE_KEY?: string; VAPID_SUBJECT?: string };
@@ -74,41 +74,61 @@ type PublicationRow = { id: string; kind: string; title: string; summary: string
 type ProfileRow = Record<string, unknown> & { user_id: string };
 const dayInTucuman = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(date);
 
-function matches(publication: PublicationRow, profile: ProfileRow) {
-  return matchesProfile(publication, { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), roles: String(profile.roles || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") });
+function matchProfile(profile: ProfileRow) {
+  return { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), roles: String(profile.roles || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") };
+}
+
+function trainingNotificationsEnabled(publication: PublicationRow, profile: ProfileRow) {
+  if (!Boolean(profile.notify_new_trainings)) return false;
+  const fullProfile = matchProfile(profile), scope = String(profile.training_notify_scope || "relevant");
+  if (scope === "all") return true;
+  if (scope === "level") return matchesProfile(publication, { level: fullProfile.level });
+  if (scope === "area") return matchesProfile(publication, { area: fullProfile.area, subjects: fullProfile.subjects });
+  if (scope === "interests") return matchesProfile(publication, { trainingInterests: fullProfile.trainingInterests });
+  return profileMatch(publication, fullProfile).score >= Math.min(100, Math.max(0, Number(profile.training_match_threshold) || 80));
+}
+
+export function scheduledNotificationTypes(publication: PublicationRow, profile: ProfileRow, saved: boolean, now = new Date()) {
+  const events: string[] = [], metadata = publication.kind === "capacitacion" ? parseTrainingMetadata(publication.metadata) : null;
+  const closingAt = metadata?.registrationClosesAt || publication.ends_at;
+  if (saved && closingAt) {
+    const remaining = new Date(closingAt).getTime() - now.getTime();
+    if (remaining > 0 && remaining <= 48 * 3_600_000) events.push("CIERRE_PROXIMO");
+  }
+  if (publication.kind !== "capacitacion" || !trainingNotificationsEnabled(publication, profile)) return events;
+  const opening = metadata?.registrationOpensAt;
+  if (!opening) return events;
+  const opensAt = new Date(opening), remaining = opensAt.getTime() - now.getTime(), openingDay = dayInTucuman(opensAt);
+  const todayKey = dayInTucuman(now), tomorrowKey = dayInTucuman(new Date(now.getTime() + 86_400_000));
+  if (remaining > 0 && remaining <= 7 * 86_400_000) events.push("CAPACITACION_PROXIMA");
+  if (openingDay === tomorrowKey) events.push("CAPACITACION_ABRE_MANANA");
+  if (openingDay === todayKey) events.push("CAPACITACION_ABRE_HOY");
+  if (opensAt <= now && (!closingAt || new Date(closingAt) > now)) events.push("CAPACITACION_ABIERTA");
+  return events;
 }
 
 export async function materializeScheduledNotifications(db: D1Database, now = new Date()) {
-  await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'CAPACITACION_ABRE' FROM training_reminders WHERE notified=0 AND datetime(remind_at)<=datetime(?)").bind(now.toISOString()).run();
-  await db.prepare("UPDATE training_reminders SET notified=1, updated_at=CURRENT_TIMESTAMP WHERE notified=0 AND datetime(remind_at)<=datetime(?)").bind(now.toISOString()).run();
-  await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'DESIGNACION_RECORDATORIO' FROM designation_tracking WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?)").bind(now.toISOString()).run();
-  await db.prepare("UPDATE designation_tracking SET reminder_notified=1, updated_at=CURRENT_TIMESTAMP WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?)").bind(now.toISOString()).run();
-  await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'AGENDA_RECORDATORIO' FROM saved_publications WHERE in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime(?)").bind(now.toISOString()).run();
-  await db.prepare("UPDATE saved_publications SET agenda_reminder_notified=1 WHERE in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime(?)").bind(now.toISOString()).run();
+  let rowsWritten = 0;
+  const count = (result: { meta?: { rows_written?: number } }) => { rowsWritten += Number(result.meta?.rows_written || 0); };
+  count(await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'CAPACITACION_ABRE' FROM training_reminders WHERE notified=0 AND datetime(remind_at)<=datetime(?)").bind(now.toISOString()).run());
+  count(await db.prepare("UPDATE training_reminders SET notified=1, updated_at=CURRENT_TIMESTAMP WHERE notified=0 AND datetime(remind_at)<=datetime(?)").bind(now.toISOString()).run());
+  count(await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'DESIGNACION_RECORDATORIO' FROM designation_tracking WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?)").bind(now.toISOString()).run());
+  count(await db.prepare("UPDATE designation_tracking SET reminder_notified=1, updated_at=CURRENT_TIMESTAMP WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?)").bind(now.toISOString()).run());
+  count(await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'AGENDA_RECORDATORIO' FROM saved_publications WHERE in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime(?)").bind(now.toISOString()).run());
+  count(await db.prepare("UPDATE saved_publications SET agenda_reminder_notified=1 WHERE in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime(?)").bind(now.toISOString()).run());
 
-  const [profiles, publications] = await Promise.all([
+  const [profiles, publications, savedRows] = await Promise.all([
     db.prepare("SELECT * FROM profiles").all<ProfileRow>(),
     db.prepare("SELECT id, kind, title, summary, level, area, junta, location, shift, character, starts_at, ends_at, status, metadata FROM publications WHERE kind IN ('vacante','capacitacion') AND status NOT IN ('cerrada','finalizada') LIMIT 800").all<PublicationRow>(),
+    db.prepare("SELECT user_id, publication_id FROM saved_publications").all<{ user_id: string; publication_id: string }>(),
   ]);
-  const tomorrow = new Date(now.getTime() + 86_400_000), todayKey = dayInTucuman(now), tomorrowKey = dayInTucuman(tomorrow), statements: D1PreparedStatement[] = [];
+  const saved = new Set(savedRows.results.map((row) => `${row.user_id}\n${row.publication_id}`)), statements: D1PreparedStatement[] = [];
   for (const profile of profiles.results) for (const publication of publications.results) {
-    if (!matches(publication, profile)) continue;
-    const events: string[] = [], closingAt = publication.kind === "capacitacion" ? parseTrainingMetadata(publication.metadata)?.registrationClosesAt : publication.ends_at;
-    if (closingAt) { const remaining = new Date(closingAt).getTime() - now.getTime(); if (remaining > 0 && remaining <= 48 * 3_600_000) events.push("CIERRE_PROXIMO"); }
-    if (publication.kind === "capacitacion") {
-      const opening = parseTrainingMetadata(publication.metadata)?.registrationOpensAt;
-      if (opening) {
-        const opensAt = new Date(opening), remaining = opensAt.getTime() - now.getTime(), openingDay = dayInTucuman(opensAt);
-        if (remaining > 0 && remaining <= 7 * 86_400_000) events.push("CAPACITACION_PROXIMA");
-        if (openingDay === tomorrowKey) events.push("CAPACITACION_ABRE_MANANA");
-        if (openingDay === todayKey) events.push("CAPACITACION_ABRE_HOY");
-        if (opensAt <= now && (!closingAt || new Date(closingAt) > now)) events.push("CAPACITACION_ABIERTA");
-      }
-    }
+    const events = scheduledNotificationTypes(publication, profile, saved.has(`${profile.user_id}\n${publication.id}`), now);
     for (const type of events) statements.push(db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) VALUES (?, ?, ?)").bind(profile.user_id, publication.id, type));
   }
-  for (let offset = 0; offset < statements.length; offset += 50) await db.batch(statements.slice(offset, offset + 50));
-  return statements.length;
+  for (let offset = 0; offset < statements.length; offset += 50) for (const result of await db.batch(statements.slice(offset, offset + 50))) count(result);
+  return { considered: statements.length, rowsWritten };
 }
 
 type DeliveryRow = { notification_id: number; endpoint: string; user_id: string; p256dh: string; auth: string; expiration_time: number | null; type: string; title: string; publication_id: string; quiet_start: string; quiet_end: string; timezone: string; enabled: number; vacancies: number; trainings: number; commissions: number; reminders: number; date_changes: number; closing_soon: number; boards: number; designation_exact: number; designation_partial: number; designation_roles: number; attempts: number | null };
