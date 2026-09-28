@@ -411,7 +411,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const latest = [...publications].filter((item) => currentForHome(item) && !primaryHomeIds.has(item.id)).sort((a, b) => new Date(b.last_changed_at || b.updated_at).getTime() - new Date(a.last_changed_at || a.updated_at).getTime()).slice(0, 3);
   const searchResults = query.trim() ? publications.filter((item) => normalize(publicationSearchText(item)).includes(normalize(query.trim()))).slice(0, 20) : [];
   const profileNeedsDetail = !profileReady || !publications.some((item) => matchResult(item).confidence >= 70);
-  const sourceLabels = [["SIME", "SIME"], ["Capacitación Docente", "FDCI"], ["CeNET / INET", "CeNET"], ["INFoD / AulaS-TIC", "INFoD"], ["Padrones", "Padrones"], ["Llamados abiertos", "Llamados"], ["Comunicados", "Comunicados"], ["Resoluciones", "Resoluciones"]] as const;
+  const sourceLabels = [["SIME", "SIME"], ["Capacitación Docente", "FDCI"], ["CeNET / INET", "CeNET"], ["INFoD / AulaS-TIC", "INFoD"], ["Padrones", "Padrones"], ["Llamados abiertos", "Llamados"], ["Comunicados", "Comunicados"], ["Resoluciones", "Resoluciones"], ["Información oficial Tucumán", "Info oficial"]] as const;
   const healthWarning = sourceLabels.some(([key]) => { const health = sync.find((source) => source.source === key); return !health || health.sync_status !== "OK" || !sourceFreshness(health, now).fresh; });
   const priorityLabel = (item: Publication) => {
     const itemCandidate = candidate(item), rank = homePriority(itemCandidate, now), days = calendarDayDistance(itemCandidate.registrationOpensAt, now);
