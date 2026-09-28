@@ -9,7 +9,7 @@ export type MatchPublication = {
 };
 
 export type MatchCriterion = { key: string; label: string; expected: string; matched: boolean; available: boolean; required: boolean };
-export type MatchResult = { status: "exact" | "partial" | "none" | "unconfigured"; score: number; matched: number; total: number; criteria: MatchCriterion[] };
+export type MatchResult = { status: "exact" | "partial" | "none" | "unconfigured"; score: number; confidence: number; matched: number; total: number; criteria: MatchCriterion[] };
 
 const normalize = (value = "") => value.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
 type ProfileValue = string | string[] | undefined;
@@ -38,9 +38,9 @@ export function profileMatch(publication: MatchPublication, profile: MatchProfil
   if (publication.kind === "vacante" && character.includes("supl")) criteria.push({ key: "character", label: "Carácter", expected: "Suplencia", matched: profile.wantsSubstitute !== false, available: true, required: true });
 
   const matched = criteria.filter((criterion) => criterion.matched).length, total = criteria.length;
-  if (!total) return { status: "unconfigured", score: 0, matched: 0, total: 0, criteria };
-  const score = Math.round(matched / total * 100), missingRequired = criteria.some((criterion) => criterion.required && !criterion.matched);
-  return { status: !matched ? "none" : missingRequired ? "partial" : "exact", score, matched, total, criteria };
+  if (!total) return { status: "unconfigured", score: 0, confidence: 0, matched: 0, total: 0, criteria };
+  const score = Math.round(matched / total * 100), available = criteria.filter((criterion) => criterion.available).length, confidence = Math.round(available / total * 100), missingRequired = criteria.some((criterion) => criterion.required && !criterion.matched);
+  return { status: !matched ? "none" : missingRequired ? "partial" : "exact", score, confidence, matched, total, criteria };
 }
 
 export const matchScore = (publication: MatchPublication, profile: MatchProfile) => profileMatch(publication, profile).score / 100;

@@ -415,6 +415,8 @@ button:disabled { opacity: .68; }
   }
   .mobile-content > div.grid.gap-4 { grid-template-columns: minmax(0, 1fr) !important; }
   .mobile-content section > div.grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .mobile-content section.space-y-3 > div.agenda-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .mobile-content section > div.agenda-calendar-grid { grid-template-columns: repeat(7, minmax(0, 1fr)) !important; }
   .mobile-content > div.grid.gap-4 > article > div:first-child { margin-bottom: .7rem; }
   .mobile-content > div.grid.gap-4 > article h2 { font-size: 1rem; }
   .mobile-content > div.grid.gap-4 > article h2 + p { margin-top: .35rem; -webkit-line-clamp: 1; }

@@ -17,16 +17,17 @@ export async function GET(request: Request) {
     await db.prepare("UPDATE training_reminders SET notified=1, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND notified=0 AND datetime(remind_at)<=datetime('now')").bind(user.userId).run();
     await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'AGENDA_RECORDATORIO' FROM saved_publications WHERE user_id=? AND in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime('now')").bind(user.userId).run();
     await db.prepare("UPDATE saved_publications SET agenda_reminder_notified=1 WHERE user_id=? AND in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime('now')").bind(user.userId).run();
-    const [profile, publications, saved, notifications, reminders, designations, sync] = await Promise.all([
+    const [profile, publications, saved, notifications, reminders, designations, manualEvents, sync] = await Promise.all([
       db.prepare("SELECT * FROM profiles WHERE user_id=?").bind(user.userId).first(),
       db.prepare("SELECT * FROM publications ORDER BY COALESCE(ends_at, starts_at, updated_at) DESC LIMIT 1500").all(),
       db.prepare("SELECT publication_id, in_agenda, followed, agenda_at, agenda_notes, agenda_reminder_at, agenda_reminder_notified, saved_at FROM saved_publications WHERE user_id=?").bind(user.userId).all(),
       db.prepare("SELECT n.*, p.title, p.kind FROM notifications n JOIN publications p ON p.id=n.publication_id WHERE n.user_id=? ORDER BY n.created_at DESC LIMIT 100").bind(user.userId).all(),
       db.prepare("SELECT id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified FROM training_reminders WHERE user_id=? ORDER BY opens_at").bind(user.userId).all(),
       db.prepare("SELECT id, publication_id, status, role, subject, school, address, locality, applied_at, appointment_at, shift, board, documentation, order_number, notes, official_url, reminder_at, reminder_notified, created_at, updated_at FROM designation_tracking WHERE user_id=? ORDER BY COALESCE(appointment_at, applied_at, updated_at) DESC").bind(user.userId).all(),
+      db.prepare("SELECT id, title, notes, category, starts_at, reminder_at, reminder_notified, created_at, updated_at FROM manual_events WHERE user_id=? ORDER BY starts_at").bind(user.userId).all(),
       db.prepare("SELECT * FROM sync_state ORDER BY source").all(),
     ]);
-    return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publications: publications.results, saved: saved.results, notifications: notifications.results, reminders: reminders.results, designations: designations.results, sync: sync.results });
+    return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publications: publications.results, saved: saved.results, notifications: notifications.results, reminders: reminders.results, designations: designations.results, manualEvents: manualEvents.results, sync: sync.results });
   } catch (error) {
     return Response.json({ error: authError(error) ? "Iniciá sesión para continuar." : "No se pudieron cargar los datos." }, { status: authError(error) ? 401 : 500 });
   }
@@ -88,6 +89,17 @@ export async function POST(request: Request) {
         }
         if (action === "follow") await db.prepare("UPDATE saved_publications SET followed=? WHERE user_id=? AND publication_id=?").bind(enabled, user.userId, id).run();
       }
+    } else if (action === "save_event") {
+      const title = value(body.title, 160), startsAt = value(body.startsAt, 40), starts = new Date(startsAt);
+      if (!title || !startsAt || Number.isNaN(starts.getTime())) return Response.json({ error: "Completá un título y una fecha válida." }, { status: 400 });
+      const reminderAt = value(body.reminderAt, 40), reminder = reminderAt ? new Date(reminderAt) : null;
+      if (reminderAt && (!reminder || Number.isNaN(reminder.getTime()) || reminder > starts)) return Response.json({ error: "El recordatorio debe ser anterior al evento." }, { status: 400 });
+      const id = value(body.id, 100) || `${user.userId}:${crypto.randomUUID()}`;
+      await db.prepare(`INSERT INTO manual_events (id, user_id, title, notes, category, starts_at, reminder_at, reminder_notified, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+        ON CONFLICT(id) DO UPDATE SET title=excluded.title, notes=excluded.notes, category=excluded.category, starts_at=excluded.starts_at, reminder_at=excluded.reminder_at, reminder_notified=0, updated_at=CURRENT_TIMESTAMP WHERE manual_events.user_id=excluded.user_id`)
+        .bind(id, user.userId, title, value(body.notes, 1000), value(body.category, 40) || "Personal", starts.toISOString(), reminder ? reminder.toISOString() : null).run();
+    } else if (action === "delete_event") {
+      await db.prepare("DELETE FROM manual_events WHERE id=? AND user_id=?").bind(value(body.id, 100), user.userId).run();
     } else if (action === "read_notification") {
       await db.prepare("UPDATE notifications SET read=1 WHERE id=? AND user_id=?").bind(Number(body.id), user.userId).run();
     } else return Response.json({ error: "Acción no admitida." }, { status: 400 });
