@@ -12,11 +12,19 @@ test("sólo considera exacta una publicación que cumple todos los criterios con
   assert.equal(matchesProfile(exact, profile), true);
 });
 
-test("marca como parcial cuando falta un criterio obligatorio", () => {
-  const result = profileMatch({ ...exact, summary: "Escuela secundaria de Monteros" }, profile);
-  assert.equal(result.status, "partial");
+test("no penaliza un criterio ausente y lo conserva como desconocido", () => {
+  const result = profileMatch({ ...exact, summary: "" }, profile);
+  assert.equal(result.status, "exact");
   assert.ok(result.criteria.some((criterion) => criterion.key === "location" && !criterion.matched));
-  assert.ok(result.score < 100);
+  assert.ok(result.criteria.some((criterion) => criterion.key === "location" && !criterion.available));
+  assert.equal(result.score, 100);
+});
+
+test("devuelve UNKNOWN cuando la fuente no aporta evidencia evaluable", () => {
+  const result = profileMatch({ kind: "capacitacion", title: "Curso sin destinatarios ni área" }, { shifts: ["Mañana"] });
+  assert.equal(result.status, "unknown");
+  assert.equal(result.confidence, 0);
+  assert.equal(matchesProfile({ kind: "capacitacion", title: "Curso sin destinatarios ni área" }, { shifts: ["Mañana"] }), false);
 });
 
 test("no recomienda resultados que sólo coinciden débilmente", () => {

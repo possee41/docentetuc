@@ -19,7 +19,7 @@ import type { AIContext } from "@/components/app-chrome";
 import { DocenteTucAIChatPanel } from "@/components/docentetuc-ai-panel";
 import type { AIAssistantAction } from "@/components/docentetuc-ai-panel";
 import { toast } from "sonner";
-import { matchesProfile, profileMatch } from "@/lib/matching";
+import { isEligibleForPersonalizedHome, matchesProfile, profileMatch } from "@/lib/matching";
 import type { MatchResult } from "@/lib/matching";
 import { safeDate } from "@/lib/safe-date";
 import { openingCountdown, parseTrainingMetadata } from "@/lib/training";
@@ -187,7 +187,7 @@ export default function DocenteApp() {
   const publicationForMatch = (publication: Publication) => ({ kind: publication.kind, title: publication.title, summary: publication.summary, level: publication.level, area: publication.area, junta: publication.junta, location: publication.location, shift: publication.shift, character: publication.character });
   const matchResult = (publication: Publication) => matchProfile ? profileMatch(publicationForMatch(publication), matchProfile) : { status: "unconfigured", score: 0, confidence: 0, matched: 0, total: 0, criteria: [] } as MatchResult;
   const matches = (publication: Publication) => matchProfile ? matchesProfile(publicationForMatch(publication), matchProfile) : false;
-  const relevantTraining = (publication: Publication) => { const result = matchResult(publication); return publication.kind === "capacitacion" && result.score >= 85 && result.confidence >= 70; };
+  const relevantTraining = (publication: Publication) => publication.kind === "capacitacion" && matchProfile ? isEligibleForPersonalizedHome(publicationForMatch(publication), matchProfile) : false;
 
   function filteredPublications(search = query) {
     let items = data?.publications || [];
@@ -200,6 +200,7 @@ export default function DocenteApp() {
     if (filter === "abiertas") items = items.filter((item) => item.status === "inscripción abierta");
     if (filter === "proximamente") items = items.filter((item) => item.status === "próximamente");
     if (filter === "hoy") items = items.filter(opensToday);
+    if (filter === "finalizadas") items = items.filter((item) => ["finalizada", "cerrada", "vencida"].includes(normalize(item.status)));
     if (filter === "guardadas") items = items.filter((item) => savedMap.has(item.id));
     if (filter === "llamados") items = items.filter((item) => normalize(item.category).includes("llamado"));
     if (filter === "padrones") items = items.filter((item) => normalize(item.category).includes("padron"));
@@ -332,7 +333,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const publications = data?.publications || [];
   const publicationMap = new Map(publications.map((item) => [item.id, item]));
   const eventDate = (item: Publication) => savedMap.get(item.id)?.agenda_at || parseTrainingMetadata(item.metadata)?.registrationOpensAt || item.ends_at || item.starts_at;
-  const relevant = (item: Publication) => { const result = matchResult(item); return ["exact", "partial"].includes(result.status) && result.score >= 85 && result.confidence >= 70; };
+  const relevant = (item: Publication) => Boolean(matchProfile && isEligibleForPersonalizedHome(publicationForMatch(item), matchProfile));
   const agenda = publications.filter((item) => {
     const date = safeDate(eventDate(item));
     return Boolean(savedMap.get(item.id)?.in_agenda) && Boolean(date && date.getTime() >= now.getTime());
@@ -342,7 +343,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const candidate = (item: Publication) => { const metadata = parseTrainingMetadata(item.metadata), result = matchResult(item); return { kind: item.kind, registrationOpensAt: metadata?.registrationOpensAt, registrationClosesAt: metadata?.registrationClosesAt, eventAt: eventDate(item), matched: matches(item), inAgenda: Boolean(savedMap.get(item.id)?.in_agenda), updatedAt: item.updated_at, matchScore: result.status === "unconfigured" ? undefined : result.score }; };
   const compare = (a: Publication, b: Publication) => compareHomePriority(candidate(a), candidate(b), now);
   const upcoming = publications.filter((item) => item.kind === "capacitacion" && ["today", "tomorrow", "two-three", "four-seven", "eight-fourteen", "open"].includes(registrationState(parseTrainingMetadata(item.metadata)?.registrationOpensAt, parseTrainingMetadata(item.metadata)?.registrationClosesAt, now))).sort(compare);
-  const nextTraining = upcoming.find(relevant), nextMetadata = nextTraining ? parseTrainingMetadata(nextTraining.metadata) : null, nextMatch = nextTraining ? matchResult(nextTraining) : null;
+  const nextTraining = upcoming[0], nextMetadata = nextTraining ? parseTrainingMetadata(nextTraining.metadata) : null, nextMatch = nextTraining ? matchResult(nextTraining) : null;
   const forYou = publications.filter((item) => relevant(item) && item.id !== nextTraining?.id).sort(compare).slice(0, 2);
   const unread = (data?.notifications || []).filter((notice) => !Boolean(notice.read));
   const importantNotice = unread.map((notice) => ({ notice, publication: publicationMap.get(notice.publication_id) })).find(({ publication }) => publication && relevant(publication));
@@ -441,7 +442,7 @@ function DesignationFormContent({ publication, existing, onClose, onSaved }: { p
 function PageHeader({ view, count, syncing = false, onSync, onAskAI, updatedAt }: { view: View; count: number; syncing?: boolean; onSync?: () => void; onAskAI?: () => void; updatedAt?: string }) { const [title, subtitle] = viewTitles[view]; return <div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p className="mb-1 text-xs font-bold uppercase tracking-[.16em] text-[var(--accent-text)]">DocenteTuc</p><h1 className="text-3xl font-black tracking-tight text-[var(--text-primary)]">{title}</h1><p className="mt-1 text-[var(--text-muted)]">{subtitle} · {count} resultados</p>{updatedAt && <p className="mt-1 text-xs font-semibold text-[var(--text-muted)]">Actualizado: {dateLabel(`${updatedAt}Z`, true)}</p>}</div><div className="flex gap-2">{onAskAI && <Button onClick={onAskAI} className="rounded-xl bg-[#0878be] text-[var(--text-on-accent)]"><Sparkles className="size-4" />Preguntar a IA</Button>}{onSync && <Button onClick={onSync} disabled={syncing} variant="outline" className="rounded-xl border-[var(--info-border)] bg-[var(--surface-primary)] text-[var(--info-text)] hover:bg-[var(--info-bg)] hover:text-[var(--info-text)] active:bg-[var(--accent-soft)] disabled:border-[var(--border)] disabled:bg-[var(--surface-secondary)] disabled:text-[var(--text-muted)]"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />Actualizar</Button>}</div></div>; }
 
 function Filters({ filter, setFilter, level, setLevel, character, setCharacter, levels, kind, areas, area, setArea, locations, location, setLocation, date, setDate, sources, source, setSource, compatibility, setCompatibility, sort, setSort }: { filter: string; setFilter: (value: string) => void; level: string; setLevel: (value: string) => void; character: string; setCharacter: (value: string) => void; levels: string[]; kind: View; areas: string[]; area: string; setArea: (value: string) => void; locations: string[]; location: string; setLocation: (value: string) => void; date: string; setDate: (value: string) => void; sources: string[]; source: string; setSource: (value: string) => void; compatibility: string; setCompatibility: (value: string) => void; sort: string; setSort: (value: string) => void }) {
-  const tabs = kind === "capacitaciones" ? [["para-mi", "⭐ Para mí"], ["proximamente", "🔥 Próximas"], ["hoy", "Abren hoy"], ["abiertas", "🟢 Abiertas"], ["todas", "Todas"]] : kind === "junta" ? [["para-mi", "Para mí"], ["todas", "Todo"], ["llamados", "Llamados abiertos"], ["padrones", "Padrones"], ["comunicados", "Comunicados"], ["nuevas", "Novedades"]] : [["para-mi", "Para mí"], ["todas", "Todas"], ["nuevas", "Nuevas"], ["guardadas", "Guardadas"], ["por-vencer", "Por vencer"]];
+  const tabs = kind === "capacitaciones" ? [["para-mi", "⭐ Para mí"], ["proximamente", "🔥 Próximas"], ["hoy", "Abren hoy"], ["abiertas", "🟢 Abiertas"], ["finalizadas", "Finalizadas"], ["todas", "Todas"]] : kind === "junta" ? [["para-mi", "Para mí"], ["todas", "Todo"], ["llamados", "Llamados abiertos"], ["padrones", "Padrones"], ["comunicados", "Comunicados"], ["nuevas", "Novedades"]] : [["para-mi", "Para mí"], ["todas", "Todas"], ["nuevas", "Nuevas"], ["guardadas", "Guardadas"], ["por-vencer", "Por vencer"]];
   return <div className="mb-6 flex flex-wrap gap-2 rounded-2xl border border-[#c8e1f1] bg-white p-3 shadow-sm"><SlidersHorizontal className="mx-2 mt-2 size-4 text-[#2b9fdc]" />{tabs.map(([id, label]) => <button key={id} onClick={() => setFilter(id)} className={`min-h-9 rounded-xl px-3 text-sm font-semibold ${filter === id ? "bg-[#0878be] text-white" : "bg-[#edf6fc] text-[#52708c]"}`}>{label}</button>)}
     {!["junta", "guardados"].includes(kind) && <Select value={level} onValueChange={(value) => setLevel(value || "todos")}><SelectTrigger className="ml-auto h-9 rounded-xl border-[#dce8e1]"><SelectValue placeholder="Nivel" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos los niveles</SelectItem>{levels.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>}
     {["vacantes", "capacitaciones"].includes(kind) && <Select value={character} onValueChange={(value) => setCharacter(value || "todos")}><SelectTrigger className="h-9 rounded-xl border-[#dce8e1]"><SelectValue placeholder="Carácter" /></SelectTrigger><SelectContent><SelectItem value="todos">Todo carácter/modalidad</SelectItem>{kind === "vacantes" ? <><SelectItem value="interino">Interino</SelectItem><SelectItem value="suplente">Suplente</SelectItem></> : <><SelectItem value="virtual">Virtual</SelectItem><SelectItem value="presencial">Presencial</SelectItem><SelectItem value="semipresencial">Semipresencial</SelectItem></>}</SelectContent></Select>}

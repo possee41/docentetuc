@@ -9,7 +9,7 @@ export type MatchPublication = {
 };
 
 export type MatchCriterion = { key: string; label: string; expected: string; matched: boolean; available: boolean; required: boolean };
-export type MatchResult = { status: "exact" | "partial" | "none" | "unconfigured"; score: number; confidence: number; matched: number; total: number; criteria: MatchCriterion[] };
+export type MatchResult = { status: "exact" | "partial" | "none" | "unknown" | "unconfigured"; score: number; confidence: number; matched: number; total: number; criteria: MatchCriterion[] };
 
 const normalize = (value = "") => value.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
 type ProfileValue = string | string[] | undefined;
@@ -37,14 +37,20 @@ export function profileMatch(publication: MatchPublication, profile: MatchProfil
   if (publication.kind === "vacante" && character.includes("interin")) criteria.push({ key: "character", label: "Carácter", expected: "Interinato", matched: profile.wantsInterim !== false, available: true, required: true });
   if (publication.kind === "vacante" && character.includes("supl")) criteria.push({ key: "character", label: "Carácter", expected: "Suplencia", matched: profile.wantsSubstitute !== false, available: true, required: true });
 
-  const matched = criteria.filter((criterion) => criterion.matched).length, total = criteria.length;
+  const matched = criteria.filter((criterion) => criterion.matched && criterion.available).length, total = criteria.length, available = criteria.filter((criterion) => criterion.available).length;
   if (!total) return { status: "unconfigured", score: 0, confidence: 0, matched: 0, total: 0, criteria };
-  const score = Math.round(matched / total * 100), available = criteria.filter((criterion) => criterion.available).length, confidence = Math.round(available / total * 100), missingRequired = criteria.some((criterion) => criterion.required && !criterion.matched);
-  return { status: !matched ? "none" : missingRequired ? "partial" : "exact", score, confidence, matched, total, criteria };
+  if (!available) return { status: "unknown", score: 0, confidence: 0, matched: 0, total, criteria };
+  const score = Math.round(matched / available * 100), confidence = Math.round(available / total * 100), missingRequired = criteria.some((criterion) => criterion.required && criterion.available && !criterion.matched);
+  return { status: !matched ? "none" : missingRequired ? "partial" : matched === available ? "exact" : "partial", score, confidence, matched, total, criteria };
 }
 
 export const matchScore = (publication: MatchPublication, profile: MatchProfile) => profileMatch(publication, profile).score / 100;
 export const matchesProfile = (publication: MatchPublication, profile: MatchProfile) => {
   const result = profileMatch(publication, profile);
-  return result.status === "exact" || (result.status === "partial" && result.score >= 50);
+  return result.status === "exact" || (result.status === "partial" && result.score >= 50 && result.confidence >= 50);
+};
+
+export const isEligibleForPersonalizedHome = (publication: MatchPublication, profile: MatchProfile) => {
+  const result = profileMatch(publication, profile);
+  return result.status !== "unconfigured" && result.status !== "unknown" && result.score >= 85 && result.confidence >= 70;
 };
