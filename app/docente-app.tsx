@@ -90,7 +90,7 @@ export default function DocenteApp() {
   const [offline, setOffline] = useState(false);
   const [theme, setTheme] = useState<Theme>("light");
   const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(null);
-  const [aiOpen, setAIOpen] = useState(false);
+  const [aiMode, setAIMode] = useState<"closed" | "minimized" | "expanded">("closed");
   const [aiContext, setAIContext] = useState<AIContext>({ type: "inicio", title: viewTitles.inicio[0] });
   const [returnPublication, setReturnPublication] = useState<Publication | null>(null);
   const [trackingPublication, setTrackingPublication] = useState<Publication | null>(null);
@@ -234,7 +234,7 @@ export default function DocenteApp() {
 
   const install = async () => { if (!installPrompt) return; await installPrompt.prompt(); const choice = await installPrompt.userChoice; if (choice.outcome === "accepted") setInstallPrompt(null); };
   const toggleTheme = () => setTheme((current) => { const next = current === "dark" ? "light" : "dark"; localStorage.setItem("docentetuc-theme", next); document.documentElement.dataset.theme = next; return next; });
-  const openAI = (context: AIContext) => { setAIContext(context); setSelected(null); setAIOpen(true); };
+  const openAI = (context: AIContext) => { setAIContext(context); setSelected(null); setAIMode("minimized"); };
   const runAIAction = async (action: AIAssistantAction, context: AIContext) => {
     const publication = data?.publications.find((item) => item.id === context.id);
     if (!publication) throw new Error("Publicación no encontrada");
@@ -279,7 +279,7 @@ export default function DocenteApp() {
           </>}
         </div>
 
-        {!aiOpen && !reminderPublication && <DocenteTucAIFab onClick={() => openAI({ type: view, title: viewTitles[view][0] })} />}
+        {aiMode === "closed" && !reminderPublication && <DocenteTucAIFab onClick={() => openAI({ type: view, title: viewTitles[view][0] })} />}
         <nav className="mobile-nav fixed inset-x-3 bottom-3 z-40 flex h-[68px] rounded-2xl border border-[#dce8e1] bg-white px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_12px_40px_rgba(15,61,50,.18)] md:hidden" aria-label="Navegación móvil">
           {navigation.filter(([id]) => ["inicio", "vacantes", "capacitaciones", "informacion", "agenda"].includes(id)).map(([id, label, Icon]) => <button key={id} onClick={() => { setView(id); setFilter(id === "capacitaciones" ? "proximamente" : id === "informacion" ? "todas" : "para-mi"); }} aria-current={view === id ? "page" : undefined} className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-semibold ${view === id ? "bg-[#0878be] text-white" : "text-[#52708c]"}`}><Icon className={`size-5 ${view === id ? "stroke-[2.6]" : ""}`} /><span className="max-w-full truncate px-1">{id === "informacion" ? "Útil" : label}</span></button>)}
         </nav>
@@ -293,7 +293,7 @@ export default function DocenteApp() {
       <ManualEventDialog event={manualEvent === "new" ? null : manualEvent} open={Boolean(manualEvent)} onClose={() => setManualEvent(null)} onSaved={async () => { setManualEvent(null); await load(false); }} />
       <DesignationReturnDialog publication={returnPublication} onNo={() => { localStorage.removeItem("docentetuc-pending-designation"); setReturnPublication(null); }} onYes={() => { if (returnPublication) setTrackingPublication(returnPublication); localStorage.removeItem("docentetuc-pending-designation"); setReturnPublication(null); }} />
       <DesignationForm publication={trackingPublication} existing={trackingPublication ? designationMap.get(trackingPublication.id) : undefined} onClose={() => setTrackingPublication(null)} onSaved={async () => { setTrackingPublication(null); await load(false); }} />
-      <DocenteTucAIChatPanel open={aiOpen} onClose={() => setAIOpen(false)} context={aiContext} profileAvailable={Boolean(profile)} headers={() => apiHeaders(true)} onAction={runAIAction} />
+      <DocenteTucAIChatPanel mode={aiMode} onClose={() => setAIMode("closed")} onMinimize={() => setAIMode("minimized")} onExpand={() => setAIMode("expanded")} context={aiContext} profileAvailable={Boolean(profile)} headers={() => apiHeaders(true)} onAction={runAIAction} />
       <Toaster richColors position="top-center" />
     </SidebarProvider>
   );
