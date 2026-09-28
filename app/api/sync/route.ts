@@ -1,19 +1,21 @@
 import { env } from "cloudflare:workers";
 import { getD1 } from "@/db";
 import { authError, currentUser } from "@/lib/current-user";
-import { matchesProfile, profileMatch } from "@/lib/matching";
+import { designationRoleFromTitle, isEligibleForPersonalizedHome, matchesProfile, profileMatch } from "@/lib/matching";
 import { driveEntryUrl, htmlToText, parsePublicDriveFolder } from "@/lib/public-documents";
 import { mergeTrainingData, parseTrainingMetadata } from "@/lib/training";
 import { parseCenetTrainings, parseInfdCatalog, parseInfdTrainings, type PublicTraining } from "@/lib/external-trainings";
 import { usefulInformation } from "@/lib/useful-information";
 import { registrationState } from "@/lib/home-dashboard";
 import { diffByHash } from "@/lib/sync-diff";
+import { circuitMatches, inferCircuit } from "@/lib/circuits";
 
 export const dynamic = "force-dynamic";
 
 type Publication = {
   id: string; source: string; externalId: string; kind: string; category: string; title: string; summary: string;
   level: string; area: string; junta: string; location: string; shift: string; character: string;
+  circuit?: string; sourceCircuitRaw?: string; circuitInferenceSource?: string;
   startsAt: string | null; endsAt: string | null; status: string; officialUrl: string; metadata?: string; contentHash: string; sourceUpdatedAt: string | null;
 };
 
@@ -166,13 +168,26 @@ async function runSync() {
   const previous = await db.prepare("SELECT id, content_hash, starts_at, ends_at, metadata FROM publications").all<{ id: string; content_hash: string; starts_at: string | null; ends_at: string | null; metadata: string }>();
   const old = new Map(previous.results.map((row) => [row.id, row]));
   const results = await Promise.allSettled([simePublications(), trainingPublications(), boardPublications(), usefulPublications(), cenetPublications(), infdPublications()]);
-  const publications = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+  const unnormalized = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+  const publications = await Promise.all(unnormalized.map(async (item) => {
+    let metadata: Record<string, unknown> = {};
+    try { metadata = JSON.parse(item.metadata || "{}") as Record<string, unknown>; } catch {}
+    const asText = (value: unknown): string => typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : Array.isArray(value) ? value.map(asText).filter(Boolean).join(" · ") : "";
+    const explicitRaw = [metadata.circuit, metadata.circuito, metadata.circuitos, metadata.sourceCircuitRaw, metadata.source_circuit_raw].map(asText).filter(Boolean).join(" · ");
+    const body = [item.title, item.summary, asText(metadata.recipients), asText(metadata.content)].filter(Boolean).join(" · ");
+    const bodyHasCircuit = /\bcircuitos?\b|\btoda la provincia\b|\bprovincial\b/i.test(body);
+    const explicit = explicitRaw || (bodyHasCircuit ? body : "");
+    const department = [metadata.department, metadata.departamento, metadata.departmentName, metadata.nombre_departamento].map(asText).filter(Boolean).join(" · ");
+    const locality = [metadata.locality, metadata.localidad, metadata.location, metadata.ubicacion, item.location].map(asText).filter(Boolean).join(" · ") || (!explicitRaw ? body : "");
+    const inferred = inferCircuit({ explicit, department, locality });
+    return { ...item, circuit: inferred.normalizedCircuit, sourceCircuitRaw: inferred.sourceCircuitRaw, circuitInferenceSource: inferred.circuitInferenceSource, contentHash: await hash(`${item.contentHash}|circuit:${inferred.normalizedCircuit}|raw:${inferred.sourceCircuitRaw}|via:${inferred.circuitInferenceSource}`) };
+  }));
   if (!publications.length) throw new Error("Las fuentes no respondieron.");
   const { fresh, changed, unchanged, writes } = diffByHash(old, publications);
   let rowsWritten = 0;
   const countWrites = (results: unknown) => { for (const result of Array.isArray(results) ? results : [results]) rowsWritten += Number((result as { meta?: { rows_written?: number } })?.meta?.rows_written || 0); };
   for (let offset = 0; offset < writes.length; offset += 40) {
-    countWrites(await db.batch(writes.slice(offset, offset + 40).map((item) => db.prepare(`INSERT INTO publications (id, source, external_id, kind, category, title, summary, level, area, junta, location, shift, character, starts_at, ends_at, status, official_url, metadata, content_hash, source_updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET source=excluded.source, category=excluded.category, title=excluded.title, summary=excluded.summary, level=excluded.level, area=excluded.area, junta=excluded.junta, location=excluded.location, shift=excluded.shift, character=excluded.character, starts_at=excluded.starts_at, ends_at=excluded.ends_at, status=excluded.status, official_url=excluded.official_url, metadata=excluded.metadata, content_hash=excluded.content_hash, source_updated_at=excluded.source_updated_at, updated_at=CURRENT_TIMESTAMP`).bind(item.id, item.source, item.externalId, item.kind, item.category, item.title, item.summary, item.level, item.area, item.junta, item.location, item.shift, item.character, item.startsAt, item.endsAt, item.status, item.officialUrl, item.metadata || "{}", item.contentHash, item.sourceUpdatedAt))));
+    countWrites(await db.batch(writes.slice(offset, offset + 40).map((item) => db.prepare(`INSERT INTO publications (id, source, external_id, kind, category, title, summary, level, area, junta, location, shift, character, circuit, source_circuit_raw, circuit_inference_source, starts_at, ends_at, status, official_url, metadata, content_hash, source_updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET source=excluded.source, category=excluded.category, title=excluded.title, summary=excluded.summary, level=excluded.level, area=excluded.area, junta=excluded.junta, location=excluded.location, shift=excluded.shift, character=excluded.character, circuit=excluded.circuit, source_circuit_raw=excluded.source_circuit_raw, circuit_inference_source=excluded.circuit_inference_source, starts_at=excluded.starts_at, ends_at=excluded.ends_at, status=excluded.status, official_url=excluded.official_url, metadata=excluded.metadata, content_hash=excluded.content_hash, source_updated_at=excluded.source_updated_at, updated_at=CURRENT_TIMESTAMP`).bind(item.id, item.source, item.externalId, item.kind, item.category, item.title, item.summary, item.level, item.area, item.junta, item.location, item.shift, item.character, item.circuit || "UNKNOWN", item.sourceCircuitRaw || "", item.circuitInferenceSource || "unknown", item.startsAt, item.endsAt, item.status, item.officialUrl, item.metadata || "{}", item.contentHash, item.sourceUpdatedAt))));
   }
   if (results[1].status === "fulfilled") {
     countWrites(await db.prepare("INSERT OR IGNORE INTO saved_publications (user_id, publication_id, in_agenda, followed, saved_at) SELECT s.user_id, 'fdci:course:' || p.external_id, s.in_agenda, s.followed, s.saved_at FROM saved_publications s JOIN publications p ON p.id=s.publication_id JOIN publications replacement ON replacement.id='fdci:course:' || p.external_id WHERE p.id LIKE 'fdci:%' AND p.id NOT LIKE 'fdci:course:%' AND p.id NOT LIKE 'fdci:commission:%'").run());
@@ -186,21 +201,27 @@ async function runSync() {
   const interesting = [...fresh.filter((item) => !item.id.startsWith("drive:") && item.kind !== "informacion").slice(0, 60), ...changed.filter((item) => !item.id.startsWith("drive:") && item.kind !== "informacion")];
   for (const profile of profiles.results) {
     const match = (item: Publication) => {
-      const fullProfile = { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), roles: String(profile.roles || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") };
+      const fullProfile = { level: String(profile.level || ""), levels: String(profile.level || "").split(/[,;|]/).filter(Boolean), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), boards: String(profile.junta || "").split(/[,;|]/).filter(Boolean), roles: String(profile.roles || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), characters: String(profile.characters || "").split(/[,;|]/).filter(Boolean), circuits: String(profile.circuits || "").split(/[,;|]/).filter(Boolean), personalMatchThreshold: Number(profile.personal_match_threshold) || 85, wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") };
+      if (fullProfile.circuits.length) {
+        const directCircuit = item.circuit && /^[iv]+$|^[1-5]$/i.test(item.circuit) ? `Circuito ${item.circuit}` : item.circuit === "ALL" ? "todos los circuitos" : item.sourceCircuitRaw || "";
+        if (circuitMatches(inferCircuit({ explicit: directCircuit, locality: item.location || item.sourceCircuitRaw || "" }), fullProfile.circuits) === false) return false;
+      }
+      if (item.kind === "vacante") return isEligibleForPersonalizedHome({ ...item, role: designationRoleFromTitle(item.title) }, fullProfile);
       if (item.kind !== "capacitacion") return matchesProfile(item, fullProfile);
       if (!Boolean(profile.notify_new_trainings)) return false;
-      const scope = String(profile.training_notify_scope || "relevant");
+      const metadata = parseTrainingMetadata(item.metadata), scope = String(profile.training_notify_scope || "relevant");
+      const matchPublication = metadata?.recipients ? { ...item, recipients: metadata.recipients } : item;
       if (scope === "all") return true;
-      if (scope === "level") return matchesProfile(item, { level: fullProfile.level });
-      if (scope === "area") return matchesProfile(item, { area: fullProfile.area, subjects: fullProfile.subjects });
-      if (scope === "interests") return matchesProfile(item, { trainingInterests: fullProfile.trainingInterests });
-      const metadata = parseTrainingMetadata(item.metadata), state = registrationState(metadata?.registrationOpensAt, metadata?.registrationClosesAt, new Date());
-      return ["today", "tomorrow", "two-three", "four-seven", "eight-fourteen"].includes(state) && profileMatch(item, fullProfile).score >= Math.min(100, Math.max(0, Number(profile.training_match_threshold) || 80));
+      if (scope === "level") return matchesProfile(matchPublication, { level: fullProfile.level });
+      if (scope === "area") return matchesProfile(matchPublication, { area: fullProfile.area, subjects: fullProfile.subjects });
+      if (scope === "interests") return matchesProfile(matchPublication, { trainingInterests: fullProfile.trainingInterests });
+      const state = registrationState(metadata?.registrationOpensAt, metadata?.registrationClosesAt, new Date());
+      return ["today", "tomorrow", "two-three", "four-seven", "eight-fourteen"].includes(state) && isEligibleForPersonalizedHome(matchPublication, fullProfile);
     };
     const statements = interesting.filter(match).map((item) => {
       const metadata = item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata) : null, previous = old.get(item.id), previousMetadata = item.kind === "capacitacion" ? parseTrainingMetadata(previous?.metadata) : null;
       const dateChanged = Boolean(previous && [previous.starts_at, previous.ends_at, previousMetadata?.registrationOpensAt, previousMetadata?.registrationClosesAt].join("|") !== [item.startsAt, item.endsAt, metadata?.registrationOpensAt, metadata?.registrationClosesAt].join("|"));
-      const designationMatch = item.kind === "vacante" ? profileMatch(item, { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), roles: String(profile.roles || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute) }) : null;
+      const designationMatch = item.kind === "vacante" ? profileMatch({ ...item, role: designationRoleFromTitle(item.title) }, fullProfile) : null;
       const designationType = designationMatch ? `DESIGNACION_${designationMatch.status === "exact" ? "EXACTA" : "PARCIAL"}_${designationMatch.criteria.some((criterion) => criterion.key === "role" && criterion.matched) ? "CARGO" : "GENERAL"}` : "DESIGNACION_NUEVA";
       const type = old.has(item.id) ? (item.kind === "junta" ? "PADRON_ACTUALIZADO" : item.kind === "vacante" ? "DESIGNACION_CAMBIO" : dateChanged ? "FECHA_CAMBIADA" : "FECHA_IMPORTANTE") : item.kind === "vacante" ? designationType : metadata?.entity === "commission" ? "COMISION_NUEVA" : item.kind === "capacitacion" ? "CAPACITACION_NUEVA" : item.category === "Comunicados" ? "COMUNICADO_NUEVO" : "PADRON_NUEVO";
       return db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) VALUES (?, ?, ?)").bind(String(profile.user_id), item.id, type);

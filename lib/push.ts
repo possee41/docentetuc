@@ -1,6 +1,7 @@
 import { buildPushPayload, type PushSubscription, type VapidKeys } from "@block65/webcrypto-web-push";
-import { matchesProfile, profileMatch } from "./matching.ts";
+import { isEligibleForPersonalizedHome, matchesProfile } from "./matching.ts";
 import { parseTrainingMetadata } from "./training.ts";
+import { circuitMatches, inferCircuit } from "./circuits.ts";
 
 export type PushEnvironment = { VAPID_PUBLIC_KEY?: string; VAPID_PRIVATE_KEY?: string; VAPID_SUBJECT?: string };
 export type PushMessage = { title: string; body: string; tag: string; url: string };
@@ -34,6 +35,19 @@ export function validSubscription(value: unknown): value is PushSubscription {
   return typeof item.endpoint === "string" && item.endpoint.length <= 2048 && validPushEndpoint(item.endpoint)
     && typeof item.keys?.p256dh === "string" && item.keys.p256dh.length >= 40 && item.keys.p256dh.length <= 256
     && typeof item.keys?.auth === "string" && item.keys.auth.length >= 8 && item.keys.auth.length <= 128;
+}
+
+function nextRecurringStart(value: string, recurrence: string) {
+  const date = new Date(value);
+  if (recurrence === "daily") date.setTime(date.getTime() + 86_400_000);
+  else if (recurrence === "weekly") date.setTime(date.getTime() + 7 * 86_400_000);
+  else if (recurrence === "monthly") {
+    const day = date.getUTCDate();
+    date.setUTCDate(1); date.setUTCMonth(date.getUTCMonth() + 1);
+    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+    date.setUTCDate(Math.min(day, lastDay));
+  }
+  return date.toISOString();
 }
 
 const minutes = (value: string) => { const match = /^(\d{2}):(\d{2})$/.exec(value); return match ? Number(match[1]) * 60 + Number(match[2]) : null; };
@@ -70,22 +84,35 @@ export function notificationMessage(type: string, title: string): PushMessage {
   return { title: pushTitle, body, tag: `${type}:${title}`.slice(0, 120), url: "/" };
 }
 
-type PublicationRow = { id: string; kind: string; title: string; summary: string; level: string; area: string; junta: string; location: string; shift: string; character: string; starts_at: string | null; ends_at: string | null; status: string; metadata: string };
+type PublicationRow = { id: string; kind: string; title: string; summary: string; level: string; area: string; junta: string; location: string; shift: string; character: string; circuit: string; source_circuit_raw: string; starts_at: string | null; ends_at: string | null; status: string; metadata: string };
 type ProfileRow = Record<string, unknown> & { user_id: string };
 const dayInTucuman = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(date);
+export const PUSH_DELIVERY_BATCH_SIZE = 10;
 
 function matchProfile(profile: ProfileRow) {
-  return { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), roles: String(profile.roles || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") };
+  return { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), roles: String(profile.roles || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), characters: String(profile.characters || "").split(/[,;|]/).filter(Boolean), circuits: String(profile.circuits || "").split(/[,;|]/).filter(Boolean), personalMatchThreshold: Number(profile.personal_match_threshold) || 85, wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") };
+}
+
+export function publicationFitsProfileCircuit(publication: Pick<PublicationRow, "circuit" | "source_circuit_raw" | "location">, profile: ProfileRow) {
+  const circuits = String(profile.circuits || "").split(/[,;|]/).filter(Boolean);
+  if (!circuits.length) return true;
+  if (publication.circuit === "ALL") return true;
+  const raw = publication.source_circuit_raw || "";
+  const explicit = /^[iv]+$|^[1-5]$/i.test(publication.circuit || "") ? `Circuito ${publication.circuit}` : raw;
+  const inference = inferCircuit({ explicit, locality: publication.location || raw });
+  return circuitMatches(inference, circuits) !== false;
 }
 
 function trainingNotificationsEnabled(publication: PublicationRow, profile: ProfileRow) {
   if (!Boolean(profile.notify_new_trainings)) return false;
-  const fullProfile = matchProfile(profile), scope = String(profile.training_notify_scope || "relevant");
+  if (!publicationFitsProfileCircuit(publication, profile)) return false;
+  const fullProfile = matchProfile(profile), scope = String(profile.training_notify_scope || "relevant"), metadata = parseTrainingMetadata(publication.metadata);
+  const matchPublication = metadata?.recipients ? { ...publication, recipients: metadata.recipients } : publication;
   if (scope === "all") return true;
-  if (scope === "level") return matchesProfile(publication, { level: fullProfile.level });
-  if (scope === "area") return matchesProfile(publication, { area: fullProfile.area, subjects: fullProfile.subjects });
-  if (scope === "interests") return matchesProfile(publication, { trainingInterests: fullProfile.trainingInterests });
-  return profileMatch(publication, fullProfile).score >= Math.min(100, Math.max(0, Number(profile.training_match_threshold) || 80));
+  if (scope === "level") return matchesProfile(matchPublication, { level: fullProfile.level });
+  if (scope === "area") return matchesProfile(matchPublication, { area: fullProfile.area, subjects: fullProfile.subjects });
+  if (scope === "interests") return matchesProfile(matchPublication, { trainingInterests: fullProfile.trainingInterests });
+  return isEligibleForPersonalizedHome(matchPublication, fullProfile);
 }
 
 export function scheduledNotificationTypes(publication: PublicationRow, profile: ProfileRow, saved: boolean, now = new Date()) {
@@ -116,27 +143,45 @@ export async function materializeScheduledNotifications(db: D1Database, now = ne
   count(await db.prepare("UPDATE designation_tracking SET reminder_notified=1, updated_at=CURRENT_TIMESTAMP WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?)").bind(now.toISOString()).run());
   count(await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) SELECT user_id, publication_id, 'AGENDA_RECORDATORIO' FROM saved_publications WHERE in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime(?)").bind(now.toISOString()).run());
   count(await db.prepare("UPDATE saved_publications SET agenda_reminder_notified=1 WHERE in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime(?)").bind(now.toISOString()).run());
+  count(await db.prepare(`INSERT OR IGNORE INTO notifications (user_id, publication_id, type)
+    SELECT s.user_id, p.id, 'CIERRE_PROXIMO' FROM saved_publications s JOIN publications p ON p.id=s.publication_id
+    WHERE COALESCE(CASE WHEN json_valid(p.metadata) THEN NULLIF(json_extract(p.metadata, '$.registrationClosesAt'), '') END, p.ends_at) IS NOT NULL
+      AND datetime(COALESCE(CASE WHEN json_valid(p.metadata) THEN NULLIF(json_extract(p.metadata, '$.registrationClosesAt'), '') END, p.ends_at)) > datetime(?)
+      AND datetime(COALESCE(CASE WHEN json_valid(p.metadata) THEN NULLIF(json_extract(p.metadata, '$.registrationClosesAt'), '') END, p.ends_at)) <= datetime(?, '+48 hours')`).bind(now.toISOString(), now.toISOString()).run());
+  const dueEvents = await db.prepare("SELECT id, user_id, title, starts_at, recurrence, reminder_minutes FROM manual_events WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?) LIMIT 100").bind(now.toISOString()).all<{ id: string; user_id: string; title: string; starts_at: string; recurrence: string; reminder_minutes: number | null }>();
+  for (const event of dueEvents.results) {
+    count(await db.prepare("INSERT OR IGNORE INTO manual_event_push_queue (user_id, event_id, title, occurrence_at) VALUES (?, ?, ?, ?)").bind(event.user_id, event.id, event.title, event.starts_at).run());
+    if (["daily", "weekly", "monthly"].includes(event.recurrence) && event.reminder_minutes != null) {
+      const nextStarts = nextRecurringStart(event.starts_at, event.recurrence), nextReminder = new Date(new Date(nextStarts).getTime() - Number(event.reminder_minutes) * 60_000).toISOString();
+      await db.prepare("UPDATE manual_events SET starts_at=?, reminder_at=?, reminder_notified=0, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?").bind(nextStarts, nextReminder, event.id, event.user_id).run();
+    } else await db.prepare("UPDATE manual_events SET reminder_notified=1, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?").bind(event.id, event.user_id).run();
+  }
 
-  const [profiles, publications, savedRows] = await Promise.all([
-    db.prepare("SELECT * FROM profiles").all<ProfileRow>(),
-    db.prepare("SELECT id, kind, title, summary, level, area, junta, location, shift, character, starts_at, ends_at, status, metadata FROM publications WHERE kind IN ('vacante','capacitacion') AND status NOT IN ('cerrada','finalizada') LIMIT 800").all<PublicationRow>(),
-    db.prepare("SELECT user_id, publication_id FROM saved_publications").all<{ user_id: string; publication_id: string }>(),
+  const [profiles, publications] = await Promise.all([
+    db.prepare("SELECT * FROM profiles WHERE notify_new_trainings=1").all<ProfileRow>(),
+    db.prepare("SELECT id, kind, title, summary, level, area, junta, location, shift, character, circuit, source_circuit_raw, starts_at, ends_at, status, metadata FROM publications WHERE kind='capacitacion' AND status NOT IN ('cerrada','finalizada') LIMIT 800").all<PublicationRow>(),
   ]);
-  const saved = new Set(savedRows.results.map((row) => `${row.user_id}\n${row.publication_id}`)), statements: D1PreparedStatement[] = [];
-  for (const profile of profiles.results) for (const publication of publications.results) {
-    const events = scheduledNotificationTypes(publication, profile, saved.has(`${profile.user_id}\n${publication.id}`), now);
+  const upcomingTrainings = publications.results.filter((publication) => {
+    const metadata = parseTrainingMetadata(publication.metadata);
+    if (!metadata?.registrationOpensAt) return false;
+    const opening = new Date(metadata.registrationOpensAt).getTime(), remaining = opening - now.getTime(), closing = metadata.registrationClosesAt || publication.ends_at;
+    return (remaining > 0 && remaining <= 7 * 86_400_000) || (opening <= now.getTime() && (!closing || new Date(closing).getTime() > now.getTime()));
+  });
+  const statements: D1PreparedStatement[] = [];
+  for (const profile of profiles.results) for (const publication of upcomingTrainings) {
+    const events = scheduledNotificationTypes(publication, profile, false, now);
     for (const type of events) statements.push(db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type) VALUES (?, ?, ?)").bind(profile.user_id, publication.id, type));
   }
   for (let offset = 0; offset < statements.length; offset += 50) for (const result of await db.batch(statements.slice(offset, offset + 50))) count(result);
   return { considered: statements.length, rowsWritten };
 }
 
-type DeliveryRow = { notification_id: number; endpoint: string; user_id: string; p256dh: string; auth: string; expiration_time: number | null; type: string; title: string; publication_id: string; quiet_start: string; quiet_end: string; timezone: string; enabled: number; vacancies: number; trainings: number; commissions: number; reminders: number; date_changes: number; closing_soon: number; boards: number; designation_exact: number; designation_partial: number; designation_roles: number; attempts: number | null };
+type DeliveryRow = { notification_id: number; endpoint: string; user_id: string; p256dh: string; auth: string; expiration_time: number | null; type: string; title: string; publication_id: string; queued_at: string; quiet_start: string; quiet_end: string; timezone: string; enabled: number; vacancies: number; trainings: number; commissions: number; reminders: number; date_changes: number; closing_soon: number; boards: number; designation_exact: number; designation_partial: number; designation_roles: number; attempts: number | null };
 
 export async function dispatchPushNotifications(db: D1Database, environment: PushEnvironment, now = new Date()) {
   if (!environment.VAPID_PUBLIC_KEY || !environment.VAPID_PRIVATE_KEY || !environment.VAPID_SUBJECT) throw new Error("VAPID_NOT_CONFIGURED");
   const provider = new WebPushProvider({ publicKey: environment.VAPID_PUBLIC_KEY, privateKey: environment.VAPID_PRIVATE_KEY, subject: environment.VAPID_SUBJECT });
-  const rows = await db.prepare(`SELECT n.id notification_id, n.user_id, n.publication_id, n.type, p.title, s.endpoint, s.p256dh, s.auth, s.expiration_time,
+  const rows = await db.prepare(`SELECT n.id notification_id, n.user_id, n.publication_id, n.type, n.created_at queued_at, p.title, s.endpoint, s.p256dh, s.auth, s.expiration_time,
     COALESCE(pref.enabled,1) enabled, COALESCE(pref.vacancies,1) vacancies, COALESCE(pref.trainings,1) trainings, COALESCE(pref.commissions,1) commissions,
     COALESCE(pref.reminders,1) reminders, COALESCE(pref.date_changes,1) date_changes, COALESCE(pref.closing_soon,1) closing_soon, COALESCE(pref.boards,0) boards,
     COALESCE(pref.designation_exact,1) designation_exact, COALESCE(pref.designation_partial,1) designation_partial, COALESCE(pref.designation_roles,1) designation_roles,
@@ -144,18 +189,28 @@ export async function dispatchPushNotifications(db: D1Database, environment: Pus
     FROM notifications n JOIN publications p ON p.id=n.publication_id JOIN push_subscriptions s ON s.user_id=n.user_id AND s.active=1
     LEFT JOIN push_preferences pref ON pref.user_id=n.user_id LEFT JOIN push_deliveries d ON d.endpoint=s.endpoint AND d.event_key='notice:' || n.id
     WHERE datetime(n.created_at)>=datetime(s.created_at) AND (d.id IS NULL OR (d.status='failed' AND d.attempts<3 AND (d.next_attempt_at IS NULL OR datetime(d.next_attempt_at)<=datetime(?))))
-    ORDER BY n.created_at LIMIT 100`).bind(now.toISOString()).all<DeliveryRow>();
+    ORDER BY n.created_at LIMIT ${PUSH_DELIVERY_BATCH_SIZE}`).bind(now.toISOString()).all<DeliveryRow>();
+  const eventRows = await db.prepare(`SELECT q.id notification_id, q.user_id, 'manual:' || q.event_id publication_id, 'AGENDA_RECORDATORIO' type, q.created_at queued_at, q.title,
+    s.endpoint, s.p256dh, s.auth, s.expiration_time, COALESCE(pref.enabled,1) enabled, COALESCE(pref.vacancies,1) vacancies, COALESCE(pref.trainings,1) trainings,
+    COALESCE(pref.commissions,1) commissions, COALESCE(pref.reminders,1) reminders, COALESCE(pref.date_changes,1) date_changes, COALESCE(pref.closing_soon,1) closing_soon,
+    COALESCE(pref.boards,0) boards, COALESCE(pref.designation_exact,1) designation_exact, COALESCE(pref.designation_partial,1) designation_partial, COALESCE(pref.designation_roles,1) designation_roles,
+    COALESCE(pref.quiet_start,'22:00') quiet_start, COALESCE(pref.quiet_end,'07:00') quiet_end, COALESCE(pref.timezone,'America/Argentina/Buenos_Aires') timezone, d.attempts
+    FROM manual_event_push_queue q JOIN push_subscriptions s ON s.user_id=q.user_id AND s.active=1 LEFT JOIN push_preferences pref ON pref.user_id=q.user_id
+    LEFT JOIN push_deliveries d ON d.endpoint=s.endpoint AND d.event_key='manual:' || q.id
+    WHERE datetime(q.created_at)>=datetime(s.created_at) AND (d.id IS NULL OR (d.status='failed' AND d.attempts<3 AND (d.next_attempt_at IS NULL OR datetime(d.next_attempt_at)<=datetime(?))))
+    ORDER BY q.created_at LIMIT ${PUSH_DELIVERY_BATCH_SIZE}`).bind(now.toISOString()).all<DeliveryRow>();
   let sent = 0, failed = 0, removed = 0, deferred = 0;
-  for (const row of rows.results) {
+  const deliveries = [...rows.results, ...eventRows.results].sort((a, b) => new Date(a.queued_at).getTime() - new Date(b.queued_at).getTime()).slice(0, PUSH_DELIVERY_BATCH_SIZE);
+  for (const row of deliveries) {
     const category = categoryForNotification(row.type);
-    const eventKey = `notice:${row.notification_id}`, message = notificationMessage(row.type, row.title);
+    const manualEvent = row.publication_id.startsWith("manual:"), eventKey = `${manualEvent ? "manual" : "notice"}:${row.notification_id}`, message = notificationMessage(row.type, row.title);
     const designationAllowed = !row.type.startsWith("DESIGNACION_") || row.type === "DESIGNACION_RECORDATORIO" || row.type === "DESIGNACION_CAMBIO" || (row.type.includes("EXACTA") && Boolean(row.designation_exact)) || (row.type.includes("PARCIAL") && Boolean(row.designation_partial)) || (row.type.endsWith("_CARGO") && Boolean(row.designation_roles));
     if (!row.enabled || !row[category] || !designationAllowed) {
       await db.prepare("INSERT OR IGNORE INTO push_deliveries (endpoint, notification_id, event_key, status, attempts) VALUES (?, ?, ?, 'skipped', 0)").bind(row.endpoint, row.notification_id, eventKey).run();
       continue;
     }
     if (isQuietTime(now, row.quiet_start, row.quiet_end, row.timezone)) { deferred++; continue; }
-    message.url = `/?publication=${encodeURIComponent(row.publication_id)}`;
+    message.url = manualEvent ? "/" : `/?publication=${encodeURIComponent(row.publication_id)}`;
     message.tag = eventKey;
     try {
       const response = await provider.send({ endpoint: row.endpoint, expirationTime: row.expiration_time, keys: { p256dh: row.p256dh, auth: row.auth } }, message);
@@ -169,7 +224,7 @@ export async function dispatchPushNotifications(db: D1Database, environment: Pus
       await db.prepare("INSERT INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, last_error, next_attempt_at) VALUES (?, ?, ?, 'failed', 1, ?, datetime('now','+10 minutes')) ON CONFLICT(endpoint,event_key) DO UPDATE SET status='failed', attempts=push_deliveries.attempts+1, last_error=excluded.last_error, next_attempt_at=excluded.next_attempt_at").bind(row.endpoint, row.notification_id, eventKey, reason).run(); failed++;
     }
   }
-  return { considered: rows.results.length, sent, failed, removed, deferred };
+  return { considered: deliveries.length, sent, failed, removed, deferred };
 }
 
 export class NotificationService {

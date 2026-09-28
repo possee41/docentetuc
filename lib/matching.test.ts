@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { matchScore, matchesProfile, profileMatch } from "./matching.ts";
+import { isEligibleForPersonalizedHome, isEligibleMatchResult, matchScore, matchesProfile, profileMatch } from "./matching.ts";
 
 const profile = { level: "Secundario", area: "Ciencias Sociales", subjects: "Construcción de Ciudadanía", locality: "Capital", shifts: "Mañana", wantsInterim: false, wantsSubstitute: true };
 const exact = { kind: "vacante", title: "3 hs. Construcción de Ciudadanía", summary: "Escuela secundaria de Capital", level: "Secundario", shift: "Mañana", character: "Suplente" };
@@ -25,6 +25,28 @@ test("devuelve UNKNOWN cuando la fuente no aporta evidencia evaluable", () => {
   assert.equal(result.status, "unknown");
   assert.equal(result.confidence, 0);
   assert.equal(matchesProfile({ kind: "capacitacion", title: "Curso sin destinatarios ni área" }, { shifts: ["Mañana"] }), false);
+});
+
+test("una coincidencia parcial con incompatibilidades explícitas no se etiqueta MATCH", () => {
+  const result = profileMatch({
+    kind: "vacante",
+    title: "Instituto - Administración y Estructura Empresaria",
+    level: "Superior",
+    area: "Administración",
+    junta: "Superior",
+    shift: "Noche",
+    character: "Suplente",
+  }, {
+    levels: ["Secundario", "Superior"],
+    areas: ["Ciencias Sociales", "Filosofía", "Psicología"],
+    boards: ["Secundaria"],
+    locality: "San Miguel de Tucumán",
+    shifts: ["Mañana", "Tarde", "Noche"],
+    wantsSubstitute: true,
+  });
+  assert.equal(result.score, 50);
+  assert.equal(result.confidence, 80);
+  assert.equal(result.outcome, "NO_MATCH");
 });
 
 test("no recomienda resultados que sólo coinciden débilmente", () => {
@@ -67,4 +89,63 @@ test("una designación considera varios cargos de interés sin aceptar una coinc
   const weak = profileMatch({ kind: "vacante", title: "Profesor", level: "Primaria", area: "Matemática" }, { levels: ["Secundaria"], subjects: ["Psicología"], roles: ["Profesor"] });
   assert.equal(weak.status, "partial");
   assert.ok(weak.score < 50);
+});
+
+test("un mismo nivel, área y circuito produce coincidencia con evidencia suficiente", () => {
+  const profile = { levels: ["Secundario"], areas: ["Ciencias Sociales"], circuits: ["II"] };
+  const result = profileMatch({ kind: "capacitacion", title: "Curso de Ciencias Sociales", level: "Secundario", area: "Ciencias Sociales", circuit: "II" }, profile);
+  assert.equal(result.score, 100);
+  assert.equal(result.confidence, 100);
+  assert.equal(result.outcome, "MATCH");
+  assert.equal(isEligibleForPersonalizedHome({ kind: "capacitacion", title: "Curso de Ciencias Sociales", level: "Secundario", area: "Ciencias Sociales", circuit: "II" }, profile), true);
+});
+
+test("el mismo nivel no tapa un área incompatible", () => {
+  const result = profileMatch({ kind: "capacitacion", title: "Matemática", level: "Secundario", area: "Matemática" }, { levels: ["Secundario"], areas: ["Ciencias Sociales"] });
+  assert.equal(result.score, 50);
+  assert.equal(result.confidence, 100);
+  assert.equal(result.outcome, "NO_MATCH");
+});
+
+test("una incompatibilidad de circuito impide un falso 100%", () => {
+  const result = profileMatch({ kind: "capacitacion", title: "Curso", level: "Secundario", area: "Ciencias Sociales", circuit: "V" }, { levels: ["Secundario"], areas: ["Ciencias Sociales"], circuits: ["II"] });
+  assert.equal(result.score, 67);
+  assert.equal(result.outcome, "NO_MATCH");
+  assert.equal(isEligibleMatchResult(result, 85), false);
+});
+
+test("circuito desconocido no reduce compatibilidad, pero sí la confianza", () => {
+  const result = profileMatch({ kind: "capacitacion", title: "Curso", level: "Secundario", area: "Ciencias Sociales" }, { levels: ["Secundario"], areas: ["Ciencias Sociales"], circuits: ["II"] });
+  assert.equal(result.score, 100);
+  assert.equal(result.confidence, 67);
+  assert.equal(result.outcome, "UNKNOWN");
+});
+
+test("turno desconocido no resta compatibilidad, pero baja confianza", () => {
+  const result = profileMatch({ kind: "capacitacion", title: "Curso", level: "Secundario", area: "Ciencias Sociales" }, { levels: ["Secundario"], areas: ["Ciencias Sociales"], shifts: ["Mañana"] });
+  assert.equal(result.score, 100);
+  assert.equal(result.criteria.find((item) => item.key === "shift")?.outcome, "UNKNOWN");
+  assert.equal(result.confidence, 67);
+});
+
+test("acepta varios circuitos elegidos y ofertas explícitamente provinciales", () => {
+  const profile = { levels: ["Secundario"], areas: ["Ciencias Sociales"], circuits: ["II", "III"] };
+  assert.equal(profileMatch({ kind: "capacitacion", title: "Curso", level: "Secundario", area: "Ciencias Sociales", circuit: "III" }, profile).criteria.find((item) => item.key === "circuit")?.outcome, "MATCH");
+  assert.equal(profileMatch({ kind: "capacitacion", title: "Curso", level: "Secundario", area: "Ciencias Sociales", circuit: "ALL" }, profile).criteria.find((item) => item.key === "circuit")?.outcome, "MATCH");
+});
+
+test("una sola coincidencia de nivel no es evidencia suficiente para recomendar 100%", () => {
+  const publication = { kind: "capacitacion", title: "Programación Creativa con Scratch en la Escuela Secundaria", level: "Secundario" };
+  const result = profileMatch(publication, { levels: ["Secundario"], areas: ["Ciencias Sociales"], circuits: ["II"] });
+  assert.equal(result.score, 100);
+  assert.equal(result.confidence, 33);
+  assert.equal(result.status, "unknown");
+  assert.equal(isEligibleForPersonalizedHome(publication, { levels: ["Secundario"], areas: ["Ciencias Sociales"], circuits: ["II"] }), false);
+});
+
+test("el umbral personal para Inicio se aplica junto con la confianza", () => {
+  const good = { status: "exact", outcome: "MATCH", score: 85, compatibility: 85, confidence: 85, matched: 6, total: 7, reasons: [], criteria: [] } as const;
+  assert.equal(isEligibleMatchResult(good, 85), true);
+  assert.equal(isEligibleMatchResult(good, 90), false);
+  assert.equal(isEligibleMatchResult({ ...good, confidence: 69 }, 70), false);
 });

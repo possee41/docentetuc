@@ -1,13 +1,14 @@
 export type Profile = {
   user_id: string; name: string; email?: string; level: string; levels: string[]; area: string; areas: string[]; subjects: string[]; junta: string; boards: string[];
-  roles: string[]; department: string; locality: string; shifts: string[]; wants_interim: number | boolean; wants_substitute: number | boolean; training_interests: string[];
+  roles: string[]; department: string; locality: string; shifts: string[]; wants_interim: number | boolean; wants_substitute: number | boolean; characters: string[]; circuits: string[]; training_interests: string[];
   notify_new_trainings: number | boolean; training_notify_scope: "all" | "level" | "area" | "interests" | "relevant";
-  training_match_threshold: number;
+  training_match_threshold: number; personal_match_threshold: number;
 };
 
 export type Publication = {
   id: string; source: string; external_id: string; kind: "vacante" | "capacitacion" | "junta" | "informacion"; category: string;
   title: string; summary: string; level: string; area: string; junta: string; location: string; shift: string; character: string;
+  circuit?: string; source_circuit_raw?: string; circuit_inference_source?: string;
   starts_at: string | null; ends_at: string | null; status: string; official_url: string; metadata: string; first_seen_at: string; updated_at: string;
 };
 
@@ -16,5 +17,5 @@ export type Notice = { id: number; publication_id: string; type: string; created
 export type SyncStatus = { source: string; synced_at: string; item_count: number; error?: string };
 export type TrainingReminder = { id: string; training_id: string; publication_id: string; opens_at: string; precision: "date" | "datetime"; advance_minutes: number | null; remind_at: string; notified: number | boolean };
 export type DesignationTracking = { id: string; publication_id: string; status: string; role: string; subject: string; school: string; address: string; locality: string; applied_at: string | null; appointment_at: string | null; shift: string; board: string; documentation: string; order_number: string; notes: string; official_url: string; reminder_at: string | null; reminder_notified: number | boolean; created_at: string; updated_at: string };
-export type ManualEvent = { id: string; title: string; notes: string; category: string; starts_at: string; reminder_at: string | null; reminder_notified: number | boolean; created_at: string; updated_at: string };
+export type ManualEvent = { id: string; title: string; notes: string; category: string; starts_at: string; all_day?: number | boolean; recurrence?: "none" | "daily" | "weekly" | "monthly"; reminder_minutes?: number | null; reminder_at: string | null; reminder_notified: number | boolean; created_at: string; updated_at: string };
 export type AppData = { profile: Profile; publications: Publication[]; saved: Saved[]; notifications: Notice[]; reminders: TrainingReminder[]; designations: DesignationTracking[]; manualEvents: ManualEvent[]; sync: SyncStatus[] };

@@ -4,9 +4,9 @@ import { buildAIContext, detectIntent, GeminiProvider, retrievePublications } fr
 import { usefulInformation } from "./useful-information.ts";
 import type { Profile, Publication } from "./types.ts";
 
-const base = { source: "Capacitación Docente", external_id: "1", kind: "capacitacion", category: "Capacitación", summary: "", level: "Secundario", area: "", junta: "", location: "", shift: "", character: "", starts_at: null, ends_at: null, official_url: "https://oficial.test/1", metadata: "{}", first_seen_at: "2026-09-01", updated_at: "2026-09-26" } as Publication;
+const base = { source: "Capacitación Docente", external_id: "1", kind: "capacitacion", category: "Capacitación", summary: "", level: "Secundario", area: "Ciencias Sociales", junta: "", location: "", shift: "", character: "", starts_at: null, ends_at: null, official_url: "https://oficial.test/1", metadata: "{}", first_seen_at: "2026-09-01", updated_at: "2026-09-26" } as Publication;
 const records = [{ ...base, id: "next", title: "Curso próximo", status: "próximamente" }, { ...base, id: "open", title: "Curso abierto", status: "inscripción abierta" }] as Publication[];
-const vacancy = { ...base, id: "vacancy", kind: "vacante", category: "Vacante", title: "Horas de Filosofía", status: "vigente" } as Publication;
+const vacancy = { ...base, id: "vacancy", kind: "vacante", category: "Vacante", title: "Horas de Filosofía", area: "Filosofía", status: "vigente" } as Publication;
 const publicDocument = { ...base, id: "comunicado", kind: "junta", category: "Comunicados", title: "Comunicado Secundaria", summary: "Presentación de documentación hasta el 30 de septiembre", status: "vigente" } as Publication;
 const openCall = { ...base, id: "llamado", kind: "junta", category: "Llamados abiertos", title: "Convocatoria abierta de Inicial", status: "vigente" } as Publication;
 const usefulRecords = usefulInformation.map((item) => ({ ...base, id: `info:${item.id}`, external_id: item.id, kind: "informacion", category: item.category, title: item.title, summary: item.summary, level: "", area: (item.metadata.aliases || []).join(" · "), status: "vigente", official_url: item.officialUrl, metadata: JSON.stringify(item.metadata) })) as Publication[];
@@ -16,17 +16,17 @@ test("una conversación general no adjunta fuentes irrelevantes", () => assert.e
 test("recupera capacitaciones que abren próximamente", () => assert.equal(retrievePublications("¿Qué capacitaciones abren próximamente?", records)[0]?.id, "next"));
 test("no agrega el perfil al contexto sin autorización", () => assert.match(buildAIContext("capacitaciones", records).context, /no autorizó usar su perfil/));
 
-const profile = { user_id: "u", name: "Docente", level: "Secundario", levels: ["Secundario"], area: "", areas: [], subjects: [], junta: "", boards: [], roles: [], department: "", locality: "", shifts: [], wants_interim: true, wants_substitute: true, training_interests: [], notify_new_trainings: false, training_notify_scope: "relevant" } as Profile;
+const profile = { user_id: "u", name: "Docente", level: "Secundario", levels: ["Secundario"], area: "Ciencias Sociales, Filosofía", areas: ["Ciencias Sociales", "Filosofía"], subjects: [], junta: "", boards: [], roles: [], department: "", locality: "", shifts: [], characters: [], circuits: [], personal_match_threshold: 85, wants_interim: true, wants_substitute: true, training_interests: ["Ciencias Sociales"], notify_new_trainings: false, training_notify_scope: "relevant" } as Profile;
 
 test("usa el matching real y conserva su porcentaje", () => {
   const result = buildAIContext("¿Qué capacitaciones coinciden con mi perfil?", records, { profile });
-  assert.match(result.context, /Coincidencia calculada por DocenteTuc: \d+%/);
+  assert.match(result.context, /Compatibilidad calculada por DocenteTuc: \d+%; confianza: \d+%/);
 });
 
 test("recupera vacantes compatibles usando el matching real", () => {
   const result = buildAIContext("¿Qué vacantes coinciden conmigo?", [...records, vacancy], { profile });
   assert.deepEqual(result.sources.map((source) => source.id), ["vacancy"]);
-  assert.match(result.context, /Coincidencia calculada por DocenteTuc/);
+  assert.match(result.context, /Compatibilidad calculada por DocenteTuc/);
 });
 
 test("limita la agenda a los eventos guardados", () => {

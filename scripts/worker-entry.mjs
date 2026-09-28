@@ -17,5 +17,6 @@ export default {
     }
     const dispatch = await application.fetch(internalRequest("/api/push/dispatch", environment.CRON_SECRET), environment, context);
     if (!dispatch.ok) throw new Error(`PUSH_DISPATCH_${dispatch.status}: ${await dispatch.text()}`);
+    console.log("scheduled_push_dispatch_completed", await dispatch.text());
   },
 };

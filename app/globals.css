@@ -255,7 +255,13 @@ button:disabled { opacity: .68; }
 .app-background .bg-\[\#f3f7f4\], .app-background .bg-\[\#f8faf8\], .app-background .bg-\[\#f1f5f2\] { background-color: var(--surface-secondary); backdrop-filter: blur(7px); }
 .app-detail-surface { background: linear-gradient(rgb(238 248 255 / .66), rgb(255 255 255 / .6)), url("/docentetuc-logo.png") center / contain no-repeat fixed; }
 .ai-panel { position: fixed; inset: 0 0 0 auto; z-index: 70; display: flex; width: min(100%, 27rem); flex-direction: column; border-left: 1px solid var(--border); color: var(--text-primary); background: linear-gradient(rgb(238 248 255 / .66), rgb(255 255 255 / .62)), url("/docentetuc-logo.png") center / 92% auto no-repeat; box-shadow: -18px 0 45px rgb(6 57 103 / .22); backdrop-filter: blur(14px); transition: transform .28s ease, visibility .28s; }
-.ai-panel.ai-panel-minimized { inset: auto max(1rem, env(safe-area-inset-right)) calc(5.75rem + env(safe-area-inset-bottom)) auto; width: min(27rem, calc(100% - 2rem)); height: min(19rem, calc(100dvh - 8rem)); border: 1px solid var(--border); border-radius: 1.25rem; overflow: hidden; box-shadow: 0 18px 45px rgb(6 57 103 / .3); }
+.ai-panel.ai-panel-minimized { inset: auto max(1rem, env(safe-area-inset-right)) calc(5.75rem + env(safe-area-inset-bottom)) auto; width: min(22rem, calc(100% - 2rem)); height: auto; overflow: visible; border: 0; border-radius: 1rem; background: transparent; box-shadow: none; backdrop-filter: none; }
+.ai-mini-card { display: flex; min-height: 4.25rem; align-items: center; gap: .5rem; border: 1px solid var(--border); border-radius: 1rem; padding: .45rem .5rem .45rem .6rem; color: var(--text-primary); background: var(--surface-glass); box-shadow: 0 12px 32px rgb(6 57 103 / .24); backdrop-filter: blur(14px); }
+.ai-mini-open { display: flex; min-width: 0; flex: 1; align-items: center; gap: .7rem; border-radius: .75rem; padding: .25rem; text-align: left; }
+.ai-mini-open:hover, .ai-mini-close:hover { background: var(--accent-soft); }
+.ai-mini-icon { display: grid; width: 2.5rem; height: 2.5rem; flex: none; place-items: center; border-radius: .8rem; color: white; background: linear-gradient(145deg, #35b9ef, #0878be 58%, #063967); }
+.ai-mini-open small { color: var(--text-muted); font-size: .7rem; }
+.ai-mini-close { display: grid; width: 2.5rem; height: 2.5rem; flex: none; place-items: center; border-radius: .75rem; color: var(--text-secondary); }
 .ai-panel footer > div:first-child { scrollbar-width: none; }
 .ai-panel footer > div:first-child::-webkit-scrollbar { display: none; }
 .ai-panel button:disabled { opacity: .7; }
@@ -450,10 +456,13 @@ button:disabled { opacity: .68; }
   [data-slot="dialog-footer"] { flex-direction: column-reverse !important; }
 
   .ai-panel {
-    inset: 0;
-    width: 100%;
-    height: 100%;
+    inset: max(.25rem, env(safe-area-inset-top)) .5rem calc(4.75rem + env(safe-area-inset-bottom));
+    width: auto;
+    height: auto;
+    max-height: 85dvh;
     border-left: 0;
+    border: 1px solid var(--border);
+    border-radius: 1.1rem;
   }
   .ai-panel > header { padding: calc(.65rem + env(safe-area-inset-top)) .85rem .65rem; }
   .ai-panel > header > div > span { width: 2.5rem; height: 2.5rem; border-radius: .8rem; }
@@ -468,7 +477,9 @@ button:disabled { opacity: .68; }
   .ai-panel footer > label { margin-bottom: .5rem; padding: .55rem .7rem; }
   .ai-panel footer textarea { min-height: 2.75rem; max-height: 5.5rem; border-radius: 1rem; }
   .ai-panel footer form button { width: 2.75rem; height: 2.75rem; border-radius: 1rem; }
-  .ai-panel.ai-panel-minimized { inset: auto .75rem calc(5.5rem + env(safe-area-inset-bottom)) .75rem; width: auto; height: min(19rem, calc(100dvh - 7rem)); border-radius: 1.1rem; }
+  .ai-panel.ai-panel-minimized { inset: auto .75rem calc(5.5rem + env(safe-area-inset-bottom)) auto; width: min(18rem, calc(100vw - 1.5rem)); height: auto; border-radius: 1rem; }
+  .home-ai { display: none !important; }
+  .mobile-content button:has(.lucide-sparkles) { display: none !important; }
 }
 
 /* Estados heredados enlazados a tokens para conservar los componentes actuales. */

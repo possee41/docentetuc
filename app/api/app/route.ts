@@ -24,7 +24,7 @@ export async function GET(request: Request) {
       db.prepare("SELECT n.*, p.title, p.kind FROM notifications n JOIN publications p ON p.id=n.publication_id WHERE n.user_id=? ORDER BY n.created_at DESC LIMIT 100").bind(user.userId).all(),
       db.prepare("SELECT id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified FROM training_reminders WHERE user_id=? ORDER BY opens_at").bind(user.userId).all(),
       db.prepare("SELECT id, publication_id, status, role, subject, school, address, locality, applied_at, appointment_at, shift, board, documentation, order_number, notes, official_url, reminder_at, reminder_notified, created_at, updated_at FROM designation_tracking WHERE user_id=? ORDER BY COALESCE(appointment_at, applied_at, updated_at) DESC").bind(user.userId).all(),
-      db.prepare("SELECT id, title, notes, category, starts_at, reminder_at, reminder_notified, created_at, updated_at FROM manual_events WHERE user_id=? ORDER BY starts_at").bind(user.userId).all(),
+      db.prepare("SELECT id, title, notes, category, starts_at, all_day, recurrence, reminder_minutes, reminder_at, reminder_notified, created_at, updated_at FROM manual_events WHERE user_id=? ORDER BY starts_at").bind(user.userId).all(),
       db.prepare("SELECT * FROM sync_state ORDER BY source").all(),
     ]);
     return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publications: publications.results, saved: saved.results, notifications: notifications.results, reminders: reminders.results, designations: designations.results, manualEvents: manualEvents.results, sync: sync.results });
@@ -41,7 +41,10 @@ export async function POST(request: Request) {
     const db = getD1();
     if (action === "save_profile") {
       await db.prepare(`UPDATE profiles SET name=?, level=?, area=?, subjects=?, junta=?, roles=?, department=?, locality=?, shifts=?, wants_interim=?, wants_substitute=?, training_interests=?, notify_new_trainings=?, training_notify_scope=?, training_match_threshold=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?`)
-        .bind(value(body.name, 100) || "Docente", profileStorage(body.levels ?? body.level, 120), profileStorage(body.areas ?? body.area, 180), profileStorage(body.subjects), profileStorage(body.boards ?? body.junta, 180), profileStorage(body.roles, 300), value(body.department, 100), value(body.locality, 100), profileStorage(body.shifts, 100), body.wantsInterim === false ? 0 : 1, body.wantsSubstitute === false ? 0 : 1, profileStorage(body.trainingInterests), body.notifyNewTrainings === true ? 1 : 0, value(body.trainingNotifyScope, 20) || "relevant", Math.min(100, Math.max(0, Number(body.trainingMatchThreshold) || 80)), user.userId).run();
+        .bind(value(body.name, 100) || "Docente", profileStorage(body.levels ?? body.level, 120), profileStorage(body.areas ?? body.area, 180), profileStorage(body.subjects), profileStorage(body.boards ?? body.junta, 240), profileStorage(body.roles, 300), value(body.department, 100), value(body.locality, 100), profileStorage(body.shifts, 100), body.wantsInterim === true ? 1 : 0, body.wantsSubstitute === true ? 1 : 0, profileStorage(body.trainingInterests), body.notifyNewTrainings === true ? 1 : 0, value(body.trainingNotifyScope, 20) || "relevant", Math.min(100, Math.max(50, Number(body.trainingMatchThreshold) || 80)), user.userId).run();
+    } else if (action === "save_matching_profile") {
+      await db.prepare("UPDATE profiles SET junta=?, characters=?, circuits=?, personal_match_threshold=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?")
+        .bind(profileStorage(body.boards, 240), profileStorage(body.characters, 80), profileStorage(body.circuits, 80), Math.min(100, Math.max(70, Number(body.personalMatchThreshold) || 85)), user.userId).run();
     } else if (action === "set_training_alert_preferences") {
       await db.prepare("UPDATE profiles SET notify_new_trainings=?, training_match_threshold=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?")
         .bind(body.enabled === true ? 1 : 0, Math.min(100, Math.max(50, Number(body.threshold) || 80)), user.userId).run();
@@ -94,10 +97,14 @@ export async function POST(request: Request) {
       if (!title || !startsAt || Number.isNaN(starts.getTime())) return Response.json({ error: "Completá un título y una fecha válida." }, { status: 400 });
       const reminderAt = value(body.reminderAt, 40), reminder = reminderAt ? new Date(reminderAt) : null;
       if (reminderAt && (!reminder || Number.isNaN(reminder.getTime()) || reminder > starts)) return Response.json({ error: "El recordatorio debe ser anterior al evento." }, { status: 400 });
+      const recurrence = value(body.recurrence, 12) || "none";
+      if (!["none", "daily", "weekly", "monthly"].includes(recurrence)) return Response.json({ error: "Repetición inválida." }, { status: 400 });
+      const allDay = body.allDay === true ? 1 : 0, reminderMinutes = body.reminderMinutes == null ? null : Math.max(0, Math.min(43_200, Math.floor(Number(body.reminderMinutes))));
+      if (reminderMinutes !== null && !Number.isFinite(reminderMinutes)) return Response.json({ error: "Recordatorio inválido." }, { status: 400 });
       const id = value(body.id, 100) || `${user.userId}:${crypto.randomUUID()}`;
-      await db.prepare(`INSERT INTO manual_events (id, user_id, title, notes, category, starts_at, reminder_at, reminder_notified, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
-        ON CONFLICT(id) DO UPDATE SET title=excluded.title, notes=excluded.notes, category=excluded.category, starts_at=excluded.starts_at, reminder_at=excluded.reminder_at, reminder_notified=0, updated_at=CURRENT_TIMESTAMP WHERE manual_events.user_id=excluded.user_id`)
-        .bind(id, user.userId, title, value(body.notes, 1000), value(body.category, 40) || "Personal", starts.toISOString(), reminder ? reminder.toISOString() : null).run();
+      await db.prepare(`INSERT INTO manual_events (id, user_id, title, notes, category, starts_at, all_day, recurrence, reminder_minutes, reminder_at, reminder_notified, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+        ON CONFLICT(id) DO UPDATE SET title=excluded.title, notes=excluded.notes, category=excluded.category, starts_at=excluded.starts_at, all_day=excluded.all_day, recurrence=excluded.recurrence, reminder_minutes=excluded.reminder_minutes, reminder_at=excluded.reminder_at, reminder_notified=0, updated_at=CURRENT_TIMESTAMP WHERE manual_events.user_id=excluded.user_id`)
+        .bind(id, user.userId, title, value(body.notes, 1000), value(body.category, 40) || "Personal", starts.toISOString(), allDay, recurrence, reminderMinutes, reminder ? reminder.toISOString() : null).run();
     } else if (action === "delete_event") {
       await db.prepare("DELETE FROM manual_events WHERE id=? AND user_id=?").bind(value(body.id, 100), user.userId).run();
     } else if (action === "read_notification") {

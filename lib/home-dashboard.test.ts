@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { calendarDayDistance, compareHomePriority, homePriority, registrationState, trainingPriorityScore, type HomePriorityCandidate } from "./home-dashboard.ts";
+import { isEligibleForPersonalizedHome, profileMatch } from "./matching.ts";
 
 const now = new Date("2026-09-27T12:00:00-03:00");
 const candidate = (overrides: Partial<HomePriorityCandidate>): HomePriorityCandidate => ({ kind: "junta", matched: false, inAgenda: false, updatedAt: "2026-09-27T10:00:00-03:00", ...overrides });
@@ -38,4 +39,23 @@ test("combina compatibilidad y urgencia aun sin perfil", () => {
   assert.ok(trainingPriorityScore(strong, now) > trainingPriorityScore(urgent, now));
   assert.ok(compareHomePriority(strong, urgent, now) < 0);
   assert.ok(trainingPriorityScore(candidate({ kind: "capacitacion", registrationOpensAt: "2026-10-01T00:00:00-03:00" }), now) > 0);
+});
+
+test("FDCI: excluye del Inicio una abierta al 67% si hay una próxima altamente compatible", () => {
+  const profile = { levels: ["Secundario"], areas: ["Ciencias Sociales"], circuits: ["II"] };
+  const open = { kind: "capacitacion", title: "Curso abierto", level: "Secundario", area: "Ciencias Sociales", circuit: "V" };
+  const upcoming = { kind: "capacitacion", title: "Próxima cohorte", level: "Secundario", area: "Ciencias Sociales", circuit: "II" };
+  const openMatch = profileMatch(open, profile), upcomingMatch = profileMatch(upcoming, profile);
+  assert.equal(openMatch.score, 67);
+  assert.equal(isEligibleForPersonalizedHome(open, profile), false);
+  assert.ok(upcomingMatch.score >= 85);
+  assert.equal(isEligibleForPersonalizedHome(upcoming, profile), true);
+
+  const recommendations = [open, upcoming].filter((item) => isEligibleForPersonalizedHome(item, profile));
+  const cards = recommendations.sort((a, b) => compareHomePriority(
+    candidate({ kind: "capacitacion", matched: true, matchScore: profileMatch(a, profile).score, registrationOpensAt: a.title === "Próxima cohorte" ? "2026-10-02T09:00:00-03:00" : "2026-09-20T09:00:00-03:00", registrationClosesAt: a.title === "Curso abierto" ? "2026-10-02T23:59:59-03:00" : null }),
+    candidate({ kind: "capacitacion", matched: true, matchScore: profileMatch(b, profile).score, registrationOpensAt: b.title === "Próxima cohorte" ? "2026-10-02T09:00:00-03:00" : "2026-09-20T09:00:00-03:00", registrationClosesAt: b.title === "Curso abierto" ? "2026-10-02T23:59:59-03:00" : null }),
+    now,
+  ));
+  assert.equal(cards[0].title, "Próxima cohorte");
 });
