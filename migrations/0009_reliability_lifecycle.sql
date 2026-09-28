@@ -78,6 +78,19 @@ WHERE source='INFoD / AulaS-TIC'
   AND json_valid(metadata)
   AND lower(COALESCE(json_extract(metadata,'$.dateStatus'),''))='confirmed';
 
+-- Legacy FDCI imports defaulted dateStatus to confirmed even when the API had
+-- no date fields. Keep those dates explicitly unknown until the source reports one.
+UPDATE publications
+SET metadata=json_set(metadata,'$.dateStatus','unknown'), normalized_status='UNKNOWN'
+WHERE source='Capacitación Docente'
+  AND kind='capacitacion'
+  AND json_valid(metadata)
+  AND lower(COALESCE(json_extract(metadata,'$.dateStatus'),''))='confirmed'
+  AND json_extract(metadata,'$.registrationOpensAt') IS NULL
+  AND json_extract(metadata,'$.registrationClosesAt') IS NULL
+  AND json_extract(metadata,'$.courseStartsAt') IS NULL
+  AND json_extract(metadata,'$.courseEndsAt') IS NULL;
+
 ALTER TABLE sync_state ADD COLUMN last_attempt_at TEXT;
 ALTER TABLE sync_state ADD COLUMN last_successful_sync_at TEXT;
 ALTER TABLE sync_state ADD COLUMN last_content_change_at TEXT;

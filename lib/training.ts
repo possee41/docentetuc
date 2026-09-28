@@ -40,8 +40,10 @@ const number = (value: unknown) => value == null || value === "" || Number.isNaN
 const localDateTime = (value: unknown, endOfDay = false) => {
   const raw = text(value).trim();
   if (!raw) return undefined;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return `${raw}T${endOfDay ? "23:59:59" : "00:00:00"}-03:00`;
-  return `${raw.replace(" ", "T")}${/[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw) ? "" : "-03:00"}`;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? `${raw}T${endOfDay ? "23:59:59" : "00:00:00"}-03:00`
+    : `${raw.replace(" ", "T")}${/[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw) ? "" : "-03:00"}`;
+  return Number.isFinite(Date.parse(normalized)) ? normalized : undefined;
 };
 export const plainText = (value: unknown) => text(value).replace(/<[^>]*>/g, " ").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
 
@@ -52,12 +54,14 @@ export function trainingStatus(commission: OfficialCommission | undefined, now =
   const closes = localDateTime(commission.fecha_cierre_preinscripcion);
   const starts = localDateTime(commission.fecha_inicio);
   const finishes = localDateTime(commission.fecha_fin, true);
+  const closed = Boolean(Number(commission.comision_cerrada));
   if (opens && time < new Date(opens).getTime()) return "próximamente";
-  if (!Number(commission.comision_cerrada) && opens && closes && time <= new Date(closes).getTime()) return "inscripción abierta";
-  if (starts && time < new Date(starts).getTime()) return "inscripción cerrada";
+  if (!closed && opens && (!closes || time <= new Date(closes).getTime())) return "inscripción abierta";
+  if (starts && time < new Date(starts).getTime()) return closed || (closes && time > new Date(closes).getTime()) ? "inscripción cerrada" : "consultar";
   if (starts && finishes && time <= new Date(finishes).getTime()) return "en curso";
   if (finishes && time > new Date(finishes).getTime()) return "finalizada";
-  return Number(commission.comision_cerrada) ? "inscripción cerrada" : "consultar";
+  if (closed || (closes && time > new Date(closes).getTime())) return "inscripción cerrada";
+  return "consultar";
 }
 
 export function openingCountdown(opensAt: string, now = new Date(), hasTime = true) {
@@ -84,6 +88,7 @@ function opportunity(course: OfficialCourse, commission?: OfficialCommission, no
   const registrationClosesAt = localDateTime(commission?.fecha_cierre_preinscripcion);
   const courseStartsAt = localDateTime(commission?.fecha_inicio);
   const courseEndsAt = localDateTime(commission?.fecha_fin, true);
+  const hasOfficialDate = Boolean(registrationOpensAt || registrationClosesAt || courseStartsAt || courseEndsAt);
   const description = plainText(course.descripcion || commission?.descripcion);
   const content = plainText(course.contenido || commission?.contenido);
   const statedRecipients = description.match(/destinatarios\s*:\s*([^.]*)/i)?.[1]?.trim();
@@ -101,7 +106,7 @@ function opportunity(course: OfficialCourse, commission?: OfficialCommission, no
     metadata: {
       entity: commissionId ? "commission" : "course", trainingId, ...(commissionId ? { commissionId } : {}),
       ...(registrationOpensAt ? { registrationOpensAt, registrationHasTime } : {}), ...(registrationClosesAt ? { registrationClosesAt } : {}),
-      ...(courseStartsAt ? { courseStartsAt } : {}), ...(courseEndsAt ? { courseEndsAt } : {}), source: "FDCI Tucumán", sourceUrl: officialUrl, dateStatus: "confirmed",
+      ...(courseStartsAt ? { courseStartsAt } : {}), ...(courseEndsAt ? { courseEndsAt } : {}), source: "FDCI Tucumán", sourceUrl: officialUrl, dateStatus: hasOfficialDate ? "confirmed" : "unknown",
       ...(commission?.direccion ? { address: text(commission.direccion) } : {}),
       ...(number(commission?.cupo) != null ? { capacity: number(commission?.cupo) } : {}),
       ...(number(commission?.cupo_preinscripcion) != null ? { preCapacity: number(commission?.cupo_preinscripcion) } : {}),

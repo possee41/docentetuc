@@ -34,6 +34,21 @@ test("mantiene una capacitación sin comisión como consultable", () => {
   assert.equal(result.metadata.entity, "course");
   assert.equal(result.metadata.registrationOpensAt, undefined);
   assert.equal(result.metadata.registrationClosesAt, undefined);
+  assert.equal(result.metadata.dateStatus, "unknown");
+});
+
+test("FDCI no infiere inscripción cerrada a partir de un inicio futuro sin fechas de inscripción", () => {
+  const [result] = mergeTrainingData([course], [{ ...commission, fecha_apertura_preinscripcion: undefined, fecha_cierre_preinscripcion: undefined, fecha_inicio: "2026-10-01", fecha_fin: "2026-10-10", comision_cerrada: 0 }], now);
+  assert.equal(result.status, "consultar");
+  assert.equal(result.metadata.dateStatus, "confirmed", "la fuente confirma el cursado, no la inscripción");
+  assert.equal(result.metadata.registrationOpensAt, undefined);
+});
+
+test("FDCI descarta fechas inválidas en vez de declararlas confirmadas", () => {
+  const [result] = mergeTrainingData([course], [{ ...commission, fecha_apertura_preinscripcion: "próximamente", fecha_cierre_preinscripcion: undefined, fecha_inicio: undefined, fecha_fin: undefined }], now);
+  assert.equal(result.metadata.registrationOpensAt, undefined);
+  assert.equal(result.metadata.dateStatus, "unknown");
+  assert.equal(result.status, "consultar");
 });
 
 test("detecta una próxima apertura publicada en la capacitación", () => {
