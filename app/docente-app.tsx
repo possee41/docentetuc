@@ -333,7 +333,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const publications = data?.publications || [];
   const publicationMap = new Map(publications.map((item) => [item.id, item]));
   const eventDate = (item: Publication) => savedMap.get(item.id)?.agenda_at || parseTrainingMetadata(item.metadata)?.registrationOpensAt || item.ends_at || item.starts_at;
-  const relevant = (item: Publication) => Boolean(matchProfile && isEligibleForPersonalizedHome(publicationForMatch(item), matchProfile));
+  const relevant = (item: Publication) => { const result = matchResult(item); return result.status !== "unconfigured" && result.status !== "unknown" && result.score >= 85 && result.confidence >= 70; };
   const agenda = publications.filter((item) => {
     const date = safeDate(eventDate(item));
     return Boolean(savedMap.get(item.id)?.in_agenda) && Boolean(date && date.getTime() >= now.getTime());
