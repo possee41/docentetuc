@@ -32,6 +32,8 @@ test("mantiene una capacitación sin comisión como consultable", () => {
   const [result] = mergeTrainingData([course], [], now);
   assert.equal(result.status, "consultar");
   assert.equal(result.metadata.entity, "course");
+  assert.equal(result.metadata.registrationOpensAt, undefined);
+  assert.equal(result.metadata.registrationClosesAt, undefined);
 });
 
 test("detecta una próxima apertura publicada en la capacitación", () => {
@@ -49,6 +51,6 @@ test("calcula la cuenta regresiva sin inventar hora", () => {
 test("admite respuestas oficiales vacías", () => assert.deepEqual(mergeTrainingData([], [], now), []));
 
 test("propaga una caída temporal para conservar los datos almacenados", async () => {
-  const load = async (fetcher: () => Promise<unknown[]>) => mergeTrainingData(await fetcher(), [], now);
+  const load = async (fetcher: () => Promise<Parameters<typeof mergeTrainingData>[0]>) => mergeTrainingData(await fetcher(), [], now);
   await assert.rejects(load(async () => { throw new Error("API temporalmente caída"); }), /temporalmente caída/);
 });

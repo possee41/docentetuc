@@ -511,6 +511,12 @@ button:disabled { opacity: .68; }
 .home-search > button { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; border: 1px solid var(--info-border); border-radius: .9rem; color: var(--info-text); background: var(--surface-primary); }
 .home-search > button:disabled { color: var(--text-muted); border-color: var(--border); }
 .home-search small { grid-column: 1 / -1; margin-top: -.2rem; padding-left: .15rem; color: var(--text-muted); font-size: .68rem; }
+.home-source-health { display: flex; gap: .45rem; overflow-x: auto; padding: .1rem 0 .4rem; scrollbar-width: thin; }
+.home-source-health-item { display: grid; grid-template-columns: .42rem auto; grid-template-rows: auto auto; align-items: center; column-gap: .3rem; flex: 0 0 auto; min-height: 2.05rem; padding: .3rem .5rem; border: 1px solid var(--border); border-radius: .7rem; color: var(--text-secondary); background: var(--surface-primary); font-size: .62rem; font-weight: 800; line-height: 1.1; }
+.home-source-health-item i { grid-row: span 2; width: .38rem; height: .38rem; border-radius: 50%; background: #b47720; }
+.home-source-health-item.is-healthy i { background: #23834c; }
+.home-source-health-item.is-warning i { background: #bc641f; }
+.home-source-health-item small { grid-column: 2; color: var(--text-muted); font-size: .55rem; font-weight: 600; }
 .home-section, .home-ai, .home-split > button, .home-profile-nudge, .home-source-warning, .home-alert { border: 1px solid var(--border); background: var(--surface-primary); backdrop-filter: blur(10px); }
 .home-next-registration { overflow: hidden; border: 1px solid var(--warning-border); border-radius: 1.15rem; background: linear-gradient(135deg, color-mix(in srgb, var(--warning-bg) 82%, transparent), var(--surface-primary)); box-shadow: 0 10px 28px rgb(6 57 103 / .1); backdrop-filter: blur(12px); }
 .home-next-main { display: grid; width: 100%; gap: .28rem; padding: 1rem; text-align: left; }

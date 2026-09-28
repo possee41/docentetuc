@@ -11,7 +11,10 @@ export type TrainingMetadata = {
   courseEndsAt?: string;
   source?: string;
   sourceUrl?: string;
-  dateStatus?: "confirmed" | "tentative";
+  dateStatus?: "confirmed" | "tentative" | "course_confirmed" | "general_window" | "unknown";
+  generalWindowOpensAt?: string;
+  generalWindowClosesAt?: string;
+  generalWindowCourseStartsAt?: string;
   address?: string;
   capacity?: number;
   preCapacity?: number;

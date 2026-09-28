@@ -16,7 +16,7 @@ test("una conversación general no adjunta fuentes irrelevantes", () => assert.e
 test("recupera capacitaciones que abren próximamente", () => assert.equal(retrievePublications("¿Qué capacitaciones abren próximamente?", records)[0]?.id, "next"));
 test("no agrega el perfil al contexto sin autorización", () => assert.match(buildAIContext("capacitaciones", records).context, /no autorizó usar su perfil/));
 
-const profile = { user_id: "u", name: "Docente", level: "Secundario", levels: ["Secundario"], area: "Ciencias Sociales, Filosofía", areas: ["Ciencias Sociales", "Filosofía"], subjects: [], junta: "", boards: [], roles: [], department: "", locality: "", shifts: [], characters: [], circuits: [], personal_match_threshold: 85, wants_interim: true, wants_substitute: true, training_interests: ["Ciencias Sociales"], notify_new_trainings: false, training_notify_scope: "relevant" } as Profile;
+const profile = { user_id: "u", name: "Docente", level: "Secundario", levels: ["Secundario"], area: "Ciencias Sociales, Filosofía", areas: ["Ciencias Sociales", "Filosofía"], subjects: [], junta: "", boards: [], roles: [], department: "", locality: "", shifts: [], characters: [], circuits: [], personal_match_threshold: 85, training_match_threshold: 80, wants_interim: true, wants_substitute: true, training_interests: ["Ciencias Sociales"], notify_new_trainings: false, training_notify_scope: "relevant" } as Profile;
 
 test("usa el matching real y conserva su porcentaje", () => {
   const result = buildAIContext("¿Qué capacitaciones coinciden con mi perfil?", records, { profile });

@@ -21,8 +21,10 @@ export const publications = sqliteTable("publications", {
   circuit: text("circuit").notNull().default("UNKNOWN"), sourceCircuitRaw: text("source_circuit_raw").notNull().default(""), circuitInferenceSource: text("circuit_inference_source").notNull().default("unknown"),
   startsAt: text("starts_at"), endsAt: text("ends_at"), status: text("status").notNull().default("vigente"), officialUrl: text("official_url").notNull(),
   metadata: text("metadata").notNull().default("{}"), contentHash: text("content_hash").notNull(), sourceUpdatedAt: text("source_updated_at"), firstSeenAt: text("first_seen_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => [index("idx_publications_kind_ends").on(table.kind, table.endsAt), index("idx_publications_source_external").on(table.source, table.externalId)]);
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`), lastSeenAt: text("last_seen_at").notNull().default(""), lastChangedAt: text("last_changed_at").notNull().default(""),
+  sourcePublishedAt: text("source_published_at"), registrationOpenAt: text("registration_open_at"), registrationCloseAt: text("registration_close_at"), expiresAt: text("expires_at"),
+  sourceStatus: text("source_status").notNull().default("UNKNOWN"), normalizedStatus: text("normalized_status").notNull().default("UNKNOWN"), removedAt: text("removed_at"), circuitConfidence: integer("circuit_confidence").notNull().default(0),
+}, (table) => [index("idx_publications_kind_ends").on(table.kind, table.endsAt), index("idx_publications_source_external").on(table.source, table.externalId), index("idx_publications_lifecycle").on(table.normalizedStatus, table.kind, table.source)]);
 
 export const savedPublications = sqliteTable("saved_publications", {
   userId: text("user_id").notNull(), publicationId: text("publication_id").notNull().references(() => publications.id, { onDelete: "cascade" }),
@@ -35,11 +37,15 @@ export const notifications = sqliteTable("notifications", {
   id: integer("id").primaryKey({ autoIncrement: true }), userId: text("user_id").notNull(),
   publicationId: text("publication_id").notNull().references(() => publications.id, { onDelete: "cascade" }), type: text("type").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), read: integer("read", { mode: "boolean" }).notNull().default(false),
-}, (table) => [index("idx_notifications_user_read").on(table.userId, table.read), uniqueIndex("idx_notifications_unique").on(table.userId, table.publicationId, table.type)]);
+  dedupeKey: text("dedupe_key").notNull().default(""), scheduledAt: text("scheduled_at"), attemptedAt: text("attempted_at"), acceptedAt: text("accepted_at"), failureReason: text("failure_reason"),
+}, (table) => [index("idx_notifications_user_read").on(table.userId, table.read), uniqueIndex("idx_notifications_dedupe").on(table.userId, table.dedupeKey).where(sql`${table.dedupeKey} <> ''`)]);
 
 export const syncState = sqliteTable("sync_state", {
   source: text("source").primaryKey(), syncedAt: text("synced_at").notNull(), itemCount: integer("item_count").notNull().default(0), error: text("error"),
-});
+  lastAttemptAt: text("last_attempt_at"), lastSuccessfulSyncAt: text("last_successful_sync_at"), lastContentChangeAt: text("last_content_change_at"),
+  recordsCreated: integer("records_created").notNull().default(0), recordsUpdated: integer("records_updated").notNull().default(0), recordsRemoved: integer("records_removed").notNull().default(0),
+  syncStatus: text("sync_status").notNull().default("UNKNOWN"), errorCode: text("error_code"), errorMessage: text("error_message"), parserVersion: text("parser_version").notNull().default("1"),
+}, (table) => [index("idx_sync_state_status").on(table.syncStatus, table.lastSuccessfulSyncAt)]);
 
 export const trainingReminders = sqliteTable("training_reminders", {
   id: text("id").primaryKey(), userId: text("user_id").notNull(), trainingId: text("training_id").notNull(), publicationId: text("publication_id").notNull(),
@@ -76,6 +82,7 @@ export const pushPreferences = sqliteTable("push_preferences", {
 export const pushDeliveries = sqliteTable("push_deliveries", {
   id: integer("id").primaryKey({ autoIncrement: true }), endpoint: text("endpoint").notNull(), notificationId: integer("notification_id").notNull(), eventKey: text("event_key").notNull(),
   status: text("status").notNull().default("pending"), attempts: integer("attempts").notNull().default(0), lastError: text("last_error"), sentAt: text("sent_at"), nextAttemptAt: text("next_attempt_at"), createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  scheduledAt: text("scheduled_at"), attemptedAt: text("attempted_at"), acceptedAt: text("accepted_at"), failureReason: text("failure_reason"),
 }, (table) => [uniqueIndex("idx_push_deliveries_unique").on(table.endpoint, table.eventKey), index("idx_push_deliveries_retry").on(table.status, table.nextAttemptAt)]);
 
 export const pushRateLimits = sqliteTable("push_rate_limits", {

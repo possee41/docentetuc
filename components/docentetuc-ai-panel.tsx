@@ -24,7 +24,7 @@ export function DocenteTucAIChatPanel({ mode, onClose, onMinimize, onExpand, con
   useEffect(() => {
     if (!open) return;
     closeRef.current?.focus();
-    void fetch("/api/ai", { headers: headers() }).then((response) => response.json()).then((result: { configured?: boolean }) => setConfigured(Boolean(result.configured))).catch(() => setConfigured(false));
+    void fetch("/api/ai", { headers: headers() }).then((response) => response.json()).then((result) => setConfigured(Boolean((result as { configured?: boolean }).configured))).catch(() => setConfigured(false));
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close);
   }, [open, onClose]);

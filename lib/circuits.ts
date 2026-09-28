@@ -9,7 +9,7 @@ export const TUCUMAN_CIRCUITS = [
 export type CircuitId = typeof TUCUMAN_CIRCUITS[number]["id"];
 export type CircuitValue = CircuitId | "MULTIPLE" | "ALL" | "UNKNOWN";
 export type CircuitInferenceSource = "explicit" | "department" | "locality" | "unknown";
-export type CircuitInference = { sourceCircuitRaw: string; normalizedCircuit: CircuitValue; circuits: CircuitId[]; circuitInferenceSource: CircuitInferenceSource };
+export type CircuitInference = { sourceCircuitRaw: string; normalizedCircuit: CircuitValue; circuits: CircuitId[]; circuitInferenceSource: CircuitInferenceSource; circuitConfidence: number };
 
 const normalize = (value = "") => value.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
 const circuitNumber: Record<string, CircuitId> = { i: "I", ii: "II", iii: "III", iv: "IV", v: "V", "1": "I", "2": "II", "3": "III", "4": "IV", "5": "V" };
@@ -48,13 +48,14 @@ const result = (sourceCircuitRaw: string, circuits: CircuitId[], circuitInferenc
   normalizedCircuit: circuits.length === 0 ? "UNKNOWN" : circuits.length === 1 ? circuits[0] : "MULTIPLE",
   circuits,
   circuitInferenceSource,
+  circuitConfidence: circuitInferenceSource === "explicit" ? 100 : circuitInferenceSource === "department" ? 90 : circuitInferenceSource === "locality" ? 75 : 0,
 });
 
 export function inferCircuit(input: { explicit?: string; department?: string; locality?: string }): CircuitInference {
   const explicit = input.explicit?.trim() || "";
   const rawCircuits = explicitCircuits(explicit);
   if (rawCircuits.length) return result(explicit, rawCircuits, "explicit");
-  if (/\b(todos? los circuitos|toda la provincia|provincial|para toda la provincia)\b/.test(normalize(explicit))) return { sourceCircuitRaw: explicit, normalizedCircuit: "ALL", circuits: [], circuitInferenceSource: "explicit" };
+  if (/\b(todos? los circuitos|toda la provincia|provincial|para toda la provincia)\b/.test(normalize(explicit))) return { sourceCircuitRaw: explicit, normalizedCircuit: "ALL", circuits: [], circuitInferenceSource: "explicit", circuitConfidence: 100 };
 
   const department = input.department?.trim() || "";
   const fromDepartment = departmentsIn(department);
@@ -86,7 +87,7 @@ export function circuitMatches(publication: CircuitInference | { circuit?: strin
   const actual = "circuits" in publication ? publication.circuits || [] : [];
   if (actualValue === "ALL") return true;
   if (actualValue === "UNKNOWN" || !actual.length && !actualValue) return null;
-  const resolved = actual.length ? actual : profileCircuitIds([String(actualValue)]);
+  const resolved = actual.length ? profileCircuitIds(actual) : profileCircuitIds([String(actualValue)]);
   if (!resolved.length) return null;
   return resolved.some((circuit) => wanted.includes(circuit));
 }

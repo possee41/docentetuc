@@ -1,19 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { diffByHash } from "./sync-diff.ts";
+import { hasMeaningfulPublicationChange } from "./sync-diff.ts";
+import { notificationDedupeKey } from "./notification-events.ts";
 
-test("una segunda sincronización idéntica no vuelve a escribir publicaciones", () => {
-  const current = [{ id: "a", source: "SIME", contentHash: "1" }, { id: "b", source: "FDCI", contentHash: "2" }];
-  const first = diffByHash(new Map(), current);
-  assert.equal(first.writes.length, 2);
-  const stored = new Map(current.map((item) => [item.id, { content_hash: item.contentHash }]));
-  const second = diffByHash(stored, current);
-  assert.equal(second.writes.length, 0);
-  assert.equal(second.unchanged.length, 2);
+test("hash-only parser changes do not create user-facing change alerts", () => {
+  const previous = { status: "vigente", startsAt: null, endsAt: "2026-10-01", title: "Cargo", summary: "Cargo docente", category: "Vacante", level: "Secundario", area: "Historia", junta: "Junta", location: "Tafí Viejo", shift: "Mañana", character: "Interino", sourceUpdatedAt: null, circuit: "UNKNOWN", contentHash: "old" };
+  assert.equal(hasMeaningfulPublicationChange(previous, { ...previous, circuit: "III", contentHash: "new" }), false);
 });
 
-test("sólo escribe filas nuevas o cuyo hash cambió", () => {
-  const previous = new Map([["same", { content_hash: "1" }], ["changed", { content_hash: "old" }]]);
-  const result = diffByHash(previous, [{ id: "same", source: "SIME", contentHash: "1" }, { id: "changed", source: "SIME", contentHash: "new" }, { id: "new", source: "SIME", contentHash: "3" }]);
-  assert.deepEqual(result.writes.map((item) => item.id), ["changed", "new"]);
+test("a meaningful source date or content change remains alertable", () => {
+  const previous = { status: "vigente", endsAt: "2026-10-01", summary: "Cargo docente" };
+  assert.equal(hasMeaningfulPublicationChange(previous, { ...previous, status: "cerrada" }), true);
+  assert.equal(hasMeaningfulPublicationChange(previous, { ...previous, endsAt: "2026-10-02" }), true);
+  assert.equal(hasMeaningfulPublicationChange(previous, { ...previous, summary: "Cargo actualizado" }), true);
+});
+
+test("logical event keys deduplicate retries but distinguish a new event", () => {
+  const first = notificationDedupeKey("sime:42", "DESIGNACION_CAMBIO", "change:abc123");
+  assert.equal(notificationDedupeKey("sime:42", "DESIGNACION_CAMBIO", "change:abc123"), first);
+  assert.notEqual(notificationDedupeKey("sime:42", "DESIGNACION_CAMBIO", "change:def456"), first);
+  assert.ok(notificationDedupeKey("x".repeat(300), "EVENTO", "identity").length <= 255);
 });

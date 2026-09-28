@@ -144,7 +144,7 @@ test("una sola coincidencia de nivel no es evidencia suficiente para recomendar 
 });
 
 test("el umbral personal para Inicio se aplica junto con la confianza", () => {
-  const good = { status: "exact", outcome: "MATCH", score: 85, compatibility: 85, confidence: 85, matched: 6, total: 7, reasons: [], criteria: [] } as const;
+  const good: Parameters<typeof isEligibleMatchResult>[0] = { status: "exact", outcome: "MATCH", score: 85, compatibility: 85, compatibilityScore: 85, confidence: 85, matchConfidence: 85, matched: 6, total: 7, reasons: [], criteria: [] };
   assert.equal(isEligibleMatchResult(good, 85), true);
   assert.equal(isEligibleMatchResult(good, 90), false);
   assert.equal(isEligibleMatchResult({ ...good, confidence: 69 }, 70), false);

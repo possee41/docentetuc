@@ -48,6 +48,12 @@ export function parseCenetTrainings(html: string, now = new Date()): PublicTrain
   }).filter((item) => Boolean(item.title));
 }
 
+export function isCenetMarkupRecognized(html: string) {
+  const text = plainText(html).toLocaleLowerCase("es");
+  return ["inicio preinscripción", "fin preinscripción", "inicio de cohorte", "fin de cohorte"].every((label) => text.includes(label))
+    && /cnetPop\(this\)/i.test(html);
+}
+
 export function parseInfdCatalog(html: string, now = new Date()) {
   const text = plainText(html), year = now.getFullYear();
   const dates = text.match(/Fecha de inscripción:\s*(\d{1,2}) de ([a-záéíóú]+) al (\d{1,2}) de ([a-záéíóú]+)/i);
@@ -60,13 +66,26 @@ export function parseInfdCatalog(html: string, now = new Date()) {
 }
 
 export function parseInfdTrainings(html: string, pageUrl: string, dates: ReturnType<typeof parseInfdCatalog>, now = new Date()): PublicTraining[] {
-  const blocks = [...html.matchAll(/<p\b[^>]*(?:font-size:\s*30px|has-large-font-size)[^>]*>\s*<strong>(.*?)<\/strong>\s*<\/p>/gis)];
+  const blocks = [...html.matchAll(/<p\b[^>]*(?:font-size:\s*30px|has-large-font-size)[^>]*>\s*<strong>([\s\S]*?)<\/strong>\s*<\/p>/gi)];
   return blocks.map((match) => {
     const title = plainText(match[1]);
     if (!title || /listado de cursos|información importante/i.test(title)) return null;
     const following = plainText(html.slice((match.index || 0) + match[0].length, (match.index || 0) + match[0].length + 1800));
     const recipients = plainText(html).match(/Destinatarios:\s*([^.<]+)/i)?.[1]?.trim() || "Docentes";
-    const id = slug(`${new URL(pageUrl).pathname}-${title}`), metadata: TrainingMetadata = { entity: "course", trainingId: `infd:${id}`, registrationOpensAt: dates.registrationOpensAt, registrationHasTime: false, registrationClosesAt: dates.registrationClosesAt, courseStartsAt: dates.courseStartsAt, source: "INFoD / AulaS-TIC", sourceUrl: pageUrl, dateStatus: "confirmed", recipients, content: following.slice(0, 1000), organization: "Instituto Nacional de Formación Docente" };
-    return { id: `infd:${id}`, externalId: id, title, summary: following.slice(0, 1800), level: recipients, area: title, modality: "Virtual autoasistida", startsAt: dates.courseStartsAt || null, endsAt: dates.registrationClosesAt || null, status: statusFor(dates.registrationOpensAt, dates.registrationClosesAt, dates.courseStartsAt, undefined, now), officialUrl: pageUrl, metadata, raw: match[0] + following };
+    const specificRange = following.match(/(?:fecha de inscripci[oó]n|inscripci[oó]n del curso)\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{4})\s*(?:al|hasta)\s*(\d{1,2}\/\d{1,2}\/\d{4})/i);
+    const specificStart = following.match(/(?:inicio de cursado|comienza el curso)\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{4})/i);
+    const parseSpecificDate = (raw: string | undefined, end = false) => {
+      const parts = raw?.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      return parts ? `${parts[3]}-${parts[2].padStart(2, "0")}-${parts[1].padStart(2, "0")}T${end ? "23:59:59" : "00:00:00"}-03:00` : undefined;
+    };
+    const registrationOpensAt = specificRange ? parseSpecificDate(specificRange[1]) : undefined;
+    const registrationClosesAt = specificRange ? parseSpecificDate(specificRange[2], true) : undefined;
+    const courseStartsAt = specificStart ? parseSpecificDate(specificStart[1]) : undefined;
+    const id = slug(`${new URL(pageUrl).pathname}-${title}`), metadata: TrainingMetadata = {
+      entity: "course", trainingId: `infd:${id}`, ...(registrationOpensAt ? { registrationOpensAt, registrationHasTime: false } : {}), ...(registrationClosesAt ? { registrationClosesAt } : {}), ...(courseStartsAt ? { courseStartsAt } : {}),
+      ...(dates.registrationOpensAt ? { generalWindowOpensAt: dates.registrationOpensAt } : {}), ...(dates.registrationClosesAt ? { generalWindowClosesAt: dates.registrationClosesAt } : {}), ...(dates.courseStartsAt ? { generalWindowCourseStartsAt: dates.courseStartsAt } : {}),
+      source: "INFoD / AulaS-TIC", sourceUrl: pageUrl, dateStatus: specificRange || specificStart ? "course_confirmed" : dates.registrationOpensAt || dates.registrationClosesAt || dates.courseStartsAt ? "general_window" : "unknown", recipients, content: following.slice(0, 1000), organization: "Instituto Nacional de Formación Docente",
+    };
+    return { id: `infd:${id}`, externalId: id, title, summary: following.slice(0, 1800), level: recipients, area: title, modality: "Virtual autoasistida", startsAt: courseStartsAt || null, endsAt: registrationClosesAt || null, status: statusFor(registrationOpensAt, registrationClosesAt, undefined, undefined, now), officialUrl: pageUrl, metadata, raw: match[0] + following };
   }).filter((item): item is PublicTraining => Boolean(item));
 }

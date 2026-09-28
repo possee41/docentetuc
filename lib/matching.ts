@@ -14,7 +14,7 @@ export type MatchPublication = {
 };
 
 export type MatchCriterion = { key: string; label: string; expected: string; matched: boolean; available: boolean; outcome: "MATCH" | "NO_MATCH" | "UNKNOWN"; required: boolean };
-export type MatchResult = { status: "exact" | "partial" | "none" | "unknown" | "unconfigured"; outcome: "MATCH" | "NO_MATCH" | "UNKNOWN"; score: number; compatibility: number; confidence: number; matched: number; total: number; reasons: string[]; criteria: MatchCriterion[] };
+export type MatchResult = { status: "exact" | "partial" | "none" | "unknown" | "unconfigured"; outcome: "MATCH" | "NO_MATCH" | "UNKNOWN"; score: number; compatibility: number; compatibilityScore: number; confidence: number; matchConfidence: number; matched: number; total: number; reasons: string[]; criteria: MatchCriterion[] };
 
 const normalize = (value = "") => value.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
 type ProfileValue = string | string[] | undefined;
@@ -116,7 +116,7 @@ function result(status: MatchResult["status"], score: number, confidence: number
       ? "NO_MATCH"
       : score >= 85 ? "MATCH" : "NO_MATCH";
   return {
-    status, outcome, score, compatibility: score, confidence, matched, total, criteria,
+    status, outcome, score, compatibility: score, compatibilityScore: score, confidence, matchConfidence: confidence, matched, total, criteria,
     reasons: criteria.map((criterion) => criterion.outcome === "MATCH" ? `${criterion.label} coincide con ${criterion.expected}.` : criterion.outcome === "NO_MATCH" ? `${criterion.label} no coincide con ${criterion.expected}.` : `${criterion.label}: dato no informado; compatibilidad desconocida.`),
   };
 }
