@@ -1,3 +1,5 @@
+param([switch]$Release)
+
 $ErrorActionPreference = "Stop"
 
 $project = $PSScriptRoot
@@ -6,8 +8,8 @@ $tools = Join-Path $root ".android-toolchain"
 $downloads = Join-Path $tools "downloads"
 $jdk = Join-Path $tools "jdk"
 $sdk = Join-Path $tools "sdk"
-$gradle = Join-Path $tools "gradle-8.9"
-$gradleUser = Join-Path $tools "user"
+$gradle = Join-Path $tools "gradle-8.13"
+$gradleUser = Join-Path $tools "user-8.13"
 $javaUserHome = Join-Path $tools "java-home"
 $androidUserHome = Join-Path $tools "android-user"
 $temporary = Join-Path $tools "temp"
@@ -38,8 +40,9 @@ if (-not (Test-Path (Join-Path $sdk "cmdline-tools\latest\bin\sdkmanager.bat")))
 }
 
 if (-not (Test-Path (Join-Path $gradle "bin\gradle.bat"))) {
-    $archive = Join-Path $downloads "gradle-8.9-bin.zip"
-    curl.exe -fL "https://services.gradle.org/distributions/gradle-8.9-bin.zip" -o $archive
+    $archive = Join-Path $downloads "gradle-8.13-bin.zip"
+    curl.exe -fL "https://services.gradle.org/distributions/gradle-8.13-bin.zip" -o $archive
+    if ($LASTEXITCODE -ne 0) { throw "No se pudo descargar Gradle 8.13." }
     Expand-Archive -LiteralPath $archive -DestinationPath $tools -Force
 }
 
@@ -53,22 +56,53 @@ $env:TEMP = $temporary
 $env:TMP = $temporary
 $sdkManager = Join-Path $sdk "cmdline-tools\latest\bin\sdkmanager.bat"
 
-if (-not (Test-Path (Join-Path $sdk "platforms\android-35\android.jar"))) {
+if (-not (Test-Path (Join-Path $sdk "platforms\android-36\android.jar"))) {
     1..20 | ForEach-Object { "y" } | & $sdkManager --licenses | Out-Null
-    & $sdkManager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+    & $sdkManager "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+    if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar Android SDK 36." }
 }
 
 Push-Location $project
 try {
-    & (Join-Path $gradle "bin\gradle.bat") --no-daemon assembleDebug
-    if ($LASTEXITCODE -ne 0) { throw "Gradle no pudo compilar el APK." }
+    if ($Release) {
+        $signingDir = Join-Path (Split-Path $root -Parent) "DocenteTuc-signing"
+        $keyPath = Join-Path $signingDir "DocenteTuc-upload.jks"
+        $credentialPath = Join-Path $signingDir "signing.credential.xml"
+        if (-not (Test-Path -LiteralPath $keyPath) -or -not (Test-Path -LiteralPath $credentialPath)) { throw "Falta la clave de publicación o su credencial cifrada." }
+        $credential = Import-Clixml -LiteralPath $credentialPath
+        $password = $credential.GetNetworkCredential().Password
+        if (-not $password) { throw "La credencial de firma no se pudo descifrar con esta cuenta de Windows." }
+        $env:DOCENTETUC_KEYSTORE_PATH = $keyPath
+        $env:DOCENTETUC_STORE_PASSWORD = $password
+        $env:DOCENTETUC_KEY_PASSWORD = $password
+        & (Join-Path $gradle "bin\gradle.bat") --no-daemon assembleRelease bundleRelease
+    } else {
+        & (Join-Path $gradle "bin\gradle.bat") --no-daemon assembleDebug
+    }
+    if ($LASTEXITCODE -ne 0) { throw "Gradle no pudo compilar Android." }
 } finally {
+    $env:DOCENTETUC_KEYSTORE_PATH = $null
+    $env:DOCENTETUC_STORE_PASSWORD = $null
+    $env:DOCENTETUC_KEY_PASSWORD = $null
+    $password = $null
     Pop-Location
 }
 
-$apk = Join-Path $project "app\build\outputs\apk\debug\app-debug.apk"
 $dist = Join-Path $root "dist"
 New-Item -ItemType Directory -Force $dist | Out-Null
-$output = Join-Path $dist "DocenteTuc-debug.apk"
-Copy-Item -LiteralPath $apk -Destination $output -Force
-Write-Output $output
+if ($Release) {
+    $apk = Join-Path $project "app\build\outputs\apk\release\app-release.apk"
+    $aab = Join-Path $project "app\build\outputs\bundle\release\app-release.aab"
+    if (-not (Test-Path -LiteralPath $apk) -or -not (Test-Path -LiteralPath $aab)) { throw "Falta el APK o el AAB de release." }
+    $apkOutput = Join-Path $dist "DocenteTuc-release.apk"
+    $aabOutput = Join-Path $dist "DocenteTuc-release.aab"
+    Copy-Item -LiteralPath $apk -Destination $apkOutput -Force
+    Copy-Item -LiteralPath $aab -Destination $aabOutput -Force
+    Write-Output $apkOutput, $aabOutput
+} else {
+    $apk = Join-Path $project "app\build\outputs\apk\debug\app-debug.apk"
+    if (-not (Test-Path -LiteralPath $apk)) { throw "Falta el APK de prueba." }
+    $output = Join-Path $dist "DocenteTuc-debug.apk"
+    Copy-Item -LiteralPath $apk -Destination $output -Force
+    Write-Output $output
+}

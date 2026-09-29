@@ -71,6 +71,7 @@ const dayKey = (value: Date | string) => new Intl.DateTimeFormat("en-CA", { time
 
 export function detectIntent(question: string): AIIntent {
   const query = normalize(question);
+  if (/^(?:¿?)(?:que significa|que es|explicame|defini(?:me|cion de))\b/.test(query) && !/\b(mi|mis|esta|este|estos|actual|vigente|publicad|proxim|inscrip|fecha|hoy|manana|disponib|abiert)\w*\b/.test(query)) return "conversacion_general";
   if (/\b(mi agenda|mis eventos|que tengo|proximo evento|agend)/.test(query)) return "agenda";
   if (/\b(faltar|inasist\w*|ausent\w*|no puedo ir|no voy a ir|no asistir|justificar la falta)\b/.test(query)) return "inasistencia";
   if (/\b(licencia|licencias|sesop|salud laboral)\b/.test(query)) return "licencias";
@@ -129,6 +130,7 @@ function relevantAgendaEntries(question: string, entries: AIAgendaEntry[], now: 
 
 export function retrievePublications(question: string, publications: Publication[], limit = 8, options: AIContextOptions = {}) {
   const query = normalize(question), words = tokens(question), agendaEntries = options.agendaEntries || (options.agendaIds || []).map((id) => ({ id, title: "", startsAt: "", kind: "publication" as const })), agenda = new Set(agendaEntries.map((entry) => entry.id)), agendaEntryMap = new Map(agendaEntries.map((entry) => [entry.id, entry])), intent = detectIntent(question);
+  if (intent === "conversacion_general") return [];
   if (/\b(no existe|inexistente|fictici|inventad)/.test(query)) return [];
   const wantsTraining = ["capacitaciones", "inscripcion"].includes(intent), wantsVacancy = ["vacantes", "designaciones"].includes(intent);
   const wantsAgenda = intent === "agenda", now = options.now || new Date(), requested = wantsAgenda ? requestedDay(question, now) : null;
@@ -160,7 +162,9 @@ export function retrievePublications(question: string, publications: Publication
 }
 
 export function buildAIContext(question: string, publications: Publication[], options: AIContextOptions = {}) {
-  const now = options.now || new Date(), intent = detectIntent(question), selected = retrievePublications(question, publications, 8, { ...options, now });
+  const now = options.now || new Date(), intent = detectIntent(question);
+  if (intent === "conversacion_general") return { intent, sources: [] as AISource[], context: "INTENCIÓN DETECTADA: conversación general. Respondé con una explicación general; no atribuyas datos actuales a fuentes oficiales ni agregues publicaciones del panel." };
+  const selected = retrievePublications(question, publications, 8, { ...options, now });
   const agendaEntries = intent === "agenda" ? relevantAgendaEntries(question, options.agendaEntries || [], now) : [];
   const sources: AISource[] = selected.map((item) => ({ id: item.id, title: item.title, source: item.source, sourceType: "official", url: item.official_url, updatedAt: item.updated_at, status: item.status }));
   sources.push(...agendaEntries.filter((entry) => entry.kind === "manual").map((entry) => ({ id: entry.id, title: entry.title, source: "Tu agenda", sourceType: "internal" as const, url: "", updatedAt: entry.updatedAt || "", status: "personal" })));

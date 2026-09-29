@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "ar.com.docentetuc.app",
       "sha256_cert_fingerprints": [
-        "5C:D9:73:3F:43:F3:5A:C4:68:E1:6A:1E:1A:D0:53:40:A8:5C:87:A8:02:20:EB:F4:4C:83:97:72:5F:C5:58:B3"
+        "5C:D9:73:3F:43:F3:5A:C4:68:E1:6A:1E:1A:D0:53:40:A8:5C:87:A8:02:20:EB:F4:4C:83:97:72:5F:C5:58:B3",
+        "4C:17:7B:18:21:68:D6:E3:D0:9B:B4:50:11:08:E7:A7:CC:72:2E:2E:B4:67:9B:BF:27:8A:D3:3A:FF:CE:C0:2E"
       ]
     }
   }

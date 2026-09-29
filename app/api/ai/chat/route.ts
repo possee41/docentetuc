@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     const useProfile = body.useProfile === true, context = validContext(body.context), intent = detectIntent(message);
     const sourceHealthPromise = db.prepare("SELECT source, error, sync_status FROM sync_state").all<{ source: string; error?: string | null; sync_status?: string | null }>().catch(() => ({ results: [] as { source: string; error?: string | null; sync_status?: string | null }[] }));
     const [publicationRows, profileRow, agendaRows, designationRows, manualAgendaRows, syncRows] = await Promise.all([
-      db.prepare("SELECT * FROM publications ORDER BY updated_at DESC LIMIT 1500").all<Publication>(),
+      intent === "conversacion_general" ? Promise.resolve({ results: [] as Publication[] }) : db.prepare("SELECT * FROM publications ORDER BY updated_at DESC LIMIT 1500").all<Publication>(),
       useProfile ? db.prepare("SELECT * FROM profiles WHERE user_id=?").bind(user.userId).first<Record<string, unknown>>() : Promise.resolve(null),
       intent === "agenda" ? db.prepare("SELECT publication_id, agenda_at FROM saved_publications WHERE user_id=? AND in_agenda=1").bind(user.userId).all<{ publication_id: string; agenda_at?: string | null }>() : Promise.resolve({ results: [] as { publication_id: string; agenda_at?: string | null }[] }),
       intent === "designaciones" ? db.prepare("SELECT * FROM designation_tracking WHERE user_id=? ORDER BY COALESCE(appointment_at, applied_at, updated_at) DESC LIMIT 100").bind(user.userId).all<DesignationTracking>() : Promise.resolve({ results: [] as DesignationTracking[] }),

@@ -13,6 +13,12 @@ const usefulRecords = usefulInformation.map((item) => ({ ...base, id: `info:${it
 
 test("recupera primero la próxima inscripción usando datos reales", () => assert.equal(retrievePublications("¿Qué capacitación abre primero?", records)[0]?.id, "next"));
 test("una conversación general no adjunta fuentes irrelevantes", () => assert.equal(buildAIContext("Hola", records).sources.length, 0));
+test("una definición de suplente no cita vacantes del panel abierto", () => {
+  const result = buildAIContext("¿Qué significa suplente en una designación docente?", [...records, vacancy], { context: { type: "vacantes", title: "Designaciones" } });
+  assert.equal(result.intent, "conversacion_general");
+  assert.deepEqual(result.sources, []);
+  assert.doesNotMatch(result.context, /Horas de Filosofía|Contexto del panel: tipo vacantes/);
+});
 test("recupera capacitaciones que abren próximamente", () => assert.equal(retrievePublications("¿Qué capacitaciones abren próximamente?", records)[0]?.id, "next"));
 test("no agrega el perfil al contexto sin autorización", () => assert.match(buildAIContext("capacitaciones", records).context, /no autorizó usar su perfil/));
 

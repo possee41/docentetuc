@@ -125,7 +125,10 @@ async function boardPublications() {
   const publications: Publication[] = [];
   let exportedDriveDocs = 0;
   let complete = true;
-  for (const [externalId, title, category, junta, officialUrl] of documents) {
+  let firstError: unknown = null;
+  for (let offset = 0; offset < documents.length; offset += 4) {
+    await Promise.all(documents.slice(offset, offset + 4).map(async ([externalId, title, category, junta, officialUrl]) => {
+    try {
     let fingerprint = officialUrl, summary = `Documento público oficial de la Junta ${junta}.`, metadata = "{}";
     if (officialUrl.includes("docs.google.com/document/")) {
       const docId = officialUrl.split("/d/")[1].split("/")[0];
@@ -159,8 +162,8 @@ async function boardPublications() {
           let entrySummary = `${entry.name}. Archivo público oficial disponible en Google Drive.`, contentAvailable = false;
           // ponytail: límite de subconsultas; usar Drive API oficial si el Ministerio publica un feed estable.
           if (isGoogleDoc && exportedDriveDocs < 4) {
-            const documentResponse = await fetch(`https://docs.google.com/document/d/${entry.id}/export?format=html`, { signal: AbortSignal.timeout(15_000) });
             exportedDriveDocs++;
+            const documentResponse = await fetch(`https://docs.google.com/document/d/${entry.id}/export?format=html`, { signal: AbortSignal.timeout(15_000) });
             if (!documentResponse.ok) throw new Error(`HTTP_${documentResponse.status} ${entryUrl}`);
             entrySummary = htmlToText(await documentResponse.text()) || entrySummary; contentAvailable = true;
           }
@@ -169,7 +172,14 @@ async function boardPublications() {
       }
     }
     publications.push({ id: `padrones:${externalId}`, source: "Padrones y Comunicados", externalId, kind: "junta", category, title, summary, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: "vigente", officialUrl, metadata, contentHash: await hash(fingerprint), sourceUpdatedAt: null });
+    } catch (error) {
+      complete = false;
+      firstError ??= error;
+      console.error("document_source_failed", externalId, error);
+    }
+    }));
   }
+  if (!publications.length && firstError) throw firstError;
   return { items: publications, complete };
 }
 
