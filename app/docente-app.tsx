@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { CSSProperties } from "react";
 import { Bell, BookOpen, Bookmark, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Clock3, Download, ExternalLink, GraduationCap, Home, Mail, MapPin, Menu, Moon, Phone, RefreshCw, Search, SlidersHorizontal, Sparkles, Star, Sun, UserRound, WifiOff, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +59,18 @@ function AppSidebarNavigation({ view, unread, onNavigate }: { view: View; unread
 }
 
 const normalize = (value = "") => value.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const HOME_WARNING_DISMISSAL_KEY = "docentetuc-home-critical-warning-dismissed";
+function useHomeWarningDismissal() {
+  return useSyncExternalStore(
+    (notify) => {
+      window.addEventListener("storage", notify);
+      window.addEventListener("docentetuc:home-warning-dismissed", notify);
+      return () => { window.removeEventListener("storage", notify); window.removeEventListener("docentetuc:home-warning-dismissed", notify); };
+    },
+    () => localStorage.getItem(HOME_WARNING_DISMISSAL_KEY) || "",
+    () => "",
+  );
+}
 const publicationCircuitMatch = (item: Publication, circuit: string) => {
   if (item.circuit === "ALL") return true;
   const direct = item.circuit && /^[iv]+$|^[1-5]$/i.test(item.circuit) ? `Circuito ${item.circuit}` : item.source_circuit_raw || "";
@@ -369,6 +381,8 @@ function InformationHub({ items, query, onQuery, savedMap, onOpen, onSave, onAsk
 type DashboardProps = { data: AppData | null; profile?: Profile; savedMap: Map<string, Saved>; reminderMap: Map<string, TrainingReminder>; matches: (item: Publication) => boolean; matchResult: (item: Publication) => MatchResult; isEligible?: (item: Publication) => boolean; greeting: string; query: string; onQuery: (value: string) => void; syncing: boolean; onSync: () => void; onRetry: () => void; onOpen: (item: Publication) => void; onRemind: (item: Publication) => void; onAskAI: () => void; onView: (view: View) => void; loading: boolean; error: string; warning: string };
 
 function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult, isEligible, greeting, query, onQuery, syncing, onSync, onRetry, onOpen, onRemind, onAskAI, onView, loading, error, warning }: DashboardProps) {
+  const [sourceDetail, setSourceDetail] = useState<{ label: string; key: string; health?: SyncStatus } | null>(null);
+  const dismissedWarningKey = useHomeWarningDismissal();
   const now = new Date();
   const publications = data?.publications || [];
   const sync = data?.sync || [];
@@ -412,7 +426,23 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const searchResults = query.trim() ? publications.filter((item) => normalize(publicationSearchText(item)).includes(normalize(query.trim()))).slice(0, 20) : [];
   const profileNeedsDetail = !profileReady || !publications.some((item) => matchResult(item).confidence >= 70);
   const sourceLabels = [["SIME", "SIME"], ["Capacitación Docente", "FDCI"], ["CeNET / INET", "CeNET"], ["INFoD / AulaS-TIC", "INFoD"], ["Padrones", "Padrones"], ["Llamados abiertos", "Llamados"], ["Comunicados", "Comunicados"], ["Resoluciones", "Resoluciones"], ["Información oficial Tucumán", "Info oficial"]] as const;
-  const healthWarning = sourceLabels.some(([key]) => { const health = sync.find((source) => source.source === key); return !health || health.sync_status !== "OK" || !sourceFreshness(health, now).fresh; });
+  const criticalSourceLabels = sourceLabels.slice(0, 4);
+  const criticalSourceIssues = data ? criticalSourceLabels.flatMap(([key, label]) => {
+    const health = sync.find((source) => source.source === key), freshness = sourceFreshness(health, now);
+    return health?.sync_status === "OK" && freshness.fresh ? [] : [{ key, label, health, fresh: freshness.fresh }];
+  }) : [];
+  const criticalWarningKey = error && data
+    ? `load:${error}`
+    : data ? criticalSourceIssues.map(({ key, health, fresh }) => `${key}:${health?.sync_status || "MISSING"}:${fresh ? "FRESH" : "STALE"}:${health?.error_code || ""}:${health?.last_successful_sync_at || ""}`).join("|") : "";
+  useEffect(() => {
+    if (!data || loading) return;
+    const dismissed = localStorage.getItem(HOME_WARNING_DISMISSAL_KEY) || "";
+    if (dismissed && dismissed !== criticalWarningKey) {
+      localStorage.removeItem(HOME_WARNING_DISMISSAL_KEY);
+      window.dispatchEvent(new Event("docentetuc:home-warning-dismissed"));
+    }
+  }, [criticalWarningKey, data, loading]);
+  const showCriticalWarning = Boolean(criticalWarningKey && dismissedWarningKey !== criticalWarningKey);
   const priorityLabel = (item: Publication) => {
     const itemCandidate = candidate(item), rank = homePriority(itemCandidate, now), days = calendarDayDistance(itemCandidate.registrationOpensAt, now);
     return rank === 0 ? "🔥 ABRE HOY" : rank === 1 ? "🔥 ABRE MAÑANA" : rank <= 4 ? `🔥 ABRE EN ${days} DÍAS` : rank === 5 ? "🟢 INSCRIPCIÓN ABIERTA" : rank === 6 ? "🎯 DESIGNACIÓN PARA VOS" : rank === 7 ? "📅 PRÓXIMO EN AGENDA" : "NOVEDAD PARA VOS";
@@ -424,10 +454,11 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
     <header className="home-greeting"><h1 suppressHydrationWarning>{greeting}{profile?.name ? `, ${profile.name.split(" ")[0]}` : ""}</h1><p>Tu información docente, en un solo lugar.</p></header>
     <div className="home-search"><div><Search className="size-4" /><Input value={query} onChange={(event) => onQuery(event.target.value)} aria-label="Buscar en DocenteTuc" placeholder="Buscar en DocenteTuc..." /></div><button type="button" onClick={onSync} disabled={syncing || loading} aria-label="Actualizar información"><RefreshCw className={`size-5 ${syncing ? "animate-spin" : ""}`} /></button></div>
     <div className="home-source-health" aria-label="Estado de actualización por fuente">
-      {sourceLabels.map(([key, label]) => { const health = sync.find((source) => source.source === key), freshness = sourceFreshness(health, now), healthy = health?.sync_status === "OK" && freshness.fresh; const when = elapsedLabel(freshness.verifiedAt, now); return <span key={key} className={healthy ? "home-source-health-item is-healthy" : "home-source-health-item is-warning"} title={`${label}: ${healthy ? when : `${health?.sync_status || "Sin verificar"} · ${when}`}`}><i aria-hidden="true" />{label}<small>{healthy ? when.replace("verificado ", "") : health?.sync_status === "EMPTY_SUSPECT" ? "revisión pendiente" : "no verificada"}</small></span>; })}
+      {sourceLabels.map(([key, label]) => { const health = sync.find((source) => source.source === key), freshness = sourceFreshness(health, now), healthy = health?.sync_status === "OK" && freshness.fresh; const when = elapsedLabel(freshness.verifiedAt, now); const briefStatus = !health ? "sin verificar" : health.sync_status === "OK" ? (freshness.fresh ? when.replace("verificado ", "") : "desactualizada") : health.sync_status === "EMPTY_SUSPECT" ? "revisión" : /TIMEOUT|ERROR|FAILED/i.test(health.sync_status || "") ? "error" : (health.sync_status || "sin verificar").toLowerCase(); return <button type="button" key={key} onClick={() => setSourceDetail({ key, label, health })} className={`home-source-health-item ${healthy ? "is-healthy" : "is-warning"}`} title={`${label}: ${healthy ? when : `${health?.sync_status || "Sin verificar"} · ${when}`}`} aria-label={`Estado de ${label}: ${healthy ? when : `${health?.sync_status || "Sin verificar"} · ${when}`}. Ver detalles`}><i aria-hidden="true" />{label}<small>{briefStatus}</small></button>; })}
     </div>
 
-    {(error || warning || healthWarning) && <div className="home-source-warning"><span><strong>No pudimos verificar recientemente todas las fuentes.</strong> Cada fuente muestra su última comprobación exitosa; una falla no caduca por sí sola las publicaciones.</span><button onClick={onRetry}>Reintentar</button></div>}
+    {showCriticalWarning && <div className="home-source-warning" role="status"><span><strong>{error && data ? "No pudimos actualizar tu Inicio." : "Una fuente importante necesita verificación."}</strong><small>{error && data ? "Se conserva la información disponible en este dispositivo." : `Afectadas: ${criticalSourceIssues.map((issue) => issue.label).join(", ")}. ${warning || "La última información se conserva; abrí el estado de una fuente para ver detalles."}`}</small></span><button type="button" onClick={onRetry} disabled={loading || syncing}>Reintentar</button><button type="button" className="home-warning-dismiss" aria-label="Descartar aviso" onClick={() => { localStorage.setItem(HOME_WARNING_DISMISSAL_KEY, criticalWarningKey); window.dispatchEvent(new Event("docentetuc:home-warning-dismissed")); }}><X className="size-4" /></button></div>}
+    <Dialog open={Boolean(sourceDetail)} onOpenChange={(open) => !open && setSourceDetail(null)}><DialogContent className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle className="text-[var(--text-primary)]">Estado de {sourceDetail?.label}</DialogTitle><DialogDescription>Última comprobación disponible para esta fuente.</DialogDescription></DialogHeader>{sourceDetail && (() => { const health = sourceDetail.health, freshness = sourceFreshness(health, now); return <div className="space-y-3 text-sm"><div className={`rounded-xl border p-3 ${health?.sync_status === "OK" && freshness.fresh ? "border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success-text)]" : "border-[var(--warning-border)] bg-[var(--warning-bg)] text-[var(--warning-text)]"}`}><strong>{health?.sync_status || "SIN DATOS"}</strong><p>{health?.sync_status === "OK" && freshness.fresh ? "La fuente se verificó recientemente." : "No hay una verificación reciente confirmada."}</p></div><dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2"><dt className="text-[var(--text-muted)]">Último intento</dt><dd className="text-right font-semibold">{health?.last_attempt_at ? dateLabel(health.last_attempt_at, true) : "Sin dato"}</dd><dt className="text-[var(--text-muted)]">Última verificación exitosa</dt><dd className="text-right font-semibold">{health?.last_successful_sync_at ? dateLabel(health.last_successful_sync_at, true) : "Sin dato"}</dd><dt className="text-[var(--text-muted)]">Último cambio de contenido</dt><dd className="text-right font-semibold">{health?.last_content_change_at ? dateLabel(health.last_content_change_at, true) : "Sin dato"}</dd><dt className="text-[var(--text-muted)]">Publicaciones conocidas</dt><dd className="text-right font-semibold">{health?.item_count ?? "Sin dato"}</dd>{health?.records_created != null && <><dt className="text-[var(--text-muted)]">Creadas / actualizadas / retiradas</dt><dd className="text-right font-semibold">{health.records_created} / {health.records_updated || 0} / {health.records_removed || 0}</dd></>}</dl>{(health?.error_message || health?.error || health?.error_code) && <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-secondary)] p-3"><strong className="block text-[var(--text-secondary)]">Detalle técnico</strong><p className="mt-1 break-words text-[var(--text-muted)]">{[health.error_code, health.error_message || health.error].filter(Boolean).join(" · ")}</p></div>}{health?.parser_version && <p className="text-xs text-[var(--text-muted)]">Parser {health.parser_version}</p>}</div>; })()}<DialogFooter><Button variant="outline" onClick={() => setSourceDetail(null)}>Cerrar</Button></DialogFooter></DialogContent></Dialog>
     {nextTraining && nextMetadata && <section className="home-next-registration"><button className="home-next-main" onClick={() => onOpen(nextTraining)}><span className="home-next-eyebrow">{priorityLabel(nextTraining)}</span>{nextMetadata.dateStatus === "tentative" && <span className="home-next-tentative">PREINSCRIPCIÓN PREVISTA · FECHA TENTATIVA</span>}<strong>{nextTraining.title}</strong><small>{verifiedSourceLabel(nextTraining, sync, now)}</small><span className="home-next-dates">📅 Abre: {dateLabel(nextMetadata.registrationOpensAt || null)}{nextMetadata.registrationClosesAt ? ` · Cierra: ${dateLabel(nextMetadata.registrationClosesAt)}` : ""}</span>{profileReady && nextMatch?.status !== "unconfigured" ? <span className="home-match">{nextMatch?.score}% compatible con tu perfil</span> : <span className="home-next-profile">Completá tu perfil para saber si esta capacitación es para vos.</span>}</button><div className="home-next-actions"><button onClick={() => onOpen(nextTraining)}>{registrationState(nextMetadata.registrationOpensAt, nextMetadata.registrationClosesAt, now) === "open" ? "Inscribirme" : "Ver curso"}</button><button onClick={() => onRemind(nextTraining)}><Bell className="size-4" />{reminderMap.has(nextMetadata.trainingId) ? "Avisos activos" : "Avisarme"}</button></div>{upcoming.length > 1 && <button className="home-next-more" onClick={() => onView("capacitaciones")}>{upcoming.length - 1} {upcoming.length === 2 ? "inscripción más próxima" : "inscripciones más próximas"} <ChevronRight className="size-4" /></button>}</section>}
     {profileNeedsDetail && !loading && <button className="home-profile-nudge" onClick={() => onView("perfil")}><span><strong>{profileReady ? "Sumá detalles a tu perfil" : "Completá tu perfil"}</strong><small>{profileReady ? "Necesitamos más coincidencias verificables para personalizar tus oportunidades." : "Recibí oportunidades más precisas."}</small></span><ChevronRight className="size-5" /></button>}
     {importantNotice && <button className="home-alert" onClick={() => onOpen(importantNotice.publication!)}><span>⚠️</span><span><strong>{isGeneralNotice(importantNotice.publication!) ? "INFORMACIÓN GENERAL" : "IMPORTANTE PARA VOS"}</strong><small>{importantNotice.notice.title}</small></span><ChevronRight className="size-5" /></button>}
