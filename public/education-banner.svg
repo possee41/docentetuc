@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" fill="none">
+  <defs>
+    <linearGradient id="sky" x1="116" y1="16" x2="1038" y2="555" gradientUnits="userSpaceOnUse"><stop stop-color="#8BD9FF"/><stop offset=".48" stop-color="#E8F8FF"/><stop offset="1" stop-color="#75C8F3"/></linearGradient>
+    <linearGradient id="wall" x1="585" y1="168" x2="1090" y2="530" gradientUnits="userSpaceOnUse"><stop stop-color="#F7FCFF"/><stop offset="1" stop-color="#C6E9FA"/></linearGradient>
+    <linearGradient id="board" x1="636" y1="224" x2="1126" y2="449" gradientUnits="userSpaceOnUse"><stop stop-color="#144B70"/><stop offset="1" stop-color="#072D4C"/></linearGradient>
+    <linearGradient id="wave" x1="60" y1="24" x2="826" y2="428" gradientUnits="userSpaceOnUse"><stop stop-color="#15A9EE"/><stop offset=".52" stop-color="#0478C7"/><stop offset="1" stop-color="#063967"/></linearGradient>
+    <linearGradient id="shirt" x1="844" y1="302" x2="1020" y2="545" gradientUnits="userSpaceOnUse"><stop stop-color="#37B7EA"/><stop offset="1" stop-color="#0878BE"/></linearGradient>
+    <filter id="shadow" x="48" y="89" width="1167" height="509" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feGaussianBlur stdDeviation="18"/></filter>
+    <clipPath id="clip"><rect width="1200" height="560" rx="42"/></clipPath>
+  </defs>
+  <g clip-path="url(#clip)">
+    <rect width="1200" height="560" fill="url(#sky)"/>
+    <circle cx="1007" cy="106" r="64" fill="#FFC75E" opacity=".94"/>
+    <path d="M0 277 118 188l106 48 100-111 120 93 113-82 120 97 112-71 104 97 105-61 202 87v314H0V277Z" fill="#71BDE8" opacity=".75"/>
+    <path d="m0 311 148-75 119 42 120-81 117 72 117-44 105 75 127-62 99 65 125-63 123 72v248H0V311Z" fill="#318FCE" opacity=".52"/>
+    <path d="M0 60c154 12 218 109 358 119 153 11 225-59 345-58 126 1 192 73 317 58 74-9 119-37 180-59v95c-77 37-124 60-214 64-142 7-192-60-315-59-120 1-182 81-335 66C187 271 112 174 0 151V60Z" fill="#fff" opacity=".67"/>
+    <path d="M0 81c154 13 214 102 352 113 143 12 218-58 348-58 133 0 195 73 316 58 77-9 122-39 184-60" stroke="#67D1F7" stroke-width="8" opacity=".75"/>
+    <path d="M0 176c148 7 223 113 362 126 157 15 221-63 343-60 131 3 189 78 316 68 75-6 126-37 179-59v52c-70 36-120 68-205 73-140 8-191-68-307-70-120-2-195 81-333 70C197 364 122 260 0 247v-71Z" fill="url(#wave)" opacity=".79"/>
+    <path d="M590 179h610v381H592l-2-381Z" fill="url(#wall)" opacity=".9"/>
+    <path d="M631 212h520v229H631z" fill="url(#board)"/>
+    <path d="M676 258c42-19 55-13 91 1m64-5c34-18 53-15 82 4m-257 54c26-15 56-13 82 0m188-20c37-13 68-10 100 7m-255 56c31-12 62-9 92 8m92-22c34-16 66-16 98 2" stroke="#D8F4FF" stroke-linecap="round" stroke-width="6" opacity=".59"/>
+    <path d="M600 442h600v118H600z" fill="#F8FCFF"/>
+    <path d="M0 421h552v139H0z" fill="#EFF9FF" opacity=".88"/>
+    <path d="M62 89c83-55 192-72 300-49 95 20 168 79 225 151-84-40-144-55-220-46-111 13-172 73-294 57L62 89Z" fill="#2FB3EF" opacity=".38"/>
+    <path d="M55 463c122-52 234-48 329 11 53 33 101 68 170 86H0v-68l55-29Z" fill="#0878BE" opacity=".16"/>
+    <g filter="url(#shadow)" opacity=".14"><ellipse cx="884" cy="507" rx="271" ry="36" fill="#052744"/></g>
+    <!-- Docente enseñando frente al pizarrón -->
+    <path d="M803 278c0-43 26-70 61-70 37 0 61 28 61 70v57H803v-57Z" fill="#183F60"/>
+    <path d="M820 276c0-34 17-53 43-53 27 0 43 20 43 53v17h-86v-17Z" fill="#F1B885"/>
+    <path d="M823 279c4-39 23-58 48-55 24 2 34 17 39 40-18-8-35-22-47-31-7 20-19 35-40 46Z" fill="#493B36"/>
+    <path d="M771 338c17-25 47-37 92-37s77 14 96 39l37 220H733l38-222Z" fill="url(#shirt)"/>
+    <path d="m852 305 25 2 17 33-22 16-30-20 10-31Z" fill="#EAF8FF"/>
+    <path d="m782 347-87 50 22 27 108-43" fill="#F1B885"/>
+    <path d="m909 348 68-60 20 24-64 82" fill="#F1B885"/>
+    <path d="m994 286 24-15 19 23-20 17" fill="#F1B885"/>
+    <path d="M992 285 1010 261" stroke="#FFC75E" stroke-linecap="round" stroke-width="9"/>
+    <!-- Estudiantes, en primer plano -->
+    <path d="M444 523c7-64 40-97 94-97 52 0 84 36 92 97l5 37H438l6-37Z" fill="#064477"/>
+    <circle cx="538" cy="418" r="38" fill="#D99A72"/>
+    <path d="M497 414c5-37 27-58 56-57 29 2 45 22 48 48-22-9-38-20-50-36-12 22-29 37-54 45Z" fill="#152D46"/>
+    <path d="M273 554c7-59 35-91 85-91s77 32 84 91v6H270l3-6Z" fill="#0B5589"/>
+    <circle cx="356" cy="456" r="31" fill="#E5AF87"/>
+    <path d="M324 452c4-29 20-45 42-44 22 1 35 17 37 38-18-5-29-14-39-27-10 16-22 27-40 33Z" fill="#493B36"/>
+    <path d="M102 558c6-45 28-70 67-70 41 0 62 26 68 70H102Z" fill="#0878BE" opacity=".85"/>
+    <circle cx="168" cy="480" r="25" fill="#C9835D"/>
+    <path d="M143 477c4-25 17-37 35-36 18 1 29 14 30 31-15-4-24-12-32-22-7 13-18 22-33 27Z" fill="#17334E"/>
+    <!-- Destello dorado institucional -->
+    <g transform="translate(1094 78)" fill="#FFC75E"><path d="M0-18 4-4 18 0 4 4 0 18-4 4-18 0-4-4Z"/><circle r="3.5"/></g>
+  </g>
+</svg>

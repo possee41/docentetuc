@@ -8,9 +8,11 @@ $jdk = Join-Path $tools "jdk"
 $sdk = Join-Path $tools "sdk"
 $gradle = Join-Path $tools "gradle-8.9"
 $gradleUser = Join-Path $tools "user"
+$javaUserHome = Join-Path $tools "java-home"
+$androidUserHome = Join-Path $tools "android-user"
 $temporary = Join-Path $tools "temp"
 
-New-Item -ItemType Directory -Force $downloads, $gradleUser, $temporary | Out-Null
+New-Item -ItemType Directory -Force $downloads, $gradleUser, $javaUserHome, $androidUserHome, $temporary | Out-Null
 
 if (-not (Test-Path (Join-Path $jdk "bin\java.exe"))) {
     $archive = Join-Path $downloads "jdk17.zip"
@@ -44,6 +46,8 @@ if (-not (Test-Path (Join-Path $gradle "bin\gradle.bat"))) {
 $env:JAVA_HOME = $jdk
 $env:ANDROID_HOME = $sdk
 $env:ANDROID_SDK_ROOT = $sdk
+$env:ANDROID_USER_HOME = $androidUserHome
+$env:JAVA_TOOL_OPTIONS = "-Duser.home=$javaUserHome"
 $env:GRADLE_USER_HOME = $gradleUser
 $env:TEMP = $temporary
 $env:TMP = $temporary
