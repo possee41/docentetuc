@@ -107,7 +107,7 @@ export const usefulInformation: UsefulRecord[] = [
     id: "licencias", title: "Licencias y salud laboral", category: "Licencias y salud laboral",
     summary: "Las licencias se gestionan administrativamente mediante SIME y, cuando corresponde, requieren constancia o evaluación de SESOP. DocenteTuc no brinda orientación médica.",
     officialUrl: "https://sime.educaciontuc.gov.ar/GuiaTramites/",
-    metadata: { recordType: "procedure", services: ["Presentación administrativa de licencias", "Formularios de Dirección de Personal", "Constancias SESOP"], aliases: ["licencia", "salud laboral", "SESOP", "familiar enfermo", "aptitud física"], lastVerified: verified, sourceStatus: "partial", notes: "No se encontró en las fuentes consultadas un directorio vigente y completo de SESOP con teléfono, correo y horario; se omiten esos datos." }
+    metadata: { recordType: "procedure", services: ["Presentación administrativa de licencias", "Formularios de Dirección de Personal", "Constancias SESOP"], aliases: ["licencia", "salud laboral", "SESOP", "familiar enfermo", "aptitud física", "inasistencia", "faltar", "ausencia", "justificar una falta", "qué debo presentar si falto", "presentar una licencia"], lastVerified: verified, sourceStatus: "partial", notes: "No se encontró en las fuentes consultadas un directorio vigente y completo de SESOP con teléfono, correo y horario; se omiten esos datos." }
   },
   {
     id: "juntas", title: "Juntas de Clasificación", category: "Juntas",
@@ -126,4 +126,3 @@ export const usefulInformation: UsefulRecord[] = [
 export const usefulMetadata = (value: string): UsefulMetadata | null => {
   try { const parsed = JSON.parse(value) as UsefulMetadata; return parsed?.recordType ? parsed : null; } catch { return null; }
 };
-

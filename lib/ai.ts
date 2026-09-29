@@ -1,13 +1,14 @@
-import { profileMatch } from "./matching.ts";
+import { isEligibleForPersonalizedHome, profileMatch } from "./matching.ts";
 import { parseTrainingMetadata } from "./training.ts";
 import { usefulMetadata } from "./useful-information.ts";
 import type { DesignationTracking, Profile, Publication } from "./types.ts";
 
 export type AIConfig = { provider: string; apiKey: string; model: string };
 export type AISource = { id: string; title: string; source: string; sourceType: "official" | "internal" | "complementary"; url: string; updatedAt: string; status: string };
-export type AIIntent = "capacitaciones" | "vacantes" | "designaciones" | "llamados" | "agenda" | "perfil" | "novedades" | "documentos" | "informacion" | "busqueda_general" | "conversacion_general";
+export type AIIntent = "capacitaciones" | "inscripcion" | "vacantes" | "designaciones" | "llamados" | "agenda" | "perfil" | "novedades" | "documentos" | "junta" | "licencias" | "inasistencia" | "titulos" | "informacion" | "app" | "busqueda_general" | "conversacion_general";
 export type AIContextInput = { type: string; id?: string; title?: string };
-export type AIContextOptions = { profile?: Profile; agendaIds?: string[]; designations?: DesignationTracking[]; context?: AIContextInput; now?: Date };
+export type AIAgendaEntry = { id: string; title: string; startsAt: string; category?: string; recurrence?: string; updatedAt?: string; kind: "publication" | "manual" };
+export type AIContextOptions = { profile?: Profile; agendaIds?: string[]; agendaEntries?: AIAgendaEntry[]; designations?: DesignationTracking[]; context?: AIContextInput; sourceFailures?: string[]; now?: Date };
 export interface AIProvider { generate(input: string, instructions: string): Promise<string>; }
 
 export class AIProviderError extends Error {
@@ -71,34 +72,65 @@ const dayKey = (value: Date | string) => new Intl.DateTimeFormat("en-CA", { time
 export function detectIntent(question: string): AIIntent {
   const query = normalize(question);
   if (/\b(mi agenda|mis eventos|que tengo|proximo evento|agend)/.test(query)) return "agenda";
+  if (/\b(faltar|inasist\w*|ausent\w*|no puedo ir|no voy a ir|no asistir|justificar la falta)\b/.test(query)) return "inasistencia";
+  if (/\b(licencia|licencias|sesop|salud laboral)\b/.test(query)) return "licencias";
+  if (/\b(titulo|titulos|certificado|certificados|constancia)\b/.test(query)) return "titulos";
   if (/\b(designacion|donde me inscribi|presentarme|obtuve|cargo.*inscrib)/.test(query)) return "designaciones";
-  if (/\b(sueldo|haber|cobr|liquid|boleta|legajo|jubil|previsional|ciidept|cendie|digituc|titulo|certificado|licencia|sesop|expediente|sinide|sime|fdci|oficina|direccion|telefono|horario|tramite)/.test(query)) return "informacion";
   if (/\b(llamad[^ ]* abiert|convocatoria)/.test(query)) return "llamados";
-  if (/\b(capacit|curso|inscrip|cupo)/.test(query)) return "capacitaciones";
+  if (/\b(capacit|curso)/.test(query)) return "capacitaciones";
+  if (/\b(inscrip|inscrib|preinscrip|matricul)/.test(query)) return "inscripcion";
   if (/\b(vacant|cargo|horas? catedra)/.test(query)) return "vacantes";
   if (/\b(mi perfil|para mi perfil|coincide conmigo|que me sirve)/.test(query)) return "perfil";
   if (/\b(novedad|ultima|reciente)/.test(query)) return "novedades";
-  if (/\b(document|padron|comunicado|resolucion|junta)/.test(query)) return "documentos";
+  if (/\b(padron|comunicado|resolucion|junta)/.test(query)) return "junta";
+  if (/\b(sueldo|haber|cobr|liquid|boleta|legajo|jubil|previsional|ciidept|cendie|digituc|sinide|sime|fdci|oficina|direccion|telefono|horario|tramite|expediente)/.test(query)) return "informacion";
+  if (/\b(document|archivo)/.test(query)) return "documentos";
+  if (/\b(docentetuc|esta app|esta aplicacion|usar la aplicacion|como funciona la app)/.test(query)) return "app";
   if (/^(hola|buenas|buen dia|gracias|chau)[!. ]*$/.test(query)) return "conversacion_general";
   return "busqueda_general";
 }
 
 function requestedDay(question: string, now: Date) {
-  const query = normalize(question), date = new Date(now);
-  if (/\bmanana\b/.test(query)) date.setDate(date.getDate() + 1);
+  const query = normalize(question), [year, month, day] = dayKey(now).split("-").map(Number), date = new Date(Date.UTC(year, month - 1, day, 12));
+  if (/\bmanana\b/.test(query)) date.setUTCDate(date.getUTCDate() + 1);
   else if (!/\bhoy\b/.test(query)) {
     const weekdays = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
     const wanted = weekdays.findIndex((day) => new RegExp(`\\b${day}\\b`).test(query));
     if (wanted < 0) return null;
-    date.setDate(date.getDate() + ((wanted - date.getDay() + 7) % 7));
+    date.setUTCDate(date.getUTCDate() + ((wanted - date.getUTCDay() + 7) % 7));
   }
   return dayKey(date);
 }
 
+function dayOrdinal(value: string) {
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+  return Date.UTC(year, month - 1, day) / 86_400_000;
+}
+
+function eventOccursOn(entry: AIAgendaEntry, targetDay: string) {
+  const startDay = dayKey(entry.startsAt), difference = dayOrdinal(targetDay) - dayOrdinal(startDay);
+  if (difference < 0) return false;
+  if (!entry.recurrence || entry.recurrence === "none") return difference === 0;
+  if (entry.recurrence === "daily") return true;
+  if (entry.recurrence === "weekly") return difference % 7 === 0;
+  if (entry.recurrence === "monthly") return Number(targetDay.slice(8, 10)) === Number(startDay.slice(8, 10));
+  return difference === 0;
+}
+
+function relevantAgendaEntries(question: string, entries: AIAgendaEntry[], now: Date) {
+  const query = normalize(question), requested = requestedDay(question, now);
+  if (requested) return entries.filter((entry) => eventOccursOn(entry, requested));
+  if (/\b(esta semana|durante la semana)\b/.test(query)) {
+    const [year, month, day] = dayKey(now).split("-").map(Number);
+    return entries.filter((entry) => Array.from({ length: 7 }, (_, offset) => eventOccursOn(entry, dayKey(new Date(Date.UTC(year, month - 1, day + offset, 12))))).some(Boolean));
+  }
+  return entries.filter((entry) => Date.parse(entry.startsAt) >= now.getTime() || (entry.recurrence && entry.recurrence !== "none" && eventOccursOn(entry, dayKey(now)))).slice(0, 8);
+}
+
 export function retrievePublications(question: string, publications: Publication[], limit = 8, options: AIContextOptions = {}) {
-  const query = normalize(question), words = tokens(question), agenda = new Set(options.agendaIds || []), intent = detectIntent(question);
+  const query = normalize(question), words = tokens(question), agendaEntries = options.agendaEntries || (options.agendaIds || []).map((id) => ({ id, title: "", startsAt: "", kind: "publication" as const })), agenda = new Set(agendaEntries.map((entry) => entry.id)), agendaEntryMap = new Map(agendaEntries.map((entry) => [entry.id, entry])), intent = detectIntent(question);
   if (/\b(no existe|inexistente|fictici|inventad)/.test(query)) return [];
-  const wantsTraining = intent === "capacitaciones", wantsVacancy = ["vacantes", "designaciones"].includes(intent);
+  const wantsTraining = ["capacitaciones", "inscripcion"].includes(intent), wantsVacancy = ["vacantes", "designaciones"].includes(intent);
   const wantsAgenda = intent === "agenda", now = options.now || new Date(), requested = wantsAgenda ? requestedDay(question, now) : null;
   const wantsMatches = /coincid|compatible|sirve|para mi perfil/.test(query);
   const configuredProfile = options.profile ? matchProfile(options.profile) : null;
@@ -107,15 +139,16 @@ export function retrievePublications(question: string, publications: Publication
     if (wantsTraining && item.kind !== "capacitacion") return { item, score: -1 };
     if (wantsVacancy && !wantsTraining && item.kind !== "vacante") return { item, score: -1 };
     if (intent === "llamados" && !normalize(item.category).includes("llamado")) return { item, score: -1 };
-    if (intent === "documentos" && item.kind !== "junta") return { item, score: -1 };
-    if (intent === "informacion" && item.kind !== "informacion") return { item, score: -1 };
-    const eventDate = item.ends_at || item.starts_at || (item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata)?.registrationOpensAt : undefined);
+    if (["documentos", "junta"].includes(intent) && item.kind !== "junta") return { item, score: -1 };
+    if (["informacion", "licencias", "inasistencia", "titulos"].includes(intent) && item.kind !== "informacion") return { item, score: -1 };
+    const eventDate = agendaEntryMap.get(item.id)?.startsAt || item.ends_at || item.starts_at || (item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata)?.registrationOpensAt : undefined);
     if (requested && (!eventDate || dayKey(eventDate) !== requested)) return { item, score: -1 };
     if (wantsAgenda && /esta semana/.test(query) && (!eventDate || new Date(eventDate).getTime() < now.getTime() || new Date(eventDate).getTime() > now.getTime() + 7 * 86400000)) return { item, score: -1 };
     const match = configuredProfile ? profileMatch(forMatch(item), configuredProfile) : null;
-    if (wantsMatches && (!match || !["exact", "partial"].includes(match.status))) return { item, score: -1 };
+    if (wantsMatches && (!configuredProfile || !match || !isEligibleForPersonalizedHome(forMatch(item), configuredProfile))) return { item, score: -1 };
     const haystack = normalize([item.title, item.summary, item.kind, item.category, item.level, item.area, item.location, item.status].join(" "));
     let score = words.reduce((total, word) => total + (haystack.includes(word) ? 2 : 0), 0);
+    if (["licencias", "inasistencia"].includes(intent) && item.id === "info:licencias") score += 12;
     if (item.id === options.context?.id) score += 100;
     if (wantsAgenda && agenda.has(item.id)) score += 20;
     if (wantsMatches && match) score += match.score;
@@ -127,8 +160,10 @@ export function retrievePublications(question: string, publications: Publication
 }
 
 export function buildAIContext(question: string, publications: Publication[], options: AIContextOptions = {}) {
-  const selected = retrievePublications(question, publications, 8, options);
+  const now = options.now || new Date(), intent = detectIntent(question), selected = retrievePublications(question, publications, 8, { ...options, now });
+  const agendaEntries = intent === "agenda" ? relevantAgendaEntries(question, options.agendaEntries || [], now) : [];
   const sources: AISource[] = selected.map((item) => ({ id: item.id, title: item.title, source: item.source, sourceType: "official", url: item.official_url, updatedAt: item.updated_at, status: item.status }));
+  sources.push(...agendaEntries.filter((entry) => entry.kind === "manual").map((entry) => ({ id: entry.id, title: entry.title, source: "Tu agenda", sourceType: "internal" as const, url: "", updatedAt: entry.updatedAt || "", status: "personal" })));
   const configuredProfile = options.profile ? matchProfile(options.profile) : null;
   const records = selected.map((item, index) => {
     const training = item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata) : null;
@@ -140,5 +175,8 @@ export function buildAIContext(question: string, publications: Publication[], op
   const profileText = options.profile ? `Perfil autorizado: niveles ${options.profile.levels.join(", ") || "no informados"}; áreas ${options.profile.areas.join(", ") || "no informadas"}; materias ${options.profile.subjects.join(", ") || "no informadas"}; cargos ${options.profile.roles?.join(", ") || "no informados"}; localidad ${options.profile.locality || "no informada"}; circuitos ${options.profile.circuits?.join(", ") || "no seleccionados"}; intereses ${options.profile.training_interests.join(", ") || "no informados"}.` : "El usuario no autorizó usar su perfil.";
   const trackingText = options.designations?.length ? `\n\nSEGUIMIENTO PERSONAL DE DESIGNACIONES (datos ingresados por el usuario):\n${options.designations.map((item) => `${item.role || "Cargo no informado"} · ${item.school || "Establecimiento no informado"} · estado ${item.status} · inscripción ${item.applied_at || "no informada"} · designación ${item.appointment_at || "no informada"} · notas ${item.notes || "sin notas"}`).join("\n")}` : "";
   const panelContext = options.context ? `Contexto del panel: tipo ${options.context.type}; identificador ${options.context.id || "sin identificador"}; título ${options.context.title || "sin título"}.` : "Contexto del panel no informado.";
-  return { intent: detectIntent(question), sources, context: `${panelContext}\n${profileText}\n\nREGISTROS OFICIALES RECUPERADOS:\n${records || "No se recuperaron registros oficiales suficientes."}${trackingText}` };
+  const agendaText = agendaEntries.length ? `\n\nAGENDA PERSONAL DEL DOCENTE (contenido interno, no oficial):\n${agendaEntries.map((entry) => `${entry.title} · ${entry.category || "Agenda"} · ${entry.startsAt}${entry.recurrence && entry.recurrence !== "none" ? ` · repetición ${entry.recurrence}` : ""}`).join("\n")}` : intent === "agenda" ? "\n\nAGENDA PERSONAL DEL DOCENTE: No hay eventos coincidentes con la fecha consultada en los datos cargados." : "";
+  const failureText = options.sourceFailures?.length ? `\n\nESTADO INTERNO DE ACTUALIZACIÓN: falló la última actualización de ${options.sourceFailures.join(", ")}. Si la consulta depende de esos datos, respondé igualmente usando el último contenido disponible y la orientación general; aclarale con precisión qué dato no se pudo verificar. No uses esta falla como respuesta completa ni como preámbulo genérico.` : "";
+  const appHelp = intent === "app" ? "\n\nCONTEXTO INTERNO DE LA APLICACIÓN: DocenteTuc organiza información docente pública y personaliza oportunidades con el perfil sólo cuando el usuario lo autoriza. Incluye Designaciones, Capacitaciones, Padrones y comunicados, Información útil, Agenda, Alertas y Guardados. Las inscripciones y trámites se finalizan en la fuente oficial. La agenda permite eventos manuales y recordatorios." : "";
+  return { intent, sources, context: `INTENCIÓN DETECTADA: ${intent}.\n${panelContext}\n${profileText}\n\nREGISTROS OFICIALES RECUPERADOS:\n${records || "No se recuperaron registros oficiales suficientes."}${agendaText}${trackingText}${failureText}${appHelp}` };
 }

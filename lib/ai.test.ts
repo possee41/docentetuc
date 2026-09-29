@@ -50,8 +50,14 @@ test("clasifica localmente las intenciones principales", () => {
   assert.equal(detectIntent("¿Qué capacitaciones abren esta semana?"), "capacitaciones");
   assert.equal(detectIntent("¿Qué vacantes coinciden conmigo?"), "vacantes");
   assert.equal(detectIntent("¿Qué tengo mañana?"), "agenda");
-  assert.equal(detectIntent("Buscá un padrón docente"), "documentos");
+  assert.equal(detectIntent("Buscá un padrón docente"), "junta");
   assert.equal(detectIntent("Me liquidaron mal el sueldo"), "informacion");
+  assert.equal(detectIntent("Tengo que faltar mañana, ¿qué debo presentar?"), "inasistencia");
+  assert.equal(detectIntent("¿Cómo hago para presentar una licencia?"), "licencias");
+  assert.equal(detectIntent("¿Hay designaciones compatibles conmigo?"), "designaciones");
+  assert.equal(detectIntent("¿Qué capacitaciones tengo disponibles?"), "capacitaciones");
+  assert.equal(detectIntent("¿Qué tengo hoy en mi agenda?"), "agenda");
+  assert.equal(detectIntent("¿Cómo uso esta aplicación DocenteTuc?"), "app");
   assert.equal(detectIntent("Hola"), "conversacion_general");
 });
 
@@ -68,7 +74,33 @@ test("recupera trámites y contactos oficiales sin inventar campos ausentes", ()
     assert.equal(result.sources[0]?.id, expected, question);
     assert.match(result.context, /Datos oficiales publicados:/);
   }
+  assert.equal(buildAIContext("Tengo que faltar mañana, ¿qué debo presentar?", usefulRecords).sources[0]?.id, "info:licencias");
+  assert.equal(buildAIContext("¿Cómo hago para presentar una licencia?", usefulRecords).sources[0]?.id, "info:licencias");
   assert.match(buildAIContext("Tengo problemas con mi certificado FDCI", usefulRecords).context, /no publicado/);
+});
+
+test("agenda personal recupera eventos manuales de la fecha consultada", () => {
+  const result = buildAIContext("¿Qué tengo hoy en mi agenda?", [], { now: new Date("2026-09-29T10:00:00-03:00"), agendaEntries: [
+    { id: "manual:today", title: "Reunión de padres", category: "Escuela", startsAt: "2026-09-29T18:30:00-03:00", kind: "manual" },
+    { id: "manual:tomorrow", title: "Entrega de planificaciones", category: "Escuela", startsAt: "2026-09-30T09:00:00-03:00", kind: "manual" },
+  ] });
+  assert.match(result.context, /Reunión de padres/);
+  assert.doesNotMatch(result.context, /Entrega de planificaciones/);
+  assert.equal(result.sources[0]?.sourceType, "internal");
+  assert.equal(result.sources[0]?.source, "Tu agenda");
+});
+
+test("con una fuente oficial caída mantiene el contexto y permite responder con el proveedor", async () => {
+  const context = buildAIContext("Tengo que faltar mañana, ¿qué debo presentar?", usefulRecords, { sourceFailures: ["SIME"] });
+  assert.deepEqual(context.sources.map((source) => source.id), ["info:licencias"]);
+  assert.match(context.context, /falló la última actualización de SIME/);
+  assert.match(context.context, /orientación general/);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ candidates: [{ content: { parts: [{ text: "Para orientarte necesito saber el motivo de la inasistencia." }] } }] });
+  try {
+    const answer = await new GeminiProvider("secret-test", "gemini-3.5-flash-lite").generate(`PREGUNTA: Tengo que faltar mañana.\n${context.context}`, "Respondé aunque una fuente haya fallado; no inventes requisitos.");
+    assert.match(answer, /motivo de la inasistencia/);
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test("agenda distingue mañana de otros eventos guardados", () => {
