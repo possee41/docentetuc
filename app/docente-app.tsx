@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import Image from "next/image";
 import { Bell, BookOpen, Bookmark, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Clock3, Download, ExternalLink, GraduationCap, Home, Mail, MapPin, Menu, Moon, Phone, RefreshCw, Search, SlidersHorizontal, Sparkles, Star, Sun, UserRound, WifiOff, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -137,11 +138,13 @@ export default function DocenteApp() {
   const [agendaReminder, setAgendaReminder] = useState("one_day");
   const [manualEvent, setManualEvent] = useState<ManualEvent | null | "new">(null);
   const [manualEventDate, setManualEventDate] = useState("");
+  const loadRef = useRef<(syncIfEmpty?: boolean, showLoading?: boolean) => Promise<void>>(async () => {});
+  const syncSourcesRef = useRef<(notify?: boolean) => Promise<void>>(async () => {});
   useEffect(() => { const openProfile = () => setView("perfil"); window.addEventListener("docentetuc:open-profile", openProfile); return () => window.removeEventListener("docentetuc:open-profile", openProfile); }, []);
   const openPublication = (publication: Publication) => { setSelected(publication); history.pushState({ publicationId: publication.id }, "", `#publicacion-${encodeURIComponent(publication.id)}`); };
   const closePublication = () => { if (history.state?.publicationId) history.back(); else setSelected(null); };
 
-  const load = async (syncIfEmpty = true, showLoading = true) => {
+  const load = useCallback(async (syncIfEmpty = true, showLoading = true) => {
     if (showLoading) setLoading(true);
     setLoadError("");
     try {
@@ -155,13 +158,13 @@ export default function DocenteApp() {
       localStorage.setItem("docentetuc-data-v1", JSON.stringify(result));
       if (syncIfEmpty && result.publications.length === 0 && !autoSyncStarted.current) {
         autoSyncStarted.current = true;
-        window.setTimeout(() => { void syncSources(false); }, 0);
+        window.setTimeout(() => { void syncSourcesRef.current(false); }, 0);
       }
     } catch (error) { const cached = localStorage.getItem("docentetuc-data-v1"); if (cached) { try { const stored = JSON.parse(cached) as AppData; stored.designations ||= []; if (stored.profile) stored.profile.roles ||= []; setData(stored); return; } catch {} } const message = error instanceof Error ? error.message : "No se pudo cargar la información"; setLoadError(message); toast.error(message); }
     finally { if (showLoading) setLoading(false); }
-  };
+  }, []);
 
-  const syncSources = async (notify = true) => {
+  const syncSources = useCallback(async (notify = true) => {
     setSyncing(true);
     try {
       const response = await fetch("/api/sync", { method: "POST", headers: apiHeaders() });
@@ -171,16 +174,18 @@ export default function DocenteApp() {
         if (result.failures) toast.warning("Algunas fuentes oficiales no respondieron");
         else toast.success(result.skipped ? "Las fuentes ya estaban actualizadas" : `${result.count ?? 0} publicaciones verificadas`);
       }
-      await load(false, false);
+      await loadRef.current(false, false);
     } catch (error) { const message = error instanceof Error ? error.message : "No se pudo actualizar"; if (notify) toast.error(message); }
     finally { setSyncing(false); }
-  };
+  }, []);
+
+  useEffect(() => { loadRef.current = load; syncSourcesRef.current = syncSources; }, [load, syncSources]);
 
   useEffect(() => {
     const preferred = localStorage.getItem("docentetuc-theme") as Theme | null;
     const initial = preferred || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     document.documentElement.dataset.theme = initial; queueMicrotask(() => setTheme(initial));
-    queueMicrotask(() => { void load(); });
+    queueMicrotask(() => { void loadRef.current(); });
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js");
     const updateNetwork = () => setOffline(!navigator.onLine); queueMicrotask(updateNetwork);
     const install = (event: Event) => { event.preventDefault(); setInstallPrompt(event as InstallPrompt); };
@@ -316,7 +321,7 @@ export default function DocenteApp() {
   return (
     <SidebarProvider defaultOpen className="dt-app-shell" style={{ "--sidebar-width": "17rem" } as CSSProperties}>
       <Sidebar className="border-r border-white/10 text-white backdrop-blur-xl" collapsible="offcanvas">
-        <SidebarHeader className="p-5"><button onClick={() => setView("inicio")} className="flex items-center gap-3 text-left"><img src="/icon-192.png" alt="" className="size-12 rounded-2xl shadow-sm" /><span><span className="block text-xl font-black">DocenteTuc</span><span className="block text-xs text-white/55">Información docente</span></span></button></SidebarHeader>
+        <SidebarHeader className="p-5"><button onClick={() => setView("inicio")} className="flex items-center gap-3 text-left"><Image src="/icon-192.png" alt="" width={48} height={48} unoptimized className="size-12 rounded-2xl shadow-sm" /><span><span className="block text-xl font-black">DocenteTuc</span><span className="block text-xs text-white/55">Información docente</span></span></button></SidebarHeader>
         <SidebarContent className="px-3"><AppSidebarNavigation view={view} unread={unread} onNavigate={(id) => { setView(id); setQuery(""); setFilter(["guardados", "informacion"].includes(id) ? "todas" : "para-mi"); }} /></SidebarContent>
         <SidebarFooter className="p-5"><p className="text-xs leading-relaxed text-white/45">Herramienta independiente. La fuente oficial prevalece siempre.</p></SidebarFooter>
       </Sidebar>
@@ -325,7 +330,7 @@ export default function DocenteApp() {
         <AppBackground>
         <AppHeader className="mobile-topbar min-h-20 gap-3 border-[#dce8e1] px-4 md:px-8">
           <SidebarTrigger className="size-11 rounded-xl bg-white md:hidden"><Menu /></SidebarTrigger>
-          {view === "inicio" ? <div className="flex flex-1 items-center gap-3"><img src="/icon-192.png" alt="" className="size-10 rounded-xl md:hidden" /><span className="font-black text-[#062b55] md:hidden">DocenteTuc</span></div> : view !== "vacantes" ? <div className="relative max-w-2xl flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#52708c]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={view === "capacitaciones" ? "Buscar capacitaciones" : "Buscar en DocenteTuc"} placeholder={view === "capacitaciones" ? "Buscar capacitaciones..." : "¿Qué estás buscando?"} className="h-12 rounded-2xl border-[#c8e1f1] bg-white pl-11 shadow-sm" />{query && <button aria-label="Limpiar búsqueda" onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div> : <div className="flex-1" />}
+          {view === "inicio" ? <div className="flex flex-1 items-center gap-3"><Image src="/icon-192.png" alt="" width={40} height={40} unoptimized className="size-10 rounded-xl md:hidden" /><span className="font-black text-[#062b55] md:hidden">DocenteTuc</span></div> : view !== "vacantes" ? <div className="relative max-w-2xl flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#52708c]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={view === "capacitaciones" ? "Buscar capacitaciones" : "Buscar en DocenteTuc"} placeholder={view === "capacitaciones" ? "Buscar capacitaciones..." : "¿Qué estás buscando?"} className="h-12 rounded-2xl border-[#c8e1f1] bg-white pl-11 shadow-sm" />{query && <button aria-label="Limpiar búsqueda" onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div> : <div className="flex-1" />}
           {installPrompt && <Button onClick={install} variant="outline" className="hidden h-11 rounded-xl border-[#bdd0c6] bg-white sm:flex"><Download className="size-4" />Instalar</Button>}
           <Button onClick={toggleTheme} size="icon" variant="outline" className="size-11 rounded-xl border-[#dce8e1] bg-white" aria-label={theme === "dark" ? "Usar modo claro" : "Usar modo oscuro"}>{theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}</Button>
           <Button onClick={() => setView("alertas")} size="icon" variant="outline" className="relative size-11 rounded-xl border-[#dce8e1] bg-white"><Bell className="size-5" />{unread > 0 && <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#ee6a4b] px-1 text-[10px] font-bold text-white">{unread > 9 ? "9+" : unread}</span>}<span className="sr-only">Alertas relevantes no leídas</span></Button>
@@ -335,7 +340,7 @@ export default function DocenteApp() {
 
         <div className="mobile-content mx-auto w-full max-w-7xl p-4 md:p-8">
       {view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} greeting={greeting} onOpen={openPublication} onRemind={setReminderPublication} onView={(target, term) => { setView(target); setQuery(term || ""); setDesignationQuery(""); setFilter(target === "informacion" || target === "junta" ? "todas" : "para-mi"); }} loading={loading} error={loadError} /> : view === "perfil" ? <><ProfileForm key={profile?.updated_at || "profile"} profile={profile} roleOptions={roleOptions} onSaved={() => void load(false)} /><ProfileRelevanceForm key={`relevance:${profile?.updated_at || "profile"}`} profile={profile} onSaved={() => void load(false)} /><PushSettings /><SystemStatus sources={data?.sync || []} /></> : view === "alertas" ? <Alerts data={data} onOpen={openPublication} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} /> : view === "agenda" ? <Agenda publications={data?.publications || []} savedMap={savedMap} manualEvents={data?.manualEvents || []} onOpen={openPublication} onNewEvent={(date) => { setManualEventDate(date || ""); setManualEvent("new"); }} onEditEvent={setManualEvent} /> : view === "informacion" ? <InformationHub items={items} query={query} onQuery={setQuery} savedMap={savedMap} onOpen={openPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAskAI={() => openAI({ type: "informacion", title: viewTitles.informacion[0] })} /> : <>
-            <PageHeader view={view} count={items.length} syncing={syncing} onSync={() => void syncSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
+            <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void syncSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
             <Filters filter={filter} setFilter={setFilter} junta={juntaFilter} setJunta={setJuntaFilter} character={character} setCharacter={setCharacter} query={designationQuery} setQuery={setDesignationQuery} kind={view} date={trainingDate} setDate={setTrainingDate} source={trainingSource} setSource={setTrainingSource} compatibility={trainingCompatibility} setCompatibility={setTrainingCompatibility} sort={trainingSort} setSort={setTrainingSort} hasTrainingTerritoryData={hasTrainingTerritoryData} circuit={view === "vacantes" ? designationCircuit : trainingCircuit} setCircuit={view === "vacantes" ? setDesignationCircuit : setTrainingCircuit} />
              <PublicationList items={items} loading={loading} savedMap={savedMap} reminderMap={reminderMap} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} emptyContext={view === "capacitaciones" ? trainingSource === "platform:fdci" ? "FDCI" : trainingSource === "platform:infod" ? "INFoD" : trainingSource === "platform:cenet" ? "CeNET / INET" : "las plataformas seleccionadas" : "esta búsqueda"} onClearFilters={() => { setTrainingSource("todas"); setTrainingDate(""); setTrainingCircuit("todos"); setDesignationCircuit("todos"); setTrainingCompatibility("todas"); setJuntaFilter("todas"); setCharacter("todos"); setFilter("todas"); setDesignationQuery(""); setQuery(""); }} />
           </>}
@@ -381,13 +386,13 @@ function InformationHub({ items, query, onQuery, savedMap, onOpen, onSave, onAsk
 
 type DashboardProps = { data: AppData | null; profile?: Profile; savedMap: Map<string, Saved>; reminderMap: Map<string, TrainingReminder>; matches: (item: Publication) => boolean; matchResult: (item: Publication) => MatchResult; isEligible?: (item: Publication) => boolean; greeting: string; onOpen: (item: Publication) => void; onRemind: (item: Publication) => void; onView: (view: View, query?: string) => void; loading: boolean; error: string };
 
-const homeShortcuts: { label: string; caption: string; icon: typeof Home; view: View; query?: string }[] = [
-  { label: "Designaciones", caption: "Oportunidades en SIME", icon: BriefcaseBusiness, view: "vacantes" },
-  { label: "Capacitaciones", caption: "Cursos y aperturas", icon: GraduationCap, view: "capacitaciones" },
-  { label: "Padrones", caption: "Listados y llamados", icon: BookOpen, view: "junta", query: "padron" },
-  { label: "Agenda", caption: "Tus fechas", icon: CalendarDays, view: "agenda" },
-  { label: "Novedades", caption: "Comunicados recientes", icon: Bell, view: "junta", query: "novedad" },
-  { label: "Información útil", caption: "Trámites y organismos", icon: Building2, view: "informacion" },
+const homeShortcuts: { label: string; caption: string; icon: typeof Home; view: View; image: string; query?: string }[] = [
+  { label: "Designaciones", caption: "Oportunidades en SIME", icon: BriefcaseBusiness, view: "vacantes", image: "designaciones" },
+  { label: "Capacitaciones", caption: "Cursos y aperturas", icon: GraduationCap, view: "capacitaciones", image: "capacitaciones" },
+  { label: "Padrones", caption: "Listados y llamados", icon: BookOpen, view: "junta", image: "padrones", query: "padron" },
+  { label: "Agenda", caption: "Tus fechas", icon: CalendarDays, view: "agenda", image: "agenda" },
+  { label: "Novedades", caption: "Comunicados recientes", icon: Bell, view: "junta", image: "novedades", query: "novedad" },
+  { label: "Información útil", caption: "Trámites y organismos", icon: Building2, view: "informacion", image: "informacion" },
 ];
 
 function SystemStatus({ sources }: { sources: SyncStatus[] }) {
@@ -462,8 +467,8 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
 
   return <div className="daily-home">
     <header className="home-hero">
-      <div className="home-hero-top"><div className="home-brand"><img src="/icon-192.png" alt="" width="56" height="56" /><span><strong>DocenteTuc</strong><small>EDUCACIÓN · TUCUMÁN</small></span></div><button type="button" onClick={() => onView("alertas")} className="home-notifications" aria-label={`Ver alertas${unread.length ? `, ${unread.length} sin leer` : ""}`}><Bell className="size-5" />{unread.length > 0 && <span>{unread.length > 9 ? "9+" : unread.length}</span>}</button></div>
-      <div className="home-hero-copy"><p className="home-hero-greeting" suppressHydrationWarning>{greeting}{profile?.name ? `, ${profile.name.split(" ")[0]}` : ""} 👋</p><h1>Tu información educativa en un solo lugar.</h1></div>
+      <div className="home-hero-top"><h1 className="sr-only">DocenteTuc · Tu información educativa en un solo lugar</h1><button type="button" onClick={() => onView("alertas")} className="home-notifications" aria-label={`Ver alertas${unread.length ? `, ${unread.length} sin leer` : ""}`}><Bell className="size-5" />{unread.length > 0 && <span>{unread.length > 9 ? "9+" : unread.length}</span>}</button></div>
+      <div className="home-hero-copy"><p className="home-hero-greeting" suppressHydrationWarning>{greeting}{profile?.name ? `, ${profile.name.split(" ")[0]}` : ""} 👋</p></div>
     </header>
     <section className="home-section home-for-you"><div className="home-section-title"><div><p>IMPORTANTE PARA VOS</p><h2>Oportunidades a tu medida</h2></div><button onClick={() => onView("capacitaciones")}>Ver oportunidades <ChevronRight className="size-4" /></button></div>
       {loading ? <HomeSkeleton /> : <>
@@ -473,7 +478,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
       </>}
     </section>
 
-    <section className="home-shortcuts" aria-labelledby="home-shortcuts-title"><div className="home-section-title"><div><p>ACCESOS RÁPIDOS</p><h2 id="home-shortcuts-title">Todo lo que necesitás</h2></div></div><div className="home-shortcut-grid">{homeShortcuts.map(({ label, caption, icon: Icon, view, query }) => <button key={label} type="button" className="home-shortcut" onClick={() => onView(view, query)}><span className="home-shortcut-icon"><Icon className="size-6" aria-hidden="true" /></span><span className="home-shortcut-copy"><strong>{label}</strong><small>{caption}</small></span><ChevronRight className="home-shortcut-arrow size-4" aria-hidden="true" /></button>)}</div></section>
+    <section className="home-shortcuts" aria-labelledby="home-shortcuts-title"><div className="home-section-title"><div><p>ACCESOS RÁPIDOS</p><h2 id="home-shortcuts-title">Todo lo que necesitás</h2></div></div><div className="home-shortcut-grid">{homeShortcuts.map(({ label, caption, icon: Icon, view, image, query }) => <button key={label} type="button" className={`home-shortcut home-shortcut-${image}`} onClick={() => onView(view, query)}><span className="home-shortcut-icon"><Icon className="size-6" aria-hidden="true" /></span><span className="home-shortcut-copy"><strong>{label}</strong><small>{caption}</small></span><ChevronRight className="home-shortcut-arrow size-4" aria-hidden="true" /></button>)}</div></section>
 
     <section className="home-section home-today"><div className="home-section-title"><div><p>RESUMEN DEL DÍA</p><h2>Hoy en tu actividad docente</h2></div></div><div className="home-summary"><button onClick={() => onView("agenda")}><CalendarDays className="size-5" /><span><strong>{todayEvents}</strong> {todayEvents === 1 ? "evento" : "eventos"}</span><ChevronRight className="size-4" /></button><button onClick={() => onView("vacantes")}><BriefcaseBusiness className="size-5" /><span><strong>{vacancies.length}</strong> oportunidades compatibles</span><ChevronRight className="size-4" /></button><button onClick={() => onView("alertas")}><Bell className="size-5" /><span><strong>{unread.length}</strong> {unread.length === 1 ? "alerta relevante" : "alertas relevantes"}</span><ChevronRight className="size-4" /></button></div></section>
 
@@ -554,18 +559,22 @@ function DesignationFormContent({ publication, existing, onClose, onSaved }: { p
   return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>Registrar designación</DialogTitle><DialogDescription>Completá solamente los datos que te sirvan. Podés modificarlos después.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><label className="space-y-1 text-sm font-semibold text-[var(--text-secondary)]">Estado<Select value={form.status} onValueChange={(status) => setForm({ ...form, status: status || "INSCRIPTO" })}><SelectTrigger className="h-11 bg-white"><SelectValue /></SelectTrigger><SelectContent>{DESIGNATION_STATUSES.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select></label>{field("role", "Cargo")}{field("subject", "Materia / área")}{field("school", "Establecimiento")}{field("address", "Dirección")}{field("locality", "Localidad")}{field("appliedAt", "Inscripción realizada", "datetime-local")}{field("appointmentAt", "Fecha de designación", "datetime-local")}{field("shift", "Turno")}{field("board", "Junta")}{field("documentation", "Documentación requerida")}{field("orderNumber", "Número / orden / posición")}<label className="space-y-1 text-sm font-semibold text-[var(--text-secondary)] sm:col-span-2">Observaciones<Textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} className="min-h-24 bg-white" /></label><label className="space-y-1 text-sm font-semibold text-[var(--text-secondary)] sm:col-span-2">Recordarme<Select value={reminderMode} onValueChange={(value) => setReminderMode(value || "none")}><SelectTrigger className="h-11 bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Sin recordatorio</SelectItem>{form.appointmentAt && <><SelectItem value="one_day">1 día antes</SelectItem><SelectItem value="two_hours">2 horas antes</SelectItem></>}<SelectItem value="custom">Hora personalizada</SelectItem></SelectContent></Select>{reminderMode === "custom" && <Input type="datetime-local" value={form.reminderAt} onChange={(event) => setForm({ ...form, reminderAt: event.target.value })} className="mt-2 h-11 bg-white" />}</label></div><DialogFooter><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={() => void save()} disabled={busy || (reminderMode === "custom" && !form.reminderAt)} className="bg-[#0878be] text-white">Guardar seguimiento</Button></DialogFooter></DialogContent></Dialog>;
 }
 
-function VisualSectionBanner({ kind, title, description, action }: { kind: "vacantes" | "capacitaciones" | "agenda" | "informacion" | "junta"; title: string; description: string; action?: ReactNode }) {
+function VisualSectionBanner({ kind, title, description, action }: { kind: "vacantes" | "capacitaciones" | "agenda" | "informacion" | "padrones" | "novedades"; title: string; description: string; action?: ReactNode }) {
   return <header className={`dt-visual-banner dt-banner-${kind}`}>
     <div className="dt-banner-copy"><p className="dt-banner-eyebrow">DocenteTuc · Tucumán</p><h1>{title}</h1><p>{description}</p></div>
-    <img src="/icon-192.png" alt="" width="68" height="68" className="dt-banner-logo" />
     {action && <div className="dt-banner-action">{action}</div>}
   </header>;
 }
 
-function PageHeader({ view, count, syncing = false, onSync, onAskAI }: { view: View; count: number; syncing?: boolean; onSync?: () => void; onAskAI?: () => void }) {
-  const [title, subtitle] = viewTitles[view];
+function PageHeader({ view, count, filter = "todas", query = "", syncing = false, onSync, onAskAI }: { view: View; count: number; filter?: string; query?: string; syncing?: boolean; onSync?: () => void; onAskAI?: () => void }) {
+  const [defaultTitle, subtitle] = viewTitles[view];
+  const isNovedades = filter === "nuevas" || (filter !== "comunicados" && /novedad/.test(normalize(query)));
+  const isComunicados = filter === "comunicados" || (filter !== "nuevas" && /comunicad/.test(normalize(query)));
+  const isNewsTab = view === "junta" && (isNovedades || isComunicados);
+  const title = isNewsTab ? (isNovedades ? "Novedades" : "Comunicados") : defaultTitle;
   const action = <div className="flex flex-wrap gap-2">{onAskAI && <Button onClick={onAskAI} className="rounded-xl bg-[#0878be] text-[var(--text-on-accent)]"><Sparkles className="size-4" />Preguntar a IA</Button>}{onSync && <Button onClick={onSync} disabled={syncing} variant="outline" className="dt-refresh-button rounded-xl"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />Actualizar</Button>}</div>;
-  return <VisualSectionBanner kind={view === "vacantes" || view === "capacitaciones" || view === "junta" ? view : "informacion"} title={title} description={`${subtitle} · ${count} resultados`} action={action} />;
+  const kind = view === "vacantes" || view === "capacitaciones" ? view : view === "junta" ? (isNewsTab ? "novedades" : "padrones") : "informacion";
+  return <VisualSectionBanner kind={kind} title={title} description={`${subtitle} · ${count} resultados`} action={action} />;
 }
 
 function Filters({ filter, setFilter: onFilterChange, junta, setJunta, character, setCharacter, query, setQuery, kind, date, setDate, source, setSource: onSourceChange, compatibility, setCompatibility, sort, setSort, hasTrainingTerritoryData, circuit, setCircuit }: { filter: string; setFilter: (value: string) => void; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; character: string; setCharacter: (value: string) => void; query: string; setQuery: (value: string) => void; kind: View; date: string; setDate: (value: string) => void; source: string; setSource: (value: string) => void; compatibility: string; setCompatibility: (value: string) => void; sort: string; setSort: (value: string) => void; hasTrainingTerritoryData: boolean; circuit: string; setCircuit: (value: string) => void }) {

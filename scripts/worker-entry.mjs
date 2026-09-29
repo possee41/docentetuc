@@ -5,7 +5,7 @@ const internalRequest = (path, secret) => new Request(`https://docentetuc.intern
   headers: { "x-docentetuc-cron": secret },
 });
 
-export default {
+const worker = {
   fetch(request, environment, context) {
     return application.fetch(request, environment, context);
   },
@@ -20,3 +20,5 @@ export default {
     console.log("scheduled_push_dispatch_completed", await dispatch.text());
   },
 };
+
+export default worker;

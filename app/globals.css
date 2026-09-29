@@ -207,8 +207,8 @@ button:disabled { opacity: .68; }
 .app-background .bg-white, .app-detail-surface .bg-white { background-color: var(--surface-primary); backdrop-filter: blur(8px); }
 .app-background .bg-\[\#f3f7f4\], .app-background .bg-\[\#f8faf8\], .app-background .bg-\[\#f1f5f2\] { background-color: var(--surface-secondary); backdrop-filter: blur(7px); }
 .app-detail-surface { background: linear-gradient(rgb(238 248 255 / .66), rgb(255 255 255 / .6)), url("/docentetuc-logo.webp") center / contain no-repeat fixed; }
-.ai-panel { position: fixed; inset: 0 0 0 auto; z-index: 70; display: flex; width: min(100%, 27rem); flex-direction: column; border-left: 1px solid var(--border); color: var(--text-primary); background: linear-gradient(rgb(238 248 255 / .66), rgb(255 255 255 / .62)), url("/docentetuc-logo.webp") center / 92% auto no-repeat; box-shadow: -18px 0 45px rgb(6 57 103 / .22); backdrop-filter: blur(14px); transition: transform .28s ease, visibility .28s; }
-.ai-panel.ai-panel-minimized { inset: auto max(1rem, env(safe-area-inset-right)) 2rem auto; display: flex; width: min(21rem, calc(100% - 2rem)); height: auto; max-height: min(15rem, calc(var(--ai-visual-viewport-height, 100dvh) - 5rem)); overflow: hidden; flex-direction: column; border: 1px solid var(--border); border-radius: 1rem; color: var(--text-primary); background: linear-gradient(rgb(238 248 255 / .78), rgb(255 255 255 / .82)), url("/docentetuc-logo.webp") center / 125% auto no-repeat; box-shadow: 0 14px 38px rgb(6 57 103 / .28); backdrop-filter: blur(16px); }
+.ai-panel { position: fixed; inset: 0 0 0 auto; z-index: 70; display: flex; width: min(100%, 27rem); flex-direction: column; border-left: 1px solid var(--border); color: var(--text-primary); background: linear-gradient(rgb(238 248 255 / .66), rgb(255 255 255 / .62)), url("/assets/docentetuc/ia-hero.webp") center / 92% auto no-repeat; box-shadow: -18px 0 45px rgb(6 57 103 / .22); backdrop-filter: blur(14px); transition: transform .28s ease, visibility .28s; }
+.ai-panel.ai-panel-minimized { inset: auto max(1rem, env(safe-area-inset-right)) 2rem auto; display: flex; width: min(21rem, calc(100% - 2rem)); height: auto; max-height: min(15rem, calc(var(--ai-visual-viewport-height, 100dvh) - 5rem)); overflow: hidden; flex-direction: column; border: 1px solid var(--border); border-radius: 1rem; color: var(--text-primary); background: linear-gradient(rgb(238 248 255 / .78), rgb(255 255 255 / .82)), url("/assets/docentetuc/ia-hero.webp") center / 125% auto no-repeat; box-shadow: 0 14px 38px rgb(6 57 103 / .28); backdrop-filter: blur(16px); }
 .ai-mini-header { display: flex; min-height: 3.5rem; flex: none; align-items: center; gap: .55rem; border-bottom: 1px solid var(--border); padding: .45rem .55rem; }
 .ai-mini-header > span:nth-child(2) { display: block; }
 .ai-mini-header strong { color: var(--text-primary); font-size: .85rem; }
@@ -299,8 +299,8 @@ button:disabled { opacity: .68; }
 [data-theme="dark"] .app-topbar { background: var(--surface-glass); }
 [data-theme="dark"] .app-background .bg-white, [data-theme="dark"] .app-detail-surface .bg-white { background-color: var(--surface-primary); }
 [data-theme="dark"] .app-detail-surface { background: linear-gradient(rgb(3 23 45 / .7), rgb(6 43 85 / .66)), url("/docentetuc-logo.webp") center / contain no-repeat fixed; }
-[data-theme="dark"] .ai-panel:not(.ai-panel-minimized) { background: linear-gradient(rgb(3 23 45 / .7), rgb(6 43 85 / .66)), url("/docentetuc-logo.webp") center / 92% auto no-repeat; }
-[data-theme="dark"] .ai-panel.ai-panel-minimized { background: linear-gradient(var(--surface-glass), var(--surface-primary)), url("/docentetuc-logo.webp") center / 125% auto no-repeat; }
+[data-theme="dark"] .ai-panel:not(.ai-panel-minimized) { background: linear-gradient(rgb(3 23 45 / .7), rgb(6 43 85 / .66)), url("/assets/docentetuc/ia-hero.webp") center / 92% auto no-repeat; }
+[data-theme="dark"] .ai-panel.ai-panel-minimized { background: linear-gradient(var(--surface-glass), var(--surface-primary)), url("/assets/docentetuc/ia-hero.webp") center / 125% auto no-repeat; }
 [data-theme="dark"] .push-settings { background: linear-gradient(145deg, rgb(8 41 74 / .74), rgb(6 43 85 / .64)); }
 
 /* Compatibilidad visual mientras los componentes conservan sus clases históricas. */
@@ -496,29 +496,24 @@ button:disabled { opacity: .68; }
 .home-skeleton span:nth-child(2) { width: 88%; }
 .home-skeleton span:nth-child(3) { width: 64%; }
 
-/* Cabecera de marca y accesos, compuestos con ilustración vectorial local. */
-.home-hero { position: relative; isolation: isolate; display: flex; min-height: 13.4rem; flex-direction: column; justify-content: space-between; overflow: hidden; border: 1px solid rgb(255 255 255 / .3); border-radius: 1.35rem; padding: .85rem 1rem 1rem; color: #fff; background-color: #063967; background-image: linear-gradient(90deg, rgb(4 35 68 / .95) 0%, rgb(6 53 91 / .88) 53%, rgb(6 54 91 / .2) 100%), url("/education-banner.svg"); background-position: center, 58% 51%; background-size: cover; box-shadow: 0 12px 28px rgb(6 43 85 / .19); }
+/* Hero y accesos con los assets definitivos de cada sección. */
+.home-hero { position: relative; isolation: isolate; display: flex; min-height: 15rem; flex-direction: column; justify-content: space-between; overflow: hidden; border: 1px solid rgb(255 255 255 / .3); border-radius: 1.35rem; padding: .85rem 1rem 1rem; color: #fff; background-color: #063967; background-image: linear-gradient(0deg, rgb(3 31 62 / .62), transparent 42%), url("/assets/docentetuc/home-hero.webp"); background-position: center, center 51%; background-size: cover; box-shadow: 0 12px 28px rgb(6 43 85 / .19); }
 .home-hero::after { position: absolute; z-index: -1; inset: 0; border-radius: inherit; content: ""; background: linear-gradient(0deg, rgb(3 31 62 / .45), transparent 58%); }
-.home-hero-top { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
-.home-brand { display: flex; min-width: 0; align-items: center; gap: .6rem; }
-.home-brand img { width: 3.5rem; height: 3.5rem; flex: none; border-radius: 1rem; object-fit: contain; }
-.home-brand span { display: grid; gap: .06rem; }
-.home-brand strong { font-size: 1rem; font-weight: 950; letter-spacing: -.03em; }
-.home-brand small { color: #d6f2ff; font-size: .57rem; font-weight: 850; letter-spacing: .13em; }
+.home-hero-top { position: relative; z-index: 1; display: flex; align-items: center; justify-content: flex-end; gap: .75rem; }
 .home-notifications { position: relative; display: grid; width: 2.85rem; height: 2.85rem; flex: none; place-items: center; border: 1px solid rgb(255 255 255 / .72); border-radius: 50%; color: #07527f; background: rgb(255 255 255 / .94); box-shadow: 0 5px 16px rgb(2 26 49 / .22); }
 .home-notifications:hover { color: #063967; background: #e4f6ff; }
 .home-notifications > span { position: absolute; top: -.12rem; right: -.18rem; display: grid; min-width: 1.2rem; height: 1.2rem; place-items: center; border: 2px solid #fff; border-radius: 999px; padding-inline: .2rem; color: #062b55; background: #ffd16b; font-size: .62rem; font-weight: 950; }
-.home-hero-copy { max-width: 25rem; padding-top: 1.1rem; text-shadow: 0 2px 12px rgb(2 26 49 / .32); }
+.home-hero-copy { position: relative; z-index: 1; max-width: 25rem; padding-top: 1.1rem; text-shadow: 0 2px 12px rgb(2 26 49 / .32); }
 .home-hero-greeting { margin-bottom: .3rem; color: #bdeaff; font-size: .82rem; font-weight: 850; }
-.home-hero-copy h1 { max-width: 23rem; color: #fff; font-size: clamp(1.35rem, 5vw, 1.8rem); font-weight: 950; line-height: 1.07; letter-spacing: -.035em; }
 .home-shortcuts { overflow: hidden; border: 1px solid var(--border); border-radius: 1.15rem; background: var(--surface-primary); box-shadow: 0 7px 22px rgb(6 57 103 / .06); backdrop-filter: blur(10px); }
 .home-shortcut-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; padding: 0 .65rem .65rem; }
-.home-shortcut { position: relative; isolation: isolate; display: flex; min-width: 0; min-height: 6.35rem; flex-direction: column; align-items: flex-start; justify-content: space-between; overflow: hidden; border: 1px solid rgb(255 255 255 / .2); border-radius: .95rem; padding: .65rem .7rem; color: #fff; background-color: #0878be; background-image: linear-gradient(180deg, rgb(4 34 63 / .12), rgb(3 28 54 / .9)), url("/education-banner.svg"); background-position: center, var(--tile-position, 73% 49%); background-size: cover; text-align: left; box-shadow: inset 0 0 0 1px rgb(6 43 85 / .08); }
-.home-shortcut:nth-child(2) { --tile-position: 95% 48%; }
-.home-shortcut:nth-child(3) { --tile-position: 20% 36%; }
-.home-shortcut:nth-child(4) { --tile-position: 50% 30%; }
-.home-shortcut:nth-child(5) { --tile-position: 80% 70%; }
-.home-shortcut:nth-child(6) { --tile-position: 37% 60%; }
+.home-shortcut { position: relative; isolation: isolate; display: flex; min-width: 0; min-height: 6.35rem; flex-direction: column; align-items: flex-start; justify-content: space-between; overflow: hidden; border: 1px solid rgb(255 255 255 / .2); border-radius: .95rem; padding: .65rem .7rem; color: #fff; background-color: #0878be; background-image: linear-gradient(180deg, rgb(4 34 63 / .1), rgb(3 28 54 / .82)), var(--shortcut-image, none); background-position: center, center; background-size: cover; text-align: left; box-shadow: inset 0 0 0 1px rgb(6 43 85 / .08); }
+.home-shortcut-designaciones { --shortcut-image: url("/assets/docentetuc/designaciones-hero.webp"); }
+.home-shortcut-capacitaciones { --shortcut-image: url("/assets/docentetuc/capacitaciones-hero.webp"); }
+.home-shortcut-padrones { --shortcut-image: url("/assets/docentetuc/padrones-hero.webp"); }
+.home-shortcut-agenda { --shortcut-image: url("/assets/docentetuc/agenda-hero.webp"); }
+.home-shortcut-novedades { --shortcut-image: url("/assets/docentetuc/novedades-hero.webp"); }
+.home-shortcut-informacion { --shortcut-image: url("/assets/docentetuc/informacion-util-hero.webp"); }
 .home-shortcut:hover { filter: brightness(1.08); transform: translateY(-1px); }
 .home-shortcut:active { transform: scale(.985); }
 .home-shortcut:focus-visible { outline-color: #ffc75e; outline-offset: 2px; }
@@ -528,17 +523,17 @@ button:disabled { opacity: .68; }
 .home-shortcut-copy small { overflow: hidden; color: #e7f7ff; font-size: .63rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .home-shortcut-arrow { position: absolute; right: .65rem; bottom: .73rem; color: #d5f3ff; }
 
-/* Encabezados de sección: misma ilustración, distintos encuadres por módulo. */
-.dt-visual-banner { position: relative; isolation: isolate; display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: .65rem; overflow: hidden; margin-bottom: 1rem; border: 1px solid rgb(255 255 255 / .3); border-radius: 1.2rem; padding: 1rem; color: #fff; background-color: #063967; background-image: linear-gradient(95deg, rgb(4 35 68 / .95), rgb(6 57 103 / .82) 64%, rgb(6 57 103 / .32)), url("/education-banner.svg"); background-size: cover; background-position: center, 63% 49%; box-shadow: 0 9px 22px rgb(6 43 85 / .14); }
-.dt-banner-capacitaciones { background-position: center, 76% 44%; }
-.dt-banner-agenda { background-position: center, 47% 34%; }
-.dt-banner-informacion { background-position: center, 23% 58%; }
-.dt-banner-junta { background-position: center, 38% 50%; }
+.dt-visual-banner { position: relative; isolation: isolate; display: grid; min-width: 0; min-height: 9.5rem; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .65rem; overflow: hidden; margin-bottom: 1rem; border: 1px solid rgb(255 255 255 / .3); border-radius: 1.2rem; padding: 1rem; color: #fff; background-color: #063967; background-image: linear-gradient(90deg, rgb(4 35 68 / .86), rgb(6 57 103 / .63) 58%, rgb(6 57 103 / .26)), var(--banner-image); background-size: cover; background-position: center, center 52%; box-shadow: 0 9px 22px rgb(6 43 85 / .14); }
+.dt-banner-vacantes { --banner-image: url("/assets/docentetuc/designaciones-hero.webp"); }
+.dt-banner-capacitaciones { --banner-image: url("/assets/docentetuc/capacitaciones-hero.webp"); }
+.dt-banner-agenda { --banner-image: url("/assets/docentetuc/agenda-hero.webp"); }
+.dt-banner-informacion { --banner-image: url("/assets/docentetuc/informacion-util-hero.webp"); }
+.dt-banner-padrones { --banner-image: url("/assets/docentetuc/padrones-hero.webp"); }
+.dt-banner-novedades { --banner-image: url("/assets/docentetuc/novedades-hero.webp"); }
 .dt-banner-copy { min-width: 0; align-self: center; }
 .dt-banner-eyebrow { margin-bottom: .2rem; color: #bdeaff; font-size: .63rem; font-weight: 900; letter-spacing: .13em; text-transform: uppercase; }
 .dt-banner-copy h1 { color: #fff; font-size: clamp(1.35rem, 4.2vw, 1.8rem); font-weight: 950; letter-spacing: -.035em; line-height: 1.12; }
 .dt-banner-copy > p:last-child { max-width: 39rem; margin-top: .28rem; color: #e3f5ff; font-size: .77rem; font-weight: 650; line-height: 1.35; }
-.dt-banner-logo { width: 3.8rem; height: 3.8rem; align-self: start; border-radius: 1rem; object-fit: contain; filter: drop-shadow(0 5px 12px rgb(0 17 36 / .32)); }
 .dt-banner-action { grid-column: 1 / -1; }
 .dt-banner-action > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .45rem; }
 .dt-banner-action button { min-height: 2.65rem; justify-content: center; border: 1px solid rgb(255 255 255 / .78); color: #064477; background: #f6fcff; font-size: .74rem; font-weight: 900; box-shadow: 0 3px 9px rgb(1 27 51 / .12); }
@@ -547,13 +542,13 @@ button:disabled { opacity: .68; }
 .dt-banner-action .dt-refresh-button:disabled { border-color: rgb(255 255 255 / .4); color: #52708c; background: #d9e9f2; }
 .info-search-header { display: flex; align-items: center; gap: .55rem; border: 1px solid var(--border); border-radius: 1rem; padding: .65rem; background: var(--surface-primary); backdrop-filter: blur(10px); }
 
+.ai-panel.ai-panel-expanded { inset: 0; width: 100vw; max-height: none; border: 0; border-radius: 0; }
 .ai-panel-expanded { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
-.ai-panel .ai-panel-hero { position: relative; isolation: isolate; display: flex; min-height: 7.3rem; align-items: center; justify-content: space-between; gap: .75rem; overflow: hidden; border-bottom: 1px solid rgb(255 255 255 / .2); padding: .8rem 1rem; color: white; background-color: #063967; background-image: linear-gradient(90deg, rgb(4 35 68 / .96), rgb(6 62 104 / .84) 61%, rgb(6 62 104 / .23)), url("/education-banner.svg"); background-position: center, 73% 45%; background-size: cover; }
+.ai-panel .ai-panel-hero { position: relative; isolation: isolate; display: flex; min-height: 7.3rem; align-items: center; justify-content: space-between; gap: .75rem; overflow: hidden; border-bottom: 1px solid rgb(255 255 255 / .2); padding: .8rem 1rem; color: white; background-color: #063967; background-image: linear-gradient(90deg, rgb(4 35 68 / .82), rgb(6 62 104 / .56) 58%, rgb(6 62 104 / .18)), url("/assets/docentetuc/ia-hero.webp"); background-position: center, center 48%; background-size: cover; }
 .ai-panel-hero-copy { position: relative; z-index: 1; min-width: 0; }
 .ai-panel-hero-copy > small { color: #bdeaff; font-size: .62rem; font-weight: 900; letter-spacing: .13em; }
 .ai-panel-hero-copy h2 { margin-top: .12rem; color: white; font-size: 1.05rem; font-weight: 950; line-height: 1.15; }
 .ai-panel-hero-copy p { margin-top: .2rem; color: #e3f5ff; font-size: .73rem; line-height: 1.3; }
-.ai-panel-hero-logo { width: 3.3rem; height: 3.3rem; flex: none; border-radius: .8rem; object-fit: contain; }
 .ai-panel-hero-controls { display: flex; flex: none; align-items: center; gap: .25rem; }
 .ai-panel-hero-controls button { display: grid; width: 2.6rem; height: 2.6rem; place-items: center; border: 1px solid rgb(255 255 255 / .3); border-radius: .75rem; color: white; background: rgb(255 255 255 / .12); }
 .ai-panel-hero-controls button:hover { background: rgb(255 255 255 / .22); }
@@ -561,15 +556,13 @@ button:disabled { opacity: .68; }
 
 @media (min-width: 768px) {
   .daily-home { gap: 1rem; }
-  .home-hero { min-height: 17rem; padding: 1.1rem 1.35rem 1.25rem; background-position: center, 62% 48%; }
-  .home-brand img { width: 4.1rem; height: 4.1rem; }
+  .home-hero { min-height: 20rem; padding: 1.1rem 1.35rem 1.25rem; background-position: center, center 51%; }
   .home-hero-copy { padding-top: 2.1rem; }
   .home-shortcut-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; padding: 0 .8rem .8rem; }
   .home-shortcut { min-height: 8.6rem; padding: .8rem; }
   .home-shortcut-copy strong { font-size: .95rem; }
   .home-shortcut-copy small { font-size: .72rem; }
-  .dt-visual-banner { min-height: 10rem; padding: 1.25rem 1.4rem; background-position: center, 61% 50%; }
-  .dt-banner-logo { width: 4.5rem; height: 4.5rem; }
+  .dt-visual-banner { min-height: 11rem; padding: 1.25rem 1.4rem; }
   .dt-banner-action { grid-column: auto; align-self: end; }
   .dt-banner-action > div { display: flex; }
   .dt-banner-action button { min-width: 7.5rem; }
@@ -577,16 +570,13 @@ button:disabled { opacity: .68; }
 }
 
 @media (max-width: 375px) {
-  .home-hero { min-height: 12.4rem; padding: .7rem .8rem .85rem; }
-  .home-brand img { width: 3rem; height: 3rem; }
-  .home-hero-copy h1 { max-width: 18rem; font-size: 1.35rem; }
+  .home-hero { min-height: 14rem; padding: .7rem .8rem .85rem; }
   .home-shortcut-grid { gap: .4rem; padding: 0 .5rem .5rem; }
   .home-shortcut { min-height: 6.1rem; padding: .55rem; }
   .home-shortcut-copy strong { font-size: .79rem; }
   .home-shortcut-copy small { font-size: .59rem; }
   .home-shortcut-arrow { right: .5rem; }
   .dt-visual-banner { padding: .8rem; }
-  .dt-banner-logo { width: 3.25rem; height: 3.25rem; }
 }
 
 @media (max-width: 767px) {
@@ -595,5 +585,4 @@ button:disabled { opacity: .68; }
   .ai-panel.ai-panel-expanded > header { padding: .65rem .85rem; }
 }
 
-[data-theme="dark"] .home-hero { background-image: linear-gradient(90deg, rgb(2 20 39 / .96), rgb(3 37 69 / .87) 53%, rgb(3 37 69 / .27)), url("/education-banner.svg"); }
 [data-theme="dark"] .home-shortcuts { background: var(--surface-primary); }

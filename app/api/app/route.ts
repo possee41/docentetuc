@@ -29,6 +29,7 @@ export async function GET(request: Request) {
     ]);
     return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publications: publications.results, saved: saved.results, notifications: notifications.results, reminders: reminders.results, designations: designations.results, manualEvents: manualEvents.results, sync: sync.results });
   } catch (error) {
+    console.error("[api/app] GET failed", error);
     return Response.json({ error: authError(error) ? "Iniciá sesión para continuar." : "No se pudieron cargar los datos." }, { status: authError(error) ? 401 : 500 });
   }
 }
