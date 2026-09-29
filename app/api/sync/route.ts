@@ -7,7 +7,7 @@ import { mergeTrainingData, parseTrainingMetadata } from "@/lib/training";
 import { isCenetMarkupRecognized, parseCenetTrainings, parseInfdCatalog, parseInfdTrainings, type PublicTraining } from "@/lib/external-trainings";
 import { usefulInformation } from "@/lib/useful-information";
 import { registrationState } from "@/lib/home-dashboard";
-import { diffByHash } from "@/lib/sync-diff";
+import { diffByHash, hashSourceSnapshot } from "@/lib/sync-diff";
 import { hasMeaningfulPublicationChange } from "@/lib/sync-diff";
 import { notificationDedupeKey } from "@/lib/notification-events";
 import { circuitMatches, inferCircuit } from "@/lib/circuits";
@@ -83,7 +83,8 @@ async function simePublications() {
       const first = vacancy.cargos.split(", ")[0].replace(/^\[[^\]]+\]\s*/, "");
       const title = first.split(/\s+\[[^\]]*(?:TURNO|#)/i)[0].slice(0, 220);
       const shift = vacancy.cargos.match(/TURNO\s+([^\]]+)/i)?.[1]?.trim() || "";
-      items.push({ id: `sime:${vacancy.id}`, source: "SIME", externalId: String(vacancy.id), kind: "vacante", category: vacancy.abierto ? "Llamado abierto" : "Vacante", title, summary: vacancy.cargos, level: junta, area: title, junta, location: "", shift, character: vacancy.caracter, startsAt, endsAt, status: isOpen(endsAt) ? "vigente" : "cerrada", officialUrl: `https://sime.educaciontuc.gov.ar/Vacantes/Detalle/${vacancy.id}?seleccionado=${juntaId - 1}&tab=1&accion=-1`, metadata: JSON.stringify({ simeCode: vacancy.codigo, simeRecordId: String(vacancy.id) }), contentHash: await hash(JSON.stringify(vacancy)), sourceUpdatedAt: startsAt, sourcePublishedAt: startsAt });
+      const metadata = { simeCode: vacancy.codigo, simeRecordId: String(vacancy.id) };
+      items.push({ id: `sime:${vacancy.id}`, source: "SIME", externalId: String(vacancy.id), kind: "vacante", category: vacancy.abierto ? "Llamado abierto" : "Vacante", title, summary: vacancy.cargos, level: junta, area: title, junta, location: "", shift, character: vacancy.caracter, startsAt, endsAt, status: isOpen(endsAt) ? "vigente" : "cerrada", officialUrl: `https://sime.educaciontuc.gov.ar/Vacantes/Detalle/${vacancy.id}?seleccionado=${juntaId - 1}&tab=1&accion=-1`, metadata: JSON.stringify(metadata), contentHash: await hashSourceSnapshot(vacancy, metadata), sourceUpdatedAt: startsAt, sourcePublishedAt: startsAt });
     }
   }
   return items;

@@ -1,7 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hasMeaningfulPublicationChange } from "./sync-diff.ts";
+import { hasMeaningfulPublicationChange, hashSourceSnapshot } from "./sync-diff.ts";
 import { notificationDedupeKey } from "./notification-events.ts";
+
+test("source sync fingerprints include derived metadata so SIME identifiers are persisted", async () => {
+  const sourceRecord = { id: 140369, codigo: "PDVC-20260928-141298" };
+  const derivedMetadata = { simeCode: sourceRecord.codigo, simeRecordId: String(sourceRecord.id) };
+  const initial = await hashSourceSnapshot(sourceRecord, derivedMetadata);
+  assert.equal(await hashSourceSnapshot(sourceRecord, derivedMetadata), initial);
+  assert.notEqual(await hashSourceSnapshot(sourceRecord, { ...derivedMetadata, simeCode: "PDVC-UPDATED" }), initial);
+});
 
 test("hash-only parser changes do not create user-facing change alerts", () => {
   const previous = { status: "vigente", startsAt: null, endsAt: "2026-10-01", title: "Cargo", summary: "Cargo docente", category: "Vacante", level: "Secundario", area: "Historia", junta: "Junta", location: "Tafí Viejo", shift: "Mañana", character: "Interino", sourceUpdatedAt: null, circuit: "UNKNOWN", contentHash: "old" };
