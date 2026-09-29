@@ -793,7 +793,7 @@ function PublicationSheet({ publication, sync, saved, tracking, match, onClose, 
   ] : publication.kind === "vacante" ? [
     ["Código de trámite SIME", simeCodeForPublication(publication) || "No informado"], ["Junta", publication.junta || publication.level || "No informada por SIME"], ["Carácter", publication.character || "No informado por SIME"],
     ["Fecha de publicación", publication.starts_at ? dateLabel(publication.starts_at, true) : "No informada por SIME"], ["Fecha de cierre", publication.ends_at ? dateLabel(publication.ends_at, true) : "No informada por SIME"],
-    ["Circuito", publication.circuit && publication.circuit !== "UNKNOWN" ? `${publication.circuit}${publication.circuit_confidence != null ? ` · confianza ${publication.circuit_confidence}%` : ""}` : "Desconocido; no informado por SIME"],
+    ["Circuito", publication.circuit && publication.circuit !== "UNKNOWN" ? `${publication.circuit}${publication.circuit_confidence != null ? ` · confianza ${publication.circuit_confidence}%` : ""}` : "No recuperado del listado sincronizado; verificar en ficha oficial SIME"],
     ["Turno", publication.shift || "No informado por SIME"], ["Localidad", publication.location || "No informada por SIME"], ["Estado en DocenteTuc", lifecycleLabel(lifecycle)],
     ["Última comprobación exitosa", elapsedLabel(sourceHealth?.last_successful_sync_at || (!sourceHealth?.sync_status ? sourceHealth?.synced_at : null))]
   ] : publication.kind === "capacitacion" ? [
