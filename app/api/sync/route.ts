@@ -83,7 +83,7 @@ async function simePublications() {
       const first = vacancy.cargos.split(", ")[0].replace(/^\[[^\]]+\]\s*/, "");
       const title = first.split(/\s+\[[^\]]*(?:TURNO|#)/i)[0].slice(0, 220);
       const shift = vacancy.cargos.match(/TURNO\s+([^\]]+)/i)?.[1]?.trim() || "";
-      items.push({ id: `sime:${vacancy.id}`, source: "SIME", externalId: String(vacancy.id), kind: "vacante", category: vacancy.abierto ? "Llamado abierto" : "Vacante", title, summary: vacancy.cargos, level: junta, area: title, junta, location: "", shift, character: vacancy.caracter, startsAt, endsAt, status: isOpen(endsAt) ? "vigente" : "cerrada", officialUrl: `https://sime.educaciontuc.gov.ar/Vacantes/Detalle/${vacancy.id}?seleccionado=${juntaId - 1}&tab=1&accion=-1`, contentHash: await hash(JSON.stringify(vacancy)), sourceUpdatedAt: startsAt, sourcePublishedAt: startsAt });
+      items.push({ id: `sime:${vacancy.id}`, source: "SIME", externalId: String(vacancy.id), kind: "vacante", category: vacancy.abierto ? "Llamado abierto" : "Vacante", title, summary: vacancy.cargos, level: junta, area: title, junta, location: "", shift, character: vacancy.caracter, startsAt, endsAt, status: isOpen(endsAt) ? "vigente" : "cerrada", officialUrl: `https://sime.educaciontuc.gov.ar/Vacantes/Detalle/${vacancy.id}?seleccionado=${juntaId - 1}&tab=1&accion=-1`, metadata: JSON.stringify({ simeCode: vacancy.codigo, simeRecordId: String(vacancy.id) }), contentHash: await hash(JSON.stringify(vacancy)), sourceUpdatedAt: startsAt, sourcePublishedAt: startsAt });
     }
   }
   return items;
@@ -220,7 +220,11 @@ async function runSync() {
     const explicit = explicitRaw || (bodyHasCircuit ? body : "");
     const department = [metadata.department, metadata.departamento, metadata.departmentName, metadata.nombre_departamento].map(asText).filter(Boolean).join(" · ");
     const labeledPlace = body.match(/\b(?:departamento|localidad|establecimiento)\s*[:\-]\s*([^.;\n]+)/i)?.[1]?.trim() || "";
-    const locality = [metadata.locality, metadata.localidad, metadata.location, metadata.ubicacion, item.location, labeledPlace].map(asText).filter(Boolean).join(" · ");
+    // SIME's public vacancy row often embeds a department name in the school
+    // description but has no separate locality field. Infer a circuit only
+    // when one of the official department names is literally present there.
+    const simeSchoolText = item.source === "SIME" ? item.title : "";
+    const locality = [metadata.locality, metadata.localidad, metadata.location, metadata.ubicacion, item.location, labeledPlace, simeSchoolText].map(asText).filter(Boolean).join(" · ");
     const inferred = inferCircuit({ explicit, department, locality });
     return { ...item, circuit: inferred.normalizedCircuit, sourceCircuitRaw: inferred.sourceCircuitRaw, circuitInferenceSource: inferred.circuitInferenceSource, circuitConfidence: inferred.circuitConfidence, contentHash: await hash(`${item.contentHash}|circuit:${inferred.normalizedCircuit}|raw:${inferred.sourceCircuitRaw}|via:${inferred.circuitInferenceSource}`) };
   }));

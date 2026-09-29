@@ -103,7 +103,11 @@ export function profileMatch(publication: MatchPublication, profile: MatchProfil
   const score = Math.round(matched / available * 100);
   // One dimension can never establish a confident recommendation, even if it
   // is a perfect match. UNKNOWN fields don't reduce compatibility, only confidence.
-  const confidence = Math.round(available / Math.max(total, 2) * 100);
+  // A designation cannot be treated as confidently compatible on only one
+  // or two known profile dimensions. Unknown source fields remain neutral for
+  // the score, but the minimum evidence floor prevents a weak 100% match.
+  const minimumEvidence = publication.kind === "vacante" ? 3 : 2;
+  const confidence = Math.round(available / Math.max(total, minimumEvidence) * 100);
   const hasExplicitMismatch = criteria.some((criterion) => criterion.outcome === "NO_MATCH");
   const status: MatchResult["status"] = confidence < 70 ? "unknown" : !matched ? "none" : score === 100 && !hasExplicitMismatch ? "exact" : "partial";
   return result(status, score, confidence, matched, total, criteria);

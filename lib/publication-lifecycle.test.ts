@@ -34,6 +34,19 @@ test("publication lifecycle distinguishes current, upcoming, closed, expired and
   assert.equal(publicationLifecycle({ now }), "UNKNOWN");
 });
 
+test("a past SIME closing date overrides a stale ACTIVE normalized status", () => {
+  assert.equal(publicationLifecycle({
+    normalizedStatus: "ACTIVE",
+    sourceStatus: "vigente",
+    sourceStatusIsExplicit: true,
+    registrationOpenAt: "2026-09-27T18:00:00-03:00",
+    registrationCloseAt: "2026-09-27T18:00:00-03:00",
+    expiresAt: "2026-09-27T18:00:00-03:00",
+    dateStatus: "confirmed",
+    now,
+  }), "EXPIRED");
+});
+
 test("home recommendation requires a current lifecycle and a recently successful source check", () => {
   const recent = { sync_status: "OK", last_successful_sync_at: "2026-09-28 11:00:00" };
   assert.equal(canRecommendCurrentPublication({ lifecycle: "ACTIVE", health: recent, now }), true);

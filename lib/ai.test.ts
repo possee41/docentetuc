@@ -23,8 +23,15 @@ test("usa el matching real y conserva su porcentaje", () => {
   assert.match(result.context, /Compatibilidad calculada por DocenteTuc: \d+%; confianza: \d+%/);
 });
 
-test("recupera vacantes compatibles usando el matching real", () => {
+test("no recomienda una vacante con sólo dos criterios conocidos", () => {
   const result = buildAIContext("¿Qué vacantes coinciden conmigo?", [...records, vacancy], { profile });
+  assert.deepEqual(result.sources.map((source) => source.id), []);
+});
+
+test("recupera vacantes compatibles con evidencia suficiente usando el matching real", () => {
+  const vacancyWithCircuit = { ...vacancy, circuit: "II" };
+  const profileWithCircuit = { ...profile, circuits: ["II"] };
+  const result = buildAIContext("¿Qué vacantes coinciden conmigo?", [...records, vacancyWithCircuit], { profile: profileWithCircuit });
   assert.deepEqual(result.sources.map((source) => source.id), ["vacancy"]);
   assert.match(result.context, /Compatibilidad calculada por DocenteTuc/);
 });

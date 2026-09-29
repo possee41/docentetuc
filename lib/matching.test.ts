@@ -143,6 +143,16 @@ test("una sola coincidencia de nivel no es evidencia suficiente para recomendar 
   assert.equal(isEligibleForPersonalizedHome(publication, { levels: ["Secundario"], areas: ["Ciencias Sociales"], circuits: ["II"] }), false);
 });
 
+test("una designación con sólo dos datos conocidos no muestra una compatibilidad confirmada", () => {
+  const publication = { kind: "vacante", title: "Escuela Secundaria - Filosofía", level: "Secundario", area: "Filosofía" };
+  const profile = { boards: ["Secundaria"], subjects: ["Filosofía"] };
+  const result = profileMatch(publication, profile);
+  assert.equal(result.score, 100);
+  assert.equal(result.confidence, 67);
+  assert.equal(result.status, "unknown");
+  assert.equal(isEligibleForPersonalizedHome(publication, profile), false);
+});
+
 test("el umbral personal para Inicio se aplica junto con la confianza", () => {
   const good: Parameters<typeof isEligibleMatchResult>[0] = { status: "exact", outcome: "MATCH", score: 85, compatibility: 85, compatibilityScore: 85, confidence: 85, matchConfidence: 85, matched: 6, total: 7, reasons: [], criteria: [] };
   assert.equal(isEligibleMatchResult(good, 85), true);
