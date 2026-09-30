@@ -503,8 +503,13 @@ button:disabled { opacity: .68; }
 .home-notifications { position: relative; display: grid; width: 2.85rem; height: 2.85rem; flex: none; place-items: center; border: 1px solid rgb(255 255 255 / .72); border-radius: 50%; color: #07527f; background: rgb(255 255 255 / .94); box-shadow: 0 5px 16px rgb(2 26 49 / .22); }
 .home-notifications:hover { color: #063967; background: #e4f6ff; }
 .home-notifications > span { position: absolute; top: -.12rem; right: -.18rem; display: grid; min-width: 1.2rem; height: 1.2rem; place-items: center; border: 2px solid #fff; border-radius: 999px; padding-inline: .2rem; color: #062b55; background: #ffd16b; font-size: .62rem; font-weight: 950; }
-.home-hero-copy { position: relative; z-index: 1; max-width: 25rem; padding-top: 1.1rem; text-shadow: 0 2px 12px rgb(2 26 49 / .32); }
-.home-hero-greeting { margin-bottom: .3rem; color: #bdeaff; font-size: .82rem; font-weight: 850; }
+.home-hero-copy { position: relative; z-index: 1; max-width: 25rem; padding-top: 1.1rem; text-shadow: 0 2px 9px rgb(1 20 40 / .9), 0 1px 3px rgb(1 20 40 / .9); }
+.home-hero-context { display: grid; gap: .12rem; }
+.home-hero-greeting { color: #fff; font-size: .96rem; font-weight: 900; line-height: 1.2; }
+.home-hero-weather { color: #fff; font-size: .78rem; font-weight: 700; line-height: 1.3; }
+.home-hero-location { color: #fff; font-size: .68rem; font-weight: 650; line-height: 1.3; }
+.home-hero-location a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.home-hero-location a:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .home-shortcuts { overflow: hidden; border: 1px solid var(--border); border-radius: 1.15rem; background: var(--surface-primary); box-shadow: 0 7px 22px rgb(6 57 103 / .06); backdrop-filter: blur(10px); }
 .home-shortcut-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; padding: 0 .65rem .65rem; }
 .home-shortcut { position: relative; isolation: isolate; display: flex; min-width: 0; min-height: 6.35rem; flex-direction: column; align-items: flex-start; justify-content: space-between; overflow: hidden; border: 1px solid rgb(255 255 255 / .2); border-radius: .95rem; padding: .65rem .7rem; color: #fff; background-color: #0878be; background-image: linear-gradient(180deg, rgb(4 34 63 / .1), rgb(3 28 54 / .82)), var(--shortcut-image, none); background-position: center, center; background-size: cover; text-align: left; box-shadow: inset 0 0 0 1px rgb(6 43 85 / .08); }

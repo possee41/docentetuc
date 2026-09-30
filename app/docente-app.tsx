@@ -34,6 +34,7 @@ import type { AppData, ManualEvent, Notice, Profile, Publication, Saved, SyncSta
 import { usefulMetadata } from "@/lib/useful-information";
 import { canRecommendCurrentPublication, publicationLifecycle } from "@/lib/publication-lifecycle";
 import { AppHeader, BottomNavigation, Card, CompatibilityBadge, EmptyState, FilterChip, StatusBadge } from "@/components/docentetuc-ui";
+import { HomeBannerContext } from "@/components/home-banner-context";
 
 type View = "inicio" | "vacantes" | "capacitaciones" | "junta" | "informacion" | "agenda" | "alertas" | "guardados" | "perfil";
 type Theme = "light" | "dark";
@@ -337,7 +338,6 @@ export default function DocenteApp() {
   const designationMap = new Map((data?.designations || []).map((item) => [item.publication_id, item]));
   const roleOptions = [...new Set((data?.publications || []).filter((item) => item.kind === "vacante").map((item) => designationFacts(item).role).filter(Boolean))].slice(0, 80);
   const openDesignationOfficial = (item: Publication) => { localStorage.setItem("docentetuc-pending-designation", item.id); window.open(item.official_url, "_blank", "noopener,noreferrer"); };
-  const greeting = new Date().getHours() < 12 ? "Buenos días" : new Date().getHours() < 20 ? "Buenas tardes" : "Buenas noches";
   return (
     <SidebarProvider defaultOpen className="dt-app-shell" style={{ "--sidebar-width": "17rem" } as CSSProperties}>
       <Sidebar className="border-r border-white/10 text-white backdrop-blur-xl" collapsible="offcanvas">
@@ -359,7 +359,7 @@ export default function DocenteApp() {
         {offline && <div className="flex items-center justify-center gap-2 bg-[#fff3dd] px-4 py-2 text-sm font-semibold text-[#7d541b]"><WifiOff className="size-4" />Sin conexión. Podés consultar la última información cargada.</div>}
 
         <div className="mobile-content mx-auto w-full max-w-7xl p-4 md:p-8">
-      {view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} greeting={greeting} onOpen={openPublication} onRemind={setReminderPublication} onView={(target, term) => { setView(target); setQuery(term || ""); setDesignationQuery(""); setFilter(target === "informacion" || target === "junta" ? "todas" : "para-mi"); }} loading={loading} error={loadError} /> : view === "perfil" ? <><ProfileForm key={profile?.updated_at || "profile"} profile={profile} roleOptions={roleOptions} onSaved={() => void load(false)} /><ProfileRelevanceForm key={`relevance:${profile?.updated_at || "profile"}`} profile={profile} onSaved={() => void load(false)} /><PushSettings key={`push:${profile?.updated_at || "profile"}`} profile={profile} /><SystemStatus sources={data?.sync || []} /></> : view === "alertas" ? <Alerts data={data} onOpen={openPublication} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} /> : view === "agenda" ? <Agenda publications={data?.publications || []} savedMap={savedMap} manualEvents={data?.manualEvents || []} onOpen={openPublication} onNewEvent={(date) => { setManualEventDate(date || ""); setManualEvent("new"); }} onEditEvent={setManualEvent} /> : view === "informacion" ? <InformationHub items={items} query={query} onQuery={setQuery} savedMap={savedMap} onOpen={openPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAskAI={() => openAI({ type: "informacion", title: viewTitles.informacion[0] })} /> : <>
+      {view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={(target, term) => { setView(target); setQuery(term || ""); setDesignationQuery(""); setFilter(target === "informacion" || target === "junta" ? "todas" : "para-mi"); }} loading={loading} error={loadError} /> : view === "perfil" ? <><ProfileForm key={profile?.updated_at || "profile"} profile={profile} roleOptions={roleOptions} onSaved={() => void load(false)} /><ProfileRelevanceForm key={`relevance:${profile?.updated_at || "profile"}`} profile={profile} onSaved={() => void load(false)} /><PushSettings key={`push:${profile?.updated_at || "profile"}`} profile={profile} /><SystemStatus sources={data?.sync || []} /></> : view === "alertas" ? <Alerts data={data} onOpen={openPublication} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} /> : view === "agenda" ? <Agenda publications={data?.publications || []} savedMap={savedMap} manualEvents={data?.manualEvents || []} onOpen={openPublication} onNewEvent={(date) => { setManualEventDate(date || ""); setManualEvent("new"); }} onEditEvent={setManualEvent} /> : view === "informacion" ? <InformationHub items={items} query={query} onQuery={setQuery} savedMap={savedMap} onOpen={openPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAskAI={() => openAI({ type: "informacion", title: viewTitles.informacion[0] })} /> : <>
             <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void syncSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
             <Filters filter={filter} setFilter={setFilter} junta={juntaFilter} setJunta={setJuntaFilter} character={character} setCharacter={setCharacter} query={designationQuery} setQuery={setDesignationQuery} kind={view} date={trainingDate} setDate={setTrainingDate} source={trainingSource} setSource={setTrainingSource} compatibility={trainingCompatibility} setCompatibility={setTrainingCompatibility} sort={trainingSort} setSort={setTrainingSort} hasTrainingTerritoryData={hasTrainingTerritoryData} circuit={view === "vacantes" ? designationCircuit : trainingCircuit} setCircuit={view === "vacantes" ? setDesignationCircuit : setTrainingCircuit} />
              <PublicationList items={items} loading={loading} savedMap={savedMap} reminderMap={reminderMap} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} emptyContext={view === "capacitaciones" ? trainingSource === "platform:fdci" ? "FDCI" : trainingSource === "platform:infod" ? "INFoD" : trainingSource === "platform:cenet" ? "CeNET / INET" : "las plataformas seleccionadas" : "esta búsqueda"} onClearFilters={() => { setTrainingSource("todas"); setTrainingDate(""); setTrainingCircuit("todos"); setDesignationCircuit("todos"); setTrainingCompatibility("todas"); setJuntaFilter("todas"); setCharacter("todos"); setFilter(view === "capacitaciones" ? "para-mi" : "todas"); setDesignationQuery(""); setQuery(""); }} />
@@ -404,7 +404,7 @@ function InformationHub({ items, query, onQuery, savedMap, onOpen, onSave, onAsk
   </section>;
 }
 
-type DashboardProps = { data: AppData | null; profile?: Profile; savedMap: Map<string, Saved>; reminderMap: Map<string, TrainingReminder>; matches: (item: Publication) => boolean; matchResult: (item: Publication) => MatchResult; isEligible?: (item: Publication) => boolean; greeting: string; onOpen: (item: Publication) => void; onRemind: (item: Publication) => void; onView: (view: View, query?: string) => void; loading: boolean; error: string };
+type DashboardProps = { data: AppData | null; profile?: Profile; savedMap: Map<string, Saved>; reminderMap: Map<string, TrainingReminder>; matches: (item: Publication) => boolean; matchResult: (item: Publication) => MatchResult; isEligible?: (item: Publication) => boolean; onOpen: (item: Publication) => void; onRemind: (item: Publication) => void; onView: (view: View, query?: string) => void; loading: boolean; error: string };
 
 const homeShortcuts: { label: string; caption: string; icon: typeof Home; view: View; image: string; query?: string }[] = [
   { label: "Designaciones", caption: "Oportunidades en SIME", icon: BriefcaseBusiness, view: "vacantes", image: "designaciones" },
@@ -433,7 +433,7 @@ function SystemStatus({ sources }: { sources: SyncStatus[] }) {
   </details>;
 }
 
-function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult, isEligible, greeting, onOpen, onRemind, onView, loading, error }: DashboardProps) {
+function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult, isEligible, onOpen, onRemind, onView, loading, error }: DashboardProps) {
   const now = new Date();
   const publications = data?.publications || [];
   const sync = data?.sync || [];
@@ -489,7 +489,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   return <div className="daily-home">
     <header className="home-hero">
       <div className="home-hero-top"><h1 className="sr-only">DocenteTuc · Tu información educativa en un solo lugar</h1></div>
-      <div className="home-hero-copy"><p className="home-hero-greeting" suppressHydrationWarning>{greeting}{profile?.name ? `, ${profile.name.split(" ")[0]}` : ""} 👋</p></div>
+      <div className="home-hero-copy"><HomeBannerContext name={profile?.name} /></div>
     </header>
     <section className="home-section home-for-you"><div className="home-section-title"><div><p>IMPORTANTE PARA VOS</p><h2>Oportunidades a tu medida</h2></div><button onClick={() => onView("capacitaciones")}>Ver oportunidades <ChevronRight className="size-4" /></button></div>
       {loading ? <HomeSkeleton /> : <>
