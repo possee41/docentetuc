@@ -148,7 +148,7 @@ async function boardPublications() {
     let fingerprint = officialUrl, summary = `Documento público oficial de la Junta ${junta}.`, metadata = "{}";
     if (officialUrl.includes("docs.google.com/document/")) {
       const docId = officialUrl.split("/d/")[1].split("/")[0];
-      const response = await fetch(`https://docs.google.com/document/d/${docId}/export?format=txt`, { signal: AbortSignal.timeout(15_000) });
+      const response = await fetch(`https://docs.google.com/document/d/${docId}/export?format=txt`, { signal: AbortSignal.timeout(40_000) });
       if (!response.ok) throw new Error(`HTTP_${response.status} ${officialUrl}`);
       fingerprint = await response.text(); summary = plainDocumentText(fingerprint) || summary; metadata = JSON.stringify({ contentAvailable: true, format: "google-doc", textFormat: "txt" });
     } else if (officialUrl.includes("drive.google.com/drive/folders/")) {
@@ -188,7 +188,7 @@ async function boardPublications() {
           } else if (isGoogleDoc && exportedDriveDocs < 4) {
             exportedDriveDocs++;
             try {
-              const documentResponse = await fetch(`https://docs.google.com/document/d/${entry.id}/export?format=txt`, { signal: AbortSignal.timeout(15_000) });
+              const documentResponse = await fetch(`https://docs.google.com/document/d/${entry.id}/export?format=txt`, { signal: AbortSignal.timeout(40_000) });
               if (documentResponse.ok) { entrySummary = plainDocumentText(await documentResponse.text()) || entrySummary; contentAvailable = true; textFormat = "txt"; }
             } catch (error) { console.warn("drive_document_text_unavailable", entry.id, error); }
           }
