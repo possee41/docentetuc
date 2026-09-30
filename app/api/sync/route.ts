@@ -3,7 +3,7 @@ import { getD1 } from "@/db";
 import { authError, currentUser } from "@/lib/current-user";
 import { designationRoleFromTitle, isEligibleForPersonalizedHome, matchesProfile, profileMatch } from "@/lib/matching";
 import { driveEntryUrl, htmlToText, parsePublicDriveFolder } from "@/lib/public-documents";
-import { mergeTrainingData, parseTrainingMetadata } from "@/lib/training";
+import { mergeTrainingData, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
 import { isCenetMarkupRecognized, parseCenetTrainings, parseInfdCatalog, parseInfdTrainings, type PublicTraining } from "@/lib/external-trainings";
 import { usefulInformation } from "@/lib/useful-information";
 import { registrationState } from "@/lib/home-dashboard";
@@ -97,12 +97,23 @@ async function trainingPublications() {
     getJson<Record<string, unknown>[]>(`${base}/gestionCapas/getCapaActivas`),
   ]);
   if (!Array.isArray(courses) || !Array.isArray(active)) throw new Error("PARSE_ERROR FDCI response shape changed");
-  return Promise.all(mergeTrainingData(courses, active).map(async (item): Promise<Publication> => ({
+  const activeIds = new Set(active.map((item) => String(item.capacitacion_id)));
+  const detailCandidates = courses.filter((item) => item.proxima_fecha_preinscripcion || activeIds.has(String(item.capacitacion_id)));
+  const details = await Promise.allSettled(detailCandidates.map(async (course) => {
+    const response = await fetch(`${base}/capa/getCupo`, { method: "POST", signal: AbortSignal.timeout(15_000), headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ token: course.token, slug: course.slug }) });
+    if (!response.ok) throw new Error(`HTTP_${response.status} FDCI commission detail`);
+    const detail = await response.json() as { comisiones?: Record<string, unknown>[] };
+    if (!Array.isArray(detail.comisiones)) throw new Error("PARSE_ERROR FDCI commission detail changed");
+    return detail.comisiones.filter((commission) => String(commission.capacitacion_id) === String(course.capacitacion_id));
+  }));
+  const commissions = [...active, ...details.flatMap((result) => result.status === "fulfilled" ? result.value : [])];
+  const items = await Promise.all(mergeTrainingData(courses, commissions).map(async (item): Promise<Publication> => ({
     id: item.id, source: "Capacitación Docente", externalId: item.externalId, kind: "capacitacion", category: item.metadata.entity === "commission" ? `Comisión #${item.metadata.commissionId}` : "Capacitación",
     title: item.title, summary: item.summary, level: item.level, area: item.area, junta: "", location: item.location, shift: "", character: item.modality,
     startsAt: item.startsAt, endsAt: item.endsAt, status: item.status, officialUrl: item.officialUrl, metadata: JSON.stringify(item.metadata),
-    contentHash: await hash(JSON.stringify(item.raw)), sourceUpdatedAt: item.sourceUpdatedAt,
+    contentHash: await hashSourceSnapshot(item.raw, { metadata: item.metadata, status: item.status, startsAt: item.startsAt, endsAt: item.endsAt }), sourceUpdatedAt: item.sourceUpdatedAt,
   })));
+  return { items, complete: details.every((result) => result.status === "fulfilled") };
 }
 
 async function cenetPublications() {
@@ -330,6 +341,32 @@ async function runSync() {
         ? db.prepare(`UPDATE publications SET last_seen_at=? WHERE source=?${categoryCondition} AND normalized_status<>'REMOVED_FROM_SOURCE' AND (last_seen_at='' OR datetime(last_seen_at)<datetime(?,'-24 hours'))`).bind(syncStartedAt, item.storageSource, item.source, syncStartedAt)
         : db.prepare("UPDATE publications SET last_seen_at=? WHERE source=? AND normalized_status<>'REMOVED_FROM_SOURCE' AND (last_seen_at='' OR datetime(last_seen_at)<datetime(?,'-24 hours'))").bind(syncStartedAt, item.storageSource, syncStartedAt);
       countWrites(await statement.run());
+    }
+  }
+  if (!collected.find((result) => result.source === "Capacitación Docente")?.error) {
+    countWrites(await db.prepare(`UPDATE publications SET registration_open_at=NULL, registration_close_at=NULL,
+      metadata=json_set(json_remove(metadata,'$.registrationOpensAt','$.registrationHasTime'), '$.preinscripcionFechaConfirmada', json('false'), '$.dateStatus', 'unknown'), updated_at=CURRENT_TIMESTAMP
+      WHERE id LIKE 'fdci:course:%' AND normalized_status='REMOVED_FROM_SOURCE' AND registration_open_at IS NOT NULL AND json_valid(metadata)`).run());
+    const reminders = await db.prepare(`SELECT r.id, r.user_id, r.publication_id, r.opens_at, r.advance_minutes, r.precision, r.notified,
+      p.registration_open_at, p.normalized_status, p.metadata
+      FROM training_reminders r JOIN publications p ON p.id=r.publication_id WHERE r.publication_id LIKE 'fdci:%'`)
+      .all<{ id: string; user_id: string; publication_id: string; opens_at: string; advance_minutes: number; precision: string; notified: number; registration_open_at: string | null; normalized_status: string; metadata: string }>();
+    rowsRead += Number(reminders.meta?.rows_read || reminders.results.length);
+    for (const reminder of reminders.results) {
+      const metadata = parseTrainingMetadata(reminder.metadata), opening = reminder.registration_open_at ? Date.parse(reminder.registration_open_at) : Number.NaN;
+      if (!metadata?.preinscripcionFechaConfirmada || !Number.isFinite(opening) || opening <= now.getTime() || !["ACTIVE", "UPCOMING"].includes(reminder.normalized_status)) {
+        countWrites(await db.prepare("DELETE FROM training_reminders WHERE id=?").bind(reminder.id).run());
+        continue;
+      }
+      const key = trainingReminderKey(metadata), id = `${reminder.user_id}:${key}:${reminder.advance_minutes}`;
+      const remindAt = new Date(opening - reminder.advance_minutes * 60_000).toISOString();
+      if (id !== reminder.id) {
+        countWrites(await db.prepare(`INSERT OR IGNORE INTO training_reminders (id, user_id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, reminder.user_id, key, reminder.publication_id, reminder.registration_open_at, reminder.precision, reminder.advance_minutes, remindAt, reminder.opens_at === reminder.registration_open_at ? reminder.notified : 0).run());
+        countWrites(await db.prepare("DELETE FROM training_reminders WHERE id=?").bind(reminder.id).run());
+      } else if (reminder.opens_at !== reminder.registration_open_at) {
+        countWrites(await db.prepare("UPDATE training_reminders SET opens_at=?, remind_at=?, notified=0, updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(reminder.registration_open_at, remindAt, id).run());
+      }
     }
   }
   for (const lifecycle of ["EXPIRED", "CLOSED"] as const) {

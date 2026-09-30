@@ -1,3 +1,5 @@
+import { calendarDayDistance } from "./home-dashboard.ts";
+
 export type TrainingStatus = "inscripción abierta" | "próximamente" | "inscripción cerrada" | "en curso" | "finalizada" | "consultar";
 export type EnrollmentState = "PROXIMAMENTE" | "ABRE_HOY" | "ABIERTA" | "CERRADA" | "SIN_FECHA_CONFIRMADA";
 
@@ -8,6 +10,7 @@ export type TrainingMetadata = {
   registrationOpensAt?: string;
   registrationHasTime?: boolean;
   registrationClosesAt?: string;
+  preinscripcionFechaConfirmada?: boolean;
   courseStartsAt?: string;
   courseEndsAt?: string;
   source?: string;
@@ -79,12 +82,14 @@ export function trainingStatus(commission: OfficialCommission | undefined, now =
   const starts = localDateTime(commission.fecha_inicio);
   const finishes = localDateTime(commission.fecha_fin, true);
   const closed = Boolean(Number(commission.comision_cerrada));
+  if (closed) return "inscripción cerrada";
   if (opens && time < new Date(opens).getTime()) return "próximamente";
-  if (!closed && opens && (!closes || time <= new Date(closes).getTime())) return "inscripción abierta";
-  if (starts && time < new Date(starts).getTime()) return closed || (closes && time > new Date(closes).getTime()) ? "inscripción cerrada" : "consultar";
+  if (closes && time > new Date(closes).getTime()) return "inscripción cerrada";
+  if (opens && commission.isActivePre != null && !Boolean(Number(commission.isActivePre))) return "inscripción cerrada";
+  if (opens && (closes || Boolean(Number(commission.isActivePre)))) return "inscripción abierta";
+  if (starts && time < new Date(starts).getTime()) return "consultar";
   if (starts && finishes && time <= new Date(finishes).getTime()) return "en curso";
   if (finishes && time > new Date(finishes).getTime()) return "finalizada";
-  if (closed || (closes && time > new Date(closes).getTime())) return "inscripción cerrada";
   return "consultar";
 }
 
@@ -98,7 +103,7 @@ export function openingCountdown(opensAt: string, now = new Date(), hasTime = tr
     const minutes = Math.ceil(difference / 60000), hours = Math.floor(minutes / 60);
     return hours ? `Abre en ${hours} h ${minutes % 60} min` : `Abre en ${minutes} min`;
   }
-  const days = Math.ceil(difference / 86400000);
+  const days = calendarDayDistance(opensAt, now) || 1;
   return days === 1 ? "Abre mañana" : `Abre en ${days} días`;
 }
 
@@ -106,13 +111,14 @@ function opportunity(course: OfficialCourse, commission?: OfficialCommission, no
   const trainingId = text(commission?.capacitacion_id || course.capacitacion_id);
   const commissionId = commission?.id == null ? "" : text(commission.id);
   const token = text(course.token || commission?.token), slug = text(course.slug || commission?.slug);
-  const rawOpening = commission?.fecha_apertura_preinscripcion || course.proxima_fecha_preinscripcion;
+  // The catalogue's "next" date can disagree with the actual commission.
+  const rawOpening = commission?.fecha_apertura_preinscripcion;
   const registrationOpensAt = localDateTime(rawOpening);
   const registrationHasTime = /\d{1,2}:\d{2}/.test(text(rawOpening));
   const registrationClosesAt = localDateTime(commission?.fecha_cierre_preinscripcion, true);
   const courseStartsAt = localDateTime(commission?.fecha_inicio);
   const courseEndsAt = localDateTime(commission?.fecha_fin, true);
-  const hasOfficialDate = Boolean(registrationOpensAt || registrationClosesAt || courseStartsAt || courseEndsAt);
+  const dateStatus = registrationOpensAt || registrationClosesAt ? "confirmed" : courseStartsAt || courseEndsAt ? "course_confirmed" : "unknown";
   const description = plainText(course.descripcion || commission?.descripcion);
   const content = plainText(course.contenido || commission?.contenido);
   const statedRecipients = description.match(/destinatarios\s*:\s*([^.]*)/i)?.[1]?.trim();
@@ -125,12 +131,12 @@ function opportunity(course: OfficialCourse, commission?: OfficialCommission, no
     level: text(course.niveles), area: text(course.areas || course.eje_prioritario),
     location: text(commission?.lugar), modality: text(course.modalidad || commission?.modalidad),
     startsAt: courseStartsAt || null, endsAt: registrationClosesAt || null,
-    status: commission ? trainingStatus(commission, now) : registrationOpensAt && new Date(registrationOpensAt).getTime() > now.getTime() ? "próximamente" : "consultar", officialUrl,
+    status: trainingStatus(commission, now), officialUrl,
     sourceUpdatedAt: text(commission?.updated_at) || null,
     metadata: {
       entity: commissionId ? "commission" : "course", trainingId, ...(commissionId ? { commissionId } : {}),
-      ...(registrationOpensAt ? { registrationOpensAt, registrationHasTime } : {}), ...(registrationClosesAt ? { registrationClosesAt } : {}),
-      ...(courseStartsAt ? { courseStartsAt } : {}), ...(courseEndsAt ? { courseEndsAt } : {}), source: "FDCI Tucumán", sourceUrl: officialUrl, dateStatus: hasOfficialDate ? "confirmed" : "unknown",
+      ...(registrationOpensAt ? { registrationOpensAt, registrationHasTime } : {}), ...(registrationClosesAt ? { registrationClosesAt } : {}), preinscripcionFechaConfirmada: Boolean(registrationOpensAt),
+      ...(courseStartsAt ? { courseStartsAt } : {}), ...(courseEndsAt ? { courseEndsAt } : {}), source: "FDCI Tucumán", sourceUrl: officialUrl, dateStatus,
       ...(commission?.direccion ? { address: text(commission.direccion) } : {}),
       ...(number(commission?.cupo) != null ? { capacity: number(commission?.cupo) } : {}),
       ...(number(commission?.cupo_preinscripcion) != null ? { preCapacity: number(commission?.cupo_preinscripcion) } : {}),
@@ -163,3 +169,5 @@ export function mergeTrainingData(courses: OfficialCourse[], commissions: Offici
 export const parseTrainingMetadata = (value: string | null | undefined): TrainingMetadata | null => {
   try { return value ? JSON.parse(value) as TrainingMetadata : null; } catch { return null; }
 };
+
+export const trainingReminderKey = (metadata: TrainingMetadata) => metadata.commissionId ? `fdci:commission:${metadata.commissionId}` : metadata.trainingId;

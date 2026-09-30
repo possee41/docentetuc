@@ -1,6 +1,6 @@
 import { getD1 } from "@/db";
 import { authError, currentUser } from "@/lib/current-user";
-import { parseTrainingMetadata } from "@/lib/training";
+import { enrollmentState, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
 import { hydrateProfile, profileStorage } from "@/lib/profile";
 import { DESIGNATION_STATUSES } from "@/lib/designations";
 
@@ -69,22 +69,24 @@ export async function POST(request: Request) {
         .bind(id, user.userId, publicationId, status, value(body.role, 200), value(body.subject, 200), value(body.school, 250), value(body.address, 250), value(body.locality, 120), optionalDate(body.appliedAt), optionalDate(body.appointmentAt), value(body.shift, 80), value(body.board, 180), value(body.documentation, 500), value(body.orderNumber, 120), value(body.notes, 1000), publication.official_url, reminderAt).run();
     } else if (action === "set_training_reminder") {
       const publicationId = value(body.publicationId, 120);
-      const publication = await db.prepare("SELECT id, metadata FROM publications WHERE id=? AND kind='capacitacion'").bind(publicationId).first<{ id: string; metadata: string }>();
+      const publication = await db.prepare("SELECT id, metadata, status, normalized_status FROM publications WHERE id=? AND kind='capacitacion'").bind(publicationId).first<{ id: string; metadata: string; status: string; normalized_status: string }>();
       const metadata = parseTrainingMetadata(publication?.metadata);
       if (!publication || !metadata?.registrationOpensAt || !metadata.trainingId) return Response.json({ error: "La fuente oficial no informó una apertura válida." }, { status: 400 });
+      if (enrollmentState(metadata, publication.status, publication.normalized_status) === "CERRADA") return Response.json({ error: "La preinscripción ya está cerrada según la fuente." }, { status: 400 });
       const opens = new Date(metadata.registrationOpensAt);
       if (!Number.isFinite(opens.getTime()) || opens.getTime() <= Date.now()) return Response.json({ error: "La apertura ya pasó; no se puede crear un recordatorio nuevo." }, { status: 400 });
       const advances = Array.isArray(body.advanceMinutes) ? [...new Set(body.advanceMinutes.map(Number))] : [];
-      if (!advances.length || advances.some((advance) => ![10080, 4320, 1440, 0].includes(advance))) return Response.json({ error: "Elegí al menos un aviso válido." }, { status: 400 });
-      const reminderIds = advances.map((advance) => `${user.userId}:${metadata.trainingId}:${advance}`);
-      await db.prepare(`DELETE FROM training_reminders WHERE user_id=? AND training_id=? AND id NOT IN (${reminderIds.map(() => "?").join(",")})`).bind(user.userId, metadata.trainingId, ...reminderIds).run();
+      if (!advances.length || advances.some((advance) => ![10080, 4320, 1440, 60, 0].includes(advance))) return Response.json({ error: "Elegí al menos un aviso válido." }, { status: 400 });
+      const reminderKey = trainingReminderKey(metadata);
+      const reminderIds = advances.map((advance) => `${user.userId}:${reminderKey}:${advance}`);
+      await db.prepare(`DELETE FROM training_reminders WHERE user_id=? AND training_id=? AND id NOT IN (${reminderIds.map(() => "?").join(",")})`).bind(user.userId, reminderKey, ...reminderIds).run();
       await db.batch(advances.map((advance) => {
-        const remindAt = new Date(opens.getTime() - advance * 60000), id = `${user.userId}:${metadata.trainingId}:${advance}`;
+        const remindAt = new Date(opens.getTime() - advance * 60000), id = `${user.userId}:${reminderKey}:${advance}`;
         return db.prepare(`INSERT INTO training_reminders (id, user_id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
           ON CONFLICT(id) DO UPDATE SET publication_id=excluded.publication_id, opens_at=excluded.opens_at, precision=excluded.precision, advance_minutes=excluded.advance_minutes, remind_at=excluded.remind_at,
             notified=CASE WHEN training_reminders.opens_at IS excluded.opens_at AND training_reminders.remind_at IS excluded.remind_at THEN training_reminders.notified ELSE 0 END, updated_at=CURRENT_TIMESTAMP
           WHERE training_reminders.publication_id IS NOT excluded.publication_id OR training_reminders.opens_at IS NOT excluded.opens_at OR training_reminders.precision IS NOT excluded.precision OR training_reminders.advance_minutes IS NOT excluded.advance_minutes OR training_reminders.remind_at IS NOT excluded.remind_at`)
-          .bind(id, user.userId, metadata.trainingId, publicationId, metadata.registrationOpensAt, metadata.registrationHasTime ? "datetime" : "date", advance, remindAt.toISOString());
+          .bind(id, user.userId, reminderKey, publicationId, metadata.registrationOpensAt, metadata.registrationHasTime ? "datetime" : "date", advance, remindAt.toISOString());
       }));
     } else if (action === "remove_training_reminder") {
       await db.prepare("DELETE FROM training_reminders WHERE user_id=? AND training_id=?").bind(user.userId, value(body.trainingId, 80)).run();
