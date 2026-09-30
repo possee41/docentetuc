@@ -3,6 +3,7 @@ import { authError, currentUser } from "@/lib/current-user";
 import { enrollmentState, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
 import { hydrateProfile, profileStorage } from "@/lib/profile";
 import { DESIGNATION_STATUSES } from "@/lib/designations";
+import { APP_PUBLICATIONS_QUERY } from "@/lib/app-publications-query";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
     await db.prepare("UPDATE saved_publications SET agenda_reminder_notified=1 WHERE user_id=? AND in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime('now')").bind(user.userId).run();
     const [profile, publications, saved, notifications, reminders, designations, manualEvents, sync] = await Promise.all([
       db.prepare("SELECT * FROM profiles WHERE user_id=?").bind(user.userId).first(),
-      db.prepare("SELECT * FROM publications ORDER BY COALESCE(ends_at, starts_at, updated_at) DESC LIMIT 1500").all(),
+      db.prepare(APP_PUBLICATIONS_QUERY).all(),
       db.prepare("SELECT publication_id, in_agenda, followed, agenda_at, agenda_notes, agenda_reminder_at, agenda_reminder_notified, saved_at FROM saved_publications WHERE user_id=?").bind(user.userId).all(),
       db.prepare("SELECT n.*, p.title, p.kind FROM notifications n JOIN publications p ON p.id=n.publication_id WHERE n.user_id=? ORDER BY n.created_at DESC LIMIT 100").bind(user.userId).all(),
       db.prepare("SELECT id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified FROM training_reminders WHERE user_id=? ORDER BY opens_at").bind(user.userId).all(),
