@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { diffByHash, hasMeaningfulPublicationChange, hashSourceSnapshot } from "./sync-diff.ts";
+import { diffByHash, hasMeaningfulPublicationChange, hashSourceSnapshot, isDocumentTextExportMigration } from "./sync-diff.ts";
 import { notificationDedupeKey } from "./notification-events.ts";
 import { missingAfterValidatedSync } from "./publication-lifecycle.ts";
 
@@ -22,6 +22,13 @@ test("a meaningful source date or content change remains alertable", () => {
   assert.equal(hasMeaningfulPublicationChange(previous, { ...previous, status: "cerrada" }), true);
   assert.equal(hasMeaningfulPublicationChange(previous, { ...previous, endsAt: "2026-10-02" }), true);
   assert.equal(hasMeaningfulPublicationChange(previous, { ...previous, summary: "Cargo actualizado" }), true);
+});
+
+test("cambiar de HTML a texto no avisa como comunicado nuevo si la fuente no cambió", () => {
+  const previous = JSON.stringify({ contentAvailable: true, format: "google-doc" });
+  const current = JSON.stringify({ contentAvailable: true, format: "google-doc", textFormat: "txt" });
+  assert.equal(isDocumentTextExportMigration(previous, current, null, null), true);
+  assert.equal(isDocumentTextExportMigration(previous, current, "2026-09-29", "2026-09-30"), false);
 });
 
 test("logical event keys deduplicate retries but distinguish a new event", () => {

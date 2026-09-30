@@ -82,8 +82,8 @@ export function detectIntent(question: string): AIIntent {
   if (/\b(inscrip|inscrib|preinscrip|matricul)/.test(query)) return "inscripcion";
   if (/\b(vacant|cargo|horas? catedra)/.test(query)) return "vacantes";
   if (/\b(mi perfil|para mi perfil|coincide conmigo|que me sirve)/.test(query)) return "perfil";
-  if (/\b(novedad|ultima|reciente)/.test(query)) return "novedades";
   if (/\b(padron|comunicado|resolucion|junta)/.test(query)) return "junta";
+  if (/\b(novedad|ultima|reciente)/.test(query)) return "novedades";
   if (/\b(sueldo|haber|cobr|liquid|boleta|legajo|jubil|previsional|ciidept|cendie|digituc|sinide|sime|fdci|oficina|direccion|telefono|horario|tramite|expediente)/.test(query)) return "informacion";
   if (/\b(document|archivo)/.test(query)) return "documentos";
   if (/\b(docentetuc|esta app|esta aplicacion|usar la aplicacion|como funciona la app)/.test(query)) return "app";
@@ -133,15 +133,26 @@ export function retrievePublications(question: string, publications: Publication
   if (intent === "conversacion_general") return [];
   if (/\b(no existe|inexistente|fictici|inventad)/.test(query)) return [];
   const wantsTraining = ["capacitaciones", "inscripcion"].includes(intent), wantsVacancy = ["vacantes", "designaciones"].includes(intent);
+  const trainingSource = wantsTraining && /\bfdci\b/.test(query) ? "Capacitación Docente"
+    : wantsTraining && /\b(infod|aula[s-]?tic)\b/.test(query) ? "INFoD / AulaS-TIC"
+    : wantsTraining && /\b(cenet|inet)\b/.test(query) ? "CeNET / INET" : null;
+  const confirmedPreinscription = wantsTraining && /preinscrip/.test(query) && /confirmad/.test(query) && /proxim/.test(query);
   const wantsAgenda = intent === "agenda", now = options.now || new Date(), requested = wantsAgenda ? requestedDay(question, now) : null;
   const wantsMatches = /coincid|compatible|sirve|para mi perfil/.test(query);
   const configuredProfile = options.profile ? matchProfile(options.profile) : null;
   return publications.map((item) => {
     if (wantsAgenda && !agenda.has(item.id)) return { item, score: -1 };
     if (wantsTraining && item.kind !== "capacitacion") return { item, score: -1 };
+    if (trainingSource && item.source !== trainingSource) return { item, score: -1 };
+    if (confirmedPreinscription) {
+      const training = parseTrainingMetadata(item.metadata), opening = Date.parse(training?.registrationOpensAt || "");
+      if (!training?.preinscripcionFechaConfirmada || !Number.isFinite(opening) || opening <= now.getTime()) return { item, score: -1 };
+    }
     if (wantsVacancy && !wantsTraining && item.kind !== "vacante") return { item, score: -1 };
     if (intent === "llamados" && !normalize(item.category).includes("llamado")) return { item, score: -1 };
     if (["documentos", "junta"].includes(intent) && item.kind !== "junta") return { item, score: -1 };
+    if (intent === "junta" && /comunicad/.test(query) && !normalize(item.category).includes("comunicad")) return { item, score: -1 };
+    if (intent === "junta" && /padron/.test(query) && !normalize(item.category).includes("padron")) return { item, score: -1 };
     if (["informacion", "licencias", "inasistencia", "titulos"].includes(intent) && item.kind !== "informacion") return { item, score: -1 };
     const eventDate = agendaEntryMap.get(item.id)?.startsAt || item.ends_at || item.starts_at || (item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata)?.registrationOpensAt : undefined);
     if (requested && (!eventDate || dayKey(eventDate) !== requested)) return { item, score: -1 };
@@ -180,7 +191,7 @@ export function buildAIContext(question: string, publications: Publication[], op
   const trackingText = options.designations?.length ? `\n\nSEGUIMIENTO PERSONAL DE DESIGNACIONES (datos ingresados por el usuario):\n${options.designations.map((item) => `${item.role || "Cargo no informado"} · ${item.school || "Establecimiento no informado"} · estado ${item.status} · inscripción ${item.applied_at || "no informada"} · designación ${item.appointment_at || "no informada"} · notas ${item.notes || "sin notas"}`).join("\n")}` : "";
   const panelContext = options.context ? `Contexto del panel: tipo ${options.context.type}; identificador ${options.context.id || "sin identificador"}; título ${options.context.title || "sin título"}.` : "Contexto del panel no informado.";
   const agendaText = agendaEntries.length ? `\n\nAGENDA PERSONAL DEL DOCENTE (contenido interno, no oficial):\n${agendaEntries.map((entry) => `${entry.title} · ${entry.category || "Agenda"} · ${entry.startsAt}${entry.recurrence && entry.recurrence !== "none" ? ` · repetición ${entry.recurrence}` : ""}`).join("\n")}` : intent === "agenda" ? "\n\nAGENDA PERSONAL DEL DOCENTE: No hay eventos coincidentes con la fecha consultada en los datos cargados." : "";
-  const failureText = options.sourceFailures?.length ? `\n\nESTADO INTERNO DE ACTUALIZACIÓN: falló la última actualización de ${options.sourceFailures.join(", ")}. Si la consulta depende de esos datos, respondé igualmente usando el último contenido disponible y la orientación general; aclarale con precisión qué dato no se pudo verificar. No uses esta falla como respuesta completa ni como preámbulo genérico.` : "";
+  const failureText = options.sourceFailures?.length ? `\n\nESTADO INTERNO DE ACTUALIZACIÓN: falló la última actualización de ${options.sourceFailures.join(", ")}. Si la consulta depende de esos datos, respondé igualmente usando el último contenido disponible y la orientación general; aclarale con precisión qué dato no se pudo verificar. No afirmes que esa fuente fue consultada o verificada hoy ni que no existen novedades posteriores. No uses esta falla como respuesta completa ni como preámbulo genérico.` : "";
   const appHelp = intent === "app" ? "\n\nCONTEXTO INTERNO DE LA APLICACIÓN: DocenteTuc organiza información docente pública y personaliza oportunidades con el perfil sólo cuando el usuario lo autoriza. Incluye Designaciones, Capacitaciones, Padrones y comunicados, Información útil, Agenda, Alertas y Guardados. Las inscripciones y trámites se finalizan en la fuente oficial. La agenda permite eventos manuales y recordatorios." : "";
   return { intent, sources, context: `INTENCIÓN DETECTADA: ${intent}.\n${panelContext}\n${profileText}\n\nREGISTROS OFICIALES RECUPERADOS:\n${records || "No se recuperaron registros oficiales suficientes."}${agendaText}${trackingText}${failureText}${appHelp}` };
 }

@@ -38,3 +38,10 @@ const meaningfulFields: (keyof MeaningfulPublicationFields)[] = [
 export function hasMeaningfulPublicationChange(previous: MeaningfulPublicationFields, current: MeaningfulPublicationFields) {
   return meaningfulFields.some((field) => !Object.is(previous[field] ?? null, current[field] ?? null));
 }
+
+export function isDocumentTextExportMigration(previousMetadata: string, currentMetadata: string, previousUpdatedAt: string | null, currentUpdatedAt: string | null) {
+  try {
+    const previous = JSON.parse(previousMetadata), current = JSON.parse(currentMetadata);
+    return previous.contentAvailable === true && current.contentAvailable === true && previous.textFormat !== "txt" && current.textFormat === "txt" && previousUpdatedAt === currentUpdatedAt;
+  } catch { return false; }
+}

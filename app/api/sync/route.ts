@@ -2,13 +2,13 @@ import { env } from "cloudflare:workers";
 import { getD1 } from "@/db";
 import { authError, currentUser } from "@/lib/current-user";
 import { designationRoleFromTitle, isEligibleForPersonalizedHome, matchesProfile, profileMatch } from "@/lib/matching";
-import { driveEntryUrl, htmlToText, parsePublicDriveFolder } from "@/lib/public-documents";
+import { driveEntryUrl, plainDocumentText } from "@/lib/public-documents";
+import { advanceBoardCrawl, initialBoardCrawl, type BoardCrawlState } from "@/lib/board-crawl";
 import { mergeTrainingData, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
 import { isCenetMarkupRecognized, parseCenetTrainings, parseInfdCatalog, parseInfdTrainings, type PublicTraining } from "@/lib/external-trainings";
 import { usefulInformation } from "@/lib/useful-information";
 import { registrationState } from "@/lib/home-dashboard";
-import { diffByHash, hashSourceSnapshot } from "@/lib/sync-diff";
-import { hasMeaningfulPublicationChange } from "@/lib/sync-diff";
+import { diffByHash, hashSourceSnapshot, hasMeaningfulPublicationChange, isDocumentTextExportMigration } from "@/lib/sync-diff";
 import { notificationDedupeKey } from "@/lib/notification-events";
 import { circuitMatches, inferCircuit } from "@/lib/circuits";
 import { assessSourceSync, missingAfterValidatedSync, publicationLifecycle, type SourceSyncStatus } from "@/lib/publication-lifecycle";
@@ -133,11 +133,14 @@ async function infdPublications() {
 }
 
 async function boardPublications() {
+  const db = getD1();
   const publications: Publication[] = [];
   let exportedDriveDocs = 0;
   const incompleteCategories = new Set<string>();
   const warnings: Record<string, string> = {};
   let firstError: unknown = null;
+  const previousDrive = await db.prepare("SELECT id, summary, metadata, source_updated_at FROM publications WHERE source='Padrones y Comunicados' AND id LIKE 'drive:%'").all<{ id: string; summary: string; metadata: string; source_updated_at: string | null }>();
+  const previousDriveById = new Map(previousDrive.results.map((row) => [row.id, row]));
   for (let offset = 0; offset < documents.length; offset += 4) {
     await Promise.all(documents.slice(offset, offset + 4).map(async ([externalId, title, category, junta, officialUrl]) => {
     try {
@@ -145,45 +148,51 @@ async function boardPublications() {
     let fingerprint = officialUrl, summary = `Documento público oficial de la Junta ${junta}.`, metadata = "{}";
     if (officialUrl.includes("docs.google.com/document/")) {
       const docId = officialUrl.split("/d/")[1].split("/")[0];
-      const response = await fetch(`https://docs.google.com/document/d/${docId}/export?format=html`, { signal: AbortSignal.timeout(15_000) });
+      const response = await fetch(`https://docs.google.com/document/d/${docId}/export?format=txt`, { signal: AbortSignal.timeout(15_000) });
       if (!response.ok) throw new Error(`HTTP_${response.status} ${officialUrl}`);
-      fingerprint = await response.text(); summary = htmlToText(fingerprint) || summary; metadata = JSON.stringify({ contentAvailable: true, format: "google-doc" });
+      fingerprint = await response.text(); summary = plainDocumentText(fingerprint) || summary; metadata = JSON.stringify({ contentAvailable: true, format: "google-doc", textFormat: "txt" });
     } else if (officialUrl.includes("drive.google.com/drive/folders/")) {
-      const folderId = officialUrl.split("/folders/")[1].split(/[?/#]/)[0], queue = [folderId], visited = new Set<string>(), indexed = new Map<string, ReturnType<typeof parsePublicDriveFolder>[number]>();
-      // ponytail: cuatro páginas públicas por fuente; usar Drive API oficial si hace falta recorrer árboles más profundos.
-      while (queue.length && visited.size < 4) {
-        const current = queue.shift()!;
-        if (visited.has(current)) continue;
-        visited.add(current);
-        const response = await fetch(current === folderId ? officialUrl : `https://drive.google.com/drive/folders/${current}`, { signal: AbortSignal.timeout(15_000) });
-        if (!response.ok) throw new Error(`HTTP_${response.status} ${officialUrl}`);
-        const parsedEntries = parsePublicDriveFolder(await response.text(), current);
-        if (!parsedEntries.length) throw new Error("FORMAT_CHANGED Drive folder parser returned no entries");
-        for (const entry of parsedEntries) {
-          indexed.set(entry.id, entry);
-          if (entry.mimeType === "application/vnd.google-apps.folder" && !visited.has(entry.id)) queue.push(entry.id);
-        }
+      const folderId = officialUrl.split("/folders/")[1].split(/[?/#]/)[0];
+      const stored = await db.prepare("SELECT queue_json, visited_json, working_json, snapshot_json, completed_at FROM board_crawl_state WHERE root_id=?").bind(externalId).first<{ queue_json: string; visited_json: string; working_json: string; snapshot_json: string; completed_at: string | null }>();
+      const state: BoardCrawlState = stored ? {
+        queue: JSON.parse(stored.queue_json), visited: JSON.parse(stored.visited_json), working: JSON.parse(stored.working_json), snapshot: JSON.parse(stored.snapshot_json), completedAt: stored.completed_at,
+      } : initialBoardCrawl(folderId);
+      const result = await advanceBoardCrawl(folderId, state, async (id) => {
+        const url = id === folderId ? officialUrl : `https://drive.google.com/drive/folders/${id}`;
+        const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+        if (!response.ok) throw new Error(`HTTP_${response.status} ${url}`);
+        return response.text();
+      }, 2, new Date().toISOString());
+      await db.prepare(`INSERT INTO board_crawl_state (root_id, queue_json, visited_json, working_json, snapshot_json, completed_at, last_attempt_at, error)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(root_id) DO UPDATE SET queue_json=excluded.queue_json, visited_json=excluded.visited_json, working_json=excluded.working_json, snapshot_json=excluded.snapshot_json, completed_at=excluded.completed_at, last_attempt_at=excluded.last_attempt_at, error=excluded.error`)
+        .bind(externalId, JSON.stringify(result.state.queue), JSON.stringify(result.state.visited), JSON.stringify(result.state.working), JSON.stringify(result.state.snapshot), result.state.completedAt, new Date().toISOString(), result.error).run();
+      const snapshotRecent = result.state.completedAt && Date.now() - Date.parse(result.state.completedAt) < 7 * 24 * 60 * 60 * 1000;
+      if (!snapshotRecent || result.error) {
+        incompleteCategories.add(category);
+        warnings[category] = result.error ? `${externalId}: ${result.error}` : `${externalId}: barrido en curso (${result.state.visited.length} carpetas recorridas).`;
       }
-      if (queue.length) { incompleteCategories.add(category); warnings[category] = "Carpeta pública con más niveles que el límite de lectura automática."; }
-      const entries = [...indexed.values()];
-      if (visited.size) {
+      const entries = result.entries;
+      if (result.state.visited.length || result.state.completedAt) {
         fingerprint = JSON.stringify(entries);
-        summary = `Carpeta pública oficial con ${entries.length} elementos indexados. Abrí cada resultado para consultar su nombre y fuente.`;
-        metadata = JSON.stringify({ contentAvailable: true, format: "drive-folder", itemCount: entries.length });
+        summary = `Carpeta pública oficial con ${entries.length} elementos indexados${snapshotRecent ? "" : " hasta ahora"}. Abrí cada resultado para consultar su nombre y fuente.`;
+        metadata = JSON.stringify({ contentAvailable: true, format: "drive-folder", itemCount: entries.length, fullScanAt: result.state.completedAt });
         for (const entry of entries) {
           const entryUrl = driveEntryUrl(entry), isGoogleDoc = entry.mimeType === "application/vnd.google-apps.document";
-          let entrySummary = `${entry.name}. Archivo público oficial disponible en Google Drive.`, contentAvailable = false;
-          // ponytail: límite de subconsultas; usar Drive API oficial si el Ministerio publica un feed estable.
-          if (isGoogleDoc && exportedDriveDocs < 4) {
+          let entrySummary = `${entry.name}. Archivo público oficial disponible en Google Drive.`, contentAvailable = false, textFormat: string | undefined;
+          const previous = previousDriveById.get(`drive:${externalId}:${entry.id}`);
+          let previousMetadata: { contentAvailable?: boolean; textFormat?: string } = {};
+          try { previousMetadata = JSON.parse(previous?.metadata || "{}"); } catch {}
+          if (isGoogleDoc && previousMetadata.contentAvailable && previous?.source_updated_at === entry.updatedAt) {
+            entrySummary = previous.summary; contentAvailable = true; textFormat = previousMetadata.textFormat || "html";
+          } else if (isGoogleDoc && exportedDriveDocs < 4) {
             exportedDriveDocs++;
-            const documentResponse = await fetch(`https://docs.google.com/document/d/${entry.id}/export?format=html`, { signal: AbortSignal.timeout(15_000) });
-            if (!documentResponse.ok) throw new Error(`HTTP_${documentResponse.status} ${entryUrl}`);
-            entrySummary = htmlToText(await documentResponse.text()) || entrySummary; contentAvailable = true;
-          } else if (isGoogleDoc) {
-            incompleteCategories.add(category);
-            warnings[category] = "Algunos documentos se indexaron sin recuperar su texto completo.";
+            try {
+              const documentResponse = await fetch(`https://docs.google.com/document/d/${entry.id}/export?format=txt`, { signal: AbortSignal.timeout(15_000) });
+              if (documentResponse.ok) { entrySummary = plainDocumentText(await documentResponse.text()) || entrySummary; contentAvailable = true; textFormat = "txt"; }
+            } catch (error) { console.warn("drive_document_text_unavailable", entry.id, error); }
           }
-          publications.push({ id: `drive:${externalId}:${entry.id}`, source: "Padrones y Comunicados", externalId: entry.id, kind: "junta", category, title: entry.name, summary: entrySummary, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: documentStatus, officialUrl: entryUrl, metadata: JSON.stringify({ contentAvailable, format: entry.mimeType, parent: externalId }), contentHash: await hash([entry.name, entry.mimeType, entry.updatedAt, entrySummary, documentStatus].join("|")), sourceUpdatedAt: entry.updatedAt });
+          publications.push({ id: `drive:${externalId}:${entry.id}`, source: "Padrones y Comunicados", externalId: entry.id, kind: "junta", category, title: entry.name, summary: entrySummary, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: documentStatus, officialUrl: entryUrl, metadata: JSON.stringify({ contentAvailable, format: entry.mimeType, parent: externalId, textFormat }), contentHash: await hash([entry.name, entry.mimeType, entry.updatedAt, entrySummary, documentStatus].join("|")), sourceUpdatedAt: entry.updatedAt });
         }
       }
     }
@@ -262,6 +271,7 @@ async function runSync() {
     const previousItem = old.get(item.id);
     if (!previousItem) return false;
     if (item.kind === "junta" && previousItem.status === "vigente" && item.status.startsWith("Documento público")) return false;
+    if (item.kind === "junta" && isDocumentTextExportMigration(previousItem.metadata, item.metadata || "{}", previousItem.source_updated_at, item.sourceUpdatedAt)) return false;
     if (item.source === "INFoD / AulaS-TIC" && previousItem.title === item.title && previousItem.status === item.status && previousItem.starts_at === item.startsAt && previousItem.ends_at === item.endsAt) return false;
     if (hasMeaningfulPublicationChange({ ...previousItem, startsAt: previousItem.starts_at, endsAt: previousItem.ends_at, sourceUpdatedAt: previousItem.source_updated_at }, item)) return true;
     if (item.kind !== "capacitacion") return false;
@@ -459,7 +469,7 @@ async function runSync() {
   });
   // The Worker cron is every 5 minutes, but it invokes source sync only at :00.
   const estimatedRunsPerDay = 24;
-  const metrics = { count: publications.length, fresh: fresh.length, changed: changed.length, unchanged: unchanged.length, failures: health.filter((item) => item.status !== "OK").length, rowsRead, rowsWritten, estimatedRowsWrittenPerDay: rowsWritten * estimatedRunsPerDay, sources: sourceMetrics };
+  const metrics = { startedAt: syncStartedAt, finishedAt: new Date().toISOString(), count: publications.length, fresh: fresh.length, changed: changed.length, unchanged: unchanged.length, failures: health.filter((item) => item.status !== "OK").length, rowsRead, rowsWritten, estimatedRowsWrittenPerDay: rowsWritten * estimatedRunsPerDay, sources: sourceMetrics };
   console.log("sync_completed", metrics);
   return metrics;
 }

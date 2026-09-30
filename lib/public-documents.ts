@@ -31,14 +31,18 @@ export function htmlToText(html: string, limit = 40_000) {
     .slice(0, limit);
 }
 
+export function plainDocumentText(value: string, limit = 40_000) {
+  return value.replace(/\r\n?/g, "\n").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, limit);
+}
+
 export function parsePublicDriveFolder(html: string, folderId: string): DrivePublicEntry[] {
   const marker = "window['_DRIVE_ivd'] = '", start = html.indexOf(marker);
-  if (start < 0) return [];
+  if (start < 0) throw new Error("FORMAT_CHANGED Drive folder data marker missing");
   const end = html.indexOf("';", start + marker.length);
-  if (end < 0) return [];
+  if (end < 0) throw new Error("FORMAT_CHANGED Drive folder data incomplete");
   const decoded = html.slice(start + marker.length, end).replace(/\\x([0-9a-f]{2})/gi, (_, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
   let tree: unknown;
-  try { tree = JSON.parse(decoded); } catch { return []; }
+  try { tree = JSON.parse(decoded); } catch { throw new Error("PARSE_ERROR Drive folder data invalid"); }
   const found = new Map<string, DrivePublicEntry>();
   const visit = (value: unknown) => {
     if (!Array.isArray(value)) return;

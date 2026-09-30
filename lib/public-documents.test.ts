@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { driveEntryUrl, htmlToText, parsePublicDriveFolder } from "./public-documents.ts";
+import { driveEntryUrl, htmlToText, parsePublicDriveFolder, plainDocumentText } from "./public-documents.ts";
 
 test("convierte un comunicado HTML en texto legible y seguro", () => {
   assert.equal(htmlToText("<style>x{}</style><h1>Comunicado &amp; novedades</h1><p>Inscripci&oacute;n, Educaci&Oacute;n y padr&oacute;n N&deg; 1 &ndash; Tucum&aacute;n</p><script>alert(1)</script>"), "Comunicado & novedades\nInscripción, EducaciÓn y padrón N° 1 – Tucumán");
+});
+
+test("limita un Google Doc exportado como texto sin alterar su contenido", () => {
+  assert.equal(plainDocumentText("  COMUNICADO\r\n  29/09/2026\r\n\r\n\r\n <docente>  "), "COMUNICADO\n 29/09/2026\n\n <docente>");
+  assert.equal(plainDocumentText("abcde", 3), "abc");
 });
 
 test("recupera solamente elementos directos de una carpeta pública de Drive", () => {

@@ -13,12 +13,14 @@ const publicCache = new Map<string, { answer: string; sources: ReturnType<typeof
 
 const sourcesForIntent: Partial<Record<AIIntent, string[]>> = {
   capacitaciones: ["Capacitación Docente", "CeNET / INET", "INFoD / AulaS-TIC"], inscripcion: ["Capacitación Docente", "CeNET / INET", "INFoD / AulaS-TIC", "SIME"],
-  vacantes: ["SIME"], designaciones: ["SIME"], llamados: ["Llamados abiertos", "Padrones y Comunicados"], junta: ["Padrones", "Comunicados", "Resoluciones", "Padrones y Comunicados"], documentos: ["Padrones", "Comunicados", "Resoluciones", "Padrones y Comunicados"],
+  vacantes: ["SIME"], designaciones: ["SIME"], llamados: ["Llamados abiertos"], junta: ["Padrones", "Comunicados", "Resoluciones"], documentos: ["Padrones", "Comunicados", "Resoluciones"],
   licencias: ["SIME", "Información oficial Tucumán"], inasistencia: ["SIME", "Información oficial Tucumán"], titulos: ["Información oficial Tucumán"], informacion: ["SIME", "Información oficial Tucumán"],
 };
 
-function failedSourcesFor(intent: AIIntent, rows: { source: string; error?: string | null; sync_status?: string | null }[]) {
-  const relevant = sourcesForIntent[intent] || [], failed = rows.filter((row) => Boolean(row.error) || /TIMEOUT|ERROR|FAILED|PARTIAL|EMPTY_SUSPECT|FORMAT_CHANGED/i.test(row.sync_status || ""));
+function failedSourcesFor(intent: AIIntent, rows: { source: string; error?: string | null; sync_status?: string | null }[], question: string) {
+  const requestedBoardSource = /comunicad/i.test(question) ? "Comunicados" : /padr[oó]n/i.test(question) ? "Padrones" : /resoluci[oó]n/i.test(question) ? "Resoluciones" : null;
+  const relevant = intent === "junta" && requestedBoardSource ? [requestedBoardSource] : sourcesForIntent[intent] || [];
+  const failed = rows.filter((row) => Boolean(row.error) || /TIMEOUT|ERROR|FAILED|PARTIAL|EMPTY_SUSPECT|FORMAT_CHANGED/i.test(row.sync_status || ""));
   return [...new Set(failed.filter((row) => relevant.some((source) => row.source === source || row.source.includes(source))).map((row) => row.source))];
 }
 
@@ -78,7 +80,7 @@ export async function POST(request: Request) {
       }),
       ...manualAgendaRows.results.map((row) => ({ id: row.id, title: row.title, category: row.category, startsAt: row.starts_at, recurrence: row.recurrence || "none", updatedAt: row.updated_at, kind: "manual" as const })),
     ];
-    const sourceFailures = failedSourcesFor(intent, syncRows.results);
+    const sourceFailures = failedSourcesFor(intent, syncRows.results, message);
     const { context: retrievedContext, sources } = buildAIContext(message, publications, { profile, agendaEntries, designations: designationRows.results, context, sourceFailures });
     const history = Array.isArray(body.history) ? body.history.slice(-6).filter((item): item is { role: string; content: string } => typeof item === "object" && item !== null && ["user", "assistant"].includes(String((item as Record<string, unknown>).role)) && typeof (item as Record<string, unknown>).content === "string").map((item) => `${item.role === "assistant" ? "Asistente" : "Usuario"}: ${item.content.slice(0, 700)}`).join("\n") : "";
     const cacheable = !useProfile && !history && !context?.id && !sourceFailures.length && !["agenda", "perfil", "designaciones", "inasistencia", "licencias", "titulos", "app", "conversacion_general"].includes(intent);

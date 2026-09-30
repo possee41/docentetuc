@@ -20,6 +20,14 @@ test("una definición de suplente no cita vacantes del panel abierto", () => {
   assert.doesNotMatch(result.context, /Horas de Filosofía|Contexto del panel: tipo vacantes/);
 });
 test("recupera capacitaciones que abren próximamente", () => assert.equal(retrievePublications("¿Qué capacitaciones abren próximamente?", records)[0]?.id, "next"));
+test("una consulta de próximas preinscripciones FDCI no sustituye la fuente ni inventa aperturas", () => {
+  const cenet = { ...records[0], id: "cenet", source: "CeNET / INET", title: "Curso con inscripción próxima", metadata: JSON.stringify({ registrationOpensAt: "2026-10-05T10:00:00-03:00", preinscripcionFechaConfirmada: true }) } as Publication;
+  const unknownFdci = { ...records[0], id: "fdci-unknown", title: "Capacitación FDCI", metadata: "{}" } as Publication;
+  const question = "¿Qué capacitaciones tienen apertura de preinscripción confirmada próximamente en FDCI?";
+  assert.deepEqual(retrievePublications(question, [unknownFdci, cenet], 8, { now: new Date("2026-09-30T08:00:00-03:00") }), []);
+  const confirmedFdci = { ...unknownFdci, id: "fdci-confirmed", metadata: JSON.stringify({ registrationOpensAt: "2026-10-05T10:00:00-03:00", preinscripcionFechaConfirmada: true }) } as Publication;
+  assert.deepEqual(retrievePublications(question, [unknownFdci, cenet, confirmedFdci], 8, { now: new Date("2026-09-30T08:00:00-03:00") }).map((item) => item.id), ["fdci-confirmed"]);
+});
 test("no agrega el perfil al contexto sin autorización", () => assert.match(buildAIContext("capacitaciones", records).context, /no autorizó usar su perfil/));
 
 const profile = { user_id: "u", name: "Docente", level: "Secundario", levels: ["Secundario"], area: "Ciencias Sociales, Filosofía", areas: ["Ciencias Sociales", "Filosofía"], subjects: [], junta: "", boards: [], roles: [], department: "", locality: "", shifts: [], characters: [], circuits: [], personal_match_threshold: 85, training_match_threshold: 80, wants_interim: true, wants_substitute: true, training_interests: ["Ciencias Sociales"], notify_new_trainings: false, training_notify_scope: "relevant" } as Profile;
@@ -57,6 +65,7 @@ test("clasifica localmente las intenciones principales", () => {
   assert.equal(detectIntent("¿Qué vacantes coinciden conmigo?"), "vacantes");
   assert.equal(detectIntent("¿Qué tengo mañana?"), "agenda");
   assert.equal(detectIntent("Buscá un padrón docente"), "junta");
+  assert.equal(detectIntent("¿Qué comunicados recientes hay para Nivel Superior?"), "junta");
   assert.equal(detectIntent("Me liquidaron mal el sueldo"), "informacion");
   assert.equal(detectIntent("Tengo que faltar mañana, ¿qué debo presentar?"), "inasistencia");
   assert.equal(detectIntent("¿Cómo hago para presentar una licencia?"), "licencias");
@@ -138,6 +147,11 @@ test("recupera texto de comunicados y llamados desde el mismo RAG", () => {
   assert.deepEqual(retrievePublications("¿Qué comunicado pide documentación?", [publicDocument, openCall]).map((item) => item.id), ["comunicado"]);
   assert.deepEqual(retrievePublications("¿Qué llamados abiertos hay?", [publicDocument, openCall]).map((item) => item.id), ["llamado"]);
   assert.match(buildAIContext("documentación", [publicDocument]).context, /30 de septiembre/);
+});
+test("comunicados recientes no mezclan capacitaciones ni padrones y advierten una verificación fallida", () => {
+  const result = buildAIContext("¿Qué comunicados recientes hay para Nivel Superior?", [publicDocument, openCall, ...records], { sourceFailures: ["Comunicados"] });
+  assert.deepEqual(result.sources.map((source) => source.id), ["comunicado"]);
+  assert.match(result.context, /No afirmes que esa fuente fue consultada o verificada hoy/);
 });
 
 test("GeminiProvider usa el endpoint backend y la clave sólo en el header", async () => {
