@@ -15,6 +15,13 @@ test("CeNET reconoce y recupera el HTML de fixture guardado", async () => {
   assert.equal(course.metadata.dateStatus, "tentative");
 });
 
+test("CeNET cambia de cohorte y fecha cuando cambia el calendario oficial", async () => {
+  const html = await readFile(new URL("./fixtures/cenet-cohort-sample.html", import.meta.url), "utf8");
+  assert.equal(parseCenetTrainings(html, new Date("2026-08-30T12:00:00-03:00"))[0].metadata.registrationOpensAt, "2026-08-24T00:00:00-03:00");
+  assert.equal(parseCenetTrainings(html, new Date("2026-09-03T12:00:00-03:00"))[0].metadata.registrationOpensAt, "2026-10-05T00:00:00-03:00");
+  assert.equal(parseCenetTrainings(html.replace("05-oct", "06-oct"), new Date("2026-09-03T12:00:00-03:00"))[0].metadata.registrationOpensAt, "2026-10-06T00:00:00-03:00");
+});
+
 test("INFoD keeps the general catalogue window separate from per-course dates", () => {
   const catalog = parseInfdCatalog('<p>Fecha de inscripción: <strong>14 de agosto al 26 de agosto</strong><br>Inicio de cursado: <strong>semana del 14 de septiembre</strong></p><a href="https://red.infd.edu.ar/cursos-plan-nacional-de-alfabetizacion/">Cursos</a>', new Date("2026-09-01T12:00:00-03:00"));
   const courses = parseInfdTrainings('<p><strong>Destinatarios: Docentes de nivel inicial y primario.</strong></p><p style="font-size:30px"><strong>Alfabetización temprana</strong></p><p>Curso autoasistido. INICIO: 14/09</p>', catalog.pages[0], catalog, new Date("2026-08-20T12:00:00-03:00"));
@@ -36,3 +43,20 @@ test("INFoD keeps the general catalogue window separate from per-course dates", 
     assert.equal(course.metadata.dateStatus, "course_confirmed");
     assert.equal(course.status, "consultar", "a future course start is not evidence that enrollment is open or upcoming");
   });
+
+test("INFoD no mezcla el resumen ni las fechas del curso siguiente", () => {
+  const catalog = parseInfdCatalog('<a href="https://red.infd.edu.ar/curso-docente/">Curso</a>', new Date("2026-09-30T12:00:00-03:00"));
+  const html = '<p style="font-size:30px"><strong>Primer curso</strong></p><p>Descripción del primero.</p><p style="font-size:30px"><strong>Segundo curso</strong></p><p>Descripción del segundo. Fecha de inscripción: 10/10/2026 al 20/10/2026</p>';
+  const [first, second] = parseInfdTrainings(html, catalog.pages[0], catalog);
+  assert.equal(first.summary, "Descripción del primero.");
+  assert.equal(first.metadata.registrationOpensAt, undefined);
+  assert.equal(second.metadata.registrationOpensAt, "2026-10-10T00:00:00-03:00");
+  assert.equal(second.summary.includes("<p"), false);
+});
+
+test("INFoD respeta una inscripción explícitamente cerrada aun sin fecha publicada", () => {
+  const catalog = parseInfdCatalog('<a href="https://red.infd.edu.ar/curso-docente/">Curso</a>');
+  const [course] = parseInfdTrainings('<p style="font-size:30px"><strong>Curso cerrado</strong></p><p>Inscripción cerrada</p><p>Descripción del curso.</p>', catalog.pages[0], catalog);
+  assert.equal(course.status, "inscripción cerrada");
+  assert.equal(course.metadata.registrationOpensAt, undefined);
+});

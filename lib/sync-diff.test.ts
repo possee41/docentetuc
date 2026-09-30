@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hasMeaningfulPublicationChange, hashSourceSnapshot } from "./sync-diff.ts";
+import { diffByHash, hasMeaningfulPublicationChange, hashSourceSnapshot } from "./sync-diff.ts";
 import { notificationDedupeKey } from "./notification-events.ts";
+import { missingAfterValidatedSync } from "./publication-lifecycle.ts";
 
 test("source sync fingerprints include derived metadata so SIME identifiers are persisted", async () => {
   const sourceRecord = { id: 140369, codigo: "PDVC-20260928-141298" };
@@ -28,4 +29,22 @@ test("logical event keys deduplicate retries but distinguish a new event", () =>
   assert.equal(notificationDedupeKey("sime:42", "DESIGNACION_CAMBIO", "change:abc123"), first);
   assert.notEqual(notificationDedupeKey("sime:42", "DESIGNACION_CAMBIO", "change:def456"), first);
   assert.ok(notificationDedupeKey("x".repeat(300), "EVENTO", "identity").length <= 255);
+});
+
+test("un comunicado y un padrón nuevos se detectan sin duplicarse en el siguiente barrido", () => {
+  const items = [
+    { id: "padrones:com-secundaria", source: "Padrones y Comunicados", contentHash: "com-a" },
+    { id: "drive:pad-primaria:nuevo", source: "Padrones y Comunicados", contentHash: "pad-a" },
+  ];
+  assert.deepEqual(diffByHash(new Map(), items).fresh.map((item) => item.id), items.map((item) => item.id));
+  const saved = new Map(items.map((item) => [item.id, { content_hash: item.contentHash }]));
+  assert.equal(diffByHash(saved, items).fresh.length, 0);
+  assert.deepEqual(diffByHash(saved, [{ ...items[0], contentHash: "com-b" }, items[1]]).changed.map((item) => item.id), [items[0].id]);
+});
+
+test("un llamado ausente caduca sólo tras una lectura íntegra de su carpeta", () => {
+  const previous = ["drive:abiertos-primaria:viejo", "drive:abiertos-primaria:actual"];
+  const current = ["drive:abiertos-primaria:actual"];
+  assert.deepEqual(missingAfterValidatedSync(previous, current, "PARTIAL"), []);
+  assert.deepEqual(missingAfterValidatedSync(previous, current, "OK"), [previous[0]]);
 });

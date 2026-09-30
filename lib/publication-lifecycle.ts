@@ -50,6 +50,7 @@ export function publicationLifecycle(input: {
   const now = (input.now || new Date()).getTime();
   const dateStatus = String(input.dateStatus || "").toLowerCase();
   const certainDate = ["confirmed", "course_confirmed"].includes(dateStatus);
+  if (dateStatus !== "tentative" && input.sourceStatusIsExplicit && /cerrad|finaliz|vencid|expired|closed/i.test(source)) return "CLOSED";
   // Parser-derived course states are not proof when the source marks its dates
   // tentative, as a general catalogue window, or unknown.
   if (["tentative", "general_window", "unknown"].includes(dateStatus)) return "UNKNOWN";
@@ -61,7 +62,6 @@ export function publicationLifecycle(input: {
 
   const open = input.registrationOpenAt ? Date.parse(input.registrationOpenAt) : Number.NaN;
   if (Number.isFinite(open) && open > now && certainDate) return "UPCOMING";
-  if (input.sourceStatusIsExplicit && /cerrad|finaliz|vencid|expired|closed/i.test(source)) return "CLOSED";
   if (input.sourceStatusIsExplicit && /abiert|vigente|active|verificado/i.test(source)) return "ACTIVE";
   if (normalized === "ACTIVE" || normalized === "UPCOMING" || normalized === "CLOSED" || normalized === "EXPIRED") return normalized;
   return "UNKNOWN";

@@ -72,9 +72,10 @@ export async function POST(request: Request) {
       const publication = await db.prepare("SELECT id, metadata FROM publications WHERE id=? AND kind='capacitacion'").bind(publicationId).first<{ id: string; metadata: string }>();
       const metadata = parseTrainingMetadata(publication?.metadata);
       if (!publication || !metadata?.registrationOpensAt || !metadata.trainingId) return Response.json({ error: "La fuente oficial no informó una apertura válida." }, { status: 400 });
+      const opens = new Date(metadata.registrationOpensAt);
+      if (!Number.isFinite(opens.getTime()) || opens.getTime() <= Date.now()) return Response.json({ error: "La apertura ya pasó; no se puede crear un recordatorio nuevo." }, { status: 400 });
       const advances = Array.isArray(body.advanceMinutes) ? [...new Set(body.advanceMinutes.map(Number))] : [];
       if (!advances.length || advances.some((advance) => ![10080, 4320, 1440, 0].includes(advance))) return Response.json({ error: "Elegí al menos un aviso válido." }, { status: 400 });
-      const opens = new Date(metadata.registrationOpensAt);
       const reminderIds = advances.map((advance) => `${user.userId}:${metadata.trainingId}:${advance}`);
       await db.prepare(`DELETE FROM training_reminders WHERE user_id=? AND training_id=? AND id NOT IN (${reminderIds.map(() => "?").join(",")})`).bind(user.userId, metadata.trainingId, ...reminderIds).run();
       await db.batch(advances.map((advance) => {

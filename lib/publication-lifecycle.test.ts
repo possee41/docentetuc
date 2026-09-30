@@ -28,6 +28,7 @@ test("publication lifecycle distinguishes current, upcoming, closed, expired and
   assert.equal(publicationLifecycle({ registrationOpenAt: "2026-10-01T00:00:00Z", dateStatus: "tentative", now }), "UNKNOWN");
   assert.equal(publicationLifecycle({ sourceStatus: "finalizada", sourceStatusIsExplicit: true, registrationCloseAt: "2026-09-27T00:00:00Z", dateStatus: "tentative", now }), "UNKNOWN");
   assert.equal(publicationLifecycle({ registrationCloseAt: "2026-09-27T00:00:00Z", dateStatus: "general_window", now }), "UNKNOWN");
+  assert.equal(publicationLifecycle({ sourceStatus: "inscripción cerrada", sourceStatusIsExplicit: true, dateStatus: "general_window", now }), "CLOSED");
   assert.equal(publicationLifecycle({ registrationCloseAt: "2026-09-27T00:00:00Z", now }), "CLOSED");
   assert.equal(publicationLifecycle({ expiresAt: "2026-09-27T00:00:00Z", now }), "EXPIRED");
   assert.equal(publicationLifecycle({ sourceStatus: "REMOVED_FROM_SOURCE", now }), "REMOVED_FROM_SOURCE");

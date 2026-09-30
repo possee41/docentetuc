@@ -43,7 +43,7 @@ export const notifications = sqliteTable("notifications", {
 export const syncState = sqliteTable("sync_state", {
   source: text("source").primaryKey(), syncedAt: text("synced_at").notNull(), itemCount: integer("item_count").notNull().default(0), error: text("error"),
   lastAttemptAt: text("last_attempt_at"), lastSuccessfulSyncAt: text("last_successful_sync_at"), lastContentChangeAt: text("last_content_change_at"),
-  recordsCreated: integer("records_created").notNull().default(0), recordsUpdated: integer("records_updated").notNull().default(0), recordsRemoved: integer("records_removed").notNull().default(0),
+  recordsCreated: integer("records_created").notNull().default(0), recordsUpdated: integer("records_updated").notNull().default(0), recordsRemoved: integer("records_removed").notNull().default(0), recordsExpired: integer("records_expired").notNull().default(0),
   syncStatus: text("sync_status").notNull().default("UNKNOWN"), errorCode: text("error_code"), errorMessage: text("error_message"), parserVersion: text("parser_version").notNull().default("1"),
 }, (table) => [index("idx_sync_state_status").on(table.syncStatus, table.lastSuccessfulSyncAt)]);
 

@@ -1,4 +1,5 @@
 export type TrainingStatus = "inscripción abierta" | "próximamente" | "inscripción cerrada" | "en curso" | "finalizada" | "consultar";
+export type EnrollmentState = "PROXIMAMENTE" | "ABRE_HOY" | "ABIERTA" | "CERRADA" | "SIN_FECHA_CONFIRMADA";
 
 export type TrainingMetadata = {
   entity: "course" | "commission";
@@ -47,11 +48,34 @@ const localDateTime = (value: unknown, endOfDay = false) => {
 };
 export const plainText = (value: unknown) => text(value).replace(/<[^>]*>/g, " ").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
 
+export function enrollmentState(metadata: TrainingMetadata | null, sourceStatus = "", normalizedStatus = "", now = new Date()): EnrollmentState {
+  if (["CLOSED", "EXPIRED", "REMOVED_FROM_SOURCE"].includes(normalizedStatus)) return "CERRADA";
+  if (/cerrad|finaliz|vencid|desaparecid/i.test(sourceStatus)) return "CERRADA";
+  if (!metadata || ["general_window", "unknown"].includes(metadata.dateStatus || "unknown")) return "SIN_FECHA_CONFIRMADA";
+  const opens = metadata.registrationOpensAt ? Date.parse(metadata.registrationOpensAt) : Number.NaN;
+  const closes = metadata.registrationClosesAt ? Date.parse(metadata.registrationClosesAt) : Number.NaN;
+  const time = now.getTime();
+  if (Number.isFinite(closes) && time > closes) return "CERRADA";
+  if (Number.isFinite(opens) && time < opens) {
+    const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+    return day.format(now) === day.format(new Date(opens)) ? "ABRE_HOY" : "PROXIMAMENTE";
+  }
+  if (Number.isFinite(opens) && metadata.registrationHasTime === false && !/abiert/i.test(sourceStatus)) {
+    const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+    if (day.format(now) === day.format(new Date(opens))) return "ABRE_HOY";
+  }
+  // A tentative calendar is a forecast, not proof that registration actually opened.
+  if (metadata.dateStatus === "tentative") return "SIN_FECHA_CONFIRMADA";
+  if (Number.isFinite(closes) && time <= closes && (Number.isFinite(opens) || /abiert/i.test(sourceStatus))) return "ABIERTA";
+  if (Number.isFinite(opens) && /abiert/i.test(sourceStatus)) return "ABIERTA";
+  return "SIN_FECHA_CONFIRMADA";
+}
+
 export function trainingStatus(commission: OfficialCommission | undefined, now = new Date()): TrainingStatus {
   if (!commission) return "consultar";
   const time = now.getTime();
   const opens = localDateTime(commission.fecha_apertura_preinscripcion);
-  const closes = localDateTime(commission.fecha_cierre_preinscripcion);
+  const closes = localDateTime(commission.fecha_cierre_preinscripcion, true);
   const starts = localDateTime(commission.fecha_inicio);
   const finishes = localDateTime(commission.fecha_fin, true);
   const closed = Boolean(Number(commission.comision_cerrada));
@@ -85,7 +109,7 @@ function opportunity(course: OfficialCourse, commission?: OfficialCommission, no
   const rawOpening = commission?.fecha_apertura_preinscripcion || course.proxima_fecha_preinscripcion;
   const registrationOpensAt = localDateTime(rawOpening);
   const registrationHasTime = /\d{1,2}:\d{2}/.test(text(rawOpening));
-  const registrationClosesAt = localDateTime(commission?.fecha_cierre_preinscripcion);
+  const registrationClosesAt = localDateTime(commission?.fecha_cierre_preinscripcion, true);
   const courseStartsAt = localDateTime(commission?.fecha_inicio);
   const courseEndsAt = localDateTime(commission?.fecha_fin, true);
   const hasOfficialDate = Boolean(registrationOpensAt || registrationClosesAt || courseStartsAt || courseEndsAt);
@@ -133,7 +157,7 @@ export function mergeTrainingData(courses: OfficialCourse[], commissions: Offici
     return linked.length ? linked.map((commission) => opportunity(course, commission, now)) : [opportunity(course, undefined, now)];
   });
   for (const commission of commissions) if (!courseIds.has(text(commission.capacitacion_id))) result.push(opportunity(commission, commission, now));
-  return result;
+  return [...new Map(result.map((item) => [item.id, item])).values()];
 }
 
 export const parseTrainingMetadata = (value: string | null | undefined): TrainingMetadata | null => {

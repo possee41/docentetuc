@@ -67,11 +67,12 @@ export function parseInfdCatalog(html: string, now = new Date()) {
 
 export function parseInfdTrainings(html: string, pageUrl: string, dates: ReturnType<typeof parseInfdCatalog>, now = new Date()): PublicTraining[] {
   const blocks = [...html.matchAll(/<p\b[^>]*(?:font-size:\s*30px|has-large-font-size)[^>]*>\s*<strong>([\s\S]*?)<\/strong>\s*<\/p>/gi)];
-  return blocks.map((match) => {
+  return blocks.map((match, index) => {
     const title = plainText(match[1]);
     if (!title || /listado de cursos|información importante/i.test(title)) return null;
-    const following = plainText(html.slice((match.index || 0) + match[0].length, (match.index || 0) + match[0].length + 1800));
-    const recipients = plainText(html).match(/Destinatarios:\s*([^.<]+)/i)?.[1]?.trim() || "Docentes";
+    const section = html.slice((match.index || 0) + match[0].length, blocks[index + 1]?.index ?? html.length);
+    const following = plainText(section);
+    const recipients = following.match(/Destinatarios:\s*([^.<]+)/i)?.[1]?.trim() || plainText(html).match(/Destinatarios:\s*([^.<]+)/i)?.[1]?.trim() || "Docentes";
     const specificRange = following.match(/(?:fecha de inscripci[oó]n|inscripci[oó]n del curso)\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{4})\s*(?:al|hasta)\s*(\d{1,2}\/\d{1,2}\/\d{4})/i);
     const specificStart = following.match(/(?:inicio de cursado|comienza el curso)\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{4})/i);
     const parseSpecificDate = (raw: string | undefined, end = false) => {
@@ -86,6 +87,6 @@ export function parseInfdTrainings(html: string, pageUrl: string, dates: ReturnT
       ...(dates.registrationOpensAt ? { generalWindowOpensAt: dates.registrationOpensAt } : {}), ...(dates.registrationClosesAt ? { generalWindowClosesAt: dates.registrationClosesAt } : {}), ...(dates.courseStartsAt ? { generalWindowCourseStartsAt: dates.courseStartsAt } : {}),
       source: "INFoD / AulaS-TIC", sourceUrl: pageUrl, dateStatus: specificRange || specificStart ? "course_confirmed" : dates.registrationOpensAt || dates.registrationClosesAt || dates.courseStartsAt ? "general_window" : "unknown", recipients, content: following.slice(0, 1000), organization: "Instituto Nacional de Formación Docente",
     };
-    return { id: `infd:${id}`, externalId: id, title, summary: following.slice(0, 1800), level: recipients, area: title, modality: "Virtual autoasistida", startsAt: courseStartsAt || null, endsAt: registrationClosesAt || null, status: statusFor(registrationOpensAt, registrationClosesAt, undefined, undefined, now), officialUrl: pageUrl, metadata, raw: match[0] + following };
+    return { id: `infd:${id}`, externalId: id, title, summary: following.slice(0, 1800), level: recipients, area: title, modality: "Virtual autoasistida", startsAt: courseStartsAt || null, endsAt: registrationClosesAt || null, status: /^inscripci[oó]n cerrada\b/i.test(following) ? "inscripción cerrada" : statusFor(registrationOpensAt, registrationClosesAt, undefined, undefined, now), officialUrl: pageUrl, metadata, raw: match[0] + following };
   }).filter((item): item is PublicTraining => Boolean(item));
 }

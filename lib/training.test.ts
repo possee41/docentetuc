@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mergeTrainingData, openingCountdown, trainingStatus } from "./training.ts";
+import { enrollmentState, mergeTrainingData, openingCountdown, trainingStatus } from "./training.ts";
 
 const now = new Date("2026-09-26T12:00:00-03:00");
 const course = { capacitacion_id: 10, nombre: "Curso oficial", token: "abc", slug: "curso-oficial", niveles: "Secundario" };
@@ -26,6 +26,11 @@ test("calcula estados reales y respeta las fechas límite", () => {
 test("representa varias comisiones de una capacitación por separado", () => {
   const result = mergeTrainingData([course], [commission, { ...commission, id: 21 }], now);
   assert.deepEqual(result.map((item) => item.id), ["fdci:commission:20", "fdci:commission:21"]);
+});
+
+test("una comisión repetida por la API conserva un único identificador estable", () => {
+  const result = mergeTrainingData([course, course], [commission, commission], now);
+  assert.deepEqual(result.map((item) => item.id), ["fdci:commission:20"]);
 });
 
 test("mantiene una capacitación sin comisión como consultable", () => {
@@ -68,4 +73,35 @@ test("admite respuestas oficiales vacías", () => assert.deepEqual(mergeTraining
 test("propaga una caída temporal para conservar los datos almacenados", async () => {
   const load = async (fetcher: () => Promise<Parameters<typeof mergeTrainingData>[0]>) => mergeTrainingData(await fetcher(), [], now);
   await assert.rejects(load(async () => { throw new Error("API temporalmente caída"); }), /temporalmente caída/);
+});
+
+test("una inscripción vencida no permanece abierta por una etiqueta antigua de FDCI", () => {
+  const metadata = { entity: "commission" as const, trainingId: "10", registrationOpensAt: "2026-09-25T08:00:00-03:00", registrationClosesAt: "2026-09-28T08:00:00-03:00", dateStatus: "confirmed" as const };
+  assert.equal(enrollmentState(metadata, "inscripción abierta", "ACTIVE", new Date("2026-09-29T12:00:00-03:00")), "CERRADA");
+  assert.equal(enrollmentState(metadata, "inscripción abierta", "CLOSED", now), "CERRADA");
+});
+
+test("apertura futura, hoy y abierta se distinguen por la hora de inscripción", () => {
+  const metadata = { entity: "course" as const, trainingId: "10", registrationOpensAt: "2026-09-27T23:00:00-03:00", registrationClosesAt: "2026-09-29T08:00:00-03:00", dateStatus: "confirmed" as const };
+  assert.equal(enrollmentState(metadata, "próximamente", "UPCOMING", now), "PROXIMAMENTE");
+  assert.equal(enrollmentState(metadata, "próximamente", "UPCOMING", new Date("2026-09-27T12:00:00-03:00")), "ABRE_HOY");
+  assert.equal(enrollmentState(metadata, "inscripción abierta", "ACTIVE", new Date("2026-09-27T23:01:00-03:00")), "ABIERTA");
+  assert.equal(enrollmentState(metadata, "inscripción abierta", "ACTIVE", new Date("2026-09-29T08:01:00-03:00")), "CERRADA");
+});
+
+test("una fecha de apertura sin hora no se anuncia abierta a medianoche", () => {
+  const metadata = { entity: "course" as const, trainingId: "11", registrationOpensAt: "2026-09-27T00:00:00-03:00", registrationHasTime: false, registrationClosesAt: "2026-09-30T23:59:59-03:00", dateStatus: "confirmed" as const };
+  assert.equal(enrollmentState(metadata, "consultar", "UPCOMING", new Date("2026-09-27T12:00:00-03:00")), "ABRE_HOY");
+});
+
+test("inicio de cursado y ventana general no se convierten en apertura de curso", () => {
+  assert.equal(enrollmentState({ entity: "course", trainingId: "10", courseStartsAt: "2026-10-01T00:00:00-03:00", dateStatus: "course_confirmed" }, "consultar", "UNKNOWN", now), "SIN_FECHA_CONFIRMADA");
+  assert.equal(enrollmentState({ entity: "course", trainingId: "11", generalWindowOpensAt: "2026-10-01T00:00:00-03:00", dateStatus: "general_window" }, "consultar", "UNKNOWN", now), "SIN_FECHA_CONFIRMADA");
+});
+
+test("cohorte tentativa CeNET se anuncia antes, pero no se declara abierta sin confirmación", () => {
+  const metadata = { entity: "course" as const, trainingId: "cenet:2026:6", registrationOpensAt: "2026-10-05T00:00:00-03:00", registrationClosesAt: "2026-10-12T23:59:59-03:00", dateStatus: "tentative" as const };
+  assert.equal(enrollmentState(metadata, "próximamente", "UNKNOWN", now), "PROXIMAMENTE");
+  assert.equal(enrollmentState(metadata, "próximamente", "UNKNOWN", new Date("2026-10-06T12:00:00-03:00")), "SIN_FECHA_CONFIRMADA");
+  assert.equal(enrollmentState(metadata, "próximamente", "UNKNOWN", new Date("2026-10-13T12:00:00-03:00")), "CERRADA");
 });

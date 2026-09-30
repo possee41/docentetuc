@@ -124,11 +124,13 @@ async function infdPublications() {
 async function boardPublications() {
   const publications: Publication[] = [];
   let exportedDriveDocs = 0;
-  let complete = true;
+  const incompleteCategories = new Set<string>();
+  const warnings: Record<string, string> = {};
   let firstError: unknown = null;
   for (let offset = 0; offset < documents.length; offset += 4) {
     await Promise.all(documents.slice(offset, offset + 4).map(async ([externalId, title, category, junta, officialUrl]) => {
     try {
+    const documentStatus = "Documento público · vigencia no informada";
     let fingerprint = officialUrl, summary = `Documento público oficial de la Junta ${junta}.`, metadata = "{}";
     if (officialUrl.includes("docs.google.com/document/")) {
       const docId = officialUrl.split("/d/")[1].split("/")[0];
@@ -151,7 +153,7 @@ async function boardPublications() {
           if (entry.mimeType === "application/vnd.google-apps.folder" && !visited.has(entry.id)) queue.push(entry.id);
         }
       }
-      if (queue.length) complete = false;
+      if (queue.length) { incompleteCategories.add(category); warnings[category] = "Carpeta pública con más niveles que el límite de lectura automática."; }
       const entries = [...indexed.values()];
       if (visited.size) {
         fingerprint = JSON.stringify(entries);
@@ -166,21 +168,25 @@ async function boardPublications() {
             const documentResponse = await fetch(`https://docs.google.com/document/d/${entry.id}/export?format=html`, { signal: AbortSignal.timeout(15_000) });
             if (!documentResponse.ok) throw new Error(`HTTP_${documentResponse.status} ${entryUrl}`);
             entrySummary = htmlToText(await documentResponse.text()) || entrySummary; contentAvailable = true;
+          } else if (isGoogleDoc) {
+            incompleteCategories.add(category);
+            warnings[category] = "Algunos documentos se indexaron sin recuperar su texto completo.";
           }
-          publications.push({ id: `drive:${externalId}:${entry.id}`, source: "Padrones y Comunicados", externalId: entry.id, kind: "junta", category, title: entry.name, summary: entrySummary, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: "vigente", officialUrl: entryUrl, metadata: JSON.stringify({ contentAvailable, format: entry.mimeType, parent: externalId }), contentHash: await hash([entry.name, entry.mimeType, entry.updatedAt, entrySummary].join("|")), sourceUpdatedAt: entry.updatedAt });
+          publications.push({ id: `drive:${externalId}:${entry.id}`, source: "Padrones y Comunicados", externalId: entry.id, kind: "junta", category, title: entry.name, summary: entrySummary, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: documentStatus, officialUrl: entryUrl, metadata: JSON.stringify({ contentAvailable, format: entry.mimeType, parent: externalId }), contentHash: await hash([entry.name, entry.mimeType, entry.updatedAt, entrySummary, documentStatus].join("|")), sourceUpdatedAt: entry.updatedAt });
         }
       }
     }
-    publications.push({ id: `padrones:${externalId}`, source: "Padrones y Comunicados", externalId, kind: "junta", category, title, summary, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: "vigente", officialUrl, metadata, contentHash: await hash(fingerprint), sourceUpdatedAt: null });
+    publications.push({ id: `padrones:${externalId}`, source: "Padrones y Comunicados", externalId, kind: "junta", category, title, summary, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: documentStatus, officialUrl, metadata, contentHash: await hash(`${fingerprint}|${documentStatus}`), sourceUpdatedAt: null });
     } catch (error) {
-      complete = false;
+      incompleteCategories.add(category);
+      warnings[category] = `${externalId}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 400);
       firstError ??= error;
       console.error("document_source_failed", externalId, error);
     }
     }));
   }
   if (!publications.length && firstError) throw firstError;
-  return { items: publications, complete };
+  return { items: publications, complete: incompleteCategories.size === 0, incompleteCategories: [...incompleteCategories], warnings };
 }
 
 async function usefulPublications(): Promise<Publication[]> {
@@ -198,7 +204,7 @@ async function runSync() {
   let rowsRead = Number(previous.meta?.rows_read || previous.results.length);
   const old = new Map(previous.results.map((row) => [row.id, row]));
   const sourceHealthNames = ["SIME", "Capacitación Docente", "Padrones", "Llamados abiertos", "Comunicados", "Resoluciones", "Información oficial Tucumán", "CeNET / INET", "INFoD / AulaS-TIC"];
-  const collectors: { source: string; run: () => Promise<Publication[] | { items: Publication[]; complete: boolean }> }[] = [
+  const collectors: { source: string; run: () => Promise<Publication[] | { items: Publication[]; complete: boolean; incompleteCategories?: string[]; warnings?: Record<string, string> }> }[] = [
     { source: "SIME", run: simePublications },
     { source: "Capacitación Docente", run: trainingPublications },
     { source: "Padrones y Comunicados", run: boardPublications },
@@ -215,9 +221,9 @@ async function runSync() {
   const collected = await Promise.all(collectors.map(async (collector) => {
     try {
       const value = await collector.run();
-      return { source: collector.source, items: Array.isArray(value) ? value : value.items, complete: Array.isArray(value) || value.complete, error: null as unknown };
+      return { source: collector.source, items: Array.isArray(value) ? value : value.items, complete: Array.isArray(value) || value.complete, incompleteCategories: Array.isArray(value) ? [] : value.incompleteCategories || [], warnings: Array.isArray(value) ? {} : value.warnings || {}, error: null as unknown };
     } catch (error) {
-      return { source: collector.source, items: [] as Publication[], complete: false, error };
+      return { source: collector.source, items: [] as Publication[], complete: false, incompleteCategories: [] as string[], warnings: {} as Record<string, string>, error };
     }
   }));
   const unnormalized = collected.flatMap((result) => result.items);
@@ -244,6 +250,8 @@ async function runSync() {
   const notificationChanges = changed.filter((item) => {
     const previousItem = old.get(item.id);
     if (!previousItem) return false;
+    if (item.kind === "junta" && previousItem.status === "vigente" && item.status.startsWith("Documento público")) return false;
+    if (item.source === "INFoD / AulaS-TIC" && previousItem.title === item.title && previousItem.status === item.status && previousItem.starts_at === item.startsAt && previousItem.ends_at === item.endsAt) return false;
     if (hasMeaningfulPublicationChange({ ...previousItem, startsAt: previousItem.starts_at, endsAt: previousItem.ends_at, sourceUpdatedAt: previousItem.source_updated_at }, item)) return true;
     if (item.kind !== "capacitacion") return false;
     const previousMetadata = metadataOf(previousItem.metadata), currentMetadata = metadataOf(item.metadata);
@@ -272,6 +280,10 @@ async function runSync() {
         .bind(item.id, item.source, item.externalId, item.kind, item.category, item.title, item.summary, item.level, item.area, item.junta, item.location, item.shift, item.character, item.circuit || "UNKNOWN", item.sourceCircuitRaw || "", item.circuitInferenceSource || "unknown", item.startsAt, item.endsAt, item.status, item.officialUrl, item.metadata || "{}", item.contentHash, item.sourceUpdatedAt, syncStartedAt, syncStartedAt, item.sourcePublishedAt || null, registrationOpenAt, registrationCloseAt, expiresAt, item.status || "UNKNOWN", lifecycleById.get(item.id) || "UNKNOWN", item.circuitConfidence || 0);
     })));
   }
+  const lifecycleUpdates = unchanged.filter((item) => old.get(item.id)?.normalized_status !== lifecycleById.get(item.id));
+  for (let offset = 0; offset < lifecycleUpdates.length; offset += 40) {
+    countWrites(await db.batch(lifecycleUpdates.slice(offset, offset + 40).map((item) => db.prepare("UPDATE publications SET normalized_status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(lifecycleById.get(item.id), item.id))));
+  }
   if (!collected.find((result) => result.source === "Capacitación Docente")?.error) {
     countWrites(await db.prepare("INSERT OR IGNORE INTO saved_publications (user_id, publication_id, in_agenda, followed, saved_at) SELECT s.user_id, 'fdci:course:' || p.external_id, s.in_agenda, s.followed, s.saved_at FROM saved_publications s JOIN publications p ON p.id=s.publication_id JOIN publications replacement ON replacement.id='fdci:course:' || p.external_id WHERE p.id LIKE 'fdci:%' AND p.id NOT LIKE 'fdci:course:%' AND p.id NOT LIKE 'fdci:commission:%'").run());
   }
@@ -288,7 +300,8 @@ async function runSync() {
     const filter = sourceGroup(source).filter;
     const current = sourceCollector?.items.filter(filter) || [];
     const oldRows = sourceGroup(source).oldRows;
-    const status = assessSourceSync({ previousCount: oldRows.length, recordsFound: current.length, complete: sourceCollector?.complete, error: sourceCollector?.error });
+    const complete = sourceGroup(source).source === "Padrones y Comunicados" ? !sourceCollector?.incompleteCategories.includes(source) : sourceCollector?.complete;
+    const status = assessSourceSync({ previousCount: oldRows.length, recordsFound: current.length, complete, error: sourceCollector?.error });
     return { source, storageSource: sourceGroup(source).source, current, oldRows, status, error: sourceCollector?.error || null };
   });
   const sourceHealthByPublication = (item: Publication) => item.source === "Padrones y Comunicados" ? item.category : item.source;
@@ -325,6 +338,15 @@ async function runSync() {
     const binds = lifecycle === "EXPIRED" ? [syncStartedAt] : [syncStartedAt, syncStartedAt];
     countWrites(await db.prepare(`UPDATE publications SET normalized_status='${lifecycle}', updated_at=CURRENT_TIMESTAMP WHERE normalized_status IN ('ACTIVE','UPCOMING','UNKNOWN') AND normalized_status<>'REMOVED_FROM_SOURCE' AND ${condition}`).bind(...binds).run());
   }
+  countWrites(await db.prepare("UPDATE publications SET status='Documento público · vigencia no informada', source_status='Documento público · vigencia no informada', normalized_status='UNKNOWN' WHERE source='Padrones y Comunicados' AND status='vigente' AND normalized_status IN ('ACTIVE','UPCOMING') AND starts_at IS NULL AND ends_at IS NULL").run());
+  const expiredRows = await db.prepare("SELECT id, source, category FROM publications WHERE normalized_status IN ('CLOSED','EXPIRED')").all<{ id: string; source: string; category: string }>();
+  rowsRead += Number(expiredRows.meta?.rows_read || expiredRows.results.length);
+  const expiredBySource = new Map<string, number>(), expiredTotalBySource = new Map<string, number>();
+  for (const row of expiredRows.results) {
+    const source = row.source === "Padrones y Comunicados" ? row.category : row.source;
+    expiredTotalBySource.set(source, (expiredTotalBySource.get(source) || 0) + 1);
+    if (!["CLOSED", "EXPIRED"].includes(old.get(row.id)?.normalized_status || "")) expiredBySource.set(source, (expiredBySource.get(source) || 0) + 1);
+  }
   const metricsFor = (source: string) => {
     const item = healthBySource.get(source)!;
     const created = fresh.filter((row) => sourceHealthByPublication(row) === source).length;
@@ -338,9 +360,10 @@ async function runSync() {
       HTTP_ERROR: "La fuente respondió con un error HTTP; se conservaron los datos anteriores.",
       PARSE_ERROR: "No se pudo interpretar la respuesta de la fuente; se conservaron los datos anteriores.",
     };
-    const errorMessage = item.error instanceof Error ? item.error.message.slice(0, 400) : item.error ? String(item.error).slice(0, 400) : healthMessages[item.status] || null;
+    const warning = collected.find((result) => result.source === item.storageSource)?.warnings[source];
+    const errorMessage = item.error instanceof Error ? item.error.message.slice(0, 400) : item.error ? String(item.error).slice(0, 400) : warning || healthMessages[item.status] || null;
     const errorCode = item.status === "OK" ? null : item.status;
-    return { item, created, updated, removed, errorMessage, errorCode };
+    return { item, created, updated, removed, expired: expiredBySource.get(source) || 0, expiredTotal: expiredTotalBySource.get(source) || 0, errorMessage, errorCode };
   };
   countWrites(await db.batch(sourceHealthNames.map((source) => {
     const metrics = metricsFor(source), { item } = metrics;
@@ -352,8 +375,8 @@ async function runSync() {
       error=CASE WHEN ?='OK' THEN NULL ELSE ? END,
       last_successful_sync_at=CASE WHEN ?='OK' THEN ? ELSE last_successful_sync_at END,
       last_content_change_at=CASE WHEN ?='OK' AND ?>0 THEN ? ELSE last_content_change_at END,
-      records_created=?, records_updated=?, records_removed=?, sync_status=?, error_code=?, error_message=?, parser_version='2'
-      WHERE source=?`).bind(item.status, syncStartedAt, item.status, itemCount, item.status, metrics.errorMessage, item.status, syncStartedAt, item.status, changedCount, syncStartedAt, metrics.created, metrics.updated, metrics.removed, item.status, metrics.errorCode, metrics.errorMessage, source);
+      records_created=?, records_updated=?, records_removed=?, records_expired=?, sync_status=?, error_code=?, error_message=?, parser_version='2'
+      WHERE source=?`).bind(item.status, syncStartedAt, item.status, itemCount, item.status, metrics.errorMessage, item.status, syncStartedAt, item.status, changedCount, syncStartedAt, metrics.created, metrics.updated, metrics.removed, metrics.expired, item.status, metrics.errorCode, metrics.errorMessage, source);
   })));
 
   const profiles = await db.prepare("SELECT * FROM profiles").all<Record<string, unknown>>();
@@ -395,7 +418,7 @@ async function runSync() {
   }
   const sourceMetrics = sourceHealthNames.map((source) => {
     const item = healthBySource.get(source)!;
-    return { source, status: item.status, recordsFound: item.current.length, created: metricsFor(source).created, updated: metricsFor(source).updated, removed: removedBySource.get(source) || 0, lastSuccessfulSyncAt: item.status === "OK" ? syncStartedAt : null, errorCode: metricsFor(source).errorCode, errorMessage: metricsFor(source).errorMessage };
+    return { source, status: item.status, recordsFound: item.current.length, created: metricsFor(source).created, updated: metricsFor(source).updated, removed: removedBySource.get(source) || 0, expired: metricsFor(source).expired, expiredTotal: metricsFor(source).expiredTotal, lastSuccessfulSyncAt: item.status === "OK" ? syncStartedAt : null, errorCode: metricsFor(source).errorCode, errorMessage: metricsFor(source).errorMessage };
   });
   // The Worker cron is every 5 minutes, but it invokes source sync only at :00.
   const estimatedRunsPerDay = 24;
