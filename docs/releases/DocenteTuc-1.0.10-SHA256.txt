@@ -1,0 +1,21 @@
+DocenteTuc 1.0.10 — integridad de artefactos
+
+Base congelada:
+  Commit: c6db1ad97f4ae5519a1fc8b95bbdd0d00c14863a
+  Tag: v1.0.10
+
+APK:
+  Nombre: DocenteTuc-1.0.10-release.apk
+  Tamaño: 1,288,783 bytes
+  SHA-256: A403DC6F1BF66FF25B819DE0D1435C11030F2EAC7246E5D66C5B5C7159BC9B92
+
+AAB:
+  Nombre: DocenteTuc-1.0.10-release.aab
+  Tamaño: 1,265,381 bytes
+  SHA-256: 3891D4000DB85E57C15493578C49730116ED9401ABAE98319DC257023C6E76DF
+
+Certificado de firma release (SHA-256):
+  4c177b182168d6e3d09bb4501108e7a7cc722e2eb4679bbf278ad33affcec02e
+
+Los hashes se calcularon sobre los artefactos preservados en dist/.
+No se incluyen claves privadas, keystore ni contraseñas en este repositorio.
