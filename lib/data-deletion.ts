@@ -14,6 +14,7 @@ export const userDataDeletionStatements = (userId: string) => {
     { table: "manual_events", sql: "DELETE FROM manual_events WHERE user_id=?", values: [userId] },
     { table: "ai_rate_limits", sql: "DELETE FROM ai_rate_limits WHERE substr(user_bucket, 1, length(?) + 1)=? || ':'", values: [userId, userId] },
     { table: "push_rate_limits", sql: "DELETE FROM push_rate_limits WHERE substr(user_bucket, 1, length(?) + 1)=? || ':'", values: [userId, userId] },
+    { table: "public_profiles", sql: "DELETE FROM public_profiles WHERE user_id=?", values: [userId] },
     { table: "profiles", sql: "DELETE FROM profiles WHERE user_id=?", values: [userId] },
   ] as const;
 };

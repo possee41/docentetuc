@@ -64,6 +64,9 @@ export default defineConfig(async () => {
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
         inspectorPort: false,
+        persistState: process.env.DOCENTETUC_PREVIEW_STATE_DIR
+          ? { path: process.env.DOCENTETUC_PREVIEW_STATE_DIR }
+          : true,
         config: localBindingConfig,
       }),
     ],

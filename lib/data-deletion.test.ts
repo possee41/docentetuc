@@ -8,6 +8,7 @@ test("borra todos los registros de una identidad sin tocar otras identidades ni 
   try {
     db.exec(`CREATE TABLE publications (id TEXT PRIMARY KEY);
       CREATE TABLE profiles (user_id TEXT PRIMARY KEY);
+      CREATE TABLE public_profiles (user_id TEXT PRIMARY KEY, display_name TEXT, avatar_id TEXT, bio TEXT);
       CREATE TABLE saved_publications (user_id TEXT, publication_id TEXT);
       CREATE TABLE notifications (user_id TEXT);
       CREATE TABLE training_reminders (user_id TEXT);
@@ -26,6 +27,7 @@ test("borra todos los registros de una identidad sin tocar otras identidades ni 
       for (const table of ["profiles", "notifications", "training_reminders", "designation_tracking", "manual_events", "manual_event_push_queue", "push_preferences"]) {
         db.prepare(`INSERT INTO ${table} (user_id) VALUES (?)`).run(id);
       }
+      db.prepare("INSERT INTO public_profiles (user_id, display_name, avatar_id, bio) VALUES (?, ?, ?, ?)").run(id, "Nombre", "avatar_01", "Bio");
       db.prepare("INSERT INTO saved_publications VALUES (?, ?)").run(id, "official:1");
       db.prepare("INSERT INTO push_subscriptions VALUES (?, ?)").run(`endpoint:${id}`, id);
       db.prepare("INSERT INTO push_deliveries VALUES (?)").run(`endpoint:${id}`);
@@ -34,7 +36,7 @@ test("borra todos los registros de una identidad sin tocar otras identidades ni 
     }
     for (const statement of userDataDeletionStatements(own)) db.prepare(statement.sql).run(...statement.values);
     for (const statement of userDataDeletionStatements(own)) db.prepare(statement.sql).run(...statement.values);
-    for (const table of ["profiles", "saved_publications", "notifications", "training_reminders", "designation_tracking", "manual_events", "manual_event_push_queue", "push_subscriptions", "push_preferences"]) {
+    for (const table of ["profiles", "public_profiles", "saved_publications", "notifications", "training_reminders", "designation_tracking", "manual_events", "manual_event_push_queue", "push_subscriptions", "push_preferences"]) {
       assert.equal((db.prepare(`SELECT COUNT(*) count FROM ${table} WHERE user_id=?`).get(own) as { count: number }).count, 0, table);
       assert.equal((db.prepare(`SELECT COUNT(*) count FROM ${table} WHERE user_id=?`).get(other) as { count: number }).count, 1, table);
     }

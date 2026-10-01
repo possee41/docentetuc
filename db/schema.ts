@@ -13,6 +13,12 @@ export const profiles = sqliteTable("profiles", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const publicProfiles = sqliteTable("public_profiles", {
+  userId: text("user_id").primaryKey(), displayName: text("display_name").notNull(),
+  avatarId: text("avatar_id").notNull().default("avatar_01"), bio: text("bio").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const publications = sqliteTable("publications", {
   id: text("id").primaryKey(), source: text("source").notNull(), externalId: text("external_id").notNull(), kind: text("kind").notNull(),
   category: text("category").notNull(), title: text("title").notNull(), summary: text("summary").notNull().default(""),
