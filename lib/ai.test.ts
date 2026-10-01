@@ -5,13 +5,20 @@ import { usefulInformation } from "./useful-information.ts";
 import type { Profile, Publication } from "./types.ts";
 
 const base = { source: "Capacitación Docente", external_id: "1", kind: "capacitacion", category: "Capacitación", summary: "", level: "Secundario", area: "Ciencias Sociales", junta: "", location: "", shift: "", character: "", starts_at: null, ends_at: null, official_url: "https://oficial.test/1", metadata: "{}", first_seen_at: "2026-09-01", updated_at: "2026-09-26" } as Publication;
-const records = [{ ...base, id: "next", title: "Curso próximo", status: "próximamente" }, { ...base, id: "open", title: "Curso abierto", status: "inscripción abierta" }] as Publication[];
+const records = [
+  { ...base, id: "next", title: "Curso próximo", status: "próximamente", metadata: JSON.stringify({ registrationOpensAt: "2026-10-02T09:00:00-03:00", registrationHasTime: true, registrationClosesAt: "2026-10-10T23:59:00-03:00", dateStatus: "confirmed" }) },
+  { ...base, id: "open", title: "Curso abierto", status: "inscripción abierta", metadata: JSON.stringify({ registrationOpensAt: "2026-09-30T09:00:00-03:00", registrationClosesAt: "2026-10-10T23:59:00-03:00", dateStatus: "confirmed" }) },
+] as Publication[];
+const trainingRecord = (id: string, source: string, registrationOpensAt: string, extra: Record<string, unknown> = {}) => ({
+  ...base, id, external_id: id, source, title: `Registro ${id}`, starts_at: null, ends_at: null, status: "próximamente", source_status: "próximamente", normalized_status: "UPCOMING",
+  metadata: JSON.stringify({ entity: "commission", trainingId: id, registrationOpensAt, registrationHasTime: true, preinscripcionFechaConfirmada: true, dateStatus: "confirmed", source }), ...extra,
+}) as Publication;
 const vacancy = { ...base, id: "vacancy", kind: "vacante", category: "Vacante", title: "Horas de Filosofía", area: "Filosofía", status: "vigente" } as Publication;
 const publicDocument = { ...base, id: "comunicado", kind: "junta", category: "Comunicados", title: "Comunicado Secundaria", summary: "Presentación de documentación hasta el 30 de septiembre", status: "vigente" } as Publication;
 const openCall = { ...base, id: "llamado", kind: "junta", category: "Llamados abiertos", title: "Convocatoria abierta de Inicial", status: "vigente" } as Publication;
 const usefulRecords = usefulInformation.map((item) => ({ ...base, id: `info:${item.id}`, external_id: item.id, kind: "informacion", category: item.category, title: item.title, summary: item.summary, level: "", area: (item.metadata.aliases || []).join(" · "), status: "vigente", official_url: item.officialUrl, metadata: JSON.stringify(item.metadata) })) as Publication[];
 
-test("recupera primero la próxima inscripción usando datos reales", () => assert.equal(retrievePublications("¿Qué capacitación abre primero?", records)[0]?.id, "next"));
+test("recupera primero la próxima inscripción usando datos reales", () => assert.equal(retrievePublications("¿Qué capacitación abre primero?", records, 8, { now: new Date("2026-10-01T09:00:00-03:00") })[0]?.id, "next"));
 test("una conversación general no adjunta fuentes irrelevantes", () => assert.equal(buildAIContext("Hola", records).sources.length, 0));
 test("una definición de suplente no cita vacantes del panel abierto", () => {
   const result = buildAIContext("¿Qué significa suplente en una designación docente?", [...records, vacancy], { context: { type: "vacantes", title: "Designaciones" } });
@@ -19,13 +26,45 @@ test("una definición de suplente no cita vacantes del panel abierto", () => {
   assert.deepEqual(result.sources, []);
   assert.doesNotMatch(result.context, /Horas de Filosofía|Contexto del panel: tipo vacantes/);
 });
-test("recupera capacitaciones que abren próximamente", () => assert.equal(retrievePublications("¿Qué capacitaciones abren próximamente?", records)[0]?.id, "next"));
+test("recupera capacitaciones que abren próximamente", () => assert.equal(retrievePublications("¿Qué capacitaciones abren próximamente?", records, 8, { now: new Date("2026-10-01T09:00:00-03:00") })[0]?.id, "next"));
+test("las consultas equivalentes de capacitaciones seleccionan por el estado y la apertura sincronizados", () => {
+  const now = new Date("2026-10-01T09:00:00-03:00"), soon = trainingRecord("soon", "Capacitación Docente", "2026-10-03T10:30:00-03:00"), later = trainingRecord("later", "INFoD / AulaS-TIC", "2026-10-20T10:00:00-03:00"), openNow = trainingRecord("open-now", "CeNET / INET", "2026-09-30T10:00:00-03:00", { status: "inscripción abierta", source_status: "inscripción abierta", normalized_status: "ACTIVE", metadata: JSON.stringify({ entity: "course", trainingId: "open-now", registrationOpensAt: "2026-09-30T10:00:00-03:00", registrationClosesAt: "2026-10-10T23:59:00-03:00", dateStatus: "confirmed" }) }),
+    staleText = trainingRecord("stale", "Capacitación Docente", "2026-09-01T10:00:00-03:00", { status: "inscripción abierta", source_status: "inscripción abierta", metadata: JSON.stringify({ entity: "course", trainingId: "stale", registrationOpensAt: "2026-09-01T10:00:00-03:00", registrationClosesAt: "2026-09-02T10:00:00-03:00", dateStatus: "tentative" }) });
+
+  assert.deepEqual(buildAIContext("¿Qué capacitaciones hay próximamente?", [soon, later, openNow, staleText], { now }).sources.map((item) => item.id), ["soon", "later"]);
+  assert.deepEqual(buildAIContext("¿Qué abre esta semana?", [soon, later, openNow], { now }).sources.map((item) => item.id), ["soon"]);
+  assert.deepEqual(buildAIContext("¿Hay inscripciones abiertas?", [soon, openNow, staleText], { now }).sources.map((item) => item.id), ["open-now"]);
+});
+test("FDCI comunica la fecha y hora confirmadas de preinscripción de la comisión, no el inicio del curso", () => {
+  const fdci = trainingRecord("fdci", "Capacitación Docente", "2026-10-05T14:30:00-03:00", { starts_at: "2026-11-02T00:00:00-03:00", metadata: JSON.stringify({ entity: "commission", trainingId: "fdci-course", commissionId: "fdci", registrationOpensAt: "2026-10-05T14:30:00-03:00", registrationHasTime: true, preinscripcionFechaConfirmada: true, courseStartsAt: "2026-11-02T00:00:00-03:00", dateStatus: "confirmed", source: "FDCI Tucumán" }) });
+  const result = buildAIContext("¿Qué capacitaciones de FDCI abren próximamente?", [fdci], { now: new Date("2026-10-01T09:00:00-03:00") });
+  assert.deepEqual(result.sources.map((item) => item.id), ["fdci"]);
+  assert.match(result.context, /2026-10-05T14:30:00-03:00 \(fecha y hora informadas por la fuente\)/);
+  assert.match(result.context, /Confirmación específica de apertura FDCI: sí, según la comisión oficial/);
+  assert.match(result.context, /Inicio del curso: 2026-11-02T00:00:00-03:00/);
+});
+test("la IA recupera CeNET con fecha tentativa y la marca como prevista", () => {
+  const cenet = trainingRecord("cenet", "CeNET / INET", "2026-10-08T00:00:00-03:00", { metadata: JSON.stringify({ entity: "course", trainingId: "cenet", registrationOpensAt: "2026-10-08T00:00:00-03:00", registrationClosesAt: "2026-10-18T23:59:59-03:00", dateStatus: "tentative", registrationHasTime: false, source: "CeNET / INET" }) });
+  const result = buildAIContext("¿Qué capacitaciones de CeNET abren próximamente?", [cenet], { now: new Date("2026-10-01T09:00:00-03:00") });
+  assert.deepEqual(result.sources.map((item) => item.id), ["cenet"]);
+  assert.match(result.context, /FECHA TENTATIVA \/ PREVISTA SEGÚN LA FUENTE/);
+  assert.match(result.context, /no confirma hora exacta|no informa hora exacta/i);
+});
+test("una consulta personalizada de capacitaciones requiere autorización explícita del perfil", () => {
+  const result = buildAIContext("¿Qué capacitaciones hay para mí?", records);
+  assert.equal(result.intent, "capacitaciones");
+  assert.deepEqual(result.sources, []);
+  assert.match(result.context, /no autorizó usar su perfil/);
+  assert.match(result.context, /necesitás activar 'Usar mi perfil docente'/);
+  assert.match(result.context, /No concluyas que no hay capacitaciones/);
+});
+test("CeNET se clasifica como búsqueda de capacitaciones aunque no diga curso", () => assert.equal(detectIntent("¿Qué hay de CeNET?"), "capacitaciones"));
 test("una consulta de próximas preinscripciones FDCI no sustituye la fuente ni inventa aperturas", () => {
-  const cenet = { ...records[0], id: "cenet", source: "CeNET / INET", title: "Curso con inscripción próxima", metadata: JSON.stringify({ registrationOpensAt: "2026-10-05T10:00:00-03:00", preinscripcionFechaConfirmada: true }) } as Publication;
+  const cenet = { ...records[0], id: "cenet", source: "CeNET / INET", title: "Curso con inscripción próxima", metadata: JSON.stringify({ registrationOpensAt: "2026-10-05T10:00:00-03:00", dateStatus: "confirmed", preinscripcionFechaConfirmada: true }) } as Publication;
   const unknownFdci = { ...records[0], id: "fdci-unknown", title: "Capacitación FDCI", metadata: "{}" } as Publication;
   const question = "¿Qué capacitaciones tienen apertura de preinscripción confirmada próximamente en FDCI?";
   assert.deepEqual(retrievePublications(question, [unknownFdci, cenet], 8, { now: new Date("2026-09-30T08:00:00-03:00") }), []);
-  const confirmedFdci = { ...unknownFdci, id: "fdci-confirmed", metadata: JSON.stringify({ registrationOpensAt: "2026-10-05T10:00:00-03:00", preinscripcionFechaConfirmada: true }) } as Publication;
+  const confirmedFdci = { ...unknownFdci, id: "fdci-confirmed", metadata: JSON.stringify({ registrationOpensAt: "2026-10-05T10:00:00-03:00", registrationHasTime: true, dateStatus: "confirmed", preinscripcionFechaConfirmada: true }) } as Publication;
   assert.deepEqual(retrievePublications(question, [unknownFdci, cenet, confirmedFdci], 8, { now: new Date("2026-09-30T08:00:00-03:00") }).map((item) => item.id), ["fdci-confirmed"]);
 });
 test("no agrega el perfil al contexto sin autorización", () => assert.match(buildAIContext("capacitaciones", records).context, /no autorizó usar su perfil/));
