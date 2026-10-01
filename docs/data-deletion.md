@@ -1,0 +1,11 @@
+# Solicitudes de eliminación de datos
+
+DocenteTuc no crea cuentas propias con autenticación. La mayoría de las instalaciones usan un identificador UUID local. El encabezado `X-DocenteTuc-Device` y los encabezados de la integración ChatGPT no son pruebas suficientes para autorizar un borrado desde el Worker público. **No crear una API pública de borrado con esos valores.**
+
+1. Recibir la solicitud por `soporte.docentetuc@gmail.com`. La app aporta una referencia SHA-256 truncada del `user_id` (20 caracteres hexadecimales), que sirve para localizar registros, **no para autenticar**.
+2. Verificar por un canal independiente la titularidad antes de borrar: por ejemplo, control del correo previamente asociado y datos no públicos del perfil o agenda cotejados en D1. Nunca pedir contraseñas de SIME/FDCI ni el UUID local. Si no se puede verificar, no borrar y explicar por qué. Registrar la verificación y la respuesta en el ticket de soporte, no en Git.
+3. Con acceso administrativo a Wrangler, ejecutar primero un diagnóstico sin cambios: `node --experimental-strip-types scripts/delete-user-data.mjs --reference=<referencia> --remote`.
+4. Tras confirmar la identidad y el alcance, ejecutar `node --experimental-strip-types scripts/delete-user-data.mjs --reference=<referencia> --remote --execute --verified --confirm=<referencia>`. El script resuelve una sola identidad, borra únicamente sus filas en las tablas personales y verifica que no queden filas y que el conteo de publicaciones públicas no cambie. Si falla en medio, no afirmar que terminó: investigar y repetir, ya que las sentencias son idempotentes.
+5. Confirmar al usuario el resultado. Recién entonces indicarle que borre la copia local desde Perfil o los datos del sitio en el navegador/dispositivo. El borrado local por sí solo no borra D1.
+
+El operador tiene acceso privilegiado a D1; la referencia y `--verified` son controles operativos, no sustituyen la comprobación humana de identidad. La sincronización automática y las fuentes públicas quedan intactas. Las cuentas de portales oficiales y los datos que esos portales publican se gestionan con ellos. Las solicitudes y respuestas por correo pueden permanecer en el proveedor de correo conforme a sus políticas; minimizar y eliminar ese intercambio cuando ya no sea necesario.
