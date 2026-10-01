@@ -3,6 +3,7 @@ export const PUBLIC_AVATAR_IDS = [
   "avatar_06", "avatar_07", "avatar_08", "avatar_09", "avatar_10",
   "avatar_11", "avatar_12", "avatar_13", "avatar_14", "avatar_15",
   "avatar_16", "avatar_17", "avatar_18", "avatar_19", "avatar_20",
+  "avatar_21", "avatar_22", "avatar_23", "avatar_24",
 ] as const;
 
 export type PublicAvatarId = typeof PUBLIC_AVATAR_IDS[number];
@@ -16,6 +17,11 @@ export const DEFAULT_PUBLIC_PROFILE: PublicProfile = {
   avatarId: "avatar_01",
   bio: "",
 };
+
+/** Returns the local optimized image path, or null when the asset has failed to load. */
+export function publicAvatarAssetPath(avatarId: PublicAvatarId, imageFailed = false): string | null {
+  return imageFailed || !PUBLIC_AVATAR_IDS.includes(avatarId) ? null : `/avatars/${avatarId}.webp`;
+}
 
 export const PUBLIC_PROFILE_UPSERT_SQL = `
   INSERT INTO public_profiles (user_id, display_name, avatar_id, bio)

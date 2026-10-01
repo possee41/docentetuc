@@ -8,7 +8,7 @@ Estado: base funcional en web dentro de `develop/1.1`; revisar y probar antes de
 
 - Perfil público opcional, separado en D1 del perfil docente privado.
 - Nombre visible y bio son ingresados expresamente por el usuario; no se copian del nombre privado.
-- Veinte IDs de avatar temporales renderizados con placeholders locales; faltan las ilustraciones gráficas definitivas.
+- Veinticuatro IDs permitidos; el selector usa ilustraciones WebP locales definitivas con fallback genérico cuando un recurso no carga.
 - No existe una vista pública/listado de perfiles y guardar el perfil no lo publica.
 - La identidad UUID local solo asocia datos a una instalación; no es autenticación pública segura ni identidad recuperable entre dispositivos.
 - La eliminación asistida contempla los datos del perfil público.

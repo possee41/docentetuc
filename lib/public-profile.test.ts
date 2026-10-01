@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { DEFAULT_PUBLIC_PROFILE, PUBLIC_AVATAR_IDS, PUBLIC_PROFILE_UPSERT_SQL, publicProfileForClient, validatePublicProfile } from "./public-profile.ts";
+import { fileURLToPath } from "node:url";
+import { DEFAULT_PUBLIC_PROFILE, PUBLIC_AVATAR_IDS, PUBLIC_PROFILE_UPSERT_SQL, publicAvatarAssetPath, publicProfileForClient, validatePublicProfile } from "./public-profile.ts";
+
+const avatarDirectory = fileURLToPath(new URL("../public/avatars/", import.meta.url));
 
 test("crea y edita un perfil público sin afectar a otra identidad", () => {
   const db = new DatabaseSync(":memory:");
@@ -14,13 +18,13 @@ test("crea y edita un perfil público sin afectar a otra identidad", () => {
     assert.equal(first.ok, true);
     if (!first.ok) return;
     db.prepare(PUBLIC_PROFILE_UPSERT_SQL).run("user-a", first.value.displayName, first.value.avatarId, first.value.bio);
-    const second = validatePublicProfile({ displayName: "Ana del Norte", avatarId: "avatar_20", bio: "Docente de nivel inicial" });
+    const second = validatePublicProfile({ displayName: "Ana del Norte", avatarId: "avatar_24", bio: "Docente de nivel inicial" });
     assert.equal(second.ok, true);
     if (!second.ok) return;
     db.prepare(PUBLIC_PROFILE_UPSERT_SQL).run("user-a", second.value.displayName, second.value.avatarId, second.value.bio);
     db.prepare(PUBLIC_PROFILE_UPSERT_SQL).run("user-b", "Otro nombre", "avatar_02", "");
     assert.deepEqual({ ...db.prepare("SELECT display_name, avatar_id, bio FROM public_profiles WHERE user_id=?").get("user-a") as Record<string, unknown> }, {
-      display_name: "Ana del Norte", avatar_id: "avatar_20", bio: "Docente de nivel inicial",
+      display_name: "Ana del Norte", avatar_id: "avatar_24", bio: "Docente de nivel inicial",
     });
     assert.deepEqual({ ...db.prepare("SELECT display_name, avatar_id, bio FROM public_profiles WHERE user_id=?").get("user-b") as Record<string, unknown> }, {
       display_name: "Otro nombre", avatar_id: "avatar_02", bio: "",
@@ -28,12 +32,29 @@ test("crea y edita un perfil público sin afectar a otra identidad", () => {
   } finally { db.close(); }
 });
 
-test("acepta únicamente los veinte identificadores de avatar permitidos", () => {
-  assert.equal(PUBLIC_AVATAR_IDS.length, 20);
-  for (const avatarId of PUBLIC_AVATAR_IDS) assert.equal(validatePublicProfile({ displayName: "Docente", avatarId, bio: "" }).ok, true);
-  assert.deepEqual(validatePublicProfile({ displayName: "Docente", avatarId: "avatar_21", bio: "" }), {
+test("acepta los IDs 01, 20, 21 y 24 y rechaza avatar_25", () => {
+  assert.equal(PUBLIC_AVATAR_IDS.length, 24);
+  for (const avatarId of ["avatar_01", "avatar_20", "avatar_21", "avatar_24"]) {
+    assert.equal(validatePublicProfile({ displayName: "Docente", avatarId, bio: "" }).ok, true);
+  }
+  assert.deepEqual(validatePublicProfile({ displayName: "Docente", avatarId: "avatar_25", bio: "" }), {
     ok: false, error: "Elegí uno de los avatares disponibles.",
   });
+});
+
+test("los 24 assets son WebP compactos y el fallback genérico se usa si una imagen falla", () => {
+  const files = readdirSync(avatarDirectory).filter((file) => /^avatar_\d{2}\.webp$/u.test(file)).sort();
+  assert.equal(files.length, 24);
+  for (const avatarId of PUBLIC_AVATAR_IDS) {
+    const file = `${avatarId}.webp`;
+    const path = `${avatarDirectory}\\${file}`;
+    const header = readFileSync(path).subarray(0, 12);
+    assert.equal(header.subarray(0, 4).toString("ascii"), "RIFF");
+    assert.equal(header.subarray(8, 12).toString("ascii"), "WEBP");
+    assert.ok(statSync(path).size < 30_000, `${file} should remain optimized`);
+  }
+  assert.equal(publicAvatarAssetPath("avatar_24"), "/avatars/avatar_24.webp");
+  assert.equal(publicAvatarAssetPath("avatar_01", true), null);
 });
 
 test("rechaza nombre visible demasiado largo y HTML arbitrario", () => {

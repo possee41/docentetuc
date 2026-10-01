@@ -1,28 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { DEFAULT_PUBLIC_PROFILE, PUBLIC_AVATAR_IDS, validatePublicProfile } from "@/lib/public-profile";
+import { DEFAULT_PUBLIC_PROFILE, PUBLIC_AVATAR_IDS, publicAvatarAssetPath, validatePublicProfile } from "@/lib/public-profile";
 import type { PublicAvatarId, PublicProfile } from "@/lib/public-profile";
 
-const avatarColors = [
-  ["#075f9b", "#ffffff"], ["#0878be", "#ffffff"], ["#0b94c8", "#ffffff"], ["#0e7490", "#ffffff"],
-  ["#0f766e", "#ffffff"], ["#15803d", "#ffffff"], ["#4d7c0f", "#ffffff"], ["#a16207", "#ffffff"],
-  ["#b45309", "#ffffff"], ["#c2410c", "#ffffff"], ["#be123c", "#ffffff"], ["#be185d", "#ffffff"],
-  ["#a21caf", "#ffffff"], ["#7e22ce", "#ffffff"], ["#6d28d9", "#ffffff"], ["#4338ca", "#ffffff"],
-  ["#3730a3", "#ffffff"], ["#334155", "#ffffff"], ["#1e3a8a", "#ffffff"], ["#facc15", "#075f9b"],
-] as const;
-
 function AvatarPreview({ avatarId, size = "size-14" }: { avatarId: PublicAvatarId; size?: string }) {
-  const index = PUBLIC_AVATAR_IDS.indexOf(avatarId);
-  const [backgroundColor, color] = avatarColors[index] || avatarColors[0];
-  return <span aria-hidden="true" className={`${size} inline-grid shrink-0 place-items-center rounded-full ring-2 ring-white shadow-sm`} style={{ backgroundColor, color }}>
-    <UserRound className="size-1/2" strokeWidth={2.2} />
+  const [failedAvatarId, setFailedAvatarId] = useState<PublicAvatarId | null>(null);
+  const imagePath = publicAvatarAssetPath(avatarId, failedAvatarId === avatarId);
+  return <span aria-hidden="true" className={`${size} inline-grid shrink-0 place-items-center overflow-hidden rounded-full bg-[var(--surface-secondary)] ring-2 ring-white shadow-sm`}>
+    {imagePath ? <Image src={imagePath} width={192} height={192} loading="lazy" decoding="async" draggable={false} onError={() => setFailedAvatarId(avatarId)} unoptimized className="size-full rounded-full object-cover" alt="" /> : <UserRound className="size-1/2 text-[var(--text-muted)]" strokeWidth={2.2} />}
   </span>;
 }
 
@@ -71,14 +64,16 @@ export function PublicProfileSection({ profile, headers, onSaved }: { profile: P
 
       <fieldset>
         <legend className="font-bold">Elegí tu avatar</legend>
-        <p className="mt-1 text-xs text-[var(--text-muted)]">Opciones temporales locales. Las ilustraciones definitivas todavía no están incorporadas.</p>
-        <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-10" role="radiogroup" aria-label="Elegí uno de los 20 avatares temporales">
+        <p className="mt-1 text-xs text-[var(--text-muted)]">Elegí la imagen que quieras mostrar en tu perfil público.</p>
+        <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-10">
           {PUBLIC_AVATAR_IDS.map((avatarId) => {
             const selected = form.avatarId === avatarId;
-            return <button key={avatarId} type="button" role="radio" aria-checked={selected} aria-label={`Elegir avatar temporal ${avatarId.slice(-2)}`} onClick={() => setForm({ ...form, avatarId })}
-              className={`grid min-h-16 place-items-center rounded-2xl border transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0878be] ${selected ? "border-[#0878be] bg-[var(--info-bg)] ring-2 ring-[#0878be]/30" : "border-[var(--border)] bg-[var(--surface-secondary)] hover:border-[#0878be]"}`}>
-              <AvatarPreview avatarId={avatarId} size="size-10" />
-            </button>;
+            return <label key={avatarId} className="cursor-pointer">
+              <input type="radio" name="public-avatar" value={avatarId} checked={selected} aria-label={`Elegir avatar ${PUBLIC_AVATAR_IDS.indexOf(avatarId) + 1}`} onChange={() => setForm((current) => ({ ...current, avatarId }))} className="peer sr-only" />
+              <span className={`grid min-h-16 place-items-center rounded-2xl border transition peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#0878be] ${selected ? "border-[#0878be] bg-[var(--info-bg)] ring-2 ring-[#0878be]/30" : "border-[var(--border)] bg-[var(--surface-secondary)] hover:border-[#0878be]"}`}>
+                <AvatarPreview avatarId={avatarId} size="size-10" />
+              </span>
+            </label>;
           })}
         </div>
       </fieldset>
