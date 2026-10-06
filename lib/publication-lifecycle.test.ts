@@ -10,6 +10,13 @@ test("a missing SIME publication is removed only after a complete non-empty succ
   assert.deepEqual(missingAfterValidatedSync(["a", "b"], ["a"], "PARTIAL"), []);
 });
 
+test("failed syncs preserve the last valid records and a later success can reconcile them", () => {
+  for (const status of ["DNS_ERROR", "NETWORK_ERROR", "TIMEOUT", "HTTP_ERROR", "REDIRECT_ERROR", "HTML_RESPONSE", "EMPTY_RESPONSE", "PARSE_ERROR", "SCHEMA_ERROR", "UNKNOWN"] as const) {
+    assert.deepEqual(missingAfterValidatedSync(["sime:1", "sime:2"], [], status), [], `${status} must retain old rows`);
+  }
+  assert.deepEqual(missingAfterValidatedSync(["sime:1", "sime:2"], ["sime:1"], "OK"), ["sime:2"]);
+});
+
 test("an unexpectedly empty feed preserves existing records", () => {
   assert.equal(assessSourceSync({ previousCount: 220, recordsFound: 0 }), "EMPTY_SUSPECT");
   assert.equal(assessSourceSync({ previousCount: 0, recordsFound: 0 }), "OK");
@@ -17,7 +24,10 @@ test("an unexpectedly empty feed preserves existing records", () => {
 
 test("source failures are classified without pretending a successful verification", () => {
   assert.equal(assessSourceSync({ previousCount: 4, recordsFound: 0, error: new Error("HTTP 503 https://sime.example") }), "HTTP_ERROR");
+  assert.equal(assessSourceSync({ previousCount: 4, recordsFound: 0, error: new Error("getaddrinfo ENOTFOUND sime.example") }), "DNS_ERROR");
+  assert.equal(assessSourceSync({ previousCount: 4, recordsFound: 0, error: new Error("connect ECONNRESET") }), "NETWORK_ERROR");
   assert.equal(assessSourceSync({ previousCount: 4, recordsFound: 0, error: new Error("AbortError: timeout") }), "TIMEOUT");
+  assert.equal(assessSourceSync({ previousCount: 0, recordsFound: 0, error: new Error("unclassified worker failure") }), "UNKNOWN");
   assert.equal(assessSourceSync({ previousCount: 4, recordsFound: 8, complete: false }), "PARTIAL");
   assert.equal(assessSourceSync({ previousCount: 4, recordsFound: 4, formatValid: false }), "FORMAT_CHANGED");
 });

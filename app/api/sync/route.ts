@@ -11,7 +11,8 @@ import { registrationState } from "@/lib/home-dashboard";
 import { diffByHash, hashSourceSnapshot, hasMeaningfulPublicationChange, isDocumentTextExportMigration } from "@/lib/sync-diff";
 import { notificationDedupeKey } from "@/lib/notification-events";
 import { circuitMatches, inferCircuit } from "@/lib/circuits";
-import { assessSourceSync, missingAfterValidatedSync, publicationLifecycle, type SourceSyncStatus } from "@/lib/publication-lifecycle";
+import { assessSourceSync, missingAfterValidatedSync, publicationLifecycle, SourceSyncError, sourceErrorCode, type SourceSyncStatus } from "@/lib/publication-lifecycle";
+import { fetchSourceJson } from "@/lib/source-fetch";
 
 export const dynamic = "force-dynamic";
 
@@ -73,11 +74,19 @@ const publicTrainingPublications = (items: PublicTraining[], source: string) => 
 async function simePublications() {
   const items: Publication[] = [];
   for (const [juntaId, junta] of juntas) {
-    const periodData = await getJson<{ periodos: { text: string }[] }>(`https://sime.educaciontuc.gov.ar/Vacantes/ObtenerPeriodos/${juntaId}?caracter=-1&tab=1`);
-    if (!Array.isArray(periodData?.periodos)) throw new Error("PARSE_ERROR SIME periodos shape changed");
-    const [month = "", year = ""] = (periodData.periodos[0]?.text || "").split("/");
-    const data = await getJson<{ vacantes: { id: number; codigo: string; caracter: string; fechaPublicacionInicio: string; fechaPublicacionFin: string; cargos: string; abierto: boolean }[] }>(`https://sime.educaciontuc.gov.ar/Vacantes/ObtenerVacantes/${juntaId}?caracter=-1&tab=1&mesBuscar=${month}&anioBuscar=${year}`);
-    if (!Array.isArray(data?.vacantes)) throw new Error("PARSE_ERROR SIME vacantes shape changed");
+    const periodData = await fetchSourceJson<{ periodos: { text: string }[] }>(`https://sime.educaciontuc.gov.ar/Vacantes/ObtenerPeriodos/${juntaId}?caracter=-1&tab=1`, {
+      source: "SIME", signal: AbortSignal.timeout(15_000), headers: { Accept: "application/json", "User-Agent": "DocenteTuc/1.0 (+agregador de fuentes publicas)" },
+    });
+    if (!Array.isArray(periodData?.periodos)) throw new SourceSyncError("SCHEMA_ERROR", "SIME periodos shape changed");
+    if (!periodData.periodos.length) continue;
+    const periodText = periodData.periodos[0]?.text;
+    if (typeof periodText !== "string" || !periodText.trim()) throw new SourceSyncError("SCHEMA_ERROR", "SIME period text is missing");
+    const [month = "", year = ""] = periodText.split("/");
+    const data = await fetchSourceJson<{ vacantes: { id: number; codigo: string; caracter: string; fechaPublicacionInicio: string; fechaPublicacionFin: string; cargos: string; abierto: boolean }[] }>(`https://sime.educaciontuc.gov.ar/Vacantes/ObtenerVacantes/${juntaId}?caracter=-1&tab=1&mesBuscar=${month}&anioBuscar=${year}`, {
+      source: "SIME", signal: AbortSignal.timeout(15_000), headers: { Accept: "application/json", "User-Agent": "DocenteTuc/1.0 (+agregador de fuentes publicas)" },
+    });
+    if (!Array.isArray(data?.vacantes)) throw new SourceSyncError("SCHEMA_ERROR", "SIME vacantes shape changed");
+    if (data.vacantes.some((vacancy) => !vacancy || !Number.isFinite(vacancy.id) || typeof vacancy.cargos !== "string")) throw new SourceSyncError("SCHEMA_ERROR", "SIME vacancy record shape changed");
     for (const vacancy of data.vacantes || []) {
       const startsAt = simeDate(vacancy.fechaPublicacionInicio), endsAt = simeDate(vacancy.fechaPublicacionFin);
       const first = vacancy.cargos.split(", ")[0].replace(/^\[[^\]]+\]\s*/, "");
@@ -403,13 +412,20 @@ async function runSync() {
       EMPTY_SUSPECT: "La fuente devolvió cero registros pese a existir datos previos; se conservaron las publicaciones.",
       PARTIAL: "La extracción fue parcial; se incorporaron los resultados recuperados y no se reconciliaron ausencias.",
       FORMAT_CHANGED: "No se reconoció la estructura esperada de la fuente; se conservaron los datos anteriores.",
+      DNS_ERROR: "No se pudo localizar el servidor de la fuente; se conservaron los datos anteriores.",
+      NETWORK_ERROR: "No se pudo conectar con la fuente; se conservaron los datos anteriores.",
+      REDIRECT_ERROR: "La fuente redirigió la consulta a un destino inesperado; se conservaron los datos anteriores.",
+      HTML_RESPONSE: "La fuente respondió con una página web en lugar de datos; se conservaron los datos anteriores.",
+      EMPTY_RESPONSE: "La fuente respondió vacía; se conservaron los datos anteriores.",
+      SCHEMA_ERROR: "La estructura de los datos de la fuente no coincide con la esperada; se conservaron los datos anteriores.",
       TIMEOUT: "La fuente excedió el tiempo de espera; se conservaron los datos anteriores.",
       HTTP_ERROR: "La fuente respondió con un error HTTP; se conservaron los datos anteriores.",
-      PARSE_ERROR: "No se pudo interpretar la respuesta de la fuente; se conservaron los datos anteriores.",
+      PARSE_ERROR: "No se pudo interpretar el JSON de la fuente; se conservaron los datos anteriores.",
     };
     const warning = collected.find((result) => result.source === item.storageSource)?.warnings[source];
     const errorMessage = item.error instanceof Error ? item.error.message.slice(0, 400) : item.error ? String(item.error).slice(0, 400) : warning || healthMessages[item.status] || null;
-    const errorCode = item.status === "OK" ? null : item.status;
+    const sourceError = collected.find((result) => result.source === item.storageSource)?.error;
+    const errorCode = item.status === "OK" ? null : sourceError ? sourceErrorCode(sourceError) : item.status;
     return { item, created, updated, removed, expired: expiredBySource.get(source) || 0, expiredTotal: expiredTotalBySource.get(source) || 0, errorMessage, errorCode };
   };
   countWrites(await db.batch(sourceHealthNames.map((source) => {

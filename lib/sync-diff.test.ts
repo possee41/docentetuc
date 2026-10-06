@@ -55,3 +55,17 @@ test("un llamado ausente caduca sólo tras una lectura íntegra de su carpeta", 
   assert.deepEqual(missingAfterValidatedSync(previous, current, "PARTIAL"), []);
   assert.deepEqual(missingAfterValidatedSync(previous, current, "OK"), [previous[0]]);
 });
+
+test("una sincronización SIME fallida retiene el snapshot y la siguiente exitosa actualiza sin duplicar", () => {
+  const previous = new Map([["sime:1", { content_hash: "old-hash" }]]);
+  assert.deepEqual(missingAfterValidatedSync([...previous.keys()], [], "DNS_ERROR"), []);
+  const afterFailure = diffByHash(previous, []);
+  assert.deepEqual(afterFailure.writes, []);
+  assert.deepEqual(afterFailure.changed, []);
+  assert.deepEqual(afterFailure.fresh, []);
+
+  const nextSnapshot = [{ id: "sime:1", source: "SIME", contentHash: "new-hash" }, { id: "sime:2", source: "SIME", contentHash: "second" }];
+  const afterRecovery = diffByHash(previous, nextSnapshot);
+  assert.deepEqual(afterRecovery.changed.map((item) => item.id), ["sime:1"]);
+  assert.deepEqual(afterRecovery.fresh.map((item) => item.id), ["sime:2"]);
+});
