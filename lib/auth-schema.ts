@@ -11,6 +11,7 @@ const REQUIRED_COMMUNITY_TABLES = [
   "community_rules_acceptances", "community_moderators", "community_posts", "community_comments",
   "community_reports", "community_blocks", "community_moderation_events", "community_rate_limits",
 ] as const;
+const COMMUNITY_SAVED_POSTS_TABLE = "community_saved_posts";
 
 /** Keeps account sign-in disabled until the additive D1 migration exists. */
 export async function hasAuthSchema(database: SchemaDatabase) {
@@ -46,6 +47,17 @@ export async function hasCommunitySchema(database: SchemaDatabase) {
       .bind(...REQUIRED_COMMUNITY_TABLES)
       .first<{ count: number }>();
     return Number(result?.count) === REQUIRED_COMMUNITY_TABLES.length;
+  } catch {
+    return false;
+  }
+}
+
+/** Saved-post routes stay disabled until the additive Phase 3B migration exists. */
+export async function hasCommunitySavedPostsSchema(database: SchemaDatabase) {
+  try {
+    const result = await database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name=?")
+      .bind(COMMUNITY_SAVED_POSTS_TABLE).first<{ count: number }>();
+    return Number(result?.count) === 1;
   } catch {
     return false;
   }

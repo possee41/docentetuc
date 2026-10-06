@@ -17,10 +17,15 @@ import {
   isCommunityModerator,
   listCommunityComments,
   listCommunityPosts,
+  listCommunityPostsPage,
+  listCommunitySavedPostsPage,
+  listSavedCommunityPostIds,
   listOpenCommunityReports,
   moderateCommunityContent,
   purgeExpiredCommunityContent,
   reportCommunityContent,
+  removeCommunitySavedPost,
+  saveCommunityPost,
 } from "./community.ts";
 import { accountFromValidatedSession } from "./auth-identity.ts";
 import { accountDataDeletionStatements } from "./account-deletion.ts";
@@ -31,6 +36,8 @@ const EMAIL_A = "principal@example.invalid";
 const EMAIL_B = "second@example.invalid";
 const NOW = Date.UTC(2026, 9, 5, 15, 0);
 const MIGRATION = readFileSync(new URL("../migrations/0015_community.sql", import.meta.url), "utf8");
+const SAVED_MIGRATION = readFileSync(new URL("../migrations/0016_community_saved_posts.sql", import.meta.url), "utf8");
+const SAVED_ROUTE = readFileSync(new URL("../app/api/community/posts/[postId]/saved/route.ts", import.meta.url), "utf8");
 
 type Bound = {
   first<T>(): Promise<T | null>;
@@ -83,7 +90,7 @@ function setup() {
     );
     CREATE TABLE profiles (user_id TEXT PRIMARY KEY, private_data TEXT);
   `);
-  raw.exec(MIGRATION);
+  raw.exec(`${MIGRATION}\n${SAVED_MIGRATION}`);
   for (const [id, email, name, publicName] of [
     [ACCOUNT_A, EMAIL_A, "Private Name A", "Docente A"],
     [ACCOUNT_B, EMAIL_B, "Private Name B", "Docente B"],
@@ -147,7 +154,35 @@ test("el estado para el usuario no expone email, ID de cuenta ni perfil docente 
     const status = await communityStatus(database, ACCOUNT_A);
     const serialized = JSON.stringify(status);
     assert.equal(status.profileConfigured, true);
+    assert.deepEqual(status.publicProfile, { displayName: "Docente A", avatarId: "avatar_01", bio: "Bio pública de Docente A" });
     assert.doesNotMatch(serialized, new RegExp(`${EMAIL_A}|${ACCOUNT_A}|Private Name|privado`, "u"));
+  } finally { raw.close(); }
+});
+
+test("el feed pagina por cursor en orden reciente y más comentado sin mezclar ordenamientos", async () => {
+  const { raw, database } = setup();
+  try {
+    await acceptCommunityRules(database, ACCOUNT_A, true, NOW);
+    await acceptCommunityRules(database, ACCOUNT_B, true, NOW);
+    const first = await createCommunityPost(database, ACCOUNT_A, "Post primero", NOW);
+    const second = await createCommunityPost(database, ACCOUNT_A, "Post segundo", NOW + 1000);
+    const third = await createCommunityPost(database, ACCOUNT_A, "Post tercero", NOW + 2000);
+    await createCommunityComment(database, ACCOUNT_B, first.id, "Una respuesta", NOW + 3000);
+    for (let index = 0; index < 3; index += 1) await createCommunityComment(database, ACCOUNT_B, second.id, `Respuesta ${index}`, NOW + 4000 + index);
+    for (let index = 0; index < 2; index += 1) await createCommunityComment(database, ACCOUNT_B, third.id, `Otra respuesta ${index}`, NOW + 5000 + index);
+
+    const recent = await listCommunityPostsPage(database, ACCOUNT_A, { sort: "recent", pageSize: 2 });
+    assert.deepEqual(recent.posts.map((post) => post.id), [third.id, second.id]);
+    assert.equal(recent.hasMore, true);
+    const recentNext = await listCommunityPostsPage(database, ACCOUNT_A, { sort: "recent", cursor: recent.nextCursor, pageSize: 2 });
+    assert.deepEqual(recentNext.posts.map((post) => post.id), [first.id]);
+    assert.equal(recentNext.hasMore, false);
+
+    const popular = await listCommunityPostsPage(database, ACCOUNT_A, { sort: "popular", pageSize: 1 });
+    assert.deepEqual(popular.posts.map((post) => post.id), [second.id]);
+    const popularNext = await listCommunityPostsPage(database, ACCOUNT_A, { sort: "popular", cursor: popular.nextCursor, pageSize: 1 });
+    assert.deepEqual(popularNext.posts.map((post) => post.id), [third.id]);
+    await assert.rejects(listCommunityPostsPage(database, ACCOUNT_A, { sort: "recent", cursor: popular.nextCursor }), (error: unknown) => Boolean(error && typeof error === "object" && "code" in error && error.code === "INVALID_CURSOR"));
   } finally { raw.close(); }
 });
 
@@ -329,4 +364,105 @@ test("la eliminación de cuenta contempla relaciones sociales, anonimiza autores
     assert.equal((raw.prepare("SELECT count(*) AS n FROM community_moderation_events WHERE post_id=?").get(postA.id) as { n: number }).n, 0);
     assert.equal((raw.prepare('SELECT count(*) AS n FROM "session" WHERE userId=?').get(ACCOUNT_A) as { n: number }).n, 0);
   } finally { raw.close(); }
+});
+
+test("Guardadas es privada, idempotente, paginada y solo usa autor/avatar del perfil público", async () => {
+  const { raw, database } = setup();
+  try {
+    await acceptCommunityRules(database, ACCOUNT_A, true, NOW);
+    await acceptCommunityRules(database, ACCOUNT_B, true, NOW);
+    const postA = await createCommunityPost(database, ACCOUNT_A, "Consulta privada guardada", NOW);
+    const postB = await createCommunityPost(database, ACCOUNT_B, "Otra consulta guardada", NOW + 1);
+    await rejectsCode(saveCommunityPost(database, "", postA.id, NOW), "AUTH_REQUIRED");
+
+    assert.deepEqual(await saveCommunityPost(database, ACCOUNT_A, postA.id, NOW + 2), { saved: true, alreadySaved: false });
+    assert.deepEqual(await saveCommunityPost(database, ACCOUNT_A, postA.id, NOW + 3), { saved: true, alreadySaved: true });
+    assert.deepEqual(await saveCommunityPost(database, ACCOUNT_B, postB.id, NOW + 4), { saved: true, alreadySaved: false });
+    assert.equal((raw.prepare("SELECT COUNT(*) AS count FROM community_saved_posts WHERE user_id=? AND post_id=?").get(ACCOUNT_A, postA.id) as { count: number }).count, 1);
+
+    const [pageA, pageB] = await Promise.all([
+      listCommunitySavedPostsPage(database, ACCOUNT_A),
+      listCommunitySavedPostsPage(database, ACCOUNT_B),
+    ]);
+    assert.deepEqual(pageA.posts.map((post) => post.id), [postA.id]);
+    assert.deepEqual(pageB.posts.map((post) => post.id), [postB.id]);
+    assert.deepEqual(await listSavedCommunityPostIds(database, ACCOUNT_A, [postA.id, postB.id]), [postA.id]);
+    assert.deepEqual(await listSavedCommunityPostIds(database, ACCOUNT_B, [postA.id, postB.id]), [postB.id]);
+
+    const publicFeed = await listCommunityPosts(database, ACCOUNT_A);
+    assert.doesNotMatch(JSON.stringify(publicFeed), /savedAt|savedBy|savedCount|community_saved_posts|principal@example|second@example|Private Name|550e8400-e29b-41d4-a716-446655440000|6ba7b810-9dad-41d1-80b4-00c04fd430c8/u);
+    const serializedSaved = JSON.stringify(pageA);
+    assert.match(serializedSaved, /Docente A/u);
+    assert.match(serializedSaved, /avatar_01/u);
+    assert.doesNotMatch(serializedSaved, /principal@example|Private Name|550e8400-e29b-41d4-a716-446655440000|provider|googleId|email/u);
+    assert.equal("savedAt" in pageA, false);
+    assert.equal("savedCount" in pageA, false);
+    assert.equal((await listCommunitySavedPostsPage(database, ACCOUNT_A, { pageSize: 1 })).hasMore, false);
+    assert.notEqual(postB.id, pageA.posts[0].id);
+  } finally { raw.close(); }
+});
+
+test("Guardadas conserva el texto actual, ordena por guardado reciente y pagina sin duplicados", async () => {
+  const { raw, database } = setup();
+  try {
+    await acceptCommunityRules(database, ACCOUNT_A, true, NOW);
+    await acceptCommunityRules(database, ACCOUNT_B, true, NOW);
+    const older = await createCommunityPost(database, ACCOUNT_A, "Texto inicial", NOW);
+    const newer = await createCommunityPost(database, ACCOUNT_B, "Publicación reciente", NOW + 1);
+    await saveCommunityPost(database, ACCOUNT_A, older.id, NOW + 10);
+    await saveCommunityPost(database, ACCOUNT_A, newer.id, NOW + 20);
+    await editCommunityPost(database, ACCOUNT_A, older.id, "Texto actualizado", NOW + 30);
+
+    const first = await listCommunitySavedPostsPage(database, ACCOUNT_A, { pageSize: 1 });
+    assert.equal(first.posts[0].id, newer.id);
+    assert.equal(first.hasMore, true);
+    assert.ok(first.nextCursor);
+    const second = await listCommunitySavedPostsPage(database, ACCOUNT_A, { pageSize: 1, cursor: first.nextCursor });
+    assert.equal(second.posts[0].id, older.id);
+    assert.equal(second.posts[0].text, "Texto actualizado");
+    assert.equal(second.hasMore, false);
+    assert.equal(new Set([...first.posts, ...second.posts].map((post) => post.id)).size, 2);
+  } finally { raw.close(); }
+});
+
+test("Guardadas no elude moderación, bloqueos ni eliminación de publicaciones", async () => {
+  const { raw, database } = setup();
+  try {
+    await acceptCommunityRules(database, ACCOUNT_A, true, NOW);
+    await acceptCommunityRules(database, ACCOUNT_B, true, NOW);
+    const moderated = await createCommunityPost(database, ACCOUNT_A, "Contenido moderado", NOW);
+    const blocked = await createCommunityPost(database, ACCOUNT_B, "Contenido bloqueado", NOW + 1);
+    const removable = await createCommunityPost(database, ACCOUNT_B, "Contenido eliminado", NOW + 2);
+    for (const post of [moderated, blocked, removable]) await saveCommunityPost(database, ACCOUNT_A, post.id, NOW + 3);
+    assert.equal((await listCommunitySavedPostsPage(database, ACCOUNT_A)).posts.length, 3);
+    raw.prepare("INSERT INTO community_moderators(user_id) VALUES (?)").run(ACCOUNT_B);
+    await moderateCommunityContent(database, ACCOUNT_B, { targetType: "post", targetId: moderated.id, action: "hide", reason: "spam" }, NOW + 4);
+    await rejectsCode(saveCommunityPost(database, ACCOUNT_A, moderated.id, NOW + 4), "NOT_FOUND");
+    await blockAuthorFromPost(database, ACCOUNT_A, blocked.id, NOW + 5);
+    assert.deepEqual((await listCommunitySavedPostsPage(database, ACCOUNT_A)).posts, []);
+    await deleteCommunityPost(database, ACCOUNT_B, removable.id);
+    assert.equal((raw.prepare("SELECT COUNT(*) AS count FROM community_saved_posts WHERE post_id=?").get(removable.id) as { count: number }).count, 0);
+    assert.deepEqual((await listCommunitySavedPostsPage(database, ACCOUNT_A)).posts, []);
+  } finally { raw.close(); }
+});
+
+test("quitar de Guardadas es privado e idempotente", async () => {
+  const { raw, database } = setup();
+  try {
+    await acceptCommunityRules(database, ACCOUNT_A, true, NOW);
+    await acceptCommunityRules(database, ACCOUNT_B, true, NOW);
+    const post = await createCommunityPost(database, ACCOUNT_A, "Importante", NOW);
+    await saveCommunityPost(database, ACCOUNT_A, post.id, NOW + 1);
+    await saveCommunityPost(database, ACCOUNT_B, post.id, NOW + 2);
+    assert.deepEqual(await removeCommunitySavedPost(database, ACCOUNT_A, post.id), { saved: false });
+    assert.deepEqual(await removeCommunitySavedPost(database, ACCOUNT_A, post.id), { saved: false });
+    assert.deepEqual((await listCommunitySavedPostsPage(database, ACCOUNT_A)).posts, []);
+    assert.deepEqual((await listCommunitySavedPostsPage(database, ACCOUNT_B)).posts.map((item) => item.id), [post.id]);
+  } finally { raw.close(); }
+});
+
+test("el endpoint Guardadas toma al propietario solo de la sesión servidor y no procesa IDs del cliente", () => {
+  assert.match(SAVED_ROUTE, /getAuthenticatedAccount\(request\)/u);
+  assert.match(SAVED_ROUTE, /account\.accountId/u);
+  assert.doesNotMatch(SAVED_ROUTE, /request\.json\(|body\.userId|body\.accountId|deviceId|googleId/u);
 });

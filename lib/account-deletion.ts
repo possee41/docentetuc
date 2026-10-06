@@ -26,6 +26,7 @@ export function accountDataDeletionStatements(accountId: string): IdentityStatem
     { sql: "DELETE FROM community_rate_limits WHERE user_id=?", values: [accountId] },
     { sql: "DELETE FROM community_reports WHERE reporter_user_id=?", values: [accountId] },
     { sql: "DELETE FROM community_blocks WHERE blocker_user_id=? OR blocked_user_id=?", values: [accountId, accountId] },
+    { sql: "DELETE FROM community_saved_posts WHERE user_id=?", values: [accountId] },
     { sql: "DELETE FROM community_posts WHERE author_user_id=?", values: [accountId] },
     { sql: "DELETE FROM community_comments WHERE author_user_id=?", values: [accountId] },
     { sql: "DELETE FROM community_rules_acceptances WHERE user_id=?", values: [accountId] },

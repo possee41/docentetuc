@@ -18,9 +18,9 @@ export function BottomNavigation({ items, active, onNavigate, className }: {
   className?: string;
 }) {
   return <nav className={cn("mobile-nav fixed z-40 flex items-center", className)} aria-label="Navegación principal">
-    {items.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => onNavigate(id)} aria-current={active === id ? "page" : undefined} className={cn("mobile-nav-item flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-semibold", active === id ? "is-active bg-[#0878be] text-white" : "text-[var(--text-secondary)]")}>
+    {items.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => onNavigate(id)} aria-current={active === id ? "page" : undefined} className={cn("mobile-nav-item flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-semibold", id === "vacantes" ? "flex-[1.45]" : id === "comunidad" ? "flex-[1.3]" : "flex-1", active === id ? "is-active bg-[#0878be] text-white" : "text-[var(--text-secondary)]")}>
       <Icon className={cn("size-5", active === id && "stroke-[2.6]")} aria-hidden="true" />
-      <span className="max-w-full truncate px-1">{label}</span>
+      <span className="whitespace-nowrap px-0 text-[.58rem]">{label}</span>
     </button>)}
   </nav>;
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hasAccountIdentitySchema, hasAuthSchema, hasCommunitySchema } from "./auth-schema.ts";
+import { hasAccountIdentitySchema, hasAuthSchema, hasCommunitySavedPostsSchema, hasCommunitySchema } from "./auth-schema.ts";
 
 test("auth D1 schema gate enables auth only when all required tables exist", async () => {
   let boundValues: string[] = [];
@@ -64,4 +64,13 @@ test("las operaciones de identidad requieren la tabla aditiva de instalaciones",
   assert.equal(await hasAccountIdentitySchema(database), true);
   const unavailable = { prepare: () => ({ bind: () => ({ first: async () => { throw new Error("missing schema"); } }) }) };
   assert.equal(await hasAccountIdentitySchema(unavailable), false);
+});
+
+test("Guardadas requiere su tabla aditiva sin deshabilitar el esquema base de Comunidad", async () => {
+  const database = {
+    prepare: () => ({ bind: (name: string) => ({ first: async <T>() => ({ count: name === "community_saved_posts" ? 1 : 0 } as T) }) }),
+  };
+  assert.equal(await hasCommunitySavedPostsSchema(database), true);
+  const partial = { prepare: () => ({ bind: () => ({ first: async <T>() => ({ count: 0 } as T) }) }) };
+  assert.equal(await hasCommunitySavedPostsSchema(partial), false);
 });

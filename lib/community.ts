@@ -9,6 +9,7 @@ export const COMMUNITY_REPORT_REASONS = [
 export type CommunityReportReason = typeof COMMUNITY_REPORT_REASONS[number];
 export type CommunityTargetType = "post" | "comment";
 export type CommunityModerationAction = "hide" | "restore" | "remove";
+export type CommunityFeedSort = "recent" | "popular";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RATE_LIMITS = { post: 5, comment: 30, report: 10 } as const;
@@ -61,6 +62,8 @@ export function communityErrorResponse(error: unknown) {
       DUPLICATE_REPORT: "Ya reportaste este contenido.",
       INVALID_REASON: "Elegí un motivo de reporte válido.",
       INVALID_TARGET: "El contenido indicado no es válido para esta acción.",
+      INVALID_CURSOR: "No se pudo continuar con esta página. Actualizá el feed e intentá de nuevo.",
+      INVALID_SORT: "Elegí un orden válido para las publicaciones.",
       SELF_BLOCK: "No podés bloquear tu propia cuenta.",
       DUPLICATE_BLOCK: "Esta cuenta ya está bloqueada.",
       BLOCK_NOT_FOUND: "El bloqueo ya no está disponible.",
@@ -140,12 +143,14 @@ export async function acceptCommunityRules(database: CommunityDatabase, accountI
 
 export async function communityStatus(database: CommunityDatabase, accountId: string | null) {
   let profileConfigured = false;
+  let publicProfile: PublicProfile | null = null;
   let acceptedRulesVersion: string | null = null;
   if (accountId && validId(accountId)) {
     const row = await database.prepare("SELECT display_name, avatar_id, bio FROM public_profiles WHERE user_id=?")
       .bind(accountId).first<Record<string, unknown>>();
     const validation = row && validatePublicProfile({ displayName: row.display_name, avatarId: row.avatar_id, bio: row.bio });
     profileConfigured = Boolean(validation?.ok && validation.value.displayName);
+    if (validation?.ok && profileConfigured) publicProfile = validation.value;
     const acceptance = await database.prepare("SELECT rules_version FROM community_rules_acceptances WHERE user_id=?")
       .bind(accountId).first<{ rules_version: string }>();
     acceptedRulesVersion = acceptance?.rules_version ?? null;
@@ -153,6 +158,7 @@ export async function communityStatus(database: CommunityDatabase, accountId: st
   return {
     authenticated: Boolean(accountId),
     profileConfigured,
+    publicProfile,
     rulesVersion: COMMUNITY_RULES_VERSION,
     acceptedRulesVersion,
     rulesText: COMMUNITY_RULES_TEXT,
@@ -170,27 +176,71 @@ export type CommunityPost = {
   author: Pick<PublicProfile, "displayName" | "avatarId" | "bio">;
 };
 
-export async function listCommunityPosts(database: CommunityDatabase, viewerId: string | null): Promise<CommunityPost[]> {
+type FeedCursor = { sort: CommunityFeedSort; createdAt: string; id: string; commentCount: number };
+type CommunityPostPage = { posts: CommunityPost[]; nextCursor: string | null; hasMore: boolean };
+type SavedPostCursor = { savedAt: string; postId: string };
+
+const POST_VISIBLE_TO_VIEWER = `NOT EXISTS(
+  SELECT 1 FROM community_blocks b WHERE b.blocker_user_id=? AND b.blocked_user_id=p.author_user_id
+) AND (p.author_user_id=? OR NOT EXISTS(
+  SELECT 1 FROM community_blocks b WHERE b.blocker_user_id=p.author_user_id AND b.blocked_user_id=?
+))`;
+
+function encodeFeedCursor(post: CommunityPost, sort: CommunityFeedSort) {
+  return encodeURIComponent(JSON.stringify({ v: 1, sort, createdAt: post.createdAt, id: post.id, commentCount: post.commentCount }));
+}
+
+function decodeFeedCursor(value: string | null, sort: CommunityFeedSort): FeedCursor | null {
+  if (!value) return null;
+  if (value.length > 512) throwCommunity("INVALID_CURSOR", 400);
+  try {
+    const cursor = JSON.parse(decodeURIComponent(value)) as Record<string, unknown>;
+    if (cursor.v !== 1 || cursor.sort !== sort || typeof cursor.createdAt !== "string" || !Number.isFinite(Date.parse(cursor.createdAt)) || !validId(cursor.id) || !Number.isSafeInteger(cursor.commentCount) || Number(cursor.commentCount) < 0) {
+      throwCommunity("INVALID_CURSOR", 400);
+    }
+    return { sort, createdAt: cursor.createdAt, id: cursor.id, commentCount: Number(cursor.commentCount) };
+  } catch (error) {
+    if (error instanceof CommunityError) throw error;
+    throwCommunity("INVALID_CURSOR", 400);
+  }
+}
+
+export async function listCommunityPostsPage(database: CommunityDatabase, viewerId: string | null, options: {
+  sort?: CommunityFeedSort; cursor?: string | null; pageSize?: number;
+} = {}): Promise<CommunityPostPage> {
+  const sort: CommunityFeedSort = options.sort === "popular" ? "popular" : "recent";
+  const cursor = decodeFeedCursor(options.cursor || null, sort);
+  const pageSize = Math.max(1, Math.min(30, Math.trunc(options.pageSize || 20)));
+  const cursorWhere = !cursor ? "" : sort === "popular"
+    ? "WHERE comment_count < ? OR (comment_count=? AND (created_at < ? OR (created_at=? AND id < ?)))"
+    : "WHERE created_at < ? OR (created_at=? AND id < ?)";
+  const cursorValues = !cursor ? [] : sort === "popular"
+    ? [cursor.commentCount, cursor.commentCount, cursor.createdAt, cursor.createdAt, cursor.id]
+    : [cursor.createdAt, cursor.createdAt, cursor.id];
+  const ordering = sort === "popular" ? "comment_count DESC, created_at DESC, id DESC" : "created_at DESC, id DESC";
   const rows = await database.prepare(`
-    SELECT p.id, p.body, p.created_at, p.edited_at, p.author_user_id,
-      pp.display_name, pp.avatar_id, pp.bio,
-      (SELECT COUNT(*) FROM community_comments c
-        WHERE c.post_id=p.id AND c.moderation_status='visible'
-          AND (? IS NULL OR (
-            NOT EXISTS(SELECT 1 FROM community_blocks b WHERE b.blocker_user_id=? AND b.blocked_user_id=c.author_user_id)
-            AND (c.author_user_id=? OR NOT EXISTS(SELECT 1 FROM community_blocks b WHERE b.blocker_user_id=c.author_user_id AND b.blocked_user_id=?))
-          ))) AS comment_count
-    FROM community_posts p
-    JOIN public_profiles pp ON pp.user_id=p.author_user_id
-    WHERE p.moderation_status='visible' AND length(trim(pp.display_name)) > 0
-      AND pp.avatar_id IN (${PUBLIC_AVATAR_IDS.map(() => "?").join(",")})
-      AND (? IS NULL OR (
-        NOT EXISTS(SELECT 1 FROM community_blocks b WHERE b.blocker_user_id=? AND b.blocked_user_id=p.author_user_id)
-        AND (p.author_user_id=? OR NOT EXISTS(SELECT 1 FROM community_blocks b WHERE b.blocker_user_id=p.author_user_id AND b.blocked_user_id=?))
-      ))
-    ORDER BY p.created_at DESC, p.id DESC LIMIT 50
-  `).bind(viewerId, viewerId, viewerId, viewerId, ...PUBLIC_AVATAR_IDS, viewerId, viewerId, viewerId, viewerId).all<Record<string, unknown>>();
-  return (rows.results || []).flatMap((row) => {
+    WITH visible_posts AS (
+      SELECT p.id, p.body, p.created_at, p.edited_at, p.author_user_id,
+        pp.display_name, pp.avatar_id, pp.bio, COUNT(c.id) AS comment_count
+      FROM community_posts p
+      JOIN public_profiles pp ON pp.user_id=p.author_user_id
+      LEFT JOIN community_comments c ON c.post_id=p.id AND c.moderation_status='visible'
+        AND (? IS NULL OR (
+          NOT EXISTS(SELECT 1 FROM community_blocks b WHERE b.blocker_user_id=? AND b.blocked_user_id=c.author_user_id)
+          AND (c.author_user_id=? OR NOT EXISTS(SELECT 1 FROM community_blocks b WHERE b.blocker_user_id=c.author_user_id AND b.blocked_user_id=?))
+        ))
+      WHERE p.moderation_status='visible' AND length(trim(pp.display_name)) > 0
+        AND pp.avatar_id IN (${PUBLIC_AVATAR_IDS.map(() => "?").join(",")})
+        AND (? IS NULL OR (
+          NOT EXISTS(SELECT 1 FROM community_blocks b WHERE b.blocker_user_id=? AND b.blocked_user_id=p.author_user_id)
+          AND (p.author_user_id=? OR NOT EXISTS(SELECT 1 FROM community_blocks b WHERE b.blocker_user_id=p.author_user_id AND b.blocked_user_id=?))
+        ))
+      GROUP BY p.id, p.body, p.created_at, p.edited_at, p.author_user_id, pp.display_name, pp.avatar_id, pp.bio
+    )
+    SELECT * FROM visible_posts ${cursorWhere}
+    ORDER BY ${ordering} LIMIT ?
+  `).bind(viewerId, viewerId, viewerId, viewerId, ...PUBLIC_AVATAR_IDS, viewerId, viewerId, viewerId, viewerId, ...cursorValues, pageSize + 1).all<Record<string, unknown>>();
+  const posts = (rows.results || []).flatMap((row) => {
     const author = validatePublicProfile({ displayName: row.display_name, avatarId: row.avatar_id, bio: row.bio });
     if (!author?.ok) return [];
     return [{
@@ -201,6 +251,131 @@ export async function listCommunityPosts(database: CommunityDatabase, viewerId: 
       author: author.value,
     }];
   });
+  const hasMore = posts.length > pageSize;
+  const pagePosts = posts.slice(0, pageSize);
+  return { posts: pagePosts, hasMore, nextCursor: hasMore && pagePosts.length ? encodeFeedCursor(pagePosts[pagePosts.length - 1], sort) : null };
+}
+
+export async function listCommunityPosts(database: CommunityDatabase, viewerId: string | null): Promise<CommunityPost[]> {
+  return (await listCommunityPostsPage(database, viewerId, { pageSize: 30 })).posts;
+}
+
+function encodeSavedPostCursor(savedAt: string, postId: string) {
+  return encodeURIComponent(JSON.stringify({ v: 1, savedAt, postId }));
+}
+
+function decodeSavedPostCursor(value: string | null): SavedPostCursor | null {
+  if (!value) return null;
+  if (value.length > 512) throwCommunity("INVALID_CURSOR", 400);
+  try {
+    const cursor = JSON.parse(decodeURIComponent(value)) as Record<string, unknown>;
+    if (cursor.v !== 1 || typeof cursor.savedAt !== "string" || !Number.isFinite(Date.parse(cursor.savedAt)) || !validId(cursor.postId)) {
+      throwCommunity("INVALID_CURSOR", 400);
+    }
+    return { savedAt: cursor.savedAt, postId: cursor.postId };
+  } catch (error) {
+    if (error instanceof CommunityError) throw error;
+    throwCommunity("INVALID_CURSOR", 400);
+  }
+}
+
+/** Private, current-version posts only; no saved timestamp or other user's relation is returned. */
+export async function listCommunitySavedPostsPage(database: CommunityDatabase, accountId: string, options: {
+  cursor?: string | null; pageSize?: number;
+} = {}): Promise<CommunityPostPage> {
+  if (!validId(accountId)) throwCommunity("AUTH_REQUIRED", 401);
+  const cursor = decodeSavedPostCursor(options.cursor || null);
+  const pageSize = Math.max(1, Math.min(30, Math.trunc(options.pageSize || 20)));
+  const cursorWhere = cursor ? "AND (s.saved_at < ? OR (s.saved_at=? AND p.id < ?))" : "";
+  const cursorValues = cursor ? [cursor.savedAt, cursor.savedAt, cursor.postId] : [];
+  const rows = await database.prepare(`
+    SELECT p.id, p.body, p.created_at, p.edited_at, p.author_user_id, s.saved_at,
+      pp.display_name, pp.avatar_id, pp.bio, COUNT(c.id) AS comment_count
+    FROM community_saved_posts s
+    JOIN community_posts p ON p.id=s.post_id
+    JOIN public_profiles pp ON pp.user_id=p.author_user_id
+    LEFT JOIN community_comments c ON c.post_id=p.id AND c.moderation_status='visible'
+      AND NOT EXISTS(SELECT 1 FROM community_blocks b WHERE b.blocker_user_id=? AND b.blocked_user_id=c.author_user_id)
+      AND (c.author_user_id=? OR NOT EXISTS(SELECT 1 FROM community_blocks b WHERE b.blocker_user_id=c.author_user_id AND b.blocked_user_id=?))
+    WHERE s.user_id=? AND p.moderation_status='visible' AND length(trim(pp.display_name)) > 0
+      AND pp.avatar_id IN (${PUBLIC_AVATAR_IDS.map(() => "?").join(",")})
+      AND ${POST_VISIBLE_TO_VIEWER} ${cursorWhere}
+    GROUP BY p.id, p.body, p.created_at, p.edited_at, p.author_user_id, s.saved_at,
+      pp.display_name, pp.avatar_id, pp.bio
+    ORDER BY s.saved_at DESC, p.id DESC LIMIT ?
+  `).bind(accountId, accountId, accountId, accountId, ...PUBLIC_AVATAR_IDS, accountId, accountId, accountId, ...cursorValues, pageSize + 1).all<Record<string, unknown>>();
+  const visible = (rows.results || []).flatMap((row) => {
+    const author = validatePublicProfile({ displayName: row.display_name, avatarId: row.avatar_id, bio: row.bio });
+    if (!author?.ok) return [];
+    return [{
+      savedAt: String(row.saved_at),
+      post: {
+        id: String(row.id), text: String(row.body), createdAt: String(row.created_at),
+        editedAt: typeof row.edited_at === "string" ? row.edited_at : null,
+        commentCount: Number(row.comment_count) || 0,
+        isMine: row.author_user_id === accountId,
+        author: author.value,
+      } satisfies CommunityPost,
+    }];
+  });
+  const hasMore = visible.length > pageSize;
+  const page = visible.slice(0, pageSize);
+  const last = page.at(-1);
+  return {
+    posts: page.map(({ post }) => post),
+    hasMore,
+    nextCursor: hasMore && last ? encodeSavedPostCursor(last.savedAt, last.post.id) : null,
+  };
+}
+
+/** Return only this session's saved IDs for a bounded page of already-visible posts. */
+export async function listSavedCommunityPostIds(database: CommunityDatabase, accountId: string, postIds: unknown[]) {
+  if (!validId(accountId)) throwCommunity("AUTH_REQUIRED", 401);
+  if (!Array.isArray(postIds) || postIds.length > 30 || postIds.some((id) => !validId(id))) throwCommunity("INVALID_TARGET", 400);
+  const ids = [...new Set(postIds as string[])];
+  if (!ids.length) return [];
+  const rows = await database.prepare(`
+    SELECT p.id FROM community_saved_posts s
+    JOIN community_posts p ON p.id=s.post_id
+    JOIN public_profiles pp ON pp.user_id=p.author_user_id
+    WHERE s.user_id=? AND p.id IN (${ids.map(() => "?").join(",")})
+      AND p.moderation_status='visible' AND length(trim(pp.display_name)) > 0
+      AND pp.avatar_id IN (${PUBLIC_AVATAR_IDS.map(() => "?").join(",")})
+      AND ${POST_VISIBLE_TO_VIEWER}
+  `).bind(accountId, ...ids, ...PUBLIC_AVATAR_IDS, accountId, accountId, accountId).all<{ id: string }>();
+  return (rows.results || []).map((row) => String(row.id));
+}
+
+/** Insert-select makes visibility and saved-state creation one D1 statement; the primary key is the duplicate guard. */
+export async function saveCommunityPost(database: CommunityDatabase, accountId: string, postId: string, now = Date.now()) {
+  if (!validId(accountId)) throwCommunity("AUTH_REQUIRED", 401);
+  if (!validId(postId)) throwCommunity("NOT_FOUND", 404);
+  const result = await database.prepare(`
+    INSERT OR IGNORE INTO community_saved_posts(user_id, post_id, saved_at)
+    SELECT ?, p.id, ? FROM community_posts p
+    JOIN public_profiles pp ON pp.user_id=p.author_user_id
+    WHERE p.id=? AND p.moderation_status='visible' AND length(trim(pp.display_name)) > 0
+      AND pp.avatar_id IN (${PUBLIC_AVATAR_IDS.map(() => "?").join(",")})
+      AND ${POST_VISIBLE_TO_VIEWER}
+  `).bind(accountId, new Date(now).toISOString(), postId, ...PUBLIC_AVATAR_IDS, accountId, accountId, accountId).run();
+  if (Number(result.meta?.changes ?? 0) > 0) return { saved: true, alreadySaved: false };
+  const existing = await database.prepare(`
+    SELECT 1 AS found FROM community_saved_posts s
+    JOIN community_posts p ON p.id=s.post_id
+    JOIN public_profiles pp ON pp.user_id=p.author_user_id
+    WHERE s.user_id=? AND p.id=? AND p.moderation_status='visible'
+      AND length(trim(pp.display_name)) > 0 AND pp.avatar_id IN (${PUBLIC_AVATAR_IDS.map(() => "?").join(",")})
+      AND ${POST_VISIBLE_TO_VIEWER}
+  `).bind(accountId, postId, ...PUBLIC_AVATAR_IDS, accountId, accountId, accountId).first();
+  if (existing) return { saved: true, alreadySaved: true };
+  throwCommunity("NOT_FOUND", 404);
+}
+
+export async function removeCommunitySavedPost(database: CommunityDatabase, accountId: string, postId: string) {
+  if (!validId(accountId)) throwCommunity("AUTH_REQUIRED", 401);
+  if (!validId(postId)) throwCommunity("NOT_FOUND", 404);
+  await database.prepare("DELETE FROM community_saved_posts WHERE user_id=? AND post_id=?").bind(accountId, postId).run();
+  return { saved: false };
 }
 
 export type CommunityComment = {

@@ -50,7 +50,7 @@ export function PublicProfileSection({ profile, headers, onSaved }: { profile: P
     <h2 id="public-profile-title" className="mt-1 text-xl font-black">Mi perfil público</h2>
     <p className="mt-2 text-sm text-[var(--text-secondary)]">Estos son los datos que podrán mostrarse a otros usuarios cuando utilices las funciones de Comunidad de DocenteTuc.</p>
     <p className="mt-3 rounded-2xl border border-[var(--info-border)] bg-[var(--info-bg)] p-3 text-sm text-[var(--info-text)]">Tu perfil público permanece separado del perfil docente privado. Participar en Comunidad requiere sesión, nombre público, avatar y aceptación de normas.</p>
-    <Link href="/comunidad" className="mt-4 inline-flex min-h-11 items-center rounded-xl border border-[var(--border)] bg-white px-4 font-bold text-[#0878be]">Abrir Comunidad · prueba 1.1</Link>
+    <Link href="/comunidad" className="mt-4 inline-flex min-h-11 items-center rounded-xl border border-[var(--border)] bg-white px-4 font-bold text-[#0878be]">Abrir Comunidad</Link>
 
     {!isEditing ? <div className="mt-5 space-y-4">
       <div className="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-secondary)] p-4">

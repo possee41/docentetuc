@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Bell, BookOpen, Bookmark, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Clock3, Download, ExternalLink, GraduationCap, Home, Mail, MapPin, Menu, Moon, Phone, RefreshCw, Search, SlidersHorizontal, Sparkles, Star, Sun, UserRound, WifiOff, X } from "lucide-react";
+import { Bell, BookOpen, Bookmark, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Clock3, Download, ExternalLink, GraduationCap, Home, Mail, MapPin, Menu, MessagesSquare, Moon, Phone, RefreshCw, Search, SlidersHorizontal, Sparkles, Star, Sun, UserRound, WifiOff, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,12 +39,12 @@ import { HomeBannerContext } from "@/components/home-banner-context";
 import { PublicProfileSection } from "@/components/public-profile-section";
 import { AccountSignInSection } from "@/components/account-sign-in-section";
 
-type View = "inicio" | "vacantes" | "capacitaciones" | "junta" | "informacion" | "agenda" | "alertas" | "guardados" | "perfil";
+type View = "inicio" | "vacantes" | "comunidad" | "capacitaciones" | "junta" | "informacion" | "agenda" | "alertas" | "guardados" | "perfil";
 type Theme = "light" | "dark";
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
 const navigation: [View, string, typeof Home][] = [
-  ["inicio", "Inicio", Home], ["vacantes", "Designaciones", BriefcaseBusiness], ["capacitaciones", "Capacitaciones", GraduationCap],
+  ["inicio", "Inicio", Home], ["vacantes", "Designaciones", BriefcaseBusiness], ["comunidad", "Comunidad", MessagesSquare], ["capacitaciones", "Capacitaciones", GraduationCap],
   ["junta", "Padrones y comunicados", BookOpen], ["informacion", "Información útil", Building2], ["agenda", "Agenda", CalendarDays], ["guardados", "Mis guardados", Bookmark], ["perfil", "Perfil", UserRound],
 ];
 const viewTitles: Record<View, [string, string]> = {
@@ -53,6 +53,7 @@ const viewTitles: Record<View, [string, string]> = {
   informacion: ["Información útil", "Organismos, trámites y servicios oficiales organizados por necesidad"],
   agenda: ["Agenda docente", "Fechas y vencimientos de las publicaciones"], alertas: ["Alertas", "Novedades detectadas sin duplicados"],
   guardados: ["Mis guardados", "Publicaciones que elegiste conservar"], perfil: ["Tu perfil docente", "Preferencias usadas para ordenar la información"],
+  comunidad: ["Comunidad Docente", "Preguntá, compartí y ayudá a otros docentes"],
 };
 const SIME_LOGIN = "https://sime.educaciontuc.gov.ar/Login/Login";
 const FDCI_LOGIN = "https://capacitaciondocente.educaciontuc.gov.ar/docentes";
@@ -61,7 +62,7 @@ const EDUCATION_LEVELS = ["Inicial", "Primario", "Secundario", "Superior"];
 
 function AppSidebarNavigation({ view, onNavigate }: { view: View; onNavigate: (view: View) => void }) {
   const { setOpen, setOpenMobile } = useSidebar();
-  const groups: [string, View[]][] = [["Uso diario", ["inicio", "vacantes", "capacitaciones", "agenda"]], ["Consultas", ["junta", "informacion"]], ["Personal", ["guardados", "perfil"]]];
+  const groups: [string, View[]][] = [["Uso diario", ["inicio", "vacantes", "comunidad", "capacitaciones", "agenda"]], ["Consultas", ["junta", "informacion"]], ["Personal", ["guardados", "perfil"]]];
   return <SidebarMenu>{groups.map(([group, ids]) => <div key={group} className="mb-4"><p className="px-3 pb-1 text-[10px] font-black uppercase tracking-[.16em] text-white/45">{group}</p>{ids.map((id) => { const entry = navigation.find(([itemId]) => itemId === id)!; const [, label, Icon] = entry; return <SidebarMenuItem key={id}><SidebarMenuButton isActive={view === id} onClick={() => { onNavigate(id); setOpen(false); setOpenMobile(false); }} className="h-10 rounded-xl bg-white/8 px-3 font-semibold text-white hover:bg-white/15 hover:text-white data-[active=true]:bg-[#2eb6f3] data-[active=true]:font-black data-[active=true]:text-white"><Icon className="size-5" /><span>{label}</span></SidebarMenuButton></SidebarMenuItem>; })}</div>)}</SidebarMenu>;
 }
 
@@ -117,6 +118,7 @@ const enrollmentLabel = (item: Publication, now = new Date()) => {
 const lifecycleLabel = (status: ReturnType<typeof publicationLifecycle>) => ({ ACTIVE: "Vigente", UPCOMING: "Próxima apertura", CLOSED: "Cerrada", EXPIRED: "Vencida", REMOVED_FROM_SOURCE: "Ya no aparece en la fuente", UNKNOWN: "Estado sin confirmar" })[status];
 
 export default function DocenteApp() {
+  const router = useRouter();
   const [data, setData] = useState<AppData | null>(null);
   const [view, setView] = useState<View>("inicio");
   const [query, setQuery] = useState("");
@@ -341,12 +343,16 @@ export default function DocenteApp() {
   const hasTrainingTerritoryData = (data?.publications || []).some((item) => item.kind === "capacitacion" && trainingPlatform(item.source) === "fdci" && item.circuit && item.circuit !== "UNKNOWN");
   const designationMap = new Map((data?.designations || []).map((item) => [item.publication_id, item]));
   const roleOptions = [...new Set((data?.publications || []).filter((item) => item.kind === "vacante").map((item) => designationFacts(item).role).filter(Boolean))].slice(0, 80);
+  const navigateToView = (target: View, term = "") => {
+    if (target === "comunidad") { router.push("/comunidad"); return; }
+    setView(target); setQuery(term); setDesignationQuery(""); setFilter(target === "informacion" || target === "junta" ? "todas" : "para-mi");
+  };
   const openDesignationOfficial = (item: Publication) => { localStorage.setItem("docentetuc-pending-designation", item.id); window.open(item.official_url, "_blank", "noopener,noreferrer"); };
   return (
     <SidebarProvider defaultOpen className="dt-app-shell" style={{ "--sidebar-width": "17rem" } as CSSProperties}>
       <Sidebar className="border-r border-white/10 text-white backdrop-blur-xl" collapsible="offcanvas">
         <SidebarHeader className="p-5"><button onClick={() => setView("inicio")} className="flex items-center gap-3 text-left"><Image src="/icon-192.png" alt="" width={48} height={48} unoptimized className="size-12 rounded-2xl shadow-sm" /><span><span className="block text-xl font-black">DocenteTuc</span><span className="block text-xs text-white/55">Información docente</span></span></button></SidebarHeader>
-        <SidebarContent className="px-3"><AppSidebarNavigation view={view} onNavigate={(id) => { setView(id); setQuery(""); setFilter(["guardados", "informacion"].includes(id) ? "todas" : "para-mi"); }} /></SidebarContent>
+        <SidebarContent className="px-3"><AppSidebarNavigation view={view} onNavigate={(id) => navigateToView(id)} /></SidebarContent>
         <SidebarFooter className="p-5"><p className="text-xs leading-relaxed text-white/45">Herramienta independiente. La fuente oficial prevalece siempre.</p></SidebarFooter>
       </Sidebar>
 
@@ -363,7 +369,7 @@ export default function DocenteApp() {
         {offline && <div className="flex items-center justify-center gap-2 bg-[#fff3dd] px-4 py-2 text-sm font-semibold text-[#7d541b]"><WifiOff className="size-4" />Sin conexión. Podés consultar la última información cargada.</div>}
 
         <div className="mobile-content mx-auto w-full max-w-7xl p-4 md:p-8">
-      {view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={(target, term) => { setView(target); setQuery(term || ""); setDesignationQuery(""); setFilter(target === "informacion" || target === "junta" ? "todas" : "para-mi"); }} loading={loading} error={loadError} />
+      {view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={navigateToView} loading={loading} error={loadError} />
         : view === "perfil" ? <>
           <section className="mb-5 rounded-3xl border border-[var(--border)] bg-[var(--surface-secondary)] p-4 sm:p-5" aria-labelledby="accounts-access-title">
             <div className="mb-4">
@@ -388,7 +394,7 @@ export default function DocenteApp() {
         </div>
 
         {aiMode === "closed" && !reminderPublication && <AIWidget onOpen={() => openAI({ type: view, title: viewTitles[view][0] })} />}
-        <BottomNavigation items={navigation.filter(([id]) => ["inicio", "vacantes", "capacitaciones", "informacion", "agenda"].includes(id)).map(([id, label, icon]) => ({ id, label: id === "informacion" ? "Útil" : label, icon }))} active={view} onNavigate={(id) => { const target = id as View; setView(target); setFilter(target === "informacion" ? "todas" : "para-mi"); }} />
+        <BottomNavigation items={navigation.filter(([id]) => ["inicio", "vacantes", "comunidad", "agenda", "perfil"].includes(id)).map(([id, label, icon]) => ({ id, label: id === "vacantes" ? "Designaciones" : id === "perfil" ? "Perfil" : label, icon }))} active={view} onNavigate={(id) => navigateToView(id as View)} />
         </AppBackground>
       </SidebarInset>
 
@@ -521,9 +527,14 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
       </>}
     </section>
 
-    <section className="home-shortcuts" aria-labelledby="home-shortcuts-title"><div className="home-section-title"><div><p>ACCESOS RÁPIDOS</p><h2 id="home-shortcuts-title">Todo lo que necesitás</h2></div></div><div className="home-shortcut-grid">{homeShortcuts.map(({ label, caption, icon: Icon, view, image, query }) => <button key={label} type="button" className={`home-shortcut home-shortcut-${image}`} onClick={() => onView(view, query)}><span className="home-shortcut-icon"><Icon className="size-6" aria-hidden="true" /></span><span className="home-shortcut-copy"><strong>{label}</strong><small>{caption}</small></span><ChevronRight className="home-shortcut-arrow size-4" aria-hidden="true" /></button>)}</div></section>
+    <button type="button" onClick={() => onView("comunidad")} className="home-section flex w-full items-center gap-4 rounded-2xl p-4 text-left transition hover:border-sky-200 hover:shadow-sm sm:p-5">
+      <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-sky-100 text-sky-700"><MessagesSquare className="size-6" aria-hidden="true" /></span>
+      <span className="min-w-0 flex-1"><span className="block text-xs font-black uppercase tracking-[.14em] text-sky-700">Comunidad Docente</span><span className="mt-1 block font-extrabold text-[var(--text-primary)]">Preguntá, compartí y ayudá a otros docentes</span><span className="mt-1 block text-sm text-[var(--text-muted)]">Conversaciones y respuestas sobre docencia.</span></span><ChevronRight className="size-5 shrink-0 text-sky-700" aria-hidden="true" />
+    </button>
 
     <section className="home-section home-today"><div className="home-section-title"><div><p>RESUMEN DEL DÍA</p><h2>Hoy en tu actividad docente</h2></div></div><div className="home-summary"><button onClick={() => onView("agenda")}><CalendarDays className="size-5" /><span><strong>{todayEvents}</strong> {todayEvents === 1 ? "evento" : "eventos"}</span><ChevronRight className="size-4" /></button><button onClick={() => onView("vacantes")}><BriefcaseBusiness className="size-5" /><span><strong>{vacancies.length}</strong> oportunidades compatibles</span><ChevronRight className="size-4" /></button><button onClick={() => onView("alertas")}><Bell className="size-5" /><span><strong>{unread.length}</strong> {unread.length === 1 ? "alerta relevante" : "alertas relevantes"}</span><ChevronRight className="size-4" /></button></div></section>
+    <section className="home-shortcuts" aria-labelledby="home-shortcuts-title"><div className="home-section-title"><div><p>ACCESOS RÁPIDOS</p><h2 id="home-shortcuts-title">Todo lo que necesitás</h2></div></div><div className="home-shortcut-grid">{homeShortcuts.map(({ label, caption, icon: Icon, view, image, query }) => <button key={label} type="button" className={`home-shortcut home-shortcut-${image}`} onClick={() => onView(view, query)}><span className="home-shortcut-icon"><Icon className="size-6" aria-hidden="true" /></span><span className="home-shortcut-copy"><strong>{label}</strong><small>{caption}</small></span><ChevronRight className="home-shortcut-arrow size-4" aria-hidden="true" /></button>)}</div></section>
+
 
     <section className="home-split"><button onClick={() => onView("agenda")}><span className="home-kicker">PRÓXIMO · AGENDA</span>{nextAgendaEntry ? <><strong>{nextAgendaEntry.title}</strong><small>{dateLabel(nextAgendaEntry.startsAt, true)}</small></> : <><strong>Agenda al día</strong><small>Creá un evento personal cuando lo necesites.</small></>}<span>Ver agenda <ChevronRight className="size-4" /></span></button><button onClick={() => onView("vacantes")}><span className="home-kicker">DESIGNACIONES PARA VOS</span>{vacancies[0] ? <><strong>{vacancies[0].title}</strong><small>{vacancies.length} coincidencias · mejor {matchResult(vacancies[0]).score}%</small></> : <><strong>Sin coincidencias nuevas</strong><small>Te avisaremos cuando aparezcan.</small></>}<span>Ver designaciones <ChevronRight className="size-4" /></span></button></section>
 

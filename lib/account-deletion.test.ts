@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { accountDataDeletionStatements } from "./account-deletion.ts";
 
 const COMMUNITY_MIGRATION = readFileSync(new URL("../migrations/0015_community.sql", import.meta.url), "utf8");
+const SAVED_POSTS_MIGRATION = readFileSync(new URL("../migrations/0016_community_saved_posts.sql", import.meta.url), "utf8");
 
 const ACCOUNT_A = "550e8400-e29b-41d4-a716-446655440000";
 const ACCOUNT_B = "6ba7b810-9dad-41d1-80b4-00c04fd430c8";
@@ -35,6 +36,7 @@ test("eliminación autenticada borra todos los datos propios y vinculados, no lo
       CREATE TABLE profiles (user_id TEXT PRIMARY KEY);
       CREATE TABLE publications (id TEXT PRIMARY KEY);`);
     db.exec(COMMUNITY_MIGRATION);
+    db.exec(SAVED_POSTS_MIGRATION);
     for (const [id, email] of [[ACCOUNT_A, "a@example.invalid"], [ACCOUNT_B, "b@example.invalid"]]) {
       db.prepare('INSERT INTO "user" VALUES (?,?)').run(id, email);
       db.prepare('INSERT INTO "account" VALUES (?,?)').run(`${id}:google`, id);
@@ -60,6 +62,7 @@ test("eliminación autenticada borra todos los datos propios y vinculados, no lo
     const postA = "650e8400-e29b-41d4-a716-446655440001", postB = "650e8400-e29b-41d4-a716-446655440002";
     const commentA = "650e8400-e29b-41d4-a716-446655440003", commentB = "650e8400-e29b-41d4-a716-446655440004";
     db.prepare("INSERT INTO community_posts(id, author_user_id, body) VALUES (?, ?, 'post A'), (?, ?, 'post B')").run(postA, ACCOUNT_A, postB, ACCOUNT_B);
+    db.prepare("INSERT INTO community_saved_posts(user_id, post_id) VALUES (?, ?), (?, ?)").run(ACCOUNT_A, postA, ACCOUNT_B, postB);
     db.prepare("INSERT INTO community_comments(id, post_id, author_user_id, body) VALUES (?, ?, ?, 'comment A'), (?, ?, ?, 'comment B')").run(commentA, postB, ACCOUNT_A, commentB, postA, ACCOUNT_B);
     db.prepare("INSERT INTO community_reports(id, reporter_user_id, target_type, post_id, reason) VALUES (?, ?, 'post', ?, 'spam'), (?, ?, 'post', ?, 'other')").run("650e8400-e29b-41d4-a716-446655440005", ACCOUNT_A, postB, "650e8400-e29b-41d4-a716-446655440006", ACCOUNT_B, postA);
     db.prepare("INSERT INTO community_blocks(id, blocker_user_id, blocked_user_id) VALUES (?, ?, ?), (?, ?, ?)").run("650e8400-e29b-41d4-a716-446655440007", ACCOUNT_A, ACCOUNT_B, "650e8400-e29b-41d4-a716-446655440008", ACCOUNT_B, ACCOUNT_A);
@@ -91,6 +94,8 @@ test("eliminación autenticada borra todos los datos propios y vinculados, no lo
     assert.equal((db.prepare("SELECT actor_user_id FROM community_moderation_events WHERE post_id=?").get(postB) as { actor_user_id: string | null }).actor_user_id, null, "audit actor is anonymized on account deletion");
     assert.equal((db.prepare("SELECT COUNT(*) AS count FROM community_moderation_events WHERE post_id=?").get(postA) as { count: number }).count, 0, "audit for deleted target is removed");
     assert.equal((db.prepare("SELECT COUNT(*) AS count FROM community_rate_limits WHERE user_id=?").get(ACCOUNT_A) as { count: number }).count, 0);
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM community_saved_posts WHERE user_id=?").get(ACCOUNT_A) as { count: number }).count, 0);
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM community_saved_posts WHERE user_id=?").get(ACCOUNT_B) as { count: number }).count, 1);
   } finally { db.close(); }
 });
 

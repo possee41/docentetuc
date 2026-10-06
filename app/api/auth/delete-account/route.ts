@@ -1,7 +1,7 @@
 import { getD1 } from "@/db";
 import { accountDataDeletionStatements } from "@/lib/account-deletion";
 import { isSameOriginMutation } from "@/lib/auth-identity";
-import { hasAccountIdentitySchema, hasCommunitySchema } from "@/lib/auth-schema";
+import { hasAccountIdentitySchema, hasCommunitySavedPostsSchema, hasCommunitySchema } from "@/lib/auth-schema";
 import { getDocenteTucAuth } from "@/lib/auth";
 import { getAuthenticatedAccount } from "@/lib/auth-session";
 
@@ -18,6 +18,7 @@ export async function POST(request: Request) {
     const db = getD1();
     if (!await hasAccountIdentitySchema(db)) return Response.json({ error: "La eliminación de cuenta no está habilitada en esta base." }, { status: 503 });
     if (!await hasCommunitySchema(db)) return Response.json({ error: "La eliminación de cuenta espera que el esquema social esté instalado en esta base." }, { status: 503 });
+    if (!await hasCommunitySavedPostsSchema(db)) return Response.json({ error: "La eliminación de cuenta espera que el esquema de publicaciones guardadas esté instalado en esta base." }, { status: 503 });
     const statements = accountDataDeletionStatements(account.accountId);
     await db.batch(statements.map(({ sql, values }) => db.prepare(sql).bind(...values)));
 

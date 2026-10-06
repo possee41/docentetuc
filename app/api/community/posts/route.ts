@@ -1,5 +1,5 @@
 import { getAuthenticatedAccount } from "@/lib/auth-session";
-import { communityErrorResponse, communityStatus, createCommunityPost, listCommunityPosts } from "@/lib/community";
+import { CommunityError, communityErrorResponse, communityStatus, createCommunityPost, listCommunityPostsPage } from "@/lib/community";
 import { communityDatabase, jsonObject } from "@/lib/community-route";
 import { isSameOriginMutation } from "@/lib/auth-identity";
 
@@ -9,11 +9,18 @@ export async function GET(request: Request) {
   try {
     const database = await communityDatabase();
     const account = await getAuthenticatedAccount(request);
+    const url = new URL(request.url);
+    const requestedSort = url.searchParams.get("sort") || "recent";
+    if (requestedSort !== "recent" && requestedSort !== "popular") throw new CommunityError("INVALID_SORT", 400);
     const [status, posts] = await Promise.all([
       communityStatus(database, account?.accountId || null),
-      listCommunityPosts(database, account?.accountId || null),
+      listCommunityPostsPage(database, account?.accountId || null, {
+        sort: requestedSort,
+        cursor: url.searchParams.get("cursor"),
+        pageSize: 20,
+      }),
     ]);
-    return Response.json({ status, posts }, { headers: { "Cache-Control": "no-store, private", Vary: "Cookie" } });
+    return Response.json({ status, ...posts }, { headers: { "Cache-Control": "no-store, private", Vary: "Cookie" } });
   } catch (error) { return communityErrorResponse(error); }
 }
 

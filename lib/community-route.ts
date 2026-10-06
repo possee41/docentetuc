@@ -1,5 +1,5 @@
 import { getD1 } from "@/db";
-import { hasCommunitySchema } from "@/lib/auth-schema";
+import { hasCommunitySavedPostsSchema, hasCommunitySchema } from "@/lib/auth-schema";
 import { CommunityError, type CommunityDatabase } from "@/lib/community";
 
 export async function communityDatabase() {
@@ -11,6 +11,12 @@ export async function communityDatabase() {
     if (error instanceof CommunityError) throw error;
     throw new CommunityError("SCHEMA_UNAVAILABLE", 503);
   }
+}
+
+export async function communitySavedPostsDatabase() {
+  const database = await communityDatabase();
+  if (!await hasCommunitySavedPostsSchema(database)) throw new CommunityError("SCHEMA_UNAVAILABLE", 503);
+  return database as unknown as CommunityDatabase;
 }
 
 export async function jsonObject(request: Request): Promise<Record<string, unknown>> {
