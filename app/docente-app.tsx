@@ -401,7 +401,6 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         : view === "perfil" ? <>
           <ProfileForm key={profile?.updated_at || "profile"} profile={profile} roleOptions={roleOptions} onSaved={() => void load(false)} />
           <PublicProfileSection profile={data?.publicProfile ?? null} headers={() => apiHeaders(true)} onSaved={() => void load(false)} />
-          {process.env.NODE_ENV === "development" && <SystemStatus sources={data?.sync || []} />}
         </>
         : view === "cuentas" ? <>
           <section className="mb-5 rounded-3xl border border-[var(--border)] bg-[var(--surface-secondary)] p-4 sm:p-5" aria-labelledby="accounts-access-title">
@@ -474,24 +473,6 @@ const homeShortcuts: { label: string; caption: string; icon: typeof Home; view: 
   { label: "Novedades", caption: "Comunicados recientes", icon: Bell, view: "junta", image: "novedades", query: "novedad" },
   { label: "Información útil", caption: "Trámites y organismos", icon: Building2, view: "informacion", image: "informacion" },
 ];
-
-function SystemStatus({ sources }: { sources: SyncStatus[] }) {
-  return <details className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-4 backdrop-blur-xl">
-    <summary className="min-h-10 cursor-pointer font-bold text-[var(--text-secondary)]">Diagnóstico avanzado · Estado del sistema</summary>
-    <p className="mt-2 text-sm text-[var(--text-muted)]">Información técnica para soporte. No afecta el uso normal de la aplicación.</p>
-    <div className="mt-3 space-y-2">{[...sources].sort((a, b) => a.source.localeCompare(b.source, "es")).map((source) => <details key={source.source} className="rounded-xl border border-[var(--border)] bg-[var(--surface-secondary)] p-3">
-      <summary className="cursor-pointer text-sm font-bold text-[var(--text-primary)]">{source.source}</summary>
-      <dl className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 text-xs">
-        <dt className="text-[var(--text-muted)]">Estado</dt><dd className="text-right font-semibold text-[var(--text-secondary)]">{source.sync_status || "Sin dato"}</dd>
-        <dt className="text-[var(--text-muted)]">Último intento</dt><dd className="text-right font-semibold text-[var(--text-secondary)]">{source.last_attempt_at ? dateLabel(source.last_attempt_at, true) : "Sin dato"}</dd>
-        <dt className="text-[var(--text-muted)]">Último éxito</dt><dd className="text-right font-semibold text-[var(--text-secondary)]">{source.last_successful_sync_at ? dateLabel(source.last_successful_sync_at, true) : "Sin dato"}</dd>
-        <dt className="text-[var(--text-muted)]">Último cambio de contenido</dt><dd className="text-right font-semibold text-[var(--text-secondary)]">{source.last_content_change_at ? dateLabel(source.last_content_change_at, true) : "Sin dato"}</dd>
-        <dt className="text-[var(--text-muted)]">Registros conocidos</dt><dd className="text-right font-semibold text-[var(--text-secondary)]">{source.item_count ?? "Sin dato"}</dd>
-      </dl>
-      {(source.error_code || source.error_message || source.error) && <p className="mt-3 break-words rounded-lg border border-[var(--border)] p-2 text-xs text-[var(--text-muted)]">{[source.error_code, source.error_message || source.error].filter(Boolean).join(" · ")}</p>}
-    </details>)}</div>
-  </details>;
-}
 
 function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult, isEligible, onOpen, onRemind, onView, loading, error }: DashboardProps) {
   const now = new Date();
