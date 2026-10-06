@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Bell, BookOpen, Bookmark, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Clock3, Download, ExternalLink, GraduationCap, Home, Mail, MapPin, Menu, MessagesSquare, Moon, Phone, RefreshCw, Search, SlidersHorizontal, Sparkles, Star, Sun, UserRound, WifiOff, X } from "lucide-react";
+import { Bell, BookOpen, Bookmark, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Clock3, Download, ExternalLink, GraduationCap, Home, KeyRound, Mail, MapPin, Menu, MessagesSquare, Moon, Phone, RefreshCw, Search, SlidersHorizontal, Sparkles, Star, Sun, UserRound, WifiOff, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,22 +39,27 @@ import { AppHeader, BottomNavigation, Card, CompatibilityBadge, EmptyState, Filt
 import { HomeBannerContext } from "@/components/home-banner-context";
 import { PublicProfileSection } from "@/components/public-profile-section";
 import { AccountSignInSection } from "@/components/account-sign-in-section";
+import { GoogleAccountPhoto } from "@/components/google-account-photo";
 
-type View = "inicio" | "vacantes" | "comunidad" | "capacitaciones" | "junta" | "informacion" | "agenda" | "alertas" | "guardados" | "perfil";
+type View = "inicio" | "vacantes" | "comunidad" | "capacitaciones" | "junta" | "informacion" | "agenda" | "alertas" | "guardados" | "perfil" | "cuentas";
 type Theme = "light" | "dark";
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
 const navigation: [View, string, typeof Home][] = [
   ["inicio", "Inicio", Home], ["vacantes", "Designaciones", BriefcaseBusiness], ["comunidad", "Comunidad", MessagesSquare], ["capacitaciones", "Capacitaciones", GraduationCap],
-  ["junta", "Padrones y comunicados", BookOpen], ["informacion", "Información útil", Building2], ["agenda", "Agenda", CalendarDays], ["guardados", "Mis guardados", Bookmark], ["perfil", "Perfil", UserRound],
+  ["junta", "Padrones y comunicados", BookOpen], ["informacion", "Información útil", Building2], ["agenda", "Agenda", CalendarDays], ["guardados", "Mis guardados", Bookmark], ["perfil", "Perfil docente", UserRound], ["cuentas", "Cuentas y accesos", KeyRound],
 ];
 const viewTitles: Record<View, [string, string]> = {
   inicio: ["Inicio", "Lo más relevante según tus preferencias"], vacantes: ["Designaciones", "Pedidos de cobertura publicados en SIME"],
   capacitaciones: ["Capacitaciones", "Formación docente"], junta: ["Padrones y comunicados", "Llamados abiertos, padrones, comunicados y documentación oficial"],
   informacion: ["Información útil", "Organismos, trámites y servicios oficiales organizados por necesidad"],
   agenda: ["Agenda docente", "Fechas y vencimientos de las publicaciones"], alertas: ["Alertas", "Novedades detectadas sin duplicados"],
-  guardados: ["Mis guardados", "Publicaciones que elegiste conservar"], perfil: ["Tu perfil docente", "Preferencias usadas para ordenar la información"],
+  guardados: ["Mis guardados", "Publicaciones que elegiste conservar"], perfil: ["Tu perfil docente", "Preferencias usadas para ordenar la información"], cuentas: ["Cuentas y accesos", "Gestioná la identidad DocenteTuc y los servicios externos"],
   comunidad: ["Comunidad Docente", "Preguntá, compartí y ayudá a otros docentes"],
+};
+const viewFromSection = (section?: string): View => {
+  const allowed: View[] = ["inicio", "vacantes", "comunidad", "capacitaciones", "junta", "informacion", "agenda", "alertas", "guardados", "perfil", "cuentas"];
+  return allowed.includes(section as View) ? section as View : "inicio";
 };
 const SIME_LOGIN = "https://sime.educaciontuc.gov.ar/Login/Login";
 const FDCI_LOGIN = "https://capacitaciondocente.educaciontuc.gov.ar/docentes";
@@ -63,7 +68,7 @@ const EDUCATION_LEVELS = ["Inicial", "Primario", "Secundario", "Superior"];
 
 function AppSidebarNavigation({ view, onNavigate }: { view: View; onNavigate: (view: View) => void }) {
   const { setOpen, setOpenMobile } = useSidebar();
-  const groups: [string, View[]][] = [["Uso diario", ["inicio", "vacantes", "comunidad", "capacitaciones", "agenda"]], ["Consultas", ["junta", "informacion"]], ["Personal", ["guardados", "perfil"]]];
+  const groups: [string, View[]][] = [["Uso diario", ["inicio", "vacantes", "comunidad", "capacitaciones", "agenda"]], ["Consultas", ["junta", "informacion"]], ["Personal", ["perfil", "guardados", "cuentas"]]];
   return <SidebarMenu>{groups.map(([group, ids]) => <div key={group} className="mb-4"><p className="px-3 pb-1 text-[10px] font-black uppercase tracking-[.16em] text-white/45">{group}</p>{ids.map((id) => { const entry = navigation.find(([itemId]) => itemId === id)!; const [, label, Icon] = entry; return <SidebarMenuItem key={id}><SidebarMenuButton isActive={view === id} onClick={() => { onNavigate(id); setOpen(false); setOpenMobile(false); }} className="h-10 rounded-xl bg-white/8 px-3 font-semibold text-white hover:bg-white/15 hover:text-white data-[active=true]:bg-[#2eb6f3] data-[active=true]:font-black data-[active=true]:text-white"><Icon className="size-5" /><span>{label}</span></SidebarMenuButton></SidebarMenuItem>; })}</div>)}</SidebarMenu>;
 }
 
@@ -118,10 +123,11 @@ const enrollmentLabel = (item: Publication, now = new Date()) => {
 };
 const lifecycleLabel = (status: ReturnType<typeof publicationLifecycle>) => ({ ACTIVE: "Vigente", UPCOMING: "Próxima apertura", CLOSED: "Cerrada", EXPIRED: "Vencida", REMOVED_FROM_SOURCE: "Ya no aparece en la fuente", UNKNOWN: "Estado sin confirmar" })[status];
 
-export default function DocenteApp() {
+export default function DocenteApp({ initialSection }: { initialSection?: string }) {
   const router = useRouter();
   const [data, setData] = useState<AppData | null>(null);
-  const [view, setView] = useState<View>("inicio");
+  const [accountPhoto, setAccountPhoto] = useState<{ authenticated: boolean; image: string | null }>({ authenticated: false, image: null });
+  const [view, setView] = useState<View>(() => viewFromSection(initialSection));
   const [query, setQuery] = useState("");
   const [designationQuery, setDesignationQuery] = useState("");
   const [filter, setFilter] = useState("para-mi");
@@ -155,7 +161,22 @@ export default function DocenteApp() {
   const [manualEventDate, setManualEventDate] = useState("");
   const loadRef = useRef<(syncIfEmpty?: boolean, showLoading?: boolean) => Promise<void>>(async () => {});
   const syncSourcesRef = useRef<(notify?: boolean) => Promise<void>>(async () => {});
+  const refreshAccountPhoto = useCallback(async () => {
+    try {
+      const response = await fetch("/api/auth/status", { cache: "no-store", credentials: "same-origin" });
+      if (!response.ok) throw new Error("No se pudo consultar el estado de la cuenta.");
+      const status = await response.json() as { authenticated?: unknown; image?: unknown };
+      setAccountPhoto({ authenticated: Boolean(status.authenticated), image: typeof status.image === "string" ? status.image : null });
+    } catch {
+      setAccountPhoto({ authenticated: false, image: null });
+    }
+  }, []);
   useEffect(() => { const openProfile = () => setView("perfil"); window.addEventListener("docentetuc:open-profile", openProfile); return () => window.removeEventListener("docentetuc:open-profile", openProfile); }, []);
+  useEffect(() => {
+    queueMicrotask(() => { void refreshAccountPhoto(); });
+    window.addEventListener("docentetuc:refresh-auth-status", refreshAccountPhoto);
+    return () => window.removeEventListener("docentetuc:refresh-auth-status", refreshAccountPhoto);
+  }, [refreshAccountPhoto]);
   const openPublication = (publication: Publication) => { setSelected(publication); history.pushState({ publicationId: publication.id }, "", `#publicacion-${encodeURIComponent(publication.id)}`); };
   const closePublication = () => { if (history.state?.publicationId) history.back(); else setSelected(null); };
 
@@ -366,8 +387,9 @@ export default function DocenteApp() {
         <AppBackground>
         <AppHeader className="mobile-topbar min-h-20 gap-3 border-[#dce8e1] px-4 md:px-8">
           <SidebarTrigger className="size-11 rounded-xl bg-white md:hidden"><Menu /></SidebarTrigger>
-          {view === "inicio" ? <div className="flex flex-1 items-center gap-3"><Image src="/icon-192.png" alt="" width={40} height={40} unoptimized className="size-10 rounded-xl md:hidden" /><span className="font-black text-[#062b55] md:hidden">DocenteTuc</span></div> : view !== "vacantes" ? <div className="relative max-w-2xl flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#52708c]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={view === "capacitaciones" ? "Buscar capacitaciones" : "Buscar en DocenteTuc"} placeholder={view === "capacitaciones" ? "Buscar capacitaciones..." : "¿Qué estás buscando?"} className="h-12 rounded-2xl border-[#c8e1f1] bg-white pl-11 shadow-sm" />{query && <button aria-label="Limpiar búsqueda" onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div> : <div className="flex-1" />}
+          {view === "inicio" ? <div className="flex flex-1 items-center gap-3"><Image src="/icon-192.png" alt="" width={40} height={40} unoptimized className="size-10 rounded-xl md:hidden" /><span className="font-black text-[#062b55] md:hidden">DocenteTuc</span></div> : !["vacantes", "perfil", "cuentas"].includes(view) ? <div className="relative max-w-2xl flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#52708c]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={view === "capacitaciones" ? "Buscar capacitaciones" : "Buscar en DocenteTuc"} placeholder={view === "capacitaciones" ? "Buscar capacitaciones..." : "¿Qué estás buscando?"} className="h-12 rounded-2xl border-[#c8e1f1] bg-white pl-11 shadow-sm" />{query && <button aria-label="Limpiar búsqueda" onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div> : <div className="flex-1" />}
           {installPrompt && <Button onClick={install} variant="outline" className="hidden h-11 rounded-xl border-[#bdd0c6] bg-white sm:flex"><Download className="size-4" />Instalar</Button>}
+          {view === "inicio" && accountPhoto.authenticated && <Button onClick={() => setView("cuentas")} size="icon" variant="outline" aria-label="Ir a Cuentas y accesos" className="size-11 shrink-0 rounded-full border-[#dce8e1] bg-white p-0"><GoogleAccountPhoto src={accountPhoto.image} /></Button>}
           <Button onClick={toggleTheme} size="icon" variant="outline" className="size-11 rounded-xl border-[#dce8e1] bg-white" aria-label={theme === "dark" ? "Usar modo claro" : "Usar modo oscuro"}>{theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}</Button>
           <Button onClick={() => { setView("alertas"); setQuery(""); }} size="icon" variant="outline" className="relative size-11 rounded-xl border-[#dce8e1] bg-white"><Bell className="size-5" />{unread > 0 && <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#ee6a4b] px-1 text-[10px] font-bold text-white">{unread > 9 ? "9+" : unread}</span>}<span className="sr-only">Alertas relevantes no leídas</span></Button>
         </AppHeader>
@@ -377,18 +399,20 @@ export default function DocenteApp() {
         <div className="mobile-content mx-auto w-full max-w-7xl p-4 md:p-8">
       {view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={navigateToView} loading={loading} error={loadError} />
         : view === "perfil" ? <>
+          <ProfileForm key={profile?.updated_at || "profile"} profile={profile} roleOptions={roleOptions} onSaved={() => void load(false)} />
+          <PublicProfileSection profile={data?.publicProfile ?? null} headers={() => apiHeaders(true)} onSaved={() => void load(false)} />
+          {process.env.NODE_ENV === "development" && <SystemStatus sources={data?.sync || []} />}
+        </>
+        : view === "cuentas" ? <>
           <section className="mb-5 rounded-3xl border border-[var(--border)] bg-[var(--surface-secondary)] p-4 sm:p-5" aria-labelledby="accounts-access-title">
             <div className="mb-4">
               <h2 id="accounts-access-title" className="text-xl font-black text-[var(--text-primary)]">Mis cuentas y accesos</h2>
-              <p className="mt-1 text-sm text-[var(--text-secondary)]">Google identifica tu cuenta de DocenteTuc. Las plataformas externas aparecen debajo de tu perfil.</p>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">Google autentica tu cuenta de DocenteTuc. Los accesos externos usan sus propias credenciales y no se comparten con DocenteTuc.</p>
             </div>
             <AccountSignInSection headers={apiHeaders} onLinked={() => void load(false)} onSignedOut={() => setData(null)} />
           </section>
-          <ProfileForm key={profile?.updated_at || "profile"} profile={profile} roleOptions={roleOptions} onSaved={() => void load(false)} />
-          <PublicProfileSection profile={data?.publicProfile ?? null} headers={() => apiHeaders(true)} onSaved={() => void load(false)} />
           <PlatformAccessSection />
           <DataDeletionSection profile={profile ?? null} />
-          {process.env.NODE_ENV === "development" && <SystemStatus sources={data?.sync || []} />}
         </>
         : view === "alertas" ? <><PushSettings key={`push:${profile?.updated_at || "profile"}`} profile={profile ?? null} /><Alerts data={data} onOpen={openPublication} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} /></>
           : view === "agenda" ? <Agenda publications={data?.publications || []} savedMap={savedMap} manualEvents={data?.manualEvents || []} onOpen={openPublication} onNewEvent={(date) => { setManualEventDate(date || ""); setManualEvent("new"); }} onEditEvent={setManualEvent} />
@@ -401,7 +425,7 @@ export default function DocenteApp() {
           </>}
         </div>
 
-        {aiMode === "closed" && !reminderPublication && <AIWidget onOpen={() => openAI({ type: view, title: viewTitles[view][0] })} />}
+        {aiMode === "closed" && !reminderPublication && <AIWidget onOpen={() => openAI({ type: view === "cuentas" ? "perfil" : view, title: viewTitles[view][0] })} />}
         <BottomNavigation items={navigation.filter(([id]) => ["inicio", "vacantes", "comunidad", "agenda", "perfil"].includes(id)).map(([id, label, icon]) => ({ id, label: id === "vacantes" ? "Designaciones" : id === "perfil" ? "Perfil" : label, icon }))} active={view} onNavigate={(id) => navigateToView(id as View)} />
         </AppBackground>
       </SidebarInset>

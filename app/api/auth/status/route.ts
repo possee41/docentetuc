@@ -1,16 +1,13 @@
 import { getDocenteTucAuth } from "@/lib/auth";
-import { authenticatedAccountFromRequest, publicAuthStatus } from "@/lib/auth-identity";
+import { accountFromValidatedSession, publicAuthStatus } from "@/lib/auth-identity";
 
 export async function GET(request: Request) {
   const auth = await getDocenteTucAuth();
-  const account = auth
-    ? await authenticatedAccountFromRequest(request, async (sessionRequest) =>
-      auth.api.getSession({ headers: sessionRequest.headers }),
-    )
-    : null;
+  const session = auth ? await auth.api.getSession({ headers: request.headers }) : null;
+  const account = accountFromValidatedSession(session);
 
   return Response.json(
-    publicAuthStatus(Boolean(auth), account),
+    publicAuthStatus(Boolean(auth), account, session?.user?.image, session?.user?.name),
     { headers: { "Cache-Control": "no-store, private", Vary: "Cookie" } },
   );
 }

@@ -4,11 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Link2, LogOut, Settings2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { GoogleAccountPhoto } from "@/components/google-account-photo";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
-type AuthStatus = { configured: boolean; authenticated: boolean };
+type AuthStatus = { configured: boolean; authenticated: boolean; image: string | null; name: string | null };
 type LinkPreview = { linked: boolean; hasData: boolean; dataCategories: string[] };
 
 const SIGN_IN_UNAVAILABLE = "El inicio con Google todavía no está configurado.";
@@ -24,7 +25,7 @@ function GoogleMark() {
 
 export function AccountSignInSection({ headers, onLinked, onSignedOut }: { headers: () => HeadersInit; onLinked: () => void; onSignedOut: () => void }) {
   const router = useRouter();
-  const [status, setStatus] = useState<AuthStatus>({ configured: false, authenticated: false });
+  const [status, setStatus] = useState<AuthStatus>({ configured: false, authenticated: false, image: null, name: null });
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
   const [linkPreview, setLinkPreview] = useState<LinkPreview | null>(null);
@@ -50,10 +51,10 @@ export function AccountSignInSection({ headers, onLinked, onSignedOut }: { heade
       const response = await fetch("/api/auth/status", { cache: "no-store", credentials: "same-origin" });
       if (!response.ok) throw new Error("No se pudo consultar el estado de la cuenta.");
       const value = await response.json() as AuthStatus;
-      setStatus({ configured: Boolean(value.configured), authenticated: Boolean(value.authenticated) });
+      setStatus({ configured: Boolean(value.configured), authenticated: Boolean(value.authenticated), image: typeof value.image === "string" ? value.image : null, name: typeof value.name === "string" ? value.name : null });
       if (value.authenticated) void refreshLinkPreview();
     } catch {
-      setStatus({ configured: false, authenticated: false });
+      setStatus({ configured: false, authenticated: false, image: null, name: null });
     } finally { setChecking(false); }
   };
 
@@ -66,11 +67,11 @@ export function AccountSignInSection({ headers, onLinked, onSignedOut }: { heade
       })
       .then((value) => {
         if (!cancelled) {
-          setStatus({ configured: Boolean(value.configured), authenticated: Boolean(value.authenticated) });
+          setStatus({ configured: Boolean(value.configured), authenticated: Boolean(value.authenticated), image: typeof value.image === "string" ? value.image : null, name: typeof value.name === "string" ? value.name : null });
           if (value.authenticated) void refreshLinkPreview();
         }
       })
-      .catch(() => { if (!cancelled) setStatus({ configured: false, authenticated: false }); })
+      .catch(() => { if (!cancelled) setStatus({ configured: false, authenticated: false, image: null, name: null }); })
       .finally(() => { if (!cancelled) setChecking(false); });
     return () => { cancelled = true; };
   }, [refreshLinkPreview]);
@@ -98,11 +99,12 @@ export function AccountSignInSection({ headers, onLinked, onSignedOut }: { heade
       const client = createAuthClient({ baseURL: window.location.origin });
       const result = await client.signOut();
       if (result.error) throw new Error(result.error.message || "No se pudo cerrar la sesión.");
-      setStatus((current) => ({ ...current, authenticated: false }));
+      setStatus((current) => ({ ...current, authenticated: false, image: null, name: null }));
       setLinkPreview(null);
       setLinkDeclined(false);
       localStorage.removeItem("docentetuc-data-v1");
       onSignedOut();
+      window.dispatchEvent(new Event("docentetuc:refresh-auth-status"));
       await refresh();
       toast.success("Sesión cerrada en este dispositivo.");
     } catch (error) {
@@ -147,8 +149,9 @@ export function AccountSignInSection({ headers, onLinked, onSignedOut }: { heade
       } catch { /* D1 has already deleted the subscription; local permission can be revoked in browser settings. */ }
       for (const key of ["docentetuc-device-id", "docentetuc-data-v1", "docentetuc-pending-designation", "docentetuc-theme", "docentetuc-weather-tucuman-v1"]) localStorage.removeItem(key);
       setDeleteOpen(false);
-      setStatus((current) => ({ ...current, authenticated: false }));
+      setStatus((current) => ({ ...current, authenticated: false, image: null, name: null }));
       onSignedOut();
+      window.dispatchEvent(new Event("docentetuc:refresh-auth-status"));
       toast.success("Se eliminó tu cuenta y los datos de DocenteTuc.");
       router.replace("/");
     } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo eliminar la cuenta."); }
@@ -160,7 +163,7 @@ export function AccountSignInSection({ headers, onLinked, onSignedOut }: { heade
     <h3 id="account-sign-in-title" className="mt-2 text-lg font-black">Cuenta de DocenteTuc</h3>
     <p className="mt-2 text-sm text-[var(--text-secondary)]">El acceso es opcional. Las consultas educativas siguen disponibles sin iniciar sesión. La cuenta no reemplaza ni comparte tu perfil docente privado o tu perfil público.</p>
     {checking ? <p className="mt-4 text-sm text-[var(--text-muted)]" role="status">Consultando la cuenta…</p> : status.authenticated ? <div className="mt-4 space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-secondary)] p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3"><p className="flex items-center gap-2 text-sm font-semibold"><CheckCircle2 className="size-4 text-emerald-600" />Cuenta conectada</p><Button type="button" variant="outline" disabled={busy} onClick={() => void signOut()} className="min-h-11 rounded-xl"><LogOut className="size-4" />{busy ? "Procesando…" : "Cerrar sesión"}</Button></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><GoogleAccountPhoto src={status.image} className="size-10 shrink-0" /><div className="min-w-0"><p className="truncate text-sm font-bold">{status.name || "Cuenta de DocenteTuc"}</p><p className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]"><CheckCircle2 className="size-3.5 text-emerald-600" />Cuenta conectada con Google</p></div></div><Button type="button" variant="outline" disabled={busy} onClick={() => void signOut()} className="min-h-11 rounded-xl"><LogOut className="size-4" />{busy ? "Procesando…" : "Cerrar sesión"}</Button></div>
       <p className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]"><Settings2 className="size-3.5" />Administrar cuenta de DocenteTuc</p>
       {linkChecking ? <p className="text-sm text-[var(--text-muted)]" role="status">Comprobando si hay datos en este dispositivo…</p> : linkPreview?.linked ? <p className="text-sm font-semibold text-[var(--text-secondary)]">Los datos de esta instalación están vinculados a tu cuenta estable de DocenteTuc.</p> : linkPreview && !linkDeclined ? <div className="space-y-3 border-t border-[var(--border)] pt-3">
         <p className="text-sm text-[var(--text-secondary)]">{linkPreview.hasData ? "Se encontraron datos de DocenteTuc en este dispositivo. No se trasladan sin tu autorización." : "No se encontraron datos previos para trasladar. La cuenta no asociará este dispositivo automáticamente."}</p>

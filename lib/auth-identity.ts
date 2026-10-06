@@ -1,5 +1,5 @@
 export type ValidatedSession = {
-  user?: { id?: unknown } | null;
+  user?: { id?: unknown; name?: unknown; image?: unknown } | null;
   session?: { expiresAt?: unknown } | null;
 } | null;
 
@@ -22,9 +22,31 @@ export function accountOwnsResource(account: AuthenticatedAccount | null, ownerA
   return Boolean(account && ownerAccountId && account.accountId === ownerAccountId);
 }
 
+export function safeGoogleProfileImage(value: unknown) {
+  if (typeof value !== "string" || value.length > 2048) return null;
+  try {
+    const image = new URL(value);
+    if (image.protocol !== "https:" || image.username || image.password || !/(^|\.)googleusercontent\.com$/iu.test(image.hostname)) return null;
+    return image.href;
+  } catch {
+    return null;
+  }
+}
+
+export function safeGoogleAccountName(value: unknown) {
+  if (typeof value !== "string") return null;
+  const name = value.replace(/[\u0000-\u001f\u007f]/gu, " ").replace(/\s+/gu, " ").trim();
+  return name ? name.slice(0, 80) : null;
+}
+
 /** Deliberately excludes email, private profile, and account identifiers. */
-export function publicAuthStatus(configured: boolean, account: AuthenticatedAccount | null) {
-  return { configured, authenticated: Boolean(account) };
+export function publicAuthStatus(configured: boolean, account: AuthenticatedAccount | null, image: unknown = null, name: unknown = null) {
+  return {
+    configured,
+    authenticated: Boolean(account),
+    image: account ? safeGoogleProfileImage(image) : null,
+    name: account ? safeGoogleAccountName(name) : null,
+  };
 }
 
 export type SessionReader = (request: Request) => Promise<ValidatedSession>;

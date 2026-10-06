@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { accountFromValidatedSession, accountOwnsResource, authenticatedAccountFromRequest, authorizeAccountResource, isSameOriginMutation, publicAuthStatus } from "./auth-identity.ts";
+import { accountFromValidatedSession, accountOwnsResource, authenticatedAccountFromRequest, authorizeAccountResource, isSameOriginMutation, publicAuthStatus, safeGoogleAccountName, safeGoogleProfileImage } from "./auth-identity.ts";
 import { deviceUser } from "./device-user.ts";
 
 const USER_A = "550e8400-e29b-41d4-a716-446655440000";
@@ -45,11 +45,30 @@ test("la frontera protegida rechaza anónimos con 401 y cuentas ajenas con 403",
   assert.deepEqual(await authorizeAccountResource(request, async () => ({ user: { id: USER_A }, session: { expiresAt: new Date(Date.now() + 60_000) } }), USER_B), { authorized: false, status: 403 });
 });
 
-test("estado público no expone email, account id ni perfil privado", () => {
-  const status = publicAuthStatus(true, { accountId: USER_A });
-  assert.deepEqual(status, { configured: true, authenticated: true });
+test("estado público solo incluye nombre/foto de la sesión propia y no email, account id ni perfil privado", () => {
+  const status = publicAuthStatus(true, { accountId: USER_A }, "https://lh3.googleusercontent.com/a/example=s96-c", "Docente A");
+  assert.deepEqual(status, { configured: true, authenticated: true, image: "https://lh3.googleusercontent.com/a/example=s96-c", name: "Docente A" });
   assert.equal("email" in status, false);
   assert.equal("accountId" in status, false);
+  assert.equal("profile" in status, false);
+  assert.deepEqual(publicAuthStatus(true, null, "https://lh3.googleusercontent.com/a/example", "No autenticado"), { configured: true, authenticated: false, image: null, name: null });
+});
+
+test("la foto de cuenta acepta solo HTTPS de Google y rechaza URLs arbitrarias", () => {
+  assert.equal(safeGoogleProfileImage("https://lh3.googleusercontent.com/a/example"), "https://lh3.googleusercontent.com/a/example");
+  assert.equal(safeGoogleProfileImage("http://lh3.googleusercontent.com/a/example"), null);
+  assert.equal(safeGoogleProfileImage("https://attacker.example/image.png"), null);
+  assert.equal(safeGoogleProfileImage("https://googleusercontent.com.attacker.example/image.png"), null);
+  assert.equal(safeGoogleProfileImage("javascript:alert(1)"), null);
+  assert.equal(safeGoogleProfileImage("x".repeat(2049)), null);
+});
+
+test("el nombre mostrado de Google se normaliza y nunca se devuelve sin sesión", () => {
+  assert.equal(safeGoogleAccountName("  Docente\n A  "), "Docente A");
+  assert.equal(safeGoogleAccountName("\u0000\t"), null);
+  assert.equal(safeGoogleAccountName(7), null);
+  assert.equal(safeGoogleAccountName("A".repeat(100))?.length, 80);
+  assert.equal(publicAuthStatus(true, null, null, "Docente A").name, null);
 });
 
 test("las mutaciones autenticadas rechazan orígenes cruzados y requests sin Origin", () => {

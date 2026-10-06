@@ -16,8 +16,9 @@ function createAuth(bindings: AuthBindings, config: AuthConfiguration) {
       google: {
         clientId: config.googleClientId,
         clientSecret: config.googleClientSecret,
-        scope: ["openid", "email"],
-        mapProfileToUser: () => ({ name: "Cuenta DocenteTuc", image: "" }),
+        scope: ["openid", "email", "profile"],
+        overrideUserInfoOnSignIn: true,
+        mapProfileToUser: (profile) => ({ name: profile.name || "Cuenta DocenteTuc", image: profile.picture }),
       },
     },
     account: {
