@@ -481,7 +481,8 @@ export async function POST(request: Request) {
     const db = getD1();
     const latest = await db.prepare("SELECT MAX(last_attempt_at) AS attempted_at, COUNT(*) AS source_count, SUM(CASE WHEN sync_status<>'OK' THEN 1 ELSE 0 END) AS unhealthy FROM sync_state").first<{ attempted_at: string | null; source_count: number; unhealthy: number | null }>();
     if (!scheduled && Number(latest?.source_count || 0) >= 9 && Number(latest?.unhealthy || 0) === 0 && latest?.attempted_at && Date.now() - new Date(latest.attempted_at).getTime() < 60 * 60_000) return Response.json({ ok: true, skipped: true, reason: "central_sync_recent" });
-    return Response.json({ ok: true, ...(await runSync()) });
+    const metrics = await runSync();
+    return Response.json(scheduled ? { ok: true, ...metrics } : { ok: true, count: metrics.count, failures: metrics.failures });
   } catch (error) {
     console.error("sync_failed", error);
     return Response.json({ error: authError(error) ? "Iniciá sesión para actualizar." : "No se pudieron actualizar las fuentes. Probá nuevamente en unos minutos." }, { status: authError(error) ? 401 : 502 });

@@ -31,7 +31,9 @@ export async function GET(request: Request) {
       db.prepare("SELECT id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified FROM training_reminders WHERE user_id=? ORDER BY opens_at").bind(user.userId).all(),
       db.prepare("SELECT id, publication_id, status, role, subject, school, address, locality, applied_at, appointment_at, shift, board, documentation, order_number, notes, official_url, reminder_at, reminder_notified, created_at, updated_at FROM designation_tracking WHERE user_id=? ORDER BY COALESCE(appointment_at, applied_at, updated_at) DESC").bind(user.userId).all(),
       db.prepare("SELECT id, title, notes, category, starts_at, all_day, recurrence, reminder_minutes, reminder_at, reminder_notified, created_at, updated_at FROM manual_events WHERE user_id=? ORDER BY starts_at").bind(user.userId).all(),
-      db.prepare("SELECT * FROM sync_state ORDER BY source").all(),
+      db.prepare(process.env.NODE_ENV === "development"
+        ? "SELECT * FROM sync_state ORDER BY source"
+        : "SELECT source, synced_at, last_successful_sync_at, sync_status FROM sync_state ORDER BY source").all(),
     ]);
     return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publicProfile: publicProfileForClient(publicProfile as Record<string, unknown> | null), publications: publications.results, saved: saved.results, notifications: notifications.results, reminders: reminders.results, designations: designations.results, manualEvents: manualEvents.results, sync: sync.results });
   } catch (error) {
@@ -56,8 +58,8 @@ export async function POST(request: Request) {
     }
     const user = await currentUser(request);
     if (action === "save_profile") {
-      const columns = ["name", "level", "area", "subjects", "junta", "roles", "department", "locality", "shifts", "wants_interim", "wants_substitute", "training_interests", "notify_new_trainings", "training_notify_scope", "training_match_threshold"];
-      const fields = [value(body.name, 100) || "Docente", profileStorage(body.levels ?? body.level, 120), profileStorage(body.areas ?? body.area, 180), profileStorage(body.subjects), profileStorage(body.boards ?? body.junta, 240), profileStorage(body.roles, 300), value(body.department, 100), value(body.locality, 100), profileStorage(body.shifts, 100), body.wantsInterim === true ? 1 : 0, body.wantsSubstitute === true ? 1 : 0, profileStorage(body.trainingInterests), body.notifyNewTrainings === true ? 1 : 0, value(body.trainingNotifyScope, 20) || "relevant", Math.min(100, Math.max(50, Number(body.trainingMatchThreshold) || 80))];
+      const columns = ["name", "level", "area", "subjects", "junta", "roles", "department", "locality", "shifts", "wants_interim", "wants_substitute", "training_interests", "characters", "circuits", "personal_match_threshold"];
+      const fields = [value(body.name, 100) || "Docente", profileStorage(body.levels ?? body.level, 120), profileStorage(body.areas ?? body.area, 180), profileStorage(body.subjects), profileStorage(body.boards ?? body.junta, 240), profileStorage(body.roles, 300), value(body.department, 100), value(body.locality, 100), profileStorage(body.shifts, 100), body.wantsInterim === true ? 1 : 0, body.wantsSubstitute === true ? 1 : 0, profileStorage(body.trainingInterests), profileStorage(body.characters, 80), profileStorage(body.circuits, 80), Math.min(100, Math.max(70, Number(body.personalMatchThreshold) || 85))];
       await db.prepare(`UPDATE profiles SET ${columns.map((column) => `${column}=?`).join(",")}, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND (${columns.map((column) => `${column} IS NOT ?`).join(" OR ")})`)
         .bind(...fields, user.userId, ...fields).run();
     } else if (action === "save_matching_profile") {

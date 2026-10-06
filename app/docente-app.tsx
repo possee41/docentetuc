@@ -56,6 +56,7 @@ const viewTitles: Record<View, [string, string]> = {
 };
 const SIME_LOGIN = "https://sime.educaciontuc.gov.ar/Login/Login";
 const FDCI_LOGIN = "https://capacitaciondocente.educaciontuc.gov.ar/docentes";
+const INFOD_LOGIN = "https://aulastic.infd.edu.ar/";
 const EDUCATION_LEVELS = ["Inicial", "Primario", "Secundario", "Superior"];
 
 function AppSidebarNavigation({ view, onNavigate }: { view: View; onNavigate: (view: View) => void }) {
@@ -373,12 +374,11 @@ export default function DocenteApp() {
           </section>
           <ProfileForm key={profile?.updated_at || "profile"} profile={profile} roleOptions={roleOptions} onSaved={() => void load(false)} />
           <PublicProfileSection profile={data?.publicProfile ?? null} headers={() => apiHeaders(true)} onSaved={() => void load(false)} />
-          <ProfileRelevanceForm key={`relevance:${profile?.updated_at || "profile"}`} profile={profile} onSaved={() => void load(false)} />
-          <PushSettings key={`push:${profile?.updated_at || "profile"}`} profile={profile ?? null} />
+          <PlatformAccessSection />
           <DataDeletionSection profile={profile ?? null} />
-          <SystemStatus sources={data?.sync || []} />
+          {process.env.NODE_ENV === "development" && <SystemStatus sources={data?.sync || []} />}
         </>
-        : view === "alertas" ? <Alerts data={data} onOpen={openPublication} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} />
+        : view === "alertas" ? <><PushSettings key={`push:${profile?.updated_at || "profile"}`} profile={profile ?? null} /><Alerts data={data} onOpen={openPublication} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} /></>
           : view === "agenda" ? <Agenda publications={data?.publications || []} savedMap={savedMap} manualEvents={data?.manualEvents || []} onOpen={openPublication} onNewEvent={(date) => { setManualEventDate(date || ""); setManualEvent("new"); }} onEditEvent={setManualEvent} />
             : view === "informacion" ? <InformationHub items={items} query={query} onQuery={setQuery} savedMap={savedMap} onOpen={openPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAskAI={() => openAI({ type: "informacion", title: viewTitles.informacion[0] })} /> : <>
             <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void syncSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
@@ -733,25 +733,191 @@ function MultiValueField({ label, values, placeholder, suggestions = [], onChang
   const [draft, setDraft] = useState("");
   const add = () => { const next = draft.trim(); if (!next || values.some((item) => normalize(item) === normalize(next))) return; onChange([...values, next]); setDraft(""); };
   const available = suggestions.filter((item) => !values.some((value) => normalize(value) === normalize(item)) && (!draft || normalize(item).includes(normalize(draft)))).slice(0, 6);
-  return <div className="space-y-2"><Label>{label}</Label><div className="rounded-2xl border border-[var(--border)] bg-[var(--input-background)] p-3"><div className="mb-2 flex flex-wrap gap-2">{values.map((item) => <button type="button" key={item} onClick={() => onChange(values.filter((value) => value !== item))} className="min-h-10 rounded-full bg-[var(--accent-soft)] px-3 text-sm font-bold text-[var(--accent-text)]" aria-label={`Quitar ${item}`}>✓ {item} ×</button>)}</div><div className="flex gap-2"><Input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === ",") { event.preventDefault(); add(); } }} placeholder={placeholder} className="h-11 rounded-xl bg-white" /><Button type="button" variant="outline" onClick={add} className="h-11 rounded-xl">Agregar</Button></div>{available.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{available.map((item) => <button type="button" key={item} onClick={() => onChange([...values, item])} className="rounded-full border border-[var(--border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)]">+ {item}</button>)}</div>}</div></div>;
-}
-
-function ProfileRelevanceForm({ profile, onSaved }: { profile?: Profile; onSaved: () => void }) {
-  const [boards, setBoards] = useState(profile?.boards || []), [characters, setCharacters] = useState(profile?.characters || []), [circuits, setCircuits] = useState(profile?.circuits || []), [threshold, setThreshold] = useState(profile?.personal_match_threshold || 85), [busy, setBusy] = useState(false);
-  const toggleBoard = (id: string, label: string) => setBoards((current) => current.some((value) => normalizeJunta(value) === id) ? current.filter((value) => normalizeJunta(value) !== id) : [...current.filter((value) => !normalizeJunta(value)), label]);
-  const toggleValue = (current: string[], value: string, update: (items: string[]) => void) => update(current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
-  const save = async () => { setBusy(true); try { const response = await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "save_matching_profile", boards, characters, circuits, personalMatchThreshold: threshold }) }); if (!response.ok) throw new Error("No se pudieron guardar las preferencias"); toast.success("Personalización actualizada"); onSaved(); } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo guardar"); } finally { setBusy(false); } };
-  return <section className="mb-5 rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-5 md:p-6"><div className="mb-4"><p className="text-xs font-black uppercase tracking-[.15em] text-[var(--accent-text)]">Personalización</p><h2 className="text-xl font-black text-[var(--text-primary)]">Afiná lo que te recomendamos</h2><p className="mt-1 text-sm text-[var(--text-muted)]">Los datos que la publicación no informa quedan como desconocidos; no se cuentan como incompatibilidad.</p></div><div className="grid gap-5 md:grid-cols-2"><fieldset><legend className="mb-2 text-sm font-bold text-[var(--text-primary)]">Juntas oficiales de interés</legend><div className="flex flex-wrap gap-2">{OFFICIAL_JUNTAS.map((item) => { const selected = boards.some((value) => normalizeJunta(value) === item.id); return <button key={item.id} type="button" aria-pressed={selected} onClick={() => toggleBoard(item.id, item.label)} className={`min-h-10 rounded-full border px-3 text-sm font-bold ${selected ? "border-[#0878be] bg-[#0878be] text-white" : "border-[var(--border)] bg-[var(--surface-secondary)] text-[var(--text-secondary)]"}`}>{selected ? "✓ " : ""}{item.label}</button>; })}</div></fieldset><fieldset><legend className="mb-2 text-sm font-bold text-[var(--text-primary)]">Carácter de designación</legend><div className="flex flex-wrap gap-2">{OFFICIAL_CHARACTERS.map((item) => <button key={item} type="button" aria-pressed={characters.includes(item)} onClick={() => toggleValue(characters, item, setCharacters)} className={`min-h-10 rounded-full border px-3 text-sm font-bold ${characters.includes(item) ? "border-[#0878be] bg-[#0878be] text-white" : "border-[var(--border)] bg-[var(--surface-secondary)] text-[var(--text-secondary)]"}`}>{characters.includes(item) ? "✓ " : ""}{item}</button>)}</div><p className="mt-1 text-xs text-[var(--text-muted)]">Si no seleccionás carácter, no se usa como filtro de compatibilidad.</p></fieldset><fieldset className="md:col-span-2"><legend className="mb-2 text-sm font-bold text-[var(--text-primary)]">Circuitos donde quiero trabajar o capacitarme</legend><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{TUCUMAN_CIRCUITS.map((item) => { const selected = circuits.includes(item.id); return <button key={item.id} type="button" aria-pressed={selected} onClick={() => toggleValue(circuits, item.id, setCircuits)} className={`rounded-xl border p-3 text-left ${selected ? "border-[#0878be] bg-[#e8f6ff]" : "border-[var(--border)] bg-[var(--surface-secondary)]"}`}><strong className="block text-sm text-[var(--text-primary)]">{selected ? "☑ " : "☐ "}Circuito {item.id}</strong><span className="mt-1 block text-xs text-[var(--text-secondary)]">{item.departments.join(" · ")}</span></button>; })}</div><p className="mt-2 text-xs text-[var(--text-muted)]">Podés combinar varios circuitos. Si una fuente no informa ubicación, no la descartamos por territorio.</p></fieldset><label className="md:col-span-2"><span className="flex items-center justify-between text-sm font-bold text-[var(--text-primary)]"><span>Umbral para recomendaciones personales</span><span className="text-[var(--accent-text)]">{threshold}%</span></span><input type="range" min="70" max="100" step="5" value={threshold} onChange={(event) => setThreshold(Number(event.target.value))} className="mt-3 w-full accent-[#0878be]" /><span className="block text-xs text-[var(--text-muted)]">Por defecto 85%. Solo aparecen oportunidades con compatibilidad y confianza suficientes.</span></label></div><div className="mt-5 flex justify-end"><Button onClick={() => void save()} disabled={busy} className="min-h-11 rounded-xl bg-[#0878be] px-5 text-white">Guardar personalización</Button></div></section>;
+  return <div className="space-y-2"><Label>{label}</Label><div className="rounded-2xl border border-[var(--border)] bg-[var(--input-background)] p-3"><div className="mb-2 flex flex-wrap gap-2">{values.map((item) => <button type="button" key={item} onClick={() => onChange(values.filter((value) => value !== item))} className="min-h-10 rounded-full bg-[var(--accent-soft)] px-3 text-sm font-bold text-[var(--accent-text)]" aria-label={`Quitar ${item}`}>✓ {item} ×</button>)}</div><div className="flex min-w-0 gap-2"><Input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === ",") { event.preventDefault(); add(); } }} placeholder={placeholder} className="h-11 min-w-0 flex-1 rounded-xl bg-white" /><Button type="button" variant="outline" onClick={add} className="h-11 shrink-0 rounded-xl">Agregar</Button></div>{available.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{available.map((item) => <button type="button" key={item} onClick={() => onChange([...values, item])} className="rounded-full border border-[var(--border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)]">+ {item}</button>)}</div>}</div></div>;
 }
 
 function ProfileForm({ profile, roleOptions, onSaved }: { profile?: Profile; roleOptions: string[]; onSaved: () => void }) {
-  const [form, setForm] = useState(profile || null);
+  const [form, setForm] = useState<Profile | null>(() => profile ? {
+    ...profile,
+    characters: profile.characters.length ? profile.characters : [
+      ...(profile.wants_interim ? ["Interino"] : []),
+      ...(profile.wants_substitute ? ["Suplente"] : []),
+    ],
+  } : null);
+  const [busy, setBusy] = useState(false);
   if (!form) return <LoadingCards />;
-  const field = (key: "name" | "department" | "locality", label: string, placeholder: string) => <div className="space-y-2"><Label htmlFor={key}>{label}</Label><Input id={key} value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} placeholder={placeholder} className="h-11 rounded-xl border-[var(--border)] bg-white" /></div>;
   const hasLevel = (level: string) => form.levels.some((item) => normalize(item) === normalize(level));
-  const toggleLevel = (level: string) => setForm({ ...form, levels: hasLevel(level) ? form.levels.filter((item) => normalize(item) !== normalize(level)) : [...form.levels, level] });
-  const save = async () => { const response = await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "save_profile", name: form.name, levels: form.levels, areas: form.areas, subjects: form.subjects, boards: form.boards, roles: form.roles, department: form.department, locality: form.locality, shifts: form.shifts, wantsInterim: Boolean(form.wants_interim), wantsSubstitute: Boolean(form.wants_substitute), trainingInterests: form.training_interests, notifyNewTrainings: Boolean(form.notify_new_trainings), trainingNotifyScope: form.training_notify_scope, trainingMatchThreshold: form.training_match_threshold }) }); if (response.ok) { toast.success("Perfil actualizado"); onSaved(); } else toast.error("No se pudo actualizar el perfil"); };
-  return <><PageHeader view="perfil" count={0} syncing={false} /><section className="mb-5 rounded-3xl border border-[var(--border)] bg-[var(--surface-secondary)] p-5 md:p-6"><h2 className="text-lg font-bold">Ya tengo cuenta oficial</h2><p className="mt-1 text-sm text-[var(--text-muted)]">Ingresá con tu cuenta existente directamente en el sistema correspondiente. DocenteTuc nunca recibe tu contraseña.</p><div className="mt-4 flex flex-wrap gap-3"><a href={FDCI_LOGIN} target="_blank" rel="noreferrer" className="flex min-h-11 items-center gap-2 rounded-xl bg-[#0878be] px-4 font-bold text-white">Ingresar a FDCI <ExternalLink className="size-4" /></a><a href={SIME_LOGIN} target="_blank" rel="noreferrer" className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 font-bold text-[var(--text-primary)]">Ingresar a SIME <ExternalLink className="size-4" /></a></div></section><form onSubmit={(event) => { event.preventDefault(); void save(); }} className="grid gap-5 rounded-3xl border border-[var(--border)] bg-white p-5 md:grid-cols-2 md:p-8">{field("name", "Nombre", "Tu nombre")}<fieldset className="space-y-2"><legend className="font-medium">Niveles en los que trabajo / puedo trabajar</legend><div className="flex flex-wrap gap-2">{EDUCATION_LEVELS.map((level) => <button type="button" key={level} aria-pressed={hasLevel(level)} onClick={() => toggleLevel(level)} className={`min-h-11 rounded-full border px-4 font-bold ${hasLevel(level) ? "border-[#0878be] bg-[#0878be] text-white" : "border-[var(--border)] bg-[var(--input-background)] text-[var(--text-secondary)]"}`}>{hasLevel(level) ? "✓ " : ""}{level}</button>)}</div></fieldset><MultiValueField label="Áreas" values={form.areas} placeholder="Ej. Ciencias Sociales" onChange={(areas) => setForm({ ...form, areas })} /><MultiValueField label="Materias o espacios" values={form.subjects} placeholder="Ej. Psicología" onChange={(subjects) => setForm({ ...form, subjects })} /><MultiValueField label="Cargos / roles que me interesan" values={form.roles} suggestions={roleOptions} placeholder="Buscá entre cargos publicados por SIME" onChange={(roles) => setForm({ ...form, roles })} /><MultiValueField label="Juntas" values={form.boards} placeholder="Ej. Secundaria" onChange={(boards) => setForm({ ...form, boards })} />{field("department", "Departamento / zona", "Ej. Capital")}{field("locality", "Localidad", "Ej. San Miguel de Tucumán")}<MultiValueField label="Turnos de interés" values={form.shifts} placeholder="Ej. Mañana" onChange={(shifts) => setForm({ ...form, shifts })} /><MultiValueField label="Capacitaciones de interés" values={form.training_interests} placeholder="Ej. Educación digital" onChange={(training_interests) => setForm({ ...form, training_interests })} /><div className="flex flex-col justify-center gap-4 rounded-2xl bg-[var(--surface-secondary)] p-4"><label className="flex items-center justify-between gap-4"><span><strong className="block">Interinatos</strong><small className="text-[var(--text-muted)]">Incluir en coincidencias</small></span><Switch checked={Boolean(form.wants_interim)} onCheckedChange={(checked) => setForm({ ...form, wants_interim: checked })} /></label><label className="flex items-center justify-between gap-4"><span><strong className="block">Suplencias</strong><small className="text-[var(--text-muted)]">Incluir en coincidencias</small></span><Switch checked={Boolean(form.wants_substitute)} onCheckedChange={(checked) => setForm({ ...form, wants_substitute: checked })} /></label></div><div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-secondary)] p-4"><label className="flex items-center justify-between gap-4"><span><strong className="block">Nuevas capacitaciones</strong><small className="text-[var(--text-muted)]">Recibir alertas según tu selección</small></span><Switch checked={Boolean(form.notify_new_trainings)} onCheckedChange={(checked) => setForm({ ...form, notify_new_trainings: checked })} /></label><Select value={form.training_notify_scope || "relevant"} onValueChange={(value) => setForm({ ...form, training_notify_scope: (value || "relevant") as Profile["training_notify_scope"] })}><SelectTrigger className="mt-3 h-10 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas</SelectItem><SelectItem value="level">Según mis niveles</SelectItem><SelectItem value="area">Según mis materias/áreas</SelectItem><SelectItem value="interests">Según mis intereses</SelectItem><SelectItem value="relevant">Sólo coincidencias relevantes</SelectItem></SelectContent></Select></div><div className="flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] pt-5 md:col-span-2"><p className="max-w-xl text-sm text-[var(--text-muted)]">Las coincidencias no certifican habilitación legal. Nunca solicitamos tu contraseña de SIME ni de FDCI.</p><Button type="submit" className="h-11 rounded-xl bg-[#0878be] px-6 text-white">Guardar preferencias</Button></div></form></>;
+  const toggleLevel = (level: string) => setForm((current) => {
+    if (!current) return current;
+    const selected = current.levels.some((item) => normalize(item) === normalize(level));
+    return { ...current, levels: selected ? current.levels.filter((item) => normalize(item) !== normalize(level)) : [...current.levels, level] };
+  });
+  const toggleList = (key: "characters" | "circuits", value: string) => setForm((current) => current ? { ...current, [key]: current[key].includes(value) ? current[key].filter((item) => item !== value) : [...current[key], value] } : current);
+  const toggleBoard = (id: string, label: string) => setForm((current) => current ? { ...current, boards: current.boards.some((value) => normalizeJunta(value) === id) ? current.boards.filter((value) => normalizeJunta(value) !== id) : [...current.boards, label] } : current);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({
+        action: "save_profile", name: form.name, levels: form.levels, areas: form.areas, subjects: form.subjects,
+        boards: form.boards, roles: form.roles, department: form.department, locality: form.locality, shifts: form.shifts,
+        wantsInterim: form.characters.includes("Interino"), wantsSubstitute: form.characters.includes("Suplente"),
+        trainingInterests: form.training_interests, characters: form.characters, circuits: form.circuits,
+        personalMatchThreshold: form.personal_match_threshold,
+      }) });
+      if (!response.ok) throw new Error("No se pudo actualizar el perfil");
+      toast.success("Perfil actualizado"); onSaved();
+    } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo actualizar el perfil"); }
+    finally { setBusy(false); }
+  };
+  return (
+    <>
+      <PageHeader view="perfil" count={0} syncing={false} />
+      <form onSubmit={(event) => { event.preventDefault(); void save(); }} className="grid gap-4 rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-4 text-[var(--text-primary)] sm:p-5 md:grid-cols-2 md:gap-5 md:p-7">
+        <div className="md:col-span-2">
+          <p className="text-xs font-black uppercase tracking-[.15em] text-[var(--accent-text)]">Perfil privado</p>
+          <h2 className="mt-1 text-xl font-black">Tu perfil docente</h2>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Se usa para ordenar oportunidades y capacitaciones. No se muestra en tu perfil público.</p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="name">Nombre</Label>
+          <Input id="name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Tu nombre" className="h-11 rounded-xl border-[var(--border)] bg-white" />
+        </div>
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-bold">Niveles en los que trabajo / puedo trabajar</legend>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+            {EDUCATION_LEVELS.map((level) => (
+              <button type="button" key={level} aria-pressed={hasLevel(level)} onClick={() => toggleLevel(level)} className={`min-h-11 rounded-full border px-3 text-sm font-bold sm:px-4 ${hasLevel(level) ? "border-[#0878be] bg-[#0878be] text-white" : "border-[var(--border)] bg-[var(--surface-secondary)] text-[var(--text-secondary)]"}`}>
+                {hasLevel(level) ? "✓ " : ""}{level}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset className="space-y-3 md:col-span-2">
+          <legend className="text-sm font-bold">Áreas y materias</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MultiValueField label="Áreas" values={form.areas} placeholder="Ej. Ciencias Sociales" onChange={(areas) => setForm({ ...form, areas })} />
+            <MultiValueField label="Materias o espacios" values={form.subjects} placeholder="Ej. Psicología" onChange={(subjects) => setForm({ ...form, subjects })} />
+          </div>
+        </fieldset>
+        <div className="md:col-span-2">
+          <MultiValueField label="Cargos / roles" values={form.roles} suggestions={roleOptions} placeholder="Buscá entre cargos publicados por SIME" onChange={(roles) => setForm({ ...form, roles })} />
+        </div>
+        <fieldset className="space-y-2 md:col-span-2">
+          <legend className="text-sm font-bold">Juntas de interés</legend>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {OFFICIAL_JUNTAS.map((item) => {
+              const selected = form.boards.some((value) => normalizeJunta(value) === item.id);
+              return <button key={item.id} type="button" aria-pressed={selected} onClick={() => toggleBoard(item.id, item.label)} className={`min-h-11 rounded-xl border px-3 text-left text-sm font-bold ${selected ? "border-[#0878be] bg-[#e8f6ff] text-[#075f9b]" : "border-[var(--border)] bg-[var(--surface-secondary)] text-[var(--text-secondary)]"}`}>{selected ? "✓ " : ""}{item.label}</button>;
+            })}
+          </div>
+          <p className="text-xs text-[var(--text-muted)]">La junta no se deduce de manera única solo por nivel o cargo, por eso se conserva como elección explícita.</p>
+        </fieldset>
+        <fieldset className="space-y-2 md:col-span-2">
+          <legend className="text-sm font-bold">Circuitos</legend>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {TUCUMAN_CIRCUITS.map((item) => {
+              const selected = form.circuits.includes(item.id);
+              return <button key={item.id} type="button" aria-pressed={selected} onClick={() => toggleList("circuits", item.id)} className={`min-h-16 rounded-xl border p-3 text-left ${selected ? "border-[#0878be] bg-[#e8f6ff]" : "border-[var(--border)] bg-[var(--surface-secondary)]"}`}>
+                <strong className="block text-sm">{selected ? "☑ " : "☐ "}Circuito {item.id}</strong>
+                <span className="mt-1 block text-xs text-[var(--text-secondary)]">{item.departments.join(" · ")}</span>
+              </button>;
+            })}
+          </div>
+          <p className="text-xs text-[var(--text-muted)]">Podés combinar circuitos. Se conservan preferencias antiguas de departamento/localidad para no alterar datos ni coincidencias ya guardadas.</p>
+        </fieldset>
+        <MultiValueField label="Turnos" values={form.shifts} placeholder="Ej. Mañana" onChange={(shifts) => setForm({ ...form, shifts })} />
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-bold">Carácter de designación</legend>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+            {OFFICIAL_CHARACTERS.map((item) => (
+              <button key={item} type="button" aria-pressed={form.characters.includes(item)} onClick={() => toggleList("characters", item)} className={`min-h-11 rounded-full border px-3 text-sm font-bold ${form.characters.includes(item) ? "border-[#0878be] bg-[#0878be] text-white" : "border-[var(--border)] bg-[var(--surface-secondary)] text-[var(--text-secondary)]"}`}>
+                {form.characters.includes(item) ? "✓ " : ""}{item}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-[var(--text-muted)]">Si no elegís ninguno, el carácter no filtra las coincidencias.</p>
+        </fieldset>
+        <div className="md:col-span-2">
+          <MultiValueField label="Capacitaciones de interés" values={form.training_interests} placeholder="Ej. Educación digital" onChange={(training_interests) => setForm({ ...form, training_interests })} />
+        </div>
+        <label className="space-y-2 md:col-span-2">
+          <span className="flex items-center justify-between text-sm font-bold"><span>Umbral de compatibilidad</span><span className="text-[var(--accent-text)]">{form.personal_match_threshold}%</span></span>
+          <input aria-label="Umbral de compatibilidad" type="range" min="70" max="100" step="5" value={form.personal_match_threshold} onChange={(event) => setForm({ ...form, personal_match_threshold: Number(event.target.value) })} className="w-full accent-[#0878be]" />
+          <span className="block text-xs text-[var(--text-muted)]">Por defecto: 85%. Las fuentes con información desconocida no se descartan automáticamente.</span>
+        </label>
+        <div className="flex flex-col gap-3 border-t border-[var(--border)] pt-4 sm:flex-row sm:items-center sm:justify-between md:col-span-2">
+          <p className="text-xs text-[var(--text-muted)]">Las coincidencias no certifican habilitación legal. Nunca solicitamos tu contraseña de SIME ni de FDCI.</p>
+          <Button type="submit" disabled={busy} className="min-h-11 w-full rounded-xl bg-[#0878be] px-6 text-white sm:w-auto">{busy ? "Guardando…" : "Guardar perfil"}</Button>
+        </div>
+      </form>
+    </>
+  );
+}
+
+function PlatformAccessSection() {
+  const platforms = [
+    {
+      id: "sime",
+      name: "SIME",
+      description: "Designaciones y servicios docentes.",
+      action: "Ingresar a SIME",
+      href: SIME_LOGIN,
+      image: "/assets/platforms/tucuman-education-emblem.webp",
+      imageAlt: "Emblema institucional usado por el portal SIME",
+      imageWidth: 256,
+      imageHeight: 256,
+    },
+    {
+      id: "fdci",
+      name: "Formación Docente Continua",
+      description: "Capacitaciones y formación docente.",
+      action: "Ingresar a FDCI",
+      href: FDCI_LOGIN,
+      image: "/assets/platforms/tucuman-education-emblem.webp",
+      imageAlt: "Emblema institucional usado por el portal FDCI",
+      imageWidth: 256,
+      imageHeight: 256,
+    },
+    {
+      id: "infod",
+      name: "INFoD / AulaS-TIC",
+      description: "Cursos y propuestas de formación nacional.",
+      action: "Ingresar a INFoD",
+      href: INFOD_LOGIN,
+      image: "/assets/platforms/infod-logo.webp",
+      imageAlt: "Logotipo oficial del Instituto Nacional de Formación Docente",
+      imageWidth: 105,
+      imageHeight: 35,
+      note: "Ingresás con tus credenciales de INFoD.",
+    },
+  ];
+
+  return <section className="mx-auto mb-5 w-full max-w-5xl" aria-labelledby="platform-access-title">
+    <div className="mb-4">
+      <h2 id="platform-access-title" className="text-xl font-black text-[var(--text-primary)]">Plataformas y accesos oficiales</h2>
+      <p className="mt-1 text-sm text-[var(--text-secondary)]">Accedé rápidamente a los servicios que utilizás como docente.</p>
+    </div>
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {platforms.map((platform) => <article key={platform.id} className="flex min-w-0 flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-4 text-[var(--text-primary)] sm:p-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="grid size-14 shrink-0 place-items-center rounded-xl border border-[var(--border)] bg-white p-1.5">
+            <Image src={platform.image} alt={platform.imageAlt} width={platform.imageWidth} height={platform.imageHeight} className="h-full w-full object-contain" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-black leading-snug">{platform.name}</h3>
+            <p className="mt-1 text-sm leading-snug text-[var(--text-secondary)]">{platform.description}</p>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <span className="inline-flex min-h-8 items-center gap-1.5 rounded-full bg-[var(--surface-secondary)] px-3 text-xs font-semibold text-[var(--text-secondary)]"><ExternalLink className="size-3.5" />Sitio externo</span>
+          <a href={platform.href} target="_blank" rel="noreferrer" aria-label={`${platform.action} (abre en una pestaña nueva)`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#0878be] px-4 text-sm font-bold text-white hover:bg-[#06659f] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0878be]">
+            {platform.action} <ExternalLink className="size-4" />
+          </a>
+        </div>
+        {platform.note && <p className="mt-2 text-xs text-[var(--text-muted)]">{platform.note}</p>}
+      </article>)}
+    </div>
+  </section>;
 }
 
 function DataDeletionSection({ profile }: { profile: Profile | null }) {
