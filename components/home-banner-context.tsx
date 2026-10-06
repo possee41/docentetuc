@@ -61,6 +61,6 @@ export function HomeBannerContext({ name }: { name?: string }) {
   return <div className="home-hero-context">
     <p className="home-hero-greeting">{now ? greetingForHour(now.getHours()) : "Hola"}{firstName ? `, ${firstName}` : ""} 👋</p>
     {now && <p className="home-hero-weather"><time dateTime={localTime(now)}>{localTime(now)}</time>{weather && <> <span aria-hidden="true">·</span> {weather.temperature} °C <span aria-hidden="true">·</span> {weather.condition} {weather.icon}</>}</p>}
-    <p className="home-hero-location">Tucumán{weather && <> <span aria-hidden="true">·</span> Clima: <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a> <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer" aria-label="Licencia del clima, CC BY 4.0">CC BY</a></>}</p>
+    <p className="home-hero-location">Tucumán</p>
   </div>;
 }
