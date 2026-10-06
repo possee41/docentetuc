@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hasAccountIdentitySchema, hasAuthSchema } from "./auth-schema.ts";
+import { hasAccountIdentitySchema, hasAuthSchema, hasCommunitySchema } from "./auth-schema.ts";
 
 test("auth D1 schema gate enables auth only when all required tables exist", async () => {
   let boundValues: string[] = [];
@@ -33,6 +33,28 @@ test("auth D1 schema gate fails closed when D1 is unavailable", async () => {
     prepare: () => ({ bind: () => ({ first: async () => { throw new Error("D1 unavailable"); } }) }),
   };
   assert.equal(await hasAuthSchema(database), false);
+});
+
+test("Comunidad requiere todas las tablas nuevas antes de habilitar endpoints", async () => {
+  let names: string[] = [];
+  const database = {
+    prepare: (sql: string) => ({
+      bind: (...values: string[]) => {
+        names = values;
+        assert.match(sql, /sqlite_master/u);
+        return { first: async <T>() => ({ count: 8 } as T) };
+      },
+    }),
+  };
+  assert.equal(await hasCommunitySchema(database), true);
+  assert.deepEqual(names, [
+    "community_rules_acceptances", "community_moderators", "community_posts", "community_comments",
+    "community_reports", "community_blocks", "community_moderation_events", "community_rate_limits",
+  ]);
+  const partial = { prepare: () => ({ bind: () => ({ first: async <T>() => ({ count: 7 } as T) }) }) };
+  assert.equal(await hasCommunitySchema(partial), false);
+  const unavailable = { prepare: () => ({ bind: () => ({ first: async () => { throw new Error("D1 unavailable"); } }) }) };
+  assert.equal(await hasCommunitySchema(unavailable), false);
 });
 
 test("las operaciones de identidad requieren la tabla aditiva de instalaciones", async () => {

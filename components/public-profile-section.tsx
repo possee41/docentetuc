@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,7 +49,8 @@ export function PublicProfileSection({ profile, headers, onSaved }: { profile: P
     <p className="text-xs font-black uppercase tracking-[.15em] text-[var(--accent-text)]">Identidad · Fase 1</p>
     <h2 id="public-profile-title" className="mt-1 text-xl font-black">Mi perfil público</h2>
     <p className="mt-2 text-sm text-[var(--text-secondary)]">Estos son los datos que podrán mostrarse a otros usuarios cuando utilices las funciones de Comunidad de DocenteTuc.</p>
-    <p className="mt-3 rounded-2xl border border-[var(--info-border)] bg-[var(--info-bg)] p-3 text-sm text-[var(--info-text)]">La Comunidad todavía no está habilitada. Guardar este perfil no publica nada ni lo comparte con otros usuarios. Tu nombre del perfil docente privado no se copia aquí.</p>
+    <p className="mt-3 rounded-2xl border border-[var(--info-border)] bg-[var(--info-bg)] p-3 text-sm text-[var(--info-text)]">Tu perfil público permanece separado del perfil docente privado. Participar en Comunidad requiere sesión, nombre público, avatar y aceptación de normas.</p>
+    <Link href="/comunidad" className="mt-4 inline-flex min-h-11 items-center rounded-xl border border-[var(--border)] bg-white px-4 font-bold text-[#0878be]">Abrir Comunidad · prueba 1.1</Link>
 
     {!isEditing ? <div className="mt-5 space-y-4">
       <div className="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-secondary)] p-4">

@@ -7,6 +7,10 @@ type SchemaDatabase = {
 };
 
 const REQUIRED_AUTH_TABLES = ["user", "session", "account", "verification"] as const;
+const REQUIRED_COMMUNITY_TABLES = [
+  "community_rules_acceptances", "community_moderators", "community_posts", "community_comments",
+  "community_reports", "community_blocks", "community_moderation_events", "community_rate_limits",
+] as const;
 
 /** Keeps account sign-in disabled until the additive D1 migration exists. */
 export async function hasAuthSchema(database: SchemaDatabase) {
@@ -29,6 +33,19 @@ export async function hasAccountIdentitySchema(database: SchemaDatabase) {
       .bind()
       .first<{ count: number }>();
     return Number(result?.count) === 1;
+  } catch {
+    return false;
+  }
+}
+
+/** Community stays disabled unless the complete additive Phase 3A schema exists. */
+export async function hasCommunitySchema(database: SchemaDatabase) {
+  try {
+    const placeholders = REQUIRED_COMMUNITY_TABLES.map(() => "?").join(",");
+    const result = await database.prepare(`SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name IN (${placeholders})`)
+      .bind(...REQUIRED_COMMUNITY_TABLES)
+      .first<{ count: number }>();
+    return Number(result?.count) === REQUIRED_COMMUNITY_TABLES.length;
   } catch {
     return false;
   }

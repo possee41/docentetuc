@@ -16,7 +16,7 @@ export default function PrivacyPage() {
         <header className="mt-6 border-b border-[#d9e8f2] pb-6">
           <p className="text-xs font-black uppercase tracking-[.18em] text-[#0878be]">DocenteTuc</p>
           <h1 className="mt-2 text-3xl font-black leading-tight sm:text-4xl">Política de Privacidad de DocenteTuc</h1>
-          <p className="mt-3 text-sm text-[#315d7a]">Última actualización: 1 de octubre de 2026</p>
+          <p className="mt-3 text-sm text-[#315d7a]">Última actualización: 5 de octubre de 2026</p>
           <p className="mt-5 rounded-2xl border border-[#9fc9e3] bg-[#eaf6fd] p-4 font-bold leading-relaxed">
             DocenteTuc es una aplicación independiente y no representa al Gobierno de Tucumán, al Ministerio de Educación de Tucumán ni a ningún organismo público.
           </p>
@@ -33,7 +33,8 @@ export default function PrivacyPage() {
             <p className="mt-2">Al abrir la aplicación se genera un identificador de esta instalación. Si accedés mediante una integración de cuenta, también podemos recibir su identificador, nombre y correo electrónico. Según las funciones que uses, tratamos:</p>
             <ul className="mt-2 list-disc space-y-1 pl-6">
               <li>nombre y preferencias del perfil docente: niveles, áreas, materias, cargos, juntas, carácter, circuitos, turnos, departamento, localidad e intereses de capacitación;</li>
-              <li>si elegís configurar «Mi perfil público», el nombre visible, un avatar predeterminado y una bio opcional; no copiamos automáticamente tu nombre privado y, mientras Comunidad no esté habilitada, esos datos no se publican ni se muestran a otras personas;</li>
+              <li>si configurás «Mi perfil público» y participás en Comunidad, el nombre visible, uno de los avatares y la bio opcional pueden mostrarse junto a tus publicaciones y comentarios; el email de Google, los identificadores internos y el perfil docente privado no se muestran;</li>
+              <li>si participás en Comunidad, tus publicaciones y comentarios de texto, la aceptación versionada de las normas, reportes, bloqueos y registros internos de moderación necesarios para operar el espacio;</li>
               <li>publicaciones guardadas, seguimiento de designaciones, eventos, notas y recordatorios de agenda;</li>
               <li>preferencias y registro de alertas y notificaciones;</li>
               <li>si activás push, identificador del dispositivo, dirección de suscripción, claves técnicas y agente del navegador necesarios para enviar avisos.</li>
@@ -43,7 +44,7 @@ export default function PrivacyPage() {
 
           <section aria-labelledby="finalidad">
             <h2 id="finalidad" className="text-xl font-black">3. Para qué usamos los datos</h2>
-            <p className="mt-2">Para mostrar oportunidades relacionadas con tus preferencias, organizar designaciones y capacitaciones, conservar guardados y agenda, generar recordatorios y alertas, responder consultas en DocenteTuc IA y mantener el funcionamiento y la seguridad del servicio.</p>
+            <p className="mt-2">Para mostrar oportunidades relacionadas con tus preferencias, organizar designaciones y capacitaciones, conservar guardados y agenda, generar recordatorios y alertas, responder consultas en DocenteTuc IA, permitir conversaciones docentes en Comunidad cuando esté habilitada y mantener el funcionamiento y la seguridad del servicio.</p>
           </section>
 
           <section aria-labelledby="ia">
@@ -59,8 +60,8 @@ export default function PrivacyPage() {
 
           <section aria-labelledby="almacenamiento">
             <h2 id="almacenamiento" className="text-xl font-black">6. Almacenamiento y conservación</h2>
-            <p className="mt-2">El navegador guarda localmente el tema, un identificador de dispositivo, una copia de la última respuesta de la app —que puede incluir tu perfil, perfil público y agenda—, una selección pendiente de designación y una caché del clima. El service worker conserva recursos de la aplicación para facilitar el uso sin conexión. D1, alojada en Cloudflare, almacena por separado el perfil docente privado (`profiles`) y el perfil público opcional (`public_profiles`), además de preferencias, guardados, seguimiento, agenda, recordatorios, notificaciones y suscripciones push.</p>
-            <p className="mt-2">No hay un plazo fijo de borrado automático para todos esos datos. Los contadores de límites tienen fechas de vencimiento funcionales, pero el código no acredita una purga automática de todas esas filas. Se conservan mientras sean necesarios para prestar las funciones correspondientes o hasta una solicitud verificada atendida por el equipo de DocenteTuc. Borrar los datos del navegador no elimina por sí solo los registros del servidor.</p>
+            <p className="mt-2">El navegador guarda localmente el tema, un identificador de dispositivo, una copia de la última respuesta de la app —que puede incluir tu perfil, perfil público y agenda—, una selección pendiente de designación y una caché del clima. El service worker conserva recursos de la aplicación para facilitar el uso sin conexión. D1, alojada en Cloudflare, almacena por separado el perfil docente privado (`profiles`) y el perfil público opcional (`public_profiles`), además de preferencias, guardados, seguimiento, agenda, recordatorios, notificaciones, suscripciones push y, si participás en Comunidad, publicaciones, comentarios, aceptación de normas, reportes, bloqueos y metadatos de moderación.</p>
+            <p className="mt-2">No hay un plazo fijo de borrado automático para todos esos datos. El contenido oculto o retirado de Comunidad puede conservarse internamente para revisión durante un máximo de 90 días desde la última acción de moderación; después se elimina el texto y se conserva únicamente la auditoría mínima de acción, motivo y fecha. Los contadores de límites tienen vencimiento funcional, pero no se acredita una purga automática de todas esas filas. Borrar los datos del navegador no elimina por sí solo los registros del servidor.</p>
           </section>
 
           <section aria-labelledby="terceros">
@@ -90,8 +91,8 @@ export default function PrivacyPage() {
 
           <section aria-labelledby="control">
             <h2 id="control" className="text-xl font-black">10. Control y eliminación de datos</h2>
-            <p className="mt-2">En Perfil → Privacidad podés iniciar una solicitud de eliminación de tus datos. También podés hacerlo sin instalar la app desde <Link className="font-bold text-[#075f9b] underline" href="/eliminar-datos">Eliminar mis datos</Link>. La solicitud llega a soporte por correo y no borra automáticamente D1: primero verificamos la titularidad por un medio independiente de la referencia de perfil. Tras esa verificación se eliminan las filas personales de D1 asociadas a esa identidad, incluidos perfil docente y perfil público (nombre visible, avatar y bio), preferencias, guardados, agenda, seguimiento, recordatorios, notificaciones, suscripciones push y límites de uso. Esto no elimina automáticamente registros de infraestructura de Cloudflare, datos que retenga un proveedor externo ni correos de soporte. Soporte confirma el resultado; recién entonces podés borrar la copia local desde Perfil o el navegador.</p>
-            <p className="mt-2">Las publicaciones públicas, los datos de otras personas y las cuentas de portales oficiales no se eliminan. Los correos necesarios para tramitar la solicitud se gestionan por separado y se conservan sólo mientras sean necesarios. Si no podemos verificar la titularidad, no ejecutaremos un borrado que pudiera afectar a otra persona. Para consultas, escribí a <a className="font-bold text-[#075f9b] underline" href={`mailto:${contact}?subject=Privacidad%20DocenteTuc`}>{contact}</a>. No envíes contraseñas.</p>
+            <p className="mt-2">Desde Perfil podés confirmar «ELIMINAR» para borrar tu cuenta e identidad de DocenteTuc. Esto elimina perfil docente y público, sesiones y vínculo de autenticación de DocenteTuc; no elimina tu cuenta Google. También se eliminan tus publicaciones y comentarios de Comunidad, los reportes que presentaste, bloqueos en cualquiera de las dos direcciones, aceptación de normas y permisos de moderación. Reportes y auditoría ligados a contenido que se elimina se borran en cascada; en eventos sobre contenido de otras personas se quita el identificador de quien moderó y se conservan únicamente acción, motivo y fecha. El contenido de otras personas permanece. Esto no elimina automáticamente registros de infraestructura de Cloudflare, datos que retenga un proveedor externo ni correos de soporte. También podés iniciar una solicitud desde <Link className="font-bold text-[#075f9b] underline" href="/eliminar-datos">Eliminar mis datos</Link>; soporte verificará la titularidad antes de cualquier borrado manual.</p>
+            <p className="mt-2">Los datos de otras personas y las cuentas de portales oficiales no se eliminan. Los correos necesarios para tramitar una solicitud se gestionan por separado. Si no podemos verificar la titularidad, no ejecutaremos un borrado que pudiera afectar a otra persona. Para consultas, escribí a <a className="font-bold text-[#075f9b] underline" href={`mailto:${contact}?subject=Privacidad%20DocenteTuc`}>{contact}</a>. No envíes contraseñas.</p>
           </section>
 
           <section aria-labelledby="menores">

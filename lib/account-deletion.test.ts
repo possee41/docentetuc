@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { accountDataDeletionStatements } from "./account-deletion.ts";
+
+const COMMUNITY_MIGRATION = readFileSync(new URL("../migrations/0015_community.sql", import.meta.url), "utf8");
 
 const ACCOUNT_A = "550e8400-e29b-41d4-a716-446655440000";
 const ACCOUNT_B = "6ba7b810-9dad-41d1-80b4-00c04fd430c8";
@@ -31,6 +34,7 @@ test("eliminación autenticada borra todos los datos propios y vinculados, no lo
       CREATE TABLE public_profiles (user_id TEXT PRIMARY KEY);
       CREATE TABLE profiles (user_id TEXT PRIMARY KEY);
       CREATE TABLE publications (id TEXT PRIMARY KEY);`);
+    db.exec(COMMUNITY_MIGRATION);
     for (const [id, email] of [[ACCOUNT_A, "a@example.invalid"], [ACCOUNT_B, "b@example.invalid"]]) {
       db.prepare('INSERT INTO "user" VALUES (?,?)').run(id, email);
       db.prepare('INSERT INTO "account" VALUES (?,?)').run(`${id}:google`, id);
@@ -51,6 +55,16 @@ test("eliminación autenticada borra todos los datos propios y vinculados, no lo
       db.prepare("INSERT INTO verification VALUES (?)").run(email);
     }
     db.prepare("INSERT INTO publications VALUES ('official:one')").run();
+    db.prepare("INSERT INTO community_rules_acceptances(user_id, rules_version) VALUES (?, '1'), (?, '1')").run(ACCOUNT_A, ACCOUNT_B);
+    db.prepare("INSERT INTO community_moderators(user_id) VALUES (?), (?)").run(ACCOUNT_A, ACCOUNT_B);
+    const postA = "650e8400-e29b-41d4-a716-446655440001", postB = "650e8400-e29b-41d4-a716-446655440002";
+    const commentA = "650e8400-e29b-41d4-a716-446655440003", commentB = "650e8400-e29b-41d4-a716-446655440004";
+    db.prepare("INSERT INTO community_posts(id, author_user_id, body) VALUES (?, ?, 'post A'), (?, ?, 'post B')").run(postA, ACCOUNT_A, postB, ACCOUNT_B);
+    db.prepare("INSERT INTO community_comments(id, post_id, author_user_id, body) VALUES (?, ?, ?, 'comment A'), (?, ?, ?, 'comment B')").run(commentA, postB, ACCOUNT_A, commentB, postA, ACCOUNT_B);
+    db.prepare("INSERT INTO community_reports(id, reporter_user_id, target_type, post_id, reason) VALUES (?, ?, 'post', ?, 'spam'), (?, ?, 'post', ?, 'other')").run("650e8400-e29b-41d4-a716-446655440005", ACCOUNT_A, postB, "650e8400-e29b-41d4-a716-446655440006", ACCOUNT_B, postA);
+    db.prepare("INSERT INTO community_blocks(id, blocker_user_id, blocked_user_id) VALUES (?, ?, ?), (?, ?, ?)").run("650e8400-e29b-41d4-a716-446655440007", ACCOUNT_A, ACCOUNT_B, "650e8400-e29b-41d4-a716-446655440008", ACCOUNT_B, ACCOUNT_A);
+    db.prepare("INSERT INTO community_moderation_events(id, actor_user_id, target_type, post_id, action, reason) VALUES (?, ?, 'post', ?, 'hide', 'spam'), (?, ?, 'post', ?, 'hide', 'other')").run("650e8400-e29b-41d4-a716-446655440009", ACCOUNT_A, postB, "650e8400-e29b-41d4-a716-446655440010", ACCOUNT_B, postA);
+    db.prepare("INSERT INTO community_rate_limits(user_id, action, window_key, request_count) VALUES (?, 'post', 1, 1), (?, 'post', 1, 1)").run(ACCOUNT_A, ACCOUNT_B);
     for (const { sql, values } of accountDataDeletionStatements(ACCOUNT_A)) db.prepare(sql).run(...values);
 
     for (const table of ["push_preferences", "manual_event_push_queue", "notifications", "training_reminders", "designation_tracking", "saved_publications", "manual_events", "public_profiles", "profiles"]) {
@@ -66,6 +80,17 @@ test("eliminación autenticada borra todos los datos propios y vinculados, no lo
     assert.equal((db.prepare("SELECT COUNT(*) AS count FROM publications").get() as { count: number }).count, 1);
     assert.equal((db.prepare("SELECT COUNT(*) AS count FROM verification WHERE identifier=?").get("a@example.invalid") as { count: number }).count, 0);
     assert.equal((db.prepare("SELECT COUNT(*) AS count FROM verification WHERE identifier=?").get("b@example.invalid") as { count: number }).count, 1);
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM community_posts WHERE author_user_id=?").get(ACCOUNT_A) as { count: number }).count, 0);
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM community_posts WHERE author_user_id=?").get(ACCOUNT_B) as { count: number }).count, 1);
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM community_comments WHERE author_user_id=?").get(ACCOUNT_A) as { count: number }).count, 0);
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM community_comments WHERE author_user_id=?").get(ACCOUNT_B) as { count: number }).count, 0, "comment on deleted A post cascades");
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM community_reports").get() as { count: number }).count, 0, "report rows authored by A or targeting deleted A content are removed");
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM community_blocks").get() as { count: number }).count, 0, "blocks involving A are removed");
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM community_rules_acceptances WHERE user_id=?").get(ACCOUNT_A) as { count: number }).count, 0);
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM community_moderators WHERE user_id=?").get(ACCOUNT_A) as { count: number }).count, 0);
+    assert.equal((db.prepare("SELECT actor_user_id FROM community_moderation_events WHERE post_id=?").get(postB) as { actor_user_id: string | null }).actor_user_id, null, "audit actor is anonymized on account deletion");
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM community_moderation_events WHERE post_id=?").get(postA) as { count: number }).count, 0, "audit for deleted target is removed");
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM community_rate_limits WHERE user_id=?").get(ACCOUNT_A) as { count: number }).count, 0);
   } finally { db.close(); }
 });
 
