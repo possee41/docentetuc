@@ -5,6 +5,8 @@ import { hydrateProfile, profileStorage } from "@/lib/profile";
 import { DESIGNATION_STATUSES } from "@/lib/designations";
 import { APP_PUBLICATIONS_QUERY } from "@/lib/app-publications-query";
 import { PUBLIC_PROFILE_UPSERT_SQL, publicProfileForClient, validatePublicProfile } from "@/lib/public-profile";
+import { getAuthenticatedAccount } from "@/lib/auth-session";
+import { isSameOriginMutation } from "@/lib/auth-identity";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +15,7 @@ const value = (input: unknown, max = 300) => typeof input === "string" ? input.t
 export async function GET(request: Request) {
   try {
     const user = await currentUser(request);
+    const account = await getAuthenticatedAccount(request);
     const db = getD1();
     await db.prepare("INSERT INTO profiles (user_id, name, email) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET email=excluded.email WHERE profiles.email IS NOT excluded.email").bind(user.userId, user.fullName || user.displayName.split("@")[0], user.email).run();
     await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type, dedupe_key, scheduled_at) SELECT user_id, publication_id, 'CAPACITACION_ABRE', 'training-reminder:' || id || ':' || opens_at || ':' || COALESCE(advance_minutes,0), CURRENT_TIMESTAMP FROM training_reminders WHERE user_id=? AND notified=0 AND datetime(remind_at)<=datetime('now')").bind(user.userId).run();
@@ -21,7 +24,7 @@ export async function GET(request: Request) {
     await db.prepare("UPDATE saved_publications SET agenda_reminder_notified=1 WHERE user_id=? AND in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime('now')").bind(user.userId).run();
     const [profile, publicProfile, publications, saved, notifications, reminders, designations, manualEvents, sync] = await Promise.all([
       db.prepare("SELECT * FROM profiles WHERE user_id=?").bind(user.userId).first(),
-      db.prepare("SELECT display_name, avatar_id, bio FROM public_profiles WHERE user_id=?").bind(user.userId).first(),
+      account ? db.prepare("SELECT display_name, avatar_id, bio FROM public_profiles WHERE user_id=?").bind(account.accountId).first() : Promise.resolve(null),
       db.prepare(APP_PUBLICATIONS_QUERY).all(),
       db.prepare("SELECT publication_id, in_agenda, followed, agenda_at, agenda_notes, agenda_reminder_at, agenda_reminder_notified, saved_at FROM saved_publications WHERE user_id=?").bind(user.userId).all(),
       db.prepare("SELECT n.*, p.title, p.kind FROM notifications n JOIN publications p ON p.id=n.publication_id WHERE n.user_id=? ORDER BY n.created_at DESC LIMIT 100").bind(user.userId).all(),
@@ -39,15 +42,20 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const user = await currentUser(request);
     const body = await request.json() as Record<string, unknown>;
     const action = value(body.action, 30);
     const db = getD1();
     if (action === "save_public_profile") {
+      if (!isSameOriginMutation(request)) return Response.json({ error: "Solicitud no válida." }, { status: 403 });
+      const account = await getAuthenticatedAccount(request);
+      if (!account) return Response.json({ error: "Iniciá sesión para guardar tu perfil público." }, { status: 401 });
       const validation = validatePublicProfile(body);
       if (!validation.ok) return Response.json({ error: validation.error }, { status: 400 });
-      await db.prepare(PUBLIC_PROFILE_UPSERT_SQL).bind(user.userId, validation.value.displayName, validation.value.avatarId, validation.value.bio).run();
-    } else if (action === "save_profile") {
+      await db.prepare(PUBLIC_PROFILE_UPSERT_SQL).bind(account.accountId, validation.value.displayName, validation.value.avatarId, validation.value.bio).run();
+      return Response.json({ ok: true });
+    }
+    const user = await currentUser(request);
+    if (action === "save_profile") {
       const columns = ["name", "level", "area", "subjects", "junta", "roles", "department", "locality", "shifts", "wants_interim", "wants_substitute", "training_interests", "notify_new_trainings", "training_notify_scope", "training_match_threshold"];
       const fields = [value(body.name, 100) || "Docente", profileStorage(body.levels ?? body.level, 120), profileStorage(body.areas ?? body.area, 180), profileStorage(body.subjects), profileStorage(body.boards ?? body.junta, 240), profileStorage(body.roles, 300), value(body.department, 100), value(body.locality, 100), profileStorage(body.shifts, 100), body.wantsInterim === true ? 1 : 0, body.wantsSubstitute === true ? 1 : 0, profileStorage(body.trainingInterests), body.notifyNewTrainings === true ? 1 : 0, value(body.trainingNotifyScope, 20) || "relevant", Math.min(100, Math.max(50, Number(body.trainingMatchThreshold) || 80))];
       await db.prepare(`UPDATE profiles SET ${columns.map((column) => `${column}=?`).join(",")}, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND (${columns.map((column) => `${column} IS NOT ?`).join(" OR ")})`)

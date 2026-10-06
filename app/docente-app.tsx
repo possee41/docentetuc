@@ -37,6 +37,7 @@ import { canRecommendCurrentPublication, publicationLifecycle } from "@/lib/publ
 import { AppHeader, BottomNavigation, Card, CompatibilityBadge, EmptyState, FilterChip, StatusBadge } from "@/components/docentetuc-ui";
 import { HomeBannerContext } from "@/components/home-banner-context";
 import { PublicProfileSection } from "@/components/public-profile-section";
+import { AccountSignInSection } from "@/components/account-sign-in-section";
 
 type View = "inicio" | "vacantes" | "capacitaciones" | "junta" | "informacion" | "agenda" | "alertas" | "guardados" | "perfil";
 type Theme = "light" | "dark";
@@ -363,6 +364,13 @@ export default function DocenteApp() {
         <div className="mobile-content mx-auto w-full max-w-7xl p-4 md:p-8">
       {view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={(target, term) => { setView(target); setQuery(term || ""); setDesignationQuery(""); setFilter(target === "informacion" || target === "junta" ? "todas" : "para-mi"); }} loading={loading} error={loadError} />
         : view === "perfil" ? <>
+          <section className="mb-5 rounded-3xl border border-[var(--border)] bg-[var(--surface-secondary)] p-4 sm:p-5" aria-labelledby="accounts-access-title">
+            <div className="mb-4">
+              <h2 id="accounts-access-title" className="text-xl font-black text-[var(--text-primary)]">Mis cuentas y accesos</h2>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">Google identifica tu cuenta de DocenteTuc. Las plataformas externas aparecen debajo de tu perfil.</p>
+            </div>
+            <AccountSignInSection headers={apiHeaders} onLinked={() => void load(false)} onSignedOut={() => setData(null)} />
+          </section>
           <ProfileForm key={profile?.updated_at || "profile"} profile={profile} roleOptions={roleOptions} onSaved={() => void load(false)} />
           <PublicProfileSection profile={data?.publicProfile ?? null} headers={() => apiHeaders(true)} onSaved={() => void load(false)} />
           <ProfileRelevanceForm key={`relevance:${profile?.updated_at || "profile"}`} profile={profile} onSaved={() => void load(false)} />
