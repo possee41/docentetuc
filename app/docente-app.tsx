@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Bell, BookOpen, Bookmark, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Clock3, Download, ExternalLink, GraduationCap, Home, KeyRound, Mail, MapPin, Menu, MessagesSquare, Moon, Phone, RefreshCw, Search, SlidersHorizontal, Sparkles, Star, Sun, UserRound, WifiOff, X } from "lucide-react";
+import { Bell, BookOpen, Bookmark, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, CircleUserRound, Clock3, Download, ExternalLink, GraduationCap, Home, Mail, MapPin, Menu, MessagesSquare, Moon, Phone, RefreshCw, Search, SlidersHorizontal, Sparkles, Star, Sun, UserRound, WifiOff, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,7 +49,7 @@ type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<
 
 const navigation: [View, string, typeof Home][] = [
   ["inicio", "Inicio", Home], ["vacantes", "Designaciones", BriefcaseBusiness], ["comunidad", "Comunidad", MessagesSquare], ["capacitaciones", "Capacitaciones", GraduationCap],
-  ["junta", "Padrones y comunicados", BookOpen], ["informacion", "Información útil", Building2], ["agenda", "Agenda", CalendarDays], ["guardados", "Mis guardados", Bookmark], ["perfil", "Perfil docente", UserRound], ["cuentas", "Cuentas y accesos", KeyRound],
+  ["junta", "Padrones y comunicados", BookOpen], ["informacion", "Información útil", Building2], ["agenda", "Agenda", CalendarDays], ["guardados", "Mis guardados", Bookmark], ["perfil", "Perfil docente", UserRound], ["cuentas", "Cuentas y accesos", CircleUserRound],
 ];
 const viewTitles: Record<View, [string, string]> = {
   inicio: ["Inicio", "Lo más relevante según tus preferencias"], vacantes: ["Designaciones", "Pedidos de cobertura publicados en SIME"],
@@ -451,7 +451,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         </div>
 
         {aiMode === "closed" && !reminderPublication && <AIWidget onOpen={() => openAI({ type: view === "cuentas" ? "perfil" : view, title: viewTitles[view][0] })} />}
-        <BottomNavigation items={navigation.filter(([id]) => ["inicio", "vacantes", "comunidad", "agenda", "perfil"].includes(id)).map(([id, label, icon]) => ({ id, label: id === "vacantes" ? "Designaciones" : id === "perfil" ? "Perfil" : label, icon }))} active={view} onNavigate={(id) => navigateToView(id as View)} />
+        <BottomNavigation items={navigation.filter(([id]) => ["inicio", "comunidad", "agenda", "perfil", "cuentas"].includes(id)).map(([id, label, icon]) => ({ id, label: id === "cuentas" ? "Cuenta" : id === "perfil" ? "Perfil" : label, icon }))} active={view} onNavigate={(id) => navigateToView(id as View)} />
         </AppBackground>
       </SidebarInset>
 

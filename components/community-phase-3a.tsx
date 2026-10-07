@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { ArrowUpRight, Bookmark, BookmarkCheck, BookOpen, Check, ChevronDown, Clock3, Flag, Home, MessageCircle, MessagesSquare, MoreHorizontal, Send, ShieldCheck, UserRound, UsersRound, X } from "lucide-react";
+import { ArrowUpRight, Bookmark, BookmarkCheck, BookOpen, Check, ChevronDown, CircleUserRound, Clock3, Flag, Home, MessageCircle, MessagesSquare, MoreHorizontal, Send, ShieldCheck, UserRound, UsersRound, X } from "lucide-react";
 import { COMMUNITY_REPORT_REASONS, type CommunityComment, type CommunityFeedSort, type CommunityPost } from "@/lib/community";
 import { publicAvatarAssetPath, type PublicAvatarId, type PublicProfile } from "@/lib/public-profile";
 
@@ -414,13 +414,13 @@ export function CommunityPhase3A() {
     </main>
 
     <nav aria-label="Navegación principal" className="fixed inset-x-0 bottom-0 z-40 border-t border-sky-100 bg-white/95 px-2 pt-2 shadow-[0_-8px_24px_rgba(18,72,116,.08)] backdrop-blur-md pb-[max(env(safe-area-inset-bottom),.45rem)]">
-      <div className="mx-auto grid max-w-3xl grid-cols-[1fr_1.45fr_1.3fr_1fr_.9fr] items-center gap-1">
+      <div className="mx-auto grid max-w-3xl grid-cols-[1fr_1.3fr_1fr_1fr_1fr] items-center gap-1">
         {[
           { label: "Inicio", href: "/", icon: Home },
-          { label: "Designaciones", href: "/?section=vacantes", icon: BookOpen },
           { label: "Comunidad", href: "/comunidad", icon: UsersRound },
           { label: "Agenda", href: "/?section=agenda", icon: Clock3 },
           { label: "Perfil", href: "/?section=perfil", icon: UserRound },
+          { label: "Cuenta", href: "/?section=cuentas", icon: CircleUserRound },
         ].map(({ label, href, icon: Icon }) => <Link key={label} href={href} aria-current={label === "Comunidad" ? "page" : undefined} className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 text-[9px] font-bold transition sm:min-h-16 sm:text-xs ${label === "Comunidad" ? "bg-[#e8f5ff] text-[#0878be]" : "text-slate-500 hover:bg-slate-50"}`}><Icon className="size-5 sm:size-[1.35rem]" aria-hidden="true" /><span className="whitespace-nowrap">{label}</span></Link>)}
       </div>
     </nav>
