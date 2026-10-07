@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildAIContext, detectIntent, GeminiProvider, retrievePublications } from "./ai.ts";
+import { aiAnswerDisclosure, aiResponseCacheKey, aiSourceIssuesFor, buildAIContext, createAIProvider, detectIntent, GeminiProvider, publicAISources, retrievePublications, safeAISourceUrl } from "./ai.ts";
 import { usefulInformation } from "./useful-information.ts";
 import type { Profile, Publication } from "./types.ts";
 
@@ -70,6 +70,10 @@ test("una consulta de próximas preinscripciones FDCI no sustituye la fuente ni 
 test("no agrega el perfil al contexto sin autorización", () => assert.match(buildAIContext("capacitaciones", records).context, /no autorizó usar su perfil/));
 
 const profile = { user_id: "u", name: "Docente", level: "Secundario", levels: ["Secundario"], area: "Ciencias Sociales, Filosofía", areas: ["Ciencias Sociales", "Filosofía"], subjects: [], junta: "", boards: [], roles: [], department: "", locality: "", shifts: [], characters: [], circuits: [], personal_match_threshold: 85, training_match_threshold: 80, wants_interim: true, wants_substitute: true, training_interests: ["Ciencias Sociales"], notify_new_trainings: false, training_notify_scope: "relevant" } as Profile;
+
+test("la clave de caché de IA queda aislada por cuenta o instalación", () => {
+  assert.notEqual(aiResponseCacheKey("cuenta-a", "capacitaciones", "¿Qué abre?", "2026-10-06"), aiResponseCacheKey("cuenta-b", "capacitaciones", "¿Qué abre?", "2026-10-06"));
+});
 
 test("usa el matching real y conserva su porcentaje", () => {
   const result = buildAIContext("¿Qué capacitaciones coinciden con mi perfil?", records, { profile });
@@ -145,9 +149,9 @@ test("agenda personal recupera eventos manuales de la fecha consultada", () => {
 });
 
 test("con una fuente oficial caída mantiene el contexto y permite responder con el proveedor", async () => {
-  const context = buildAIContext("Tengo que faltar mañana, ¿qué debo presentar?", usefulRecords, { sourceFailures: ["SIME"] });
+  const context = buildAIContext("Tengo que faltar mañana, ¿qué debo presentar?", usefulRecords, { sourceFailures: ["Información oficial Tucumán"] });
   assert.deepEqual(context.sources.map((source) => source.id), ["info:licencias"]);
-  assert.match(context.context, /falló la última actualización de SIME/);
+  assert.match(context.context, /falló la última actualización de Información oficial Tucumán/);
   assert.match(context.context, /orientación general/);
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ candidates: [{ content: { parts: [{ text: "Para orientarte necesito saber el motivo de la inasistencia." }] } }] });
@@ -203,5 +207,90 @@ test("GeminiProvider usa el endpoint backend y la clave sólo en el header", asy
     assert.doesNotMatch(requestUrl, /secret-test/);
     assert.equal((requestInit?.headers as Record<string, string>)["x-goog-api-key"], "secret-test");
     assert.match(String(requestInit?.body), /systemInstruction/);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("la procedencia oficial conserva nombre y enlace HTTPS, pero no expone el ID interno", () => {
+  const source = { ...vacancy, id: "internal-publication-id-should-not-leak", source: "SIME", title: "Designaciones de Filosofía", official_url: "https://sime.educaciontuc.gov.ar/Vacantes/Detalle/1" };
+  const result = buildAIContext("¿Qué designaciones de Filosofía hay?", [source]);
+  assert.equal(result.sources[0]?.source, "SIME");
+  assert.equal(result.sources[0]?.sourceType, "official");
+  assert.equal(result.sources[0]?.url, "https://sime.educaciontuc.gov.ar/Vacantes/Detalle/1");
+  assert.doesNotMatch(result.context, /internal-publication-id-should-not-leak/);
+  assert.deepEqual(publicAISources(result.sources), [{ title: "Designaciones de Filosofía", source: "SIME", sourceType: "official", url: "https://sime.educaciontuc.gov.ar/Vacantes/Detalle/1" }]);
+  assert.deepEqual(safeAISourceUrl("javascript:alert(1)"), "");
+  assert.deepEqual(safeAISourceUrl("http://sime.educaciontuc.gov.ar/"), "");
+});
+
+test("una fuente que falló no se confunde con una sincronización correcta sin resultados", () => {
+  const question = "¿Qué vacantes hay?";
+  const failed = aiSourceIssuesFor("vacantes", [{ source: "SIME", sync_status: "DNS_ERROR" }], question);
+  const healthyEmpty = aiSourceIssuesFor("vacantes", [{ source: "SIME", sync_status: "OK" }], question);
+  const unverified = aiSourceIssuesFor("vacantes", [], question);
+  assert.deepEqual(failed, [{ source: "SIME", state: "unavailable" }]);
+  assert.deepEqual(healthyEmpty, []);
+  assert.deepEqual(unverified, [{ source: "SIME", state: "unverified" }]);
+  assert.equal(aiAnswerDisclosure([], failed, "vacantes").kind, "unavailable");
+  assert.match(aiAnswerDisclosure([], failed, "vacantes").detail, /quizá no refleje novedades/);
+  assert.equal(aiAnswerDisclosure([], healthyEmpty, "vacantes").kind, "general");
+  assert.match(aiAnswerDisclosure([], healthyEmpty, "vacantes").detail, /no confirma datos actuales/);
+  assert.equal(aiAnswerDisclosure([], unverified, "vacantes").kind, "unverified");
+});
+
+test("CENDIE no hereda el fallo ni la falta de verificación de SIME", () => {
+  const question = "¿Dónde consulto CENDIE?";
+  const intent = detectIntent(question);
+  const issues = aiSourceIssuesFor(intent, [{ source: "SIME", sync_status: "NETWORK_ERROR" }, { source: "Información oficial Tucumán", sync_status: "OK" }], question);
+  assert.deepEqual(issues, []);
+  const context = buildAIContext(question, usefulRecords, { sourceFailures: ["SIME"], sourceNotVerified: ["SIME"] });
+  assert.ok(context.sources.some((source) => source.id === "info:cendie"));
+  assert.doesNotMatch(context.context, /actualización de SIME|registrada para SIME/);
+  assert.notEqual(aiAnswerDisclosure(context.sources, issues, intent).kind, "unavailable");
+});
+
+test("las consultas SIME mantienen el aviso pertinente aunque no haya registros", () => {
+  for (const question of ["¿Qué designaciones SIME hay?", "¿Dónde ingreso a SIME?"]) {
+    const intent = detectIntent(question);
+    const issues = aiSourceIssuesFor(intent, [{ source: "SIME", sync_status: "NETWORK_ERROR" }], question);
+    assert.ok(issues.some((issue) => issue.source === "SIME" && issue.state === "unavailable"));
+    assert.match(buildAIContext(question, [], { sourceFailures: ["SIME"] }).context, /falló la última actualización de SIME/);
+    assert.equal(aiAnswerDisclosure([], issues, intent).kind, "unavailable");
+  }
+});
+
+test("la orientación general nunca se etiqueta como información oficial", () => {
+  const result = buildAIContext("¿Qué significa ser suplente?", []);
+  const disclosure = aiAnswerDisclosure(result.sources, [], result.intent);
+  assert.equal(disclosure.kind, "general");
+  assert.equal(disclosure.label, "Orientación general de IA");
+  assert.match(result.context, /no atribuyas datos actuales a fuentes oficiales/);
+});
+
+test("distingue una respuesta que mezcla fuentes oficiales con agenda personal", () => {
+  const disclosure = aiAnswerDisclosure([{ sourceType: "official" }, { sourceType: "internal" }], [], "agenda");
+  assert.equal(disclosure.kind, "mixed");
+  assert.match(disclosure.label, /Registros oficiales \+ datos personales/);
+  assert.match(disclosure.detail, /no son información oficial/);
+});
+
+test("el prompt minimiza identidad privada incluso con el perfil autorizado", () => {
+  const privateProfile = { ...profile, name: "NOMBRE_PRIVADO_TEST", user_id: "CUENTA_PRIVADA_TEST", email: "MAIL_PRIVADO_TEST", image: "FOTO_PRIVADA_TEST" } as Profile;
+  const result = buildAIContext("¿Qué vacantes coinciden conmigo?", [{ ...vacancy, circuit: "II" }], { profile: { ...privateProfile, circuits: ["II"] } });
+  assert.match(result.context, /Perfil autorizado: niveles Secundario/);
+  assert.doesNotMatch(result.context, /NOMBRE_PRIVADO_TEST|CUENTA_PRIVADA_TEST|MAIL_PRIVADO_TEST|FOTO_PRIVADA_TEST/);
+  assert.doesNotMatch(result.context, /installationId|Google ID|OAuth|token/i);
+});
+
+test("OpenAI recibe consulta y contexto sin colocar la clave en URL o cuerpo", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestUrl = "", requestInit: RequestInit | undefined;
+  globalThis.fetch = async (input, init) => { requestUrl = String(input); requestInit = init; return Response.json({ output_text: "Respuesta de prueba" }); };
+  try {
+    assert.equal(await createAIProvider({ provider: "openai", apiKey: "secret-test", model: "test-model" }).generate("Consulta", "Instrucciones"), "Respuesta de prueba");
+    assert.equal(requestUrl, "https://api.openai.com/v1/responses");
+    assert.doesNotMatch(requestUrl, /secret-test/);
+    assert.doesNotMatch(String(requestInit?.body), /secret-test/);
+    assert.equal((requestInit?.headers as Record<string, string>).Authorization, "Bearer secret-test");
+    assert.match(String(requestInit?.body), /"store":false/);
   } finally { globalThis.fetch = originalFetch; }
 });
