@@ -63,11 +63,13 @@ function ReportControl({ targetType, targetId, onDone }: { targetType: "post" | 
   return <details className="group relative text-sm">
     <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-xl px-3 font-semibold text-slate-600 hover:bg-sky-50 [&::-webkit-details-marker]:hidden"><Flag className="size-4" />Reportar</summary>
     <form className="absolute right-0 z-20 mt-1 w-[min(18rem,calc(100vw-3rem))] rounded-2xl border border-sky-100 bg-white p-3 shadow-xl" onSubmit={async (event) => {
-      event.preventDefault(); setBusy(true);
+      event.preventDefault();
+      const details = event.currentTarget.closest("details");
+      setBusy(true);
       try {
         await readResponse(await fetch("/api/community/reports", jsonRequest({ targetType, targetId, reason })));
         onDone("Gracias. Enviamos el reporte para revisión.");
-        event.currentTarget.closest("details")?.removeAttribute("open");
+        details?.removeAttribute("open");
       } catch (error) { onDone(error instanceof Error ? error.message : "No se pudo enviar el reporte.", true); }
       finally { setBusy(false); }
     }}>

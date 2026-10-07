@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Link2, LogOut, Settings2, Trash2 } from "lucide-react";
+import { CheckCircle2, Link2, LogOut, Settings2, ShieldCheck, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GoogleAccountPhoto } from "@/components/google-account-photo";
 import { installationDeletionConfirmed } from "@/lib/installation-ownership";
@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
-type AuthStatus = { configured: boolean; authenticated: boolean; image: string | null; name: string | null };
+type AuthStatus = { configured: boolean; authenticated: boolean; image: string | null; name: string | null; isAdmin: boolean };
 type LinkPreview = { linked: boolean; hasData: boolean; dataCategories: string[] };
 
 const SIGN_IN_UNAVAILABLE = "El inicio con Google todavía no está configurado.";
@@ -24,7 +24,7 @@ function GoogleMark() {
 }
 
 export function AccountSignInSection({ headers, installationSecurity, onLinked, onSignedOut }: { headers: () => HeadersInit; installationSecurity: "protected" | "legacy" | "linked" | "recovery_required" | "unavailable"; onLinked: () => void; onSignedOut: () => void }) {
-  const [status, setStatus] = useState<AuthStatus>({ configured: false, authenticated: false, image: null, name: null });
+  const [status, setStatus] = useState<AuthStatus>({ configured: false, authenticated: false, image: null, name: null, isAdmin: false });
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
   const [linkPreview, setLinkPreview] = useState<LinkPreview | null>(null);
@@ -54,10 +54,10 @@ export function AccountSignInSection({ headers, installationSecurity, onLinked, 
       const response = await fetch("/api/auth/status", { cache: "no-store", credentials: "same-origin" });
       if (!response.ok) throw new Error("No se pudo consultar el estado de la cuenta.");
       const value = await response.json() as AuthStatus;
-      setStatus({ configured: Boolean(value.configured), authenticated: Boolean(value.authenticated), image: typeof value.image === "string" ? value.image : null, name: typeof value.name === "string" ? value.name : null });
+      setStatus({ configured: Boolean(value.configured), authenticated: Boolean(value.authenticated), image: typeof value.image === "string" ? value.image : null, name: typeof value.name === "string" ? value.name : null, isAdmin: value.isAdmin === true });
       if (value.authenticated) void refreshLinkPreview();
     } catch {
-      setStatus({ configured: false, authenticated: false, image: null, name: null });
+      setStatus({ configured: false, authenticated: false, image: null, name: null, isAdmin: false });
     } finally { setChecking(false); }
   };
 
@@ -70,11 +70,11 @@ export function AccountSignInSection({ headers, installationSecurity, onLinked, 
       })
       .then((value) => {
         if (!cancelled) {
-          setStatus({ configured: Boolean(value.configured), authenticated: Boolean(value.authenticated), image: typeof value.image === "string" ? value.image : null, name: typeof value.name === "string" ? value.name : null });
+          setStatus({ configured: Boolean(value.configured), authenticated: Boolean(value.authenticated), image: typeof value.image === "string" ? value.image : null, name: typeof value.name === "string" ? value.name : null, isAdmin: value.isAdmin === true });
           if (value.authenticated) void refreshLinkPreview();
         }
       })
-      .catch(() => { if (!cancelled) setStatus({ configured: false, authenticated: false, image: null, name: null }); })
+      .catch(() => { if (!cancelled) setStatus({ configured: false, authenticated: false, image: null, name: null, isAdmin: false }); })
       .finally(() => { if (!cancelled) setChecking(false); });
     return () => { cancelled = true; };
   }, [refreshLinkPreview]);
@@ -102,7 +102,7 @@ export function AccountSignInSection({ headers, installationSecurity, onLinked, 
       const client = createAuthClient({ baseURL: window.location.origin });
       const result = await client.signOut();
       if (result.error) throw new Error(result.error.message || "No se pudo cerrar la sesión.");
-      setStatus((current) => ({ ...current, authenticated: false, image: null, name: null }));
+      setStatus((current) => ({ ...current, authenticated: false, image: null, name: null, isAdmin: false }));
       setLinkPreview(null);
       setLinkDeclined(false);
       localStorage.removeItem("docentetuc-data-v1");
@@ -157,7 +157,7 @@ export function AccountSignInSection({ headers, installationSecurity, onLinked, 
         for (const key of ["docentetuc-data-v1", "docentetuc-pending-designation"]) localStorage.removeItem(key);
       }
       setDeleteOpen(false);
-      setStatus((current) => ({ ...current, authenticated: false, image: null, name: null }));
+      setStatus((current) => ({ ...current, authenticated: false, image: null, name: null, isAdmin: false }));
       onSignedOut();
       window.dispatchEvent(new Event("docentetuc:refresh-auth-status"));
       toast.success(result.installationDataDeleted
@@ -196,6 +196,7 @@ export function AccountSignInSection({ headers, installationSecurity, onLinked, 
     {checking ? <p className="mt-4 text-sm text-[var(--text-muted)]" role="status">Consultando la cuenta…</p> : status.authenticated ? <div className="mt-4 space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-secondary)] p-4">
       <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><GoogleAccountPhoto src={status.image} className="size-10 shrink-0" /><div className="min-w-0"><p className="truncate text-sm font-bold">{status.name || "Cuenta de DocenteTuc"}</p><p className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]"><CheckCircle2 className="size-3.5 text-emerald-600" />Cuenta conectada con Google</p></div></div><Button type="button" variant="outline" disabled={busy} onClick={() => void signOut()} className="min-h-11 rounded-xl"><LogOut className="size-4" />{busy ? "Procesando…" : "Cerrar sesión"}</Button></div>
       <p className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]"><Settings2 className="size-3.5" />Administrar cuenta de DocenteTuc</p>
+      {status.isAdmin && <a href="/admin" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-sky-200 px-3 text-sm font-bold text-sky-900"><ShieldCheck className="size-4" />Administrar Comunidad</a>}
       {linkChecking ? <p className="text-sm text-[var(--text-muted)]" role="status">Comprobando si hay datos en este dispositivo…</p> : linkPreview?.linked ? <p className="text-sm font-semibold text-[var(--text-secondary)]">Los datos de esta instalación están vinculados a tu cuenta estable de DocenteTuc.</p> : linkPreview && !linkDeclined ? <div className="space-y-3 border-t border-[var(--border)] pt-3">
         <p className="text-sm text-[var(--text-secondary)]">{linkPreview.hasData ? "Encontramos datos de DocenteTuc en esta instalación. Si elegís vincular, asociaremos únicamente esa información a tu cuenta para que puedas recuperarla al iniciar sesión." : "No encontramos datos previos para trasladar. Si elegís continuar, asociaremos esta instalación a tu cuenta para que los datos de DocenteTuc que guardes aquí se vinculen a ella."}</p>
         <p className="text-xs text-[var(--text-muted)]">La vinculación solo abarca datos de DocenteTuc. No permite controlar tu teléfono ni acceder a tus archivos, contactos, fotos u otras aplicaciones, y tampoco amplía los permisos de Google.</p>

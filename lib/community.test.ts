@@ -29,6 +29,7 @@ import {
 } from "./community.ts";
 import { accountFromValidatedSession } from "./auth-identity.ts";
 import { accountDataDeletionStatements } from "./account-deletion.ts";
+import { adminCommunityOverview, adminReportContext, isCommunityAdmin, requireCommunityAdmin, reviewCommunityReport } from "./community-admin.ts";
 
 const ACCOUNT_A = "550e8400-e29b-41d4-a716-446655440000";
 const ACCOUNT_B = "6ba7b810-9dad-41d1-80b4-00c04fd430c8";
@@ -37,6 +38,7 @@ const EMAIL_B = "second@example.invalid";
 const NOW = Date.UTC(2026, 9, 5, 15, 0);
 const MIGRATION = readFileSync(new URL("../migrations/0015_community.sql", import.meta.url), "utf8");
 const SAVED_MIGRATION = readFileSync(new URL("../migrations/0016_community_saved_posts.sql", import.meta.url), "utf8");
+const ADMIN_MIGRATION = readFileSync(new URL("../migrations/0018_community_admin.sql", import.meta.url), "utf8");
 const SAVED_ROUTE = readFileSync(new URL("../app/api/community/posts/[postId]/saved/route.ts", import.meta.url), "utf8");
 
 type Bound = {
@@ -90,7 +92,7 @@ function setup() {
     );
     CREATE TABLE profiles (user_id TEXT PRIMARY KEY, private_data TEXT);
   `);
-  raw.exec(`${MIGRATION}\n${SAVED_MIGRATION}`);
+  raw.exec(`${MIGRATION}\n${SAVED_MIGRATION}\n${ADMIN_MIGRATION}`);
   for (const [id, email, name, publicName] of [
     [ACCOUNT_A, EMAIL_A, "Private Name A", "Docente A"],
     [ACCOUNT_B, EMAIL_B, "Private Name B", "Docente B"],
@@ -311,6 +313,57 @@ test("bloqueo oculta contenido entre las cuentas sin exponer el ID de la persona
     assert.doesNotMatch(JSON.stringify(blocks), new RegExp(`${ACCOUNT_A}|${EMAIL_A}`, "u"));
     await deleteCommunityBlock(database, ACCOUNT_B, block.id);
     assert.equal((await listCommunityPosts(database, ACCOUNT_B)).length, 1);
+  } finally { raw.close(); }
+});
+
+test("/admin exige rol explícito del servidor; moderador y role falso del cliente no bastan", async () => {
+  const { raw, database } = setup();
+  try {
+    await rejectsCode(requireCommunityAdmin(database, null), "AUTH_REQUIRED");
+    await rejectsCode(requireCommunityAdmin(database, ACCOUNT_A), "MODERATOR_REQUIRED");
+    raw.prepare("INSERT INTO community_moderators(user_id) VALUES(?)").run(ACCOUNT_A);
+    assert.equal(await isCommunityModerator(database, ACCOUNT_A), true);
+    assert.equal(await isCommunityAdmin(database, ACCOUNT_A), false);
+    await rejectsCode(requireCommunityAdmin(database, ACCOUNT_A), "MODERATOR_REQUIRED");
+    raw.prepare("UPDATE community_moderators SET role='admin' WHERE user_id=?").run(ACCOUNT_A);
+    assert.equal(await requireCommunityAdmin(database, ACCOUNT_A), ACCOUNT_A);
+    assert.equal(await isCommunityAdmin(database, ACCOUNT_B), false);
+    assert.throws(() => raw.prepare("UPDATE community_moderators SET role='owner' WHERE user_id=?").run(ACCOUNT_A));
+  } finally { raw.close(); }
+});
+
+test("panel admin usa identidad pública, audita reportes y no recupera contenido oculto desde Guardadas", async () => {
+  const { raw, database } = setup();
+  try {
+    raw.prepare("UPDATE \"user\" SET image=? WHERE id=?").run("https://lh3.googleusercontent.com/a/private", ACCOUNT_A);
+    raw.prepare("UPDATE profiles SET private_data='materias, cargos y circuitos privados' WHERE user_id=?").run(ACCOUNT_A);
+    raw.prepare("INSERT INTO community_moderators(user_id,role) VALUES(?,'admin')").run(ACCOUNT_B);
+    await acceptCommunityRules(database, ACCOUNT_A, true, NOW);
+    const post = await createCommunityPost(database, ACCOUNT_A, "Consulta docente sintética", NOW);
+    const comment = await createCommunityComment(database, ACCOUNT_A, post.id, "Respuesta sintética", NOW + 1);
+    await saveCommunityPost(database, ACCOUNT_B, post.id, NOW + 2);
+    const report = await reportCommunityContent(database, ACCOUNT_B, { targetType: "post", targetId: post.id, reason: "spam" }, NOW + 3);
+    const commentReport = await reportCommunityContent(database, ACCOUNT_B, { targetType: "comment", targetId: comment.id, reason: "other" }, NOW + 4);
+    const overview = await adminCommunityOverview(database);
+    assert.equal(overview.reports.length, 2);
+    const context = await adminReportContext(database, commentReport.id);
+    assert.equal(context.comments.length, 1);
+    const serialized = JSON.stringify({ overview, context });
+    assert.doesNotMatch(serialized, /example\.invalid|googleusercontent|materias, cargos|accessToken|refreshToken|sessionToken|community_saved_posts|Private Name/u);
+    await rejectsCode(reviewCommunityReport(database, ACCOUNT_A, report.id, "dismiss"), "MODERATOR_REQUIRED");
+    await moderateCommunityContent(database, ACCOUNT_B, { targetType: "post", targetId: post.id, action: "hide", reason: "spam" }, NOW + 5);
+    assert.equal((await listCommunityPosts(database, null)).length, 0);
+    assert.equal((await listCommunitySavedPostsPage(database, ACCOUNT_B)).posts.length, 0);
+    assert.equal((await adminCommunityOverview(database)).hidden.length, 1);
+    await moderateCommunityContent(database, ACCOUNT_B, { targetType: "post", targetId: post.id, action: "restore", reason: "other" }, NOW + 6);
+    assert.equal((await listCommunityPosts(database, null)).length, 1);
+    await reviewCommunityReport(database, ACCOUNT_B, commentReport.id, "resolve");
+    assert.equal((raw.prepare("SELECT status FROM community_reports WHERE id=?").get(commentReport.id) as { status: string }).status, "reviewed");
+    const secondPost = await createCommunityPost(database, ACCOUNT_A, "Otro caso sintético", NOW + 7);
+    const secondReport = await reportCommunityContent(database, ACCOUNT_B, { targetType: "post", targetId: secondPost.id, reason: "off_topic" }, NOW + 8);
+    await reviewCommunityReport(database, ACCOUNT_B, secondReport.id, "dismiss");
+    assert.equal((raw.prepare("SELECT status FROM community_reports WHERE id=?").get(secondReport.id) as { status: string }).status, "dismissed");
+    assert.equal((raw.prepare("SELECT count(*) AS n FROM community_report_reviews").get() as { n: number }).n, 2);
   } finally { raw.close(); }
 });
 
