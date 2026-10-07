@@ -1,4 +1,5 @@
 import { getDocenteTucAuth } from "@/lib/auth";
+import { handleBrowserAuthRequest } from "@/lib/auth-browser-boundary";
 
 async function handle(request: Request) {
   const auth = await getDocenteTucAuth();
@@ -8,7 +9,7 @@ async function handle(request: Request) {
       { status: 503, headers: { "Cache-Control": "no-store" } },
     );
   }
-  return auth.handler(request);
+  return handleBrowserAuthRequest(request, (allowedRequest) => auth.handler(allowedRequest));
 }
 
 export const GET = handle;
