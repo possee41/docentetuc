@@ -1,7 +1,8 @@
 import { getD1 } from "@/db";
-import { hasAccountIdentitySchema } from "@/lib/auth-schema";
+import { hasAccountIdentitySchema, hasInstallationCredentialsSchema } from "@/lib/auth-schema";
 import { getAuthenticatedAccount } from "@/lib/auth-session";
 import { InstallationLinkError, installationDataPreview, linkInstallationData, validInstallationId, type IdentityDatabase } from "@/lib/identity-link";
+import { installationProofFor } from "@/lib/installation-ownership";
 import { isSameOriginMutation } from "@/lib/auth-identity";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,12 @@ async function context(request: Request) {
   if (!validInstallationId(deviceId)) return { response: Response.json({ error: "No se pudo identificar esta instalación." }, { status: 400 }) };
   const db = getD1();
   if (!await hasAccountIdentitySchema(db)) return { response: Response.json({ error: "La vinculación todavía no está habilitada en esta base local." }, { status: 503 }) };
+  const linked = await db.prepare("SELECT account_id FROM account_installations WHERE device_id=?").bind(deviceId).first<{ account_id: string }>();
+  if (linked && linked.account_id !== account.accountId) throw new InstallationLinkError("LINKED_TO_ANOTHER_ACCOUNT");
+  if (!linked) {
+    if (!await hasInstallationCredentialsSchema(db)) return { response: Response.json({ error: "La prueba segura de esta instalación no está habilitada." }, { status: 503 }) };
+    if (await installationProofFor(db, request, deviceId) !== "valid") return { response: Response.json({ error: "No se puede verificar esta instalación heredada. Sus datos siguen separados y sin cambios; contactá a soporte para solicitar ayuda segura." }, { status: 409 }) };
+  }
   return { account, deviceId, db: db as unknown as IdentityDatabase };
 }
 

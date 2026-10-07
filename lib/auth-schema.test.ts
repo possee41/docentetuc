@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hasAccountIdentitySchema, hasAuthSchema, hasCommunitySavedPostsSchema, hasCommunitySchema } from "./auth-schema.ts";
+import { hasAccountIdentitySchema, hasAuthSchema, hasCommunitySavedPostsSchema, hasCommunitySchema, hasInstallationCredentialsSchema } from "./auth-schema.ts";
 
 test("auth D1 schema gate enables auth only when all required tables exist", async () => {
   let boundValues: string[] = [];
@@ -73,4 +73,11 @@ test("Guardadas requiere su tabla aditiva sin deshabilitar el esquema base de Co
   assert.equal(await hasCommunitySavedPostsSchema(database), true);
   const partial = { prepare: () => ({ bind: () => ({ first: async <T>() => ({ count: 0 } as T) }) }) };
   assert.equal(await hasCommunitySavedPostsSchema(partial), false);
+});
+
+test("credenciales de instalación solo se habilitan con la migración aditiva", async () => {
+  const ready = { prepare: () => ({ bind: () => ({ first: async <T>() => ({ count: 1 } as T) }) }) };
+  const missing = { prepare: () => ({ bind: () => ({ first: async <T>() => ({ count: 0 } as T) }) }) };
+  assert.equal(await hasInstallationCredentialsSchema(ready), true);
+  assert.equal(await hasInstallationCredentialsSchema(missing), false);
 });

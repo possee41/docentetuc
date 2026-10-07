@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { CheckCircle2, Link2, LogOut, Settings2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GoogleAccountPhoto } from "@/components/google-account-photo";
+import { installationDeletionConfirmed } from "@/lib/installation-ownership";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -23,25 +23,28 @@ function GoogleMark() {
   </svg>;
 }
 
-export function AccountSignInSection({ headers, onLinked, onSignedOut }: { headers: () => HeadersInit; onLinked: () => void; onSignedOut: () => void }) {
-  const router = useRouter();
+export function AccountSignInSection({ headers, installationSecurity, onLinked, onSignedOut }: { headers: () => HeadersInit; installationSecurity: "protected" | "legacy" | "linked" | "recovery_required" | "unavailable"; onLinked: () => void; onSignedOut: () => void }) {
   const [status, setStatus] = useState<AuthStatus>({ configured: false, authenticated: false, image: null, name: null });
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
   const [linkPreview, setLinkPreview] = useState<LinkPreview | null>(null);
   const [linkChecking, setLinkChecking] = useState(false);
   const [linkDeclined, setLinkDeclined] = useState(false);
+  const [linkError, setLinkError] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleteDeviceOpen, setDeleteDeviceOpen] = useState(false);
+  const [deleteDeviceConfirmation, setDeleteDeviceConfirmation] = useState("");
 
   const refreshLinkPreview = useCallback(async () => {
     setLinkChecking(true);
+    setLinkError("");
     try {
       const response = await fetch("/api/auth/link", { cache: "no-store", credentials: "same-origin", headers: headers() });
-      if (!response.ok) throw new Error("No se pudo consultar la vinculación.");
-      const value = await response.json() as LinkPreview;
+      const value = await response.json().catch(() => ({})) as LinkPreview & { error?: string };
+      if (!response.ok) throw new Error(value.error || "No se pudo consultar la vinculación.");
       setLinkPreview(value);
-    } catch { setLinkPreview(null); }
+    } catch (error) { setLinkPreview(null); setLinkError(error instanceof Error ? error.message : "No se pudo consultar la vinculación."); }
     finally { setLinkChecking(false); }
   }, [headers]);
 
@@ -140,21 +143,49 @@ export function AccountSignInSection({ headers, onLinked, onSignedOut }: { heade
         headers: { ...Object.fromEntries(new Headers(headers()).entries()), "Content-Type": "application/json" },
         body: JSON.stringify({ confirmation: deleteConfirmation }),
       });
-      const result = await response.json().catch(() => ({})) as { error?: string };
+      const result = await response.json().catch(() => ({})) as { error?: string; installationDataDeleted?: boolean; preserveInstallationData?: boolean };
       if (!response.ok) throw new Error(result.error || "No se pudo eliminar la cuenta.");
-      try {
+      if (result.installationDataDeleted) try {
         const registration = await navigator.serviceWorker?.getRegistration();
         const subscription = await registration?.pushManager?.getSubscription();
         if (subscription) await subscription.unsubscribe();
       } catch { /* D1 has already deleted the subscription; local permission can be revoked in browser settings. */ }
-      for (const key of ["docentetuc-device-id", "docentetuc-data-v1", "docentetuc-pending-designation", "docentetuc-theme", "docentetuc-weather-tucuman-v1"]) localStorage.removeItem(key);
+      if (result.installationDataDeleted) {
+        localStorage.removeItem("docentetuc-device-id");
+        for (const key of ["docentetuc-data-v1", "docentetuc-pending-designation", "docentetuc-theme", "docentetuc-weather-tucuman-v1"]) localStorage.removeItem(key);
+      } else if (!result.preserveInstallationData) {
+        for (const key of ["docentetuc-data-v1", "docentetuc-pending-designation"]) localStorage.removeItem(key);
+      }
       setDeleteOpen(false);
       setStatus((current) => ({ ...current, authenticated: false, image: null, name: null }));
       onSignedOut();
       window.dispatchEvent(new Event("docentetuc:refresh-auth-status"));
-      toast.success("Se eliminó tu cuenta y los datos de DocenteTuc.");
-      router.replace("/");
+      toast.success(result.installationDataDeleted
+        ? "Se eliminó tu cuenta DocenteTuc y los datos de esta instalación."
+        : result.preserveInstallationData
+          ? "Se eliminó tu cuenta DocenteTuc. Los datos separados de esta instalación se conservaron; contactá a soporte para solicitar ayuda con su eliminación."
+          : "Se eliminó tu cuenta DocenteTuc. No se modificaron los datos de otra instalación vinculada.");
+      window.location.reload();
     } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo eliminar la cuenta."); }
+    finally { setBusy(false); }
+  };
+
+  const deleteInstallationData = async () => {
+    if (deleteDeviceConfirmation !== "ELIMINAR") return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/installations/current", { method: "DELETE", credentials: "same-origin", headers: headers() });
+      const result = await response.json().catch(() => ({})) as { error?: string; installationDataDeleted?: boolean };
+      if (!installationDeletionConfirmed(response.ok, result)) throw new Error(result.error || "No se confirmó la eliminación de esta instalación.");
+      try {
+        const registration = await navigator.serviceWorker?.getRegistration();
+        const subscription = await registration?.pushManager?.getSubscription();
+        if (subscription) await subscription.unsubscribe();
+      } catch { /* Server-side records were already deleted. */ }
+      for (const key of ["docentetuc-device-id", "docentetuc-data-v1", "docentetuc-pending-designation", "docentetuc-theme", "docentetuc-weather-tucuman-v1"]) localStorage.removeItem(key);
+      toast.success("Se eliminaron los datos de esta instalación.");
+      window.location.reload();
+    } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudieron eliminar los datos de esta instalación."); }
     finally { setBusy(false); }
   };
 
@@ -166,15 +197,27 @@ export function AccountSignInSection({ headers, onLinked, onSignedOut }: { heade
       <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><GoogleAccountPhoto src={status.image} className="size-10 shrink-0" /><div className="min-w-0"><p className="truncate text-sm font-bold">{status.name || "Cuenta de DocenteTuc"}</p><p className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]"><CheckCircle2 className="size-3.5 text-emerald-600" />Cuenta conectada con Google</p></div></div><Button type="button" variant="outline" disabled={busy} onClick={() => void signOut()} className="min-h-11 rounded-xl"><LogOut className="size-4" />{busy ? "Procesando…" : "Cerrar sesión"}</Button></div>
       <p className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]"><Settings2 className="size-3.5" />Administrar cuenta de DocenteTuc</p>
       {linkChecking ? <p className="text-sm text-[var(--text-muted)]" role="status">Comprobando si hay datos en este dispositivo…</p> : linkPreview?.linked ? <p className="text-sm font-semibold text-[var(--text-secondary)]">Los datos de esta instalación están vinculados a tu cuenta estable de DocenteTuc.</p> : linkPreview && !linkDeclined ? <div className="space-y-3 border-t border-[var(--border)] pt-3">
-        <p className="text-sm text-[var(--text-secondary)]">{linkPreview.hasData ? "Se encontraron datos de DocenteTuc en este dispositivo. No se trasladan sin tu autorización." : "No se encontraron datos previos para trasladar. La cuenta no asociará este dispositivo automáticamente."}</p>
-        <div className="flex flex-wrap gap-2"><Button type="button" disabled={busy} onClick={() => void linkData()} className="min-h-11 rounded-xl bg-[#0878be] text-white"><Link2 className="size-4" />{busy ? "Vinculando…" : linkPreview.hasData ? "Vincular mis datos" : "Vincular este dispositivo"}</Button><Button type="button" variant="outline" disabled={busy} onClick={() => setLinkDeclined(true)} className="min-h-11 rounded-xl">Continuar sin vincular</Button></div>
-      </div> : linkDeclined ? <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border)] pt-3"><p className="text-sm text-[var(--text-secondary)]">Los datos de este dispositivo siguen separados de la cuenta.</p><Button type="button" variant="outline" onClick={() => setLinkDeclined(false)} className="min-h-10 rounded-xl">Revisar vinculación</Button></div> : <p className="text-sm text-[var(--text-muted)]">No se pudo consultar la vinculación. Reintentá más tarde; no se trasladó ningún dato.</p>}
+        <p className="text-sm text-[var(--text-secondary)]">{linkPreview.hasData ? "Encontramos datos de DocenteTuc en esta instalación. Si elegís vincular, asociaremos únicamente esa información a tu cuenta para que puedas recuperarla al iniciar sesión." : "No encontramos datos previos para trasladar. Si elegís continuar, asociaremos esta instalación a tu cuenta para que los datos de DocenteTuc que guardes aquí se vinculen a ella."}</p>
+        <p className="text-xs text-[var(--text-muted)]">La vinculación solo abarca datos de DocenteTuc. No permite controlar tu teléfono ni acceder a tus archivos, contactos, fotos u otras aplicaciones, y tampoco amplía los permisos de Google.</p>
+        <div className="flex flex-wrap gap-2"><Button type="button" disabled={busy} onClick={() => void linkData()} className="min-h-11 rounded-xl bg-[#0878be] text-white"><Link2 className="size-4" />{busy ? "Vinculando…" : "Vincular mis datos a mi cuenta"}</Button><Button type="button" variant="outline" disabled={busy} onClick={() => setLinkDeclined(true)} className="min-h-11 rounded-xl">Continuar sin vincular</Button></div>
+      </div> : linkDeclined ? <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border)] pt-3"><p className="text-sm text-[var(--text-secondary)]">Los datos de este dispositivo siguen separados de la cuenta.</p><Button type="button" variant="outline" onClick={() => setLinkDeclined(false)} className="min-h-10 rounded-xl">Revisar vinculación</Button></div> : <p className="text-sm text-[var(--text-muted)]">{linkError || "No se pudo consultar la vinculación. Reintentá más tarde; no se trasladó ningún dato."}</p>}
       <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-3"><Button type="button" variant="outline" disabled={busy} onClick={() => { setDeleteConfirmation(""); setDeleteOpen(true); }} className="min-h-11 rounded-xl border-red-300 text-red-700 hover:bg-red-50"><Trash2 className="size-4" />Eliminar cuenta y datos DocenteTuc</Button><p className="self-center text-xs text-[var(--text-muted)]">Cerrar sesión no elimina tu cuenta ni tus datos.</p></div>
-    </div> : <div className="mt-4 space-y-2"><Button type="button" disabled={busy || !status.configured} onClick={() => void signIn()} className="min-h-11 rounded-xl bg-white px-4 text-[var(--text-primary)] shadow-sm ring-1 ring-[var(--border)] hover:bg-[var(--surface-secondary)]"><GoogleMark />{busy ? "Abriendo Google…" : "Continuar con Google"}</Button>{!status.configured && <p className="text-sm text-[var(--text-muted)]">{SIGN_IN_UNAVAILABLE} Podés seguir usando las funciones educativas sin cuenta.</p>}</div>}
+    </div> : <div className="mt-4 space-y-3"><Button type="button" disabled={busy || !status.configured} onClick={() => void signIn()} className="min-h-11 rounded-xl bg-white px-4 text-[var(--text-primary)] shadow-sm ring-1 ring-[var(--border)] hover:bg-[var(--surface-secondary)]"><GoogleMark />{busy ? "Abriendo Google…" : "Continuar con Google"}</Button>{!status.configured && <p className="text-sm text-[var(--text-muted)]">{SIGN_IN_UNAVAILABLE} Podés seguir usando las funciones educativas sin cuenta.</p>}
+      {installationSecurity === "protected" ? <div className="space-y-2 border-t border-[var(--border)] pt-3"><p className="text-sm text-[var(--text-secondary)]">Esta instalación tiene una credencial privada para proteger y eliminar sus datos sin iniciar sesión con Google.</p><Button type="button" variant="outline" disabled={busy} onClick={() => { setDeleteDeviceConfirmation(""); setDeleteDeviceOpen(true); }} className="min-h-11 rounded-xl border-red-300 text-red-700 hover:bg-red-50"><Trash2 className="size-4" />Eliminar los datos de este dispositivo</Button></div>
+        : installationSecurity === "legacy" ? <p className="border-t border-[var(--border)] pt-3 text-sm text-[var(--text-secondary)]">Esta instalación conserva datos heredados sin una credencial criptográfica. Se mantienen separados; para pedir su eliminación, contactá a soporte. No se borrarán usando solo el identificador.</p>
+        : installationSecurity === "recovery_required" ? <p className="border-t border-[var(--border)] pt-3 text-sm text-[var(--text-secondary)]">No se pudo verificar la credencial guardada para esta instalación. Sus datos se conservaron; contactá a soporte para solicitar ayuda.</p>
+          : installationSecurity === "linked" ? <p className="border-t border-[var(--border)] pt-3 text-sm text-[var(--text-secondary)]">Esta instalación está vinculada a una cuenta DocenteTuc. Iniciá sesión con esa cuenta para administrar o eliminar los datos.</p>
+            : <p className="border-t border-[var(--border)] pt-3 text-sm text-[var(--text-muted)]">No se pudo verificar la protección de esta instalación. No borres sus datos desde el navegador; reintentá conectado o contactá a soporte.</p>}
+    </div>}
     <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}><DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto"><DialogHeader><DialogTitle>Eliminar cuenta de DocenteTuc</DialogTitle><DialogDescription>Esta acción es permanente. No elimina tu cuenta Google.</DialogDescription></DialogHeader>
-      <div className="space-y-3 text-sm text-[var(--text-secondary)]"><p>Se eliminarán de DocenteTuc:</p><ul className="list-disc space-y-1 pl-5"><li>tu identidad/cuenta DocenteTuc, la relación con Google y sus sesiones;</li><li>perfil docente privado y preferencias;</li><li>perfil público, nombre visible, biografía y avatar;</li><li>guardados, agenda, eventos, seguimientos y recordatorios;</li><li>notificaciones, suscripciones/preferencias push y registros técnicos de entrega y límites;</li><li>tus publicaciones y comentarios, reportes enviados, bloqueos, aceptación de normas y límites de uso de Comunidad.</li></ul><p>Los comentarios escritos por otras personas en tus publicaciones se eliminan con ellas. Los reportes y bloqueos que involucren tu cuenta desaparecen. Las acciones de moderación sobre contenido de terceros conservan solo una auditoría mínima anonimizada, sin identificarte. Se conservan las publicaciones y fuentes educativas oficiales, otras cuentas y tu cuenta Google. En este dispositivo también se borrará la copia local de datos de DocenteTuc; las copias locales de otros dispositivos deberán borrarse desde esos dispositivos.</p></div>
+        <div className="space-y-3 text-sm text-[var(--text-secondary)]"><p>Se eliminarán de DocenteTuc:</p><ul className="list-disc space-y-1 pl-5"><li>tu identidad/cuenta DocenteTuc, la relación con Google y sus sesiones;</li><li>perfil docente privado y preferencias;</li><li>perfil público, nombre visible, biografía y avatar;</li><li>guardados, agenda, eventos, seguimientos y recordatorios;</li><li>notificaciones, suscripciones/preferencias push y registros técnicos de entrega y límites;</li><li>tus publicaciones y comentarios, reportes enviados, bloqueos, aceptación de normas y límites de uso de Comunidad.</li></ul><p>Los comentarios escritos por otras personas en tus publicaciones se eliminan con ellas. Los reportes y bloqueos que involucren tu cuenta desaparecen. Las acciones de moderación sobre contenido de terceros conservan solo una auditoría mínima sin vincularla a tu cuenta cuando esta se elimina. Se conservan las publicaciones y fuentes educativas oficiales, otras cuentas y tu cuenta Google. En este dispositivo también se borrará la copia local de datos de DocenteTuc.</p><p className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-950">Importante: una instalación nueva protegida se borra junto con la cuenta solo si confirmás desde esa misma instalación y su credencial privada sigue disponible. Los datos separados de otras instalaciones no vinculadas no se eliminan desde aquí: borrá cada instalación protegida desde ese mismo dispositivo mientras conserve su credencial. Los datos heredados o una instalación cuya credencial se perdió pueden quedar separados; en esos casos no se borran usando solo el ID y debés contactar a soporte.</p><p>Eliminar tu cuenta DocenteTuc no elimina tu cuenta Google. DocenteTuc nunca necesita tu contraseña de Google para tramitar esta eliminación.</p></div>
       <label className="block space-y-2 text-sm font-semibold" htmlFor="delete-account-confirm"><span>Escribí ELIMINAR para confirmar</span><Input id="delete-account-confirm" autoComplete="off" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="min-h-11 rounded-xl" /></label>
       <DialogFooter><Button type="button" variant="outline" disabled={busy} onClick={() => setDeleteOpen(false)}>Cancelar</Button><Button type="button" disabled={busy || deleteConfirmation !== "ELIMINAR"} onClick={() => void deleteAccount()} className="bg-red-700 text-white hover:bg-red-800">{busy ? "Eliminando…" : "Eliminar cuenta definitivamente"}</Button></DialogFooter>
+    </DialogContent></Dialog>
+    <Dialog open={deleteDeviceOpen} onOpenChange={setDeleteDeviceOpen}><DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto"><DialogHeader><DialogTitle>Eliminar datos de este dispositivo</DialogTitle><DialogDescription>Se borrarán únicamente los datos de DocenteTuc de esta instalación. Esta acción no elimina cuentas Google ni afecta otras instalaciones.</DialogDescription></DialogHeader>
+      <p className="text-sm text-[var(--text-secondary)]">La credencial privada de esta instalación se verificará en el servidor. Si la solicitud falla, no se limpiará el identificador local y podrás reintentar.</p>
+      <label className="block space-y-2 text-sm font-semibold" htmlFor="delete-device-confirm"><span>Escribí ELIMINAR para confirmar</span><Input id="delete-device-confirm" autoComplete="off" value={deleteDeviceConfirmation} onChange={(event) => setDeleteDeviceConfirmation(event.target.value)} className="min-h-11 rounded-xl" /></label>
+      <DialogFooter><Button type="button" variant="outline" disabled={busy} onClick={() => setDeleteDeviceOpen(false)}>Cancelar</Button><Button type="button" disabled={busy || deleteDeviceConfirmation !== "ELIMINAR"} onClick={() => void deleteInstallationData()} className="bg-red-700 text-white hover:bg-red-800">{busy ? "Eliminando…" : "Eliminar datos de este dispositivo"}</Button></DialogFooter>
     </DialogContent></Dialog>
   </article>;
 }

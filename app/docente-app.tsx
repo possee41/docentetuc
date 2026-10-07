@@ -40,9 +40,11 @@ import { HomeBannerContext } from "@/components/home-banner-context";
 import { PublicProfileSection } from "@/components/public-profile-section";
 import { AccountSignInSection } from "@/components/account-sign-in-section";
 import { GoogleAccountPhoto } from "@/components/google-account-photo";
+import { deviceRequestHeaders } from "@/lib/device-user";
 
 type View = "inicio" | "vacantes" | "comunidad" | "capacitaciones" | "junta" | "informacion" | "agenda" | "alertas" | "guardados" | "perfil" | "cuentas";
 type Theme = "light" | "dark";
+type InstallationSecurity = "protected" | "legacy" | "linked" | "recovery_required" | "unavailable";
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
 const navigation: [View, string, typeof Home][] = [
@@ -87,9 +89,7 @@ const simeCodeForPublication = (item?: Pick<Publication, "metadata"> | null) => 
 };
 const trainingPlatform = (source: string) => { const key = normalize(source); return /cenet|inet/.test(key) ? "cenet" : /infod|aulastic/.test(key) ? "infod" : /fdci|capacitacion docente/.test(key) ? "fdci" : "other"; };
 const apiHeaders = (json = false) => {
-  let deviceId = localStorage.getItem("docentetuc-device-id");
-  if (!deviceId) { deviceId = crypto.randomUUID(); localStorage.setItem("docentetuc-device-id", deviceId); }
-  return { "X-DocenteTuc-Device": deviceId, ...(json ? { "Content-Type": "application/json" } : {}) };
+  return deviceRequestHeaders(localStorage.getItem("docentetuc-device-id"), json);
 };
 const dateLabel = (value: string | null, withTime = false) => { const date = safeDate(value); return date ? new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Tucuman", day: "2-digit", month: "short", ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}) }).format(date) : "Sin fecha informada"; };
 const fromNow = (value: string | null) => {
@@ -127,6 +127,8 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const router = useRouter();
   const [data, setData] = useState<AppData | null>(null);
   const [accountPhoto, setAccountPhoto] = useState<{ authenticated: boolean; image: string | null }>({ authenticated: false, image: null });
+  const [installationSecurity, setInstallationSecurity] = useState<InstallationSecurity>("unavailable");
+  const [installationBootstrapComplete, setInstallationBootstrapComplete] = useState(false);
   const [view, setView] = useState<View>(() => viewFromSection(initialSection));
   const [query, setQuery] = useState("");
   const [designationQuery, setDesignationQuery] = useState("");
@@ -147,6 +149,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const [loadError, setLoadError] = useState("");
   const [offline, setOffline] = useState(false);
   const autoSyncStarted = useRef(false);
+  const installationBootstrapStarted = useRef(false);
   const [theme, setTheme] = useState<Theme>("light");
   const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(null);
   const [aiMode, setAIMode] = useState<"closed" | "minimized" | "expanded">("closed");
@@ -225,7 +228,30 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     const preferred = localStorage.getItem("docentetuc-theme") as Theme | null;
     const initial = preferred || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     document.documentElement.dataset.theme = initial; queueMicrotask(() => setTheme(initial));
-    queueMicrotask(() => { void loadRef.current(); });
+    if (!installationBootstrapStarted.current) {
+      installationBootstrapStarted.current = true;
+      queueMicrotask(() => {
+        void (async () => {
+          try {
+            const deviceId = localStorage.getItem("docentetuc-device-id");
+            const headers = deviceId ? { "X-DocenteTuc-Device": deviceId } : undefined;
+            const response = await fetch("/api/installations/credential", { method: "POST", credentials: "same-origin", headers });
+            const result = await response.json().catch(() => ({})) as { status?: string; deviceId?: string };
+            if ((result.status === "created" || result.status === "ready") && typeof result.deviceId === "string") {
+              localStorage.setItem("docentetuc-device-id", result.deviceId);
+              setInstallationSecurity("protected");
+            } else if (result.status === "linked") {
+              if (typeof result.deviceId === "string") localStorage.setItem("docentetuc-device-id", result.deviceId);
+              setInstallationSecurity("linked");
+            } else if (result.status === "legacy" || result.status === "recovery_required") {
+              setInstallationSecurity(result.status);
+            } else setInstallationSecurity("unavailable");
+          } catch { setInstallationSecurity("unavailable"); }
+          finally { setInstallationBootstrapComplete(true); }
+          await loadRef.current();
+        })();
+      });
+    }
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js");
     const updateNetwork = () => setOffline(!navigator.onLine); queueMicrotask(updateNetwork);
     const install = (event: Event) => { event.preventDefault(); setInstallPrompt(event as InstallPrompt); };
@@ -408,7 +434,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
               <h2 id="accounts-access-title" className="text-xl font-black text-[var(--text-primary)]">Mis cuentas y accesos</h2>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">Google autentica tu cuenta de DocenteTuc. Los accesos externos usan sus propias credenciales y no se comparten con DocenteTuc.</p>
             </div>
-            <AccountSignInSection headers={apiHeaders} onLinked={() => void load(false)} onSignedOut={() => setData(null)} />
+            <AccountSignInSection headers={apiHeaders} installationSecurity={installationSecurity} onLinked={() => void load(false)} onSignedOut={() => setData(null)} />
           </section>
           <PlatformAccessSection />
           <DataDeletionSection profile={profile ?? null} />

@@ -1,7 +1,7 @@
 import type { IdentityStatement } from "./identity-link.ts";
 
 const USER_SCOPE = "(user_id=? OR user_id IN (SELECT source_user_id FROM account_installations WHERE account_id=?))";
-const SCOPE_VALUES = (accountId: string) => [accountId, accountId] as const;
+const SCOPE_VALUES = (accountId: string) => [accountId, accountId];
 
 /** Exact D1 deletion scope for one authenticated DocenteTuc account and its linked installations. */
 export function accountDataDeletionStatements(accountId: string): IdentityStatement[] {

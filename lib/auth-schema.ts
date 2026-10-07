@@ -12,6 +12,7 @@ const REQUIRED_COMMUNITY_TABLES = [
   "community_reports", "community_blocks", "community_moderation_events", "community_rate_limits",
 ] as const;
 const COMMUNITY_SAVED_POSTS_TABLE = "community_saved_posts";
+const INSTALLATION_CREDENTIALS_TABLE = "installation_credentials";
 
 /** Keeps account sign-in disabled until the additive D1 migration exists. */
 export async function hasAuthSchema(database: SchemaDatabase) {
@@ -57,6 +58,17 @@ export async function hasCommunitySavedPostsSchema(database: SchemaDatabase) {
   try {
     const result = await database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name=?")
       .bind(COMMUNITY_SAVED_POSTS_TABLE).first<{ count: number }>();
+    return Number(result?.count) === 1;
+  } catch {
+    return false;
+  }
+}
+
+/** New installations need a server-side hash before their possession cookie is trusted. */
+export async function hasInstallationCredentialsSchema(database: SchemaDatabase) {
+  try {
+    const result = await database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name=?")
+      .bind(INSTALLATION_CREDENTIALS_TABLE).first<{ count: number }>();
     return Number(result?.count) === 1;
   } catch {
     return false;

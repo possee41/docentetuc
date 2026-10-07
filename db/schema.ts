@@ -94,3 +94,8 @@ export const pushDeliveries = sqliteTable("push_deliveries", {
 export const pushRateLimits = sqliteTable("push_rate_limits", {
   userBucket: text("user_bucket").primaryKey(), requestCount: integer("request_count").notNull().default(0), expiresAt: text("expires_at").notNull(),
 });
+
+export const installationCredentials = sqliteTable("installation_credentials", {
+  deviceId: text("device_id").primaryKey(), secretHash: text("secret_hash").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
