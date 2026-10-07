@@ -2,8 +2,8 @@ import { env } from "cloudflare:workers";
 import { getD1 } from "@/db";
 import { authError, currentUser } from "@/lib/current-user";
 import { designationRoleFromTitle, isEligibleForPersonalizedHome, matchesProfile, profileMatch } from "@/lib/matching";
-import { driveEntryUrl, plainDocumentText } from "@/lib/public-documents";
-import { advanceBoardCrawl, initialBoardCrawl, type BoardCrawlState } from "@/lib/board-crawl";
+import { driveEntryUrl, fetchPublicDrivePage, plainDocumentText } from "@/lib/public-documents";
+import { advanceBoardCrawl, boardCrawlReadyForNextCycle, boardQueueJson, initialBoardCrawl, restoreBoardCrawl } from "@/lib/board-crawl";
 import { mergeTrainingData, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
 import { isCenetMarkupRecognized, parseCenetTrainings, parseInfdCatalog, parseInfdTrainings, type PublicTraining } from "@/lib/external-trainings";
 import { usefulInformation } from "@/lib/useful-information";
@@ -12,7 +12,7 @@ import { diffByHash, hashSourceSnapshot, hasMeaningfulPublicationChange, isDocum
 import { notificationDedupeKey } from "@/lib/notification-events";
 import { circuitMatches, inferCircuit } from "@/lib/circuits";
 import { assessSourceSync, missingAfterValidatedSync, publicationLifecycle, SourceSyncError, sourceErrorCode, type SourceSyncStatus } from "@/lib/publication-lifecycle";
-import { fetchSourceJson } from "@/lib/source-fetch";
+import { collectSourcePages, fetchSourceJson } from "@/lib/source-fetch";
 
 export const dynamic = "force-dynamic";
 
@@ -58,9 +58,11 @@ async function getJson<T>(url: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function getHtml(url: string) {
+async function getHtml(url: string, traceSource?: string) {
+  const started = Date.now();
   const response = await fetch(url, { signal: AbortSignal.timeout(15_000), headers: { Accept: "text/html", "User-Agent": "DocenteTuc/1.0 (+agregador de fuentes publicas)" } });
-  if (!response.ok) throw new Error(`HTTP_${response.status} ${url}`);
+  if (traceSource) console.log("source_page_http", { source: traceSource, page: new URL(url).pathname, status: response.status, contentType: response.headers.get("content-type"), redirected: response.redirected, elapsedMs: Date.now() - started });
+  if (!response.ok) throw new SourceSyncError("HTTP_ERROR", `HTTP_${response.status} ${url}`, `HTTP_${response.status}`);
   return response.text();
 }
 
@@ -133,19 +135,29 @@ async function cenetPublications() {
 }
 
 async function infdPublications() {
-  const catalogUrl = "https://red.infd.edu.ar/cursos-nacionales-2/", catalogHtml = await getHtml(catalogUrl), catalog = parseInfdCatalog(catalogHtml);
+  const catalogUrl = "https://red.infd.edu.ar/cursos-nacionales-2/", catalogHtml = await getHtml(catalogUrl, "INFoD"), catalog = parseInfdCatalog(catalogHtml);
   if (!catalog.pages.length) throw new Error("FORMAT_CHANGED INFoD course links not found");
-  const pages = await Promise.allSettled(catalog.pages.map(async (url) => parseInfdTrainings(await getHtml(url), url, catalog)));
-  const recovered = pages.flatMap((result) => result.status === "fulfilled" ? result.value : []);
-  if (!recovered.length) throw new Error(pages.every((result) => result.status === "rejected") ? "HTTP_ERROR INFoD pages unavailable" : "FORMAT_CHANGED INFoD course structure not found");
-  return { items: await publicTrainingPublications(recovered, "INFoD / AulaS-TIC"), complete: pages.every((result) => result.status === "fulfilled") };
+  const pages = await collectSourcePages(catalog.pages, async (url) => parseInfdTrainings(await getHtml(url, "INFoD"), url, catalog));
+  const diagnostics = pages.diagnostics;
+  console.log("infd_pages_sync", diagnostics);
+  const failures = diagnostics.filter((page) => page.errorCode).map((page) => `${page.page}: ${page.errorCode}`);
+  if (!pages.items.length) throw new Error(pages.allFailed ? "HTTP_ERROR INFoD pages unavailable" : "FORMAT_CHANGED INFoD course structure not found");
+  return { items: await publicTrainingPublications(pages.items, "INFoD / AulaS-TIC"), complete: pages.complete, warnings: failures.length ? { "INFoD / AulaS-TIC": failures.join("; ") } : {} };
 }
 
 async function boardPublications() {
   const db = getD1();
+  const storedCrawls = await db.prepare("SELECT root_id, queue_json, visited_json, working_json, snapshot_json, completed_at FROM board_crawl_state").all<{ root_id: string; queue_json: string; visited_json: string; working_json: string; snapshot_json: string; completed_at: string | null }>();
+  const states = new Map(documents.filter(([, , , , url]) => url.includes("/drive/folders/")).map(([root, , , , url]) => {
+    const id = url.split("/folders/")[1].split(/[?/#]/)[0], stored = storedCrawls.results.find(row => row.root_id === root);
+    return [root, stored ? restoreBoardCrawl(id, stored) : initialBoardCrawl(id)] as const;
+  }));
+  const previousScan = await db.prepare("SELECT CASE WHEN COUNT(*)=2 AND COUNT(last_successful_sync_at)=2 THEN MIN(last_successful_sync_at) ELSE NULL END AS completed_at FROM sync_state WHERE source IN ('Padrones','Llamados abiertos')").first<{ completed_at: string | null }>();
+  const restart = boardCrawlReadyForNextCycle([...states.values()], previousScan?.completed_at || null);
   const publications: Publication[] = [];
   let exportedDriveDocs = 0;
   const incompleteCategories = new Set<string>();
+  const categoryErrors: Record<string, unknown> = {};
   const warnings: Record<string, string> = {};
   let firstError: unknown = null;
   const previousDrive = await db.prepare("SELECT id, summary, metadata, source_updated_at FROM publications WHERE source='Padrones y Comunicados' AND id LIKE 'drive:%'").all<{ id: string; summary: string; metadata: string; source_updated_at: string | null }>();
@@ -162,29 +174,23 @@ async function boardPublications() {
       fingerprint = await response.text(); summary = plainDocumentText(fingerprint) || summary; metadata = JSON.stringify({ contentAvailable: true, format: "google-doc", textFormat: "txt" });
     } else if (officialUrl.includes("drive.google.com/drive/folders/")) {
       const folderId = officialUrl.split("/folders/")[1].split(/[?/#]/)[0];
-      const stored = await db.prepare("SELECT queue_json, visited_json, working_json, snapshot_json, completed_at FROM board_crawl_state WHERE root_id=?").bind(externalId).first<{ queue_json: string; visited_json: string; working_json: string; snapshot_json: string; completed_at: string | null }>();
-      const state: BoardCrawlState = stored ? {
-        queue: JSON.parse(stored.queue_json), visited: JSON.parse(stored.visited_json), working: JSON.parse(stored.working_json), snapshot: JSON.parse(stored.snapshot_json), completedAt: stored.completed_at,
-      } : initialBoardCrawl(folderId);
-      const result = await advanceBoardCrawl(folderId, state, async (id) => {
-        const url = id === folderId ? officialUrl : `https://drive.google.com/drive/folders/${id}`;
-        const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-        if (!response.ok) throw new Error(`HTTP_${response.status} ${url}`);
-        return response.text();
-      }, 2, new Date().toISOString());
+      const previousState = states.get(externalId)!;
+      const state = restart ? { ...initialBoardCrawl(folderId), snapshot: previousState.snapshot, completedAt: previousState.completedAt } : previousState;
+      const result = await advanceBoardCrawl(folderId, state, (id, cursor) => fetchPublicDrivePage(id, cursor, id === folderId ? officialUrl : undefined), 2, new Date().toISOString());
       await db.prepare(`INSERT INTO board_crawl_state (root_id, queue_json, visited_json, working_json, snapshot_json, completed_at, last_attempt_at, error)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(root_id) DO UPDATE SET queue_json=excluded.queue_json, visited_json=excluded.visited_json, working_json=excluded.working_json, snapshot_json=excluded.snapshot_json, completed_at=excluded.completed_at, last_attempt_at=excluded.last_attempt_at, error=excluded.error`)
-        .bind(externalId, JSON.stringify(result.state.queue), JSON.stringify(result.state.visited), JSON.stringify(result.state.working), JSON.stringify(result.state.snapshot), result.state.completedAt, new Date().toISOString(), result.error).run();
-      const snapshotRecent = result.state.completedAt && Date.now() - Date.parse(result.state.completedAt) < 7 * 24 * 60 * 60 * 1000;
-      if (!snapshotRecent || result.error) {
+        .bind(externalId, boardQueueJson(result.state), JSON.stringify(result.state.visited), JSON.stringify(result.state.working), JSON.stringify(result.state.snapshot), result.state.completedAt, new Date().toISOString(), result.error).run();
+      console.log("board_crawl_progress", { root: externalId, pagesProcessed: result.pagesProcessed, pagesExpectedAtLeast: result.pagesExpectedAtLeast, foldersCompleted: result.state.visited.length, pending: result.state.queue.length, complete: result.cycleCompleted, error: result.error });
+      if (!result.cycleCompleted) {
         incompleteCategories.add(category);
-        warnings[category] = result.error ? `${externalId}: ${result.error}` : `${externalId}: barrido en curso (${result.state.visited.length} carpetas recorridas).`;
+        warnings[category] = result.error ? `${externalId}: ${result.error}` : `${externalId}: barrido en curso (${result.pagesProcessed} páginas; al menos ${result.pagesExpectedAtLeast} detectadas).`;
       }
       const entries = result.entries;
-      if (result.state.visited.length || result.state.completedAt) {
+      if (result.error && !entries.length && !result.state.visited.length) throw new Error(result.error);
+      if (entries.length || result.cycleCompleted) {
         fingerprint = JSON.stringify(entries);
-        summary = `Carpeta pública oficial con ${entries.length} elementos indexados${snapshotRecent ? "" : " hasta ahora"}. Abrí cada resultado para consultar su nombre y fuente.`;
+        summary = `Carpeta pública oficial con ${entries.length} elementos indexados${result.cycleCompleted ? "" : " hasta ahora"}. Abrí cada resultado para consultar su nombre y fuente.`;
         metadata = JSON.stringify({ contentAvailable: true, format: "drive-folder", itemCount: entries.length, fullScanAt: result.state.completedAt });
         for (const entry of entries) {
           const entryUrl = driveEntryUrl(entry), isGoogleDoc = entry.mimeType === "application/vnd.google-apps.document";
@@ -208,6 +214,7 @@ async function boardPublications() {
     publications.push({ id: `padrones:${externalId}`, source: "Padrones y Comunicados", externalId, kind: "junta", category, title, summary, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: documentStatus, officialUrl, metadata, contentHash: await hash(`${fingerprint}|${documentStatus}`), sourceUpdatedAt: null });
     } catch (error) {
       incompleteCategories.add(category);
+      categoryErrors[category] = error;
       warnings[category] = `${externalId}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 400);
       firstError ??= error;
       console.error("document_source_failed", externalId, error);
@@ -215,7 +222,7 @@ async function boardPublications() {
     }));
   }
   if (!publications.length && firstError) throw firstError;
-  return { items: publications, complete: incompleteCategories.size === 0, incompleteCategories: [...incompleteCategories], warnings };
+  return { items: publications, complete: incompleteCategories.size === 0, incompleteCategories: [...incompleteCategories], warnings, categoryErrors };
 }
 
 async function usefulPublications(): Promise<Publication[]> {
@@ -233,7 +240,7 @@ async function runSync() {
   let rowsRead = Number(previous.meta?.rows_read || previous.results.length);
   const old = new Map(previous.results.map((row) => [row.id, row]));
   const sourceHealthNames = ["SIME", "Capacitación Docente", "Padrones", "Llamados abiertos", "Comunicados", "Resoluciones", "Información oficial Tucumán", "CeNET / INET", "INFoD / AulaS-TIC"];
-  const collectors: { source: string; run: () => Promise<Publication[] | { items: Publication[]; complete: boolean; incompleteCategories?: string[]; warnings?: Record<string, string> }> }[] = [
+  const collectors: { source: string; run: () => Promise<Publication[] | { items: Publication[]; complete: boolean; incompleteCategories?: string[]; warnings?: Record<string, string>; categoryErrors?: Record<string, unknown> }> }[] = [
     { source: "SIME", run: simePublications },
     { source: "Capacitación Docente", run: trainingPublications },
     { source: "Padrones y Comunicados", run: boardPublications },
@@ -250,9 +257,9 @@ async function runSync() {
   const collected = await Promise.all(collectors.map(async (collector) => {
     try {
       const value = await collector.run();
-      return { source: collector.source, items: Array.isArray(value) ? value : value.items, complete: Array.isArray(value) || value.complete, incompleteCategories: Array.isArray(value) ? [] : value.incompleteCategories || [], warnings: Array.isArray(value) ? {} : value.warnings || {}, error: null as unknown };
+      return { source: collector.source, items: Array.isArray(value) ? value : value.items, complete: Array.isArray(value) || value.complete, incompleteCategories: Array.isArray(value) ? [] : value.incompleteCategories || [], warnings: Array.isArray(value) ? {} : value.warnings || {}, categoryErrors: Array.isArray(value) ? {} : value.categoryErrors || {}, error: null as unknown };
     } catch (error) {
-      return { source: collector.source, items: [] as Publication[], complete: false, incompleteCategories: [] as string[], warnings: {} as Record<string, string>, error };
+      return { source: collector.source, items: [] as Publication[], complete: false, incompleteCategories: [] as string[], warnings: {} as Record<string, string>, categoryErrors: {} as Record<string, unknown>, error };
     }
   }));
   const unnormalized = collected.flatMap((result) => result.items);
@@ -331,8 +338,9 @@ async function runSync() {
     const current = sourceCollector?.items.filter(filter) || [];
     const oldRows = sourceGroup(source).oldRows;
     const complete = sourceGroup(source).source === "Padrones y Comunicados" ? !sourceCollector?.incompleteCategories.includes(source) : sourceCollector?.complete;
-    const status = assessSourceSync({ previousCount: oldRows.length, recordsFound: current.length, complete, error: sourceCollector?.error });
-    return { source, storageSource: sourceGroup(source).source, current, oldRows, status, error: sourceCollector?.error || null };
+    const error = sourceCollector?.error || (!current.length && sourceCollector?.categoryErrors[source]) || null;
+    const status = assessSourceSync({ previousCount: oldRows.length, recordsFound: current.length, complete, error });
+    return { source, storageSource: sourceGroup(source).source, current, oldRows, status, error };
   });
   const sourceHealthByPublication = (item: Publication) => item.source === "Padrones y Comunicados" ? item.category : item.source;
   const healthBySource = new Map(health.map((item) => [item.source, item]));
@@ -424,7 +432,7 @@ async function runSync() {
     };
     const warning = collected.find((result) => result.source === item.storageSource)?.warnings[source];
     const errorMessage = item.error instanceof Error ? item.error.message.slice(0, 400) : item.error ? String(item.error).slice(0, 400) : warning || healthMessages[item.status] || null;
-    const sourceError = collected.find((result) => result.source === item.storageSource)?.error;
+    const sourceError = item.error;
     const errorCode = item.status === "OK" ? null : sourceError ? sourceErrorCode(sourceError) : item.status;
     return { item, created, updated, removed, expired: expiredBySource.get(source) || 0, expiredTotal: expiredTotalBySource.get(source) || 0, errorMessage, errorCode };
   };

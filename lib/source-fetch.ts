@@ -1,4 +1,25 @@
-import { classifySourceError, SourceSyncError } from "./publication-lifecycle.ts";
+import { classifySourceError, sourceErrorCode, SourceSyncError } from "./publication-lifecycle.ts";
+
+// Only public paths and classified errors: never log response bodies, headers or query strings.
+export function sourcePageDiagnostics<T>(urls: string[], results: PromiseSettledResult<T[]>[]) {
+  return results.map((result, index) => ({
+    page: new URL(urls[index]).pathname,
+    records: result.status === "fulfilled" ? result.value.length : 0,
+    status: result.status === "fulfilled" ? "OK" : classifySourceError(result.reason),
+    errorCode: result.status === "fulfilled" ? null : sourceErrorCode(result.reason),
+  }));
+}
+
+// One attempt per page. A failing subsource must not discard its healthy siblings.
+export async function collectSourcePages<T>(urls: string[], readPage: (url: string) => Promise<T[]>) {
+  const pages = await Promise.allSettled(urls.map(readPage));
+  return {
+    items: pages.flatMap(page => page.status === "fulfilled" ? page.value : []),
+    complete: pages.every(page => page.status === "fulfilled"),
+    allFailed: pages.every(page => page.status === "rejected"),
+    diagnostics: sourcePageDiagnostics(urls, pages),
+  };
+}
 
 type JsonSourceOptions = {
   source: string;

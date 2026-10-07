@@ -7,7 +7,7 @@ export class SourceSyncError extends Error {
   readonly syncStatus: SourceSyncStatus;
   readonly errorCode: string;
 
-  constructor(syncStatus: SourceSyncStatus, message: string, errorCode = syncStatus) {
+  constructor(syncStatus: SourceSyncStatus, message: string, errorCode: string = syncStatus) {
     super(message);
     this.name = "SourceSyncError";
     this.syncStatus = syncStatus;
