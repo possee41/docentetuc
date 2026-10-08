@@ -41,10 +41,11 @@ import { PublicProfileSection } from "@/components/public-profile-section";
 import { AccountSignInSection } from "@/components/account-sign-in-section";
 import { GoogleAccountPhoto } from "@/components/google-account-photo";
 import { deviceRequestHeaders } from "@/lib/device-user";
+import { needsRecoveryNotice } from "@/lib/legacy-recovery-ui";
 
 type View = "inicio" | "vacantes" | "comunidad" | "capacitaciones" | "junta" | "informacion" | "agenda" | "alertas" | "guardados" | "perfil" | "cuentas";
 type Theme = "light" | "dark";
-type InstallationSecurity = "protected" | "legacy" | "linked" | "recovery_required" | "unavailable";
+type InstallationSecurity = "protected" | "linked" | "recovery_required" | "unavailable";
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
 const navigation: [View, string, typeof Home][] = [
@@ -188,6 +189,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     setLoadError("");
     try {
       const response = await fetch("/api/app", { cache: "no-store", headers: apiHeaders() });
+      if (response.status === 401) { setData(null); setLoadError("No se pudo verificar esta instalación o su cuenta. Sus datos se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."); return; }
       if (!response.ok) throw new Error("No se pudo cargar la información");
       const result = await response.json() as AppData;
       result.designations ||= []; result.manualEvents ||= []; if (result.profile) result.profile.roles ||= [];
@@ -243,8 +245,8 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
             } else if (result.status === "linked") {
               if (typeof result.deviceId === "string") localStorage.setItem("docentetuc-device-id", result.deviceId);
               setInstallationSecurity("linked");
-            } else if (result.status === "legacy" || result.status === "recovery_required") {
-              setInstallationSecurity(result.status);
+            } else if (result.status === "recovery_required") {
+              setInstallationSecurity("recovery_required");
             } else setInstallationSecurity("unavailable");
           } catch { setInstallationSecurity("unavailable"); }
           finally { setInstallationBootstrapComplete(true); }
@@ -401,6 +403,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     setView(target); setQuery(term); setDesignationQuery(""); setFilter(target === "informacion" || target === "junta" ? "todas" : "para-mi");
   };
   const openDesignationOfficial = (item: Publication) => { localStorage.setItem("docentetuc-pending-designation", item.id); window.open(item.official_url, "_blank", "noopener,noreferrer"); };
+  const recoveryRequired = needsRecoveryNotice(installationSecurity, installationBootstrapComplete, loading, Boolean(data));
   return (
     <SidebarProvider defaultOpen className="dt-app-shell" style={{ "--sidebar-width": "17rem" } as CSSProperties}>
       <Sidebar className="border-r border-white/10 text-white backdrop-blur-xl" collapsible="offcanvas">
@@ -423,7 +426,8 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         {offline && <div className="flex items-center justify-center gap-2 bg-[#fff3dd] px-4 py-2 text-sm font-semibold text-[#7d541b]"><WifiOff className="size-4" />Sin conexión. Podés consultar la última información cargada.</div>}
 
         <div className="mobile-content mx-auto w-full max-w-7xl p-4 md:p-8">
-      {view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={navigateToView} loading={loading} error={loadError} />
+      {recoveryRequired && view !== "cuentas" ? <RecoveryRequiredNotice onOpenAccount={() => setView("cuentas")} />
+        : view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={navigateToView} loading={loading} error={loadError} />
         : view === "perfil" ? <>
           <ProfileForm key={profile?.updated_at || "profile"} profile={profile} roleOptions={roleOptions} onSaved={() => void load(false)} />
           <PublicProfileSection profile={data?.publicProfile ?? null} headers={() => apiHeaders(true)} onSaved={() => void load(false)} />
@@ -462,13 +466,22 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
       {manualEvent && <ManualEventDialog key={manualEvent === "new" ? `new:${manualEventDate}` : manualEvent.id} event={manualEvent === "new" ? null : manualEvent} initialDate={manualEventDate} onClose={() => setManualEvent(null)} onSaved={async () => { setManualEvent(null); await load(false); }} />}
       <DesignationReturnDialog publication={returnPublication} onNo={() => { localStorage.removeItem("docentetuc-pending-designation"); setReturnPublication(null); }} onYes={() => { if (returnPublication) setTrackingPublication(returnPublication); localStorage.removeItem("docentetuc-pending-designation"); setReturnPublication(null); }} />
       <DesignationForm publication={trackingPublication} existing={trackingPublication ? designationMap.get(trackingPublication.id) : undefined} onClose={() => setTrackingPublication(null)} onSaved={async () => { setTrackingPublication(null); await load(false); }} />
-      <DocenteTucAIChatPanel mode={aiMode} onClose={() => setAIMode("closed")} onMinimize={() => setAIMode("minimized")} onExpand={() => setAIMode("expanded")} context={aiContext} profileAvailable={Boolean(profile)} identityReady={accountPhoto.authenticated || (installationBootstrapComplete && (installationSecurity === "protected" || installationSecurity === "legacy"))} identityMessage={!installationBootstrapComplete ? "Preparando la identidad de esta instalación…" : installationSecurity === "linked" || installationSecurity === "recovery_required" ? "Esta instalación requiere la cuenta que la vinculó para acceder a sus datos." : "No se pudo comprobar la identidad de esta instalación. Recargá e intentá nuevamente."} headers={() => apiHeaders(true)} onAction={runAIAction} />
+      <DocenteTucAIChatPanel mode={aiMode} onClose={() => setAIMode("closed")} onMinimize={() => setAIMode("minimized")} onExpand={() => setAIMode("expanded")} context={aiContext} profileAvailable={Boolean(profile)} identityReady={accountPhoto.authenticated || (installationBootstrapComplete && installationSecurity === "protected")} identityMessage={!installationBootstrapComplete ? "Preparando la identidad de esta instalación…" : installationSecurity === "linked" ? "Esta instalación requiere la cuenta que la vinculó para acceder a sus datos." : installationSecurity === "recovery_required" ? "Iniciá sesión con la cuenta vinculada o contactá a soporte si tenés datos legacy sin vincular." : "No se pudo comprobar la identidad de esta instalación. Recargá e intentá nuevamente."} headers={() => apiHeaders(true)} onAction={runAIAction} />
       <Toaster richColors position="top-center" />
     </SidebarProvider>
   );
 }
 
 const usefulCategoryIcons: Record<string, string> = { "Sueldo y haberes": "💰", "Juntas": "🏛️", "Trámites": "📄", "Personal docente": "👤", "Títulos y certificados": "🎓", "Capacitación y FDCI": "📚", "CIIDEPT": "🏢", "Licencias y salud laboral": "🩺", "Jubilaciones": "👴", "Expedientes": "📋", "Gestión escolar": "🏫", "Normativa y documentación": "⚖️" };
+
+function RecoveryRequiredNotice({ onOpenAccount }: { onOpenAccount: () => void }) {
+  return <section role="alert" className="mx-auto max-w-xl rounded-3xl border border-amber-200 bg-white p-6 shadow-sm sm:p-8">
+    <h1 className="text-xl font-black text-[var(--text-primary)]">Esta instalación necesita recuperación</h1>
+    <p className="mt-3 text-sm leading-relaxed text-[var(--text-secondary)]">Tu información anterior permanece conservada, pero para acceder necesitamos verificar que te pertenece. El identificador de este dispositivo por sí solo no permite hacerlo.</p>
+    <p className="mt-3 text-sm leading-relaxed text-[var(--text-secondary)]">Si vinculaste esta instalación a tu cuenta, iniciá sesión desde Cuenta. Si no, escribí a <a href="mailto:soporte.docentetuc@gmail.com" className="font-semibold text-[#075f9b] underline">soporte.docentetuc@gmail.com</a> para solicitar ayuda con la verificación. No se vinculará ni se recuperará ningún dato automáticamente.</p>
+    <Button onClick={onOpenAccount} className="mt-5 min-h-11 rounded-xl bg-[#0878be] text-white"><CircleUserRound className="size-4" />Ir a Cuenta</Button>
+  </section>;
+}
 
 function InformationHub({ items, query, onQuery, savedMap, onOpen, onSave, onAskAI }: { items: Publication[]; query: string; onQuery: (value: string) => void; savedMap: Map<string, Saved>; onOpen: (item: Publication) => void; onSave: (item: Publication, enabled: boolean) => void; onAskAI: () => void }) {
   const allCategories = [...new Set(items.map((item) => item.category))], [category, setCategory] = useState<string | null>(null);
@@ -551,7 +564,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
     return rank === 0 ? "🔥 ABRE HOY" : rank === 1 ? "🔥 ABRE MAÑANA" : rank <= 4 ? `🔥 ABRE EN ${days} DÍAS` : rank === 5 ? "🟢 INSCRIPCIÓN ABIERTA" : rank === 6 ? "🎯 DESIGNACIÓN PARA VOS" : rank === 7 ? "📅 PRÓXIMO EN AGENDA" : "NOVEDAD PARA VOS";
   };
 
-  if (error && !data) return <section className="grid min-h-[65vh] place-items-center"><div className="max-w-lg rounded-3xl border border-[#ead6b8] bg-white p-8 text-center shadow-sm"><WifiOff className="mx-auto size-10 text-[#b57828]" /><h1 className="mt-4 text-2xl font-black">No pudimos cargar tu panel</h1><p className="mt-2 text-[#61766f]">Revisá tu conexión y volvé a intentarlo.</p><Button onClick={() => window.location.reload()} className="mt-6 h-11 rounded-xl bg-[#17362d] px-6 text-white"><RefreshCw className="size-4" />Reintentar</Button></div></section>;
+  if (error && !data) return <section className="grid min-h-[65vh] place-items-center"><div className="max-w-lg rounded-3xl border border-[#ead6b8] bg-white p-8 text-center shadow-sm"><WifiOff className="mx-auto size-10 text-[#b57828]" /><h1 className="mt-4 text-2xl font-black">No pudimos cargar tu panel</h1><p className="mt-2 text-[#61766f]">{error}</p><Button onClick={() => window.location.reload()} className="mt-6 h-11 rounded-xl bg-[#17362d] px-6 text-white"><RefreshCw className="size-4" />Reintentar</Button></div></section>;
 
   return <div className="daily-home">
     <header className="home-hero">

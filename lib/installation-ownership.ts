@@ -43,6 +43,15 @@ export async function installationProofFor(database: Database, request: Request,
   return sameSecretHash(row.secret_hash, await hashInstallationSecret(secret)) ? "valid" : "invalid";
 }
 
+/** Call after currentUser: only its verified device identity or linked account may manage push. */
+export async function mayAccessPushDevice(database: Database, userId: string, deviceId: string) {
+  const installation = deviceUser(deviceId);
+  if (!installation) return false;
+  if (userId === installation.userId) return true;
+  const owner = await database.prepare("SELECT account_id FROM account_installations WHERE device_id=?").bind(deviceId).first<{ account_id: string }>();
+  return owner?.account_id === userId;
+}
+
 /** Recover a lost local ID only when the installation still presents its private proof cookie. */
 export async function installationIdForProof(database: Database, request: Request) {
   const secret = readInstallationProof(request);
@@ -57,27 +66,6 @@ export function installationProofCookies(request: Request, secret: string, clear
   const value = clear ? "" : secret;
   const age = clear ? 0 : 34560000;
   return COOKIE_PATHS.map((path) => `${INSTALLATION_PROOF_COOKIE}=${value}; Path=${path}; HttpOnly; SameSite=Lax; Max-Age=${age}${secure}`);
-}
-
-/** Checks all existing device-scoped user data before rotating a legacy ID. */
-export async function installationHasData(database: Database, deviceId: string) {
-  const userId = deviceUser(deviceId)?.userId;
-  if (!userId) return true;
-  const sql = `SELECT
-    EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND (COALESCE(name,'Docente')<>'Docente' OR COALESCE(email,'')<>'' OR COALESCE(level,'')<>'' OR COALESCE(area,'')<>'' OR COALESCE(subjects,'')<>'' OR COALESCE(junta,'')<>'' OR COALESCE(roles,'')<>'' OR COALESCE(department,'')<>'' OR COALESCE(locality,'')<>'' OR COALESCE(shifts,'')<>'' OR COALESCE(wants_interim,1)<>1 OR COALESCE(wants_substitute,1)<>1 OR COALESCE(training_interests,'')<>'' OR COALESCE(characters,'')<>'' OR COALESCE(circuits,'')<>'' OR COALESCE(personal_match_threshold,85)<>85 OR COALESCE(notify_new_trainings,0)<>0 OR COALESCE(training_notify_scope,'relevant')<>'relevant' OR COALESCE(training_match_threshold,80)<>80)) OR
-    EXISTS(SELECT 1 FROM public_profiles WHERE user_id=?) OR
-    EXISTS(SELECT 1 FROM saved_publications WHERE user_id=?) OR
-    EXISTS(SELECT 1 FROM notifications WHERE user_id=?) OR
-    EXISTS(SELECT 1 FROM training_reminders WHERE user_id=?) OR
-    EXISTS(SELECT 1 FROM designation_tracking WHERE user_id=?) OR
-    EXISTS(SELECT 1 FROM manual_events WHERE user_id=?) OR
-    EXISTS(SELECT 1 FROM manual_event_push_queue WHERE user_id=?) OR
-    EXISTS(SELECT 1 FROM push_preferences WHERE user_id=?) OR
-    EXISTS(SELECT 1 FROM push_subscriptions WHERE user_id=? OR device_id=?) OR
-    EXISTS(SELECT 1 FROM ai_rate_limits WHERE substr(user_bucket,1,length(?) + 1)=? || ':') OR
-    EXISTS(SELECT 1 FROM push_rate_limits WHERE substr(user_bucket,1,length(?) + 1)=? || ':') AS has_data`;
-  const row = await database.prepare(sql).bind(...Array(9).fill(userId), userId, deviceId, userId, userId, userId, userId).first<{ has_data: number }>();
-  return Number(row?.has_data) !== 0;
 }
 
 /** Exact deletion scope for one proven, unlinked installation. */

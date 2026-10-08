@@ -1,5 +1,7 @@
 import type { Profile } from "./types";
 
+export const PROFILE_BOOTSTRAP_SQL = "INSERT OR IGNORE INTO profiles (user_id, name, email) VALUES (?, ?, ?)";
+
 export function profileList(input: unknown): string[] {
   const values = Array.isArray(input) ? input : typeof input === "string" ? input.split(/[,;|]/) : [];
   const seen = new Set<string>();

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { categoryForNotification, isPushNotificationDue, isQuietTime, publicationFitsProfileCircuit, PUSH_DELIVERY_BATCH_SIZE, scheduledNotificationTypes, validPushEndpoint } from "./push.ts";
+import { DatabaseSync } from "node:sqlite";
+import { categoryForNotification, isPushNotificationDue, isQuietTime, publicationFitsProfileCircuit, PUSH_DELIVERY_BATCH_SIZE, scheduledNotificationTypes, UPSERT_PUSH_SUBSCRIPTION_SQL, validPushEndpoint } from "./push.ts";
 
 test("quiet hours work across midnight in Tucumán", () => {
   assert.equal(isQuietTime(new Date("2026-09-27T02:30:00Z"), "22:00", "07:00", "America/Argentina/Buenos_Aires"), true);
@@ -22,6 +23,22 @@ test("push endpoints reject arbitrary hosts", () => {
   assert.equal(validPushEndpoint("https://fcm.googleapis.com/fcm/send/example"), true);
   assert.equal(validPushEndpoint("https://example.com/steal"), false);
   assert.equal(validPushEndpoint("http://fcm.googleapis.com/example"), false);
+});
+
+test("una suscripción push no puede reasignarse a otra cuenta o instalación", () => {
+  const db = new DatabaseSync(":memory:");
+  try {
+    db.exec("CREATE TABLE push_subscriptions(endpoint TEXT PRIMARY KEY,user_id TEXT,device_id TEXT,p256dh TEXT,auth TEXT,expiration_time INTEGER,user_agent TEXT,active INTEGER,updated_at TEXT,last_seen_at TEXT)");
+    const upsert = db.prepare(UPSERT_PUSH_SUBSCRIPTION_SQL);
+    const endpoint = "https://fcm.googleapis.com/fcm/send/synthetic";
+    assert.equal(upsert.run(endpoint, "device:a", "device-a", "key-a", "auth-a", null, "browser-a").changes, 1);
+    assert.equal(upsert.run(endpoint, "account-b", "device-b", "key-b", "auth-b", null, "browser-b").changes, 0);
+    const stored = db.prepare("SELECT user_id,device_id,p256dh FROM push_subscriptions WHERE endpoint=?").get(endpoint) as { user_id: string; device_id: string; p256dh: string };
+    assert.equal(stored.user_id, "device:a");
+    assert.equal(stored.device_id, "device-a");
+    assert.equal(stored.p256dh, "key-a");
+    assert.equal(upsert.run(endpoint, "device:a", "device-a", "key-a2", "auth-a", null, "browser-a").changes, 1);
+  } finally { db.close(); }
 });
 
 test("el despacho programa lotes acotados para respetar el presupuesto de CPU del cron", () => {

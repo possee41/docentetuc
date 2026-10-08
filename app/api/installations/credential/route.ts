@@ -1,6 +1,6 @@
 import { getD1 } from "@/db";
 import { hasInstallationCredentialsSchema } from "@/lib/auth-schema";
-import { hashInstallationSecret, createInstallationSecret, installationHasData, installationIdForProof, installationProofCookies, installationProofFor } from "@/lib/installation-ownership";
+import { hashInstallationSecret, createInstallationSecret, installationIdForProof, installationProofCookies, installationProofFor } from "@/lib/installation-ownership";
 import { validInstallationId } from "@/lib/identity-link";
 import { isSameOriginMutation } from "@/lib/auth-identity";
 
@@ -20,11 +20,7 @@ export async function POST(request: Request) {
         return Response.json({ status: linked ? "linked" : "ready", deviceId }, { headers: { "Cache-Control": "no-store, private" } });
       }
 
-      const linked = await db.prepare("SELECT 1 AS linked FROM account_installations WHERE device_id=?").bind(deviceId).first();
-      if (linked) return Response.json({ status: "linked", deviceId }, { headers: { "Cache-Control": "no-store, private" } });
-      if (await installationHasData(db, deviceId)) {
-        return Response.json({ status: "legacy", deviceId }, { headers: { "Cache-Control": "no-store, private" } });
-      }
+      return Response.json({ status: "recovery_required" }, { status: 409, headers: { "Cache-Control": "no-store" } });
     }
 
     const recoveredDeviceId = await installationIdForProof(db, request);

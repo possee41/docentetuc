@@ -7,6 +7,12 @@ export type PushEnvironment = { VAPID_PUBLIC_KEY?: string; VAPID_PRIVATE_KEY?: s
 export type PushMessage = { title: string; body: string; tag: string; url: string };
 export type StoredSubscription = PushSubscription & { userId: string; deviceId: string; userAgent: string };
 
+export const UPSERT_PUSH_SUBSCRIPTION_SQL = `INSERT INTO push_subscriptions (endpoint, user_id, device_id, p256dh, auth, expiration_time, user_agent, active)
+  VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+  ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh, auth=excluded.auth, expiration_time=excluded.expiration_time,
+    user_agent=excluded.user_agent, active=1, updated_at=CURRENT_TIMESTAMP, last_seen_at=CURRENT_TIMESTAMP
+  WHERE push_subscriptions.user_id=excluded.user_id AND push_subscriptions.device_id=excluded.device_id`;
+
 export interface NotificationProvider {
   send(subscription: PushSubscription, message: PushMessage): Promise<Response>;
 }

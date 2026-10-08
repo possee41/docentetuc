@@ -1,7 +1,7 @@
 import { getD1 } from "@/db";
 import { authError, currentUser } from "@/lib/current-user";
 import { enrollmentState, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
-import { hydrateProfile, profileStorage } from "@/lib/profile";
+import { hydrateProfile, profileStorage, PROFILE_BOOTSTRAP_SQL } from "@/lib/profile";
 import { DESIGNATION_STATUSES } from "@/lib/designations";
 import { APP_PUBLICATIONS_QUERY } from "@/lib/app-publications-query";
 import { PUBLIC_PROFILE_UPSERT_SQL, publicProfileForClient, validatePublicProfile } from "@/lib/public-profile";
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     const user = await currentUser(request);
     const account = await getAuthenticatedAccount(request);
     const db = getD1();
-    await db.prepare("INSERT INTO profiles (user_id, name, email) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET email=excluded.email WHERE profiles.email IS NOT excluded.email").bind(user.userId, user.fullName || user.displayName.split("@")[0], user.email).run();
+    await db.prepare(PROFILE_BOOTSTRAP_SQL).bind(user.userId, user.fullName || user.displayName.split("@")[0], user.email).run();
     await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type, dedupe_key, scheduled_at) SELECT user_id, publication_id, 'CAPACITACION_ABRE', 'training-reminder:' || id || ':' || opens_at || ':' || COALESCE(advance_minutes,0), CURRENT_TIMESTAMP FROM training_reminders WHERE user_id=? AND notified=0 AND datetime(remind_at)<=datetime('now')").bind(user.userId).run();
     await db.prepare("UPDATE training_reminders SET notified=1, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND notified=0 AND datetime(remind_at)<=datetime('now')").bind(user.userId).run();
     await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type, dedupe_key, scheduled_at) SELECT user_id, publication_id, 'AGENDA_RECORDATORIO', 'agenda-reminder:' || user_id || ':' || publication_id || ':' || agenda_reminder_at, CURRENT_TIMESTAMP FROM saved_publications WHERE user_id=? AND in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime('now')").bind(user.userId).run();

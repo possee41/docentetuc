@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { createInstallationSecret, hashInstallationSecret, installationDataDeletionStatements, installationDeletionConfirmed, installationHasData, installationIdForProof, installationProofCookies, installationProofFor, readInstallationProof } from "./installation-ownership.ts";
+import { createInstallationSecret, hashInstallationSecret, installationDataDeletionStatements, installationDeletionConfirmed, installationIdForProof, installationProofCookies, installationProofFor, mayAccessPushDevice, readInstallationProof } from "./installation-ownership.ts";
 
 const MIGRATION = readFileSync(new URL("../migrations/0017_installation_credentials.sql", import.meta.url), "utf8");
 const DEVICE_A = "550e8400-e29b-41d4-a716-446655440001";
@@ -90,15 +90,15 @@ test("un fallo o una respuesta parcial no autoriza limpiar el identificador loca
   assert.equal(installationDeletionConfirmed(true, { installationDataDeleted: true }), true);
 });
 
-test("no convierte un perfil vacío de compatibilidad en una instalación con datos; sí detecta datos heredados", async () => {
+test("push solo acepta la instalación probada o su cuenta vinculada", async () => {
   const db = dataDatabase();
   try {
     const database = d1(db);
-    db.prepare("INSERT INTO profiles(user_id) VALUES (?)").run(ID_A);
-    assert.equal(await installationHasData(database, DEVICE_A), false);
-    db.prepare("INSERT INTO saved_publications(user_id) VALUES (?)").run(ID_A);
-    assert.equal(await installationHasData(database, DEVICE_A), true);
-    assert.equal(await installationHasData(database, DEVICE_B), false);
+    assert.equal(await mayAccessPushDevice(database, ID_A, DEVICE_A), true);
+    assert.equal(await mayAccessPushDevice(database, "account-a", DEVICE_B), false);
+    db.prepare("INSERT INTO account_installations(device_id,account_id) VALUES (?, 'account-b')").run(DEVICE_B);
+    assert.equal(await mayAccessPushDevice(database, "account-a", DEVICE_B), false);
+    assert.equal(await mayAccessPushDevice(database, "account-b", DEVICE_B), true);
   } finally { db.close(); }
 });
 

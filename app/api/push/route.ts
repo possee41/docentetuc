@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { getD1 } from "@/db";
 import { authError, currentUser } from "@/lib/current-user";
-import { WebPushProvider, validSubscription } from "@/lib/push";
+import { changedRows, mayAccessPushDevice } from "@/lib/installation-ownership";
+import { UPSERT_PUSH_SUBSCRIPTION_SQL, WebPushProvider, validSubscription } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
@@ -10,15 +11,10 @@ const validDevice = (value: string) => /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(value
 const boolean = (value: unknown, fallback = true) => typeof value === "boolean" ? Number(value) : Number(fallback);
 const time = (value: unknown, fallback: string) => typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : fallback;
 
-async function migrateDeviceSubscription(db: D1Database, userId: string, id: string) {
-  if (!validDevice(id) || userId === `device:${id}`) return;
-  await db.prepare("UPDATE push_subscriptions SET user_id=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND device_id=?").bind(userId, `device:${id}`, id).run();
-}
-
 export async function GET(request: Request) {
   try {
     const user = await currentUser(request), db = getD1(), id = deviceId(request);
-    await migrateDeviceSubscription(db, user.userId, id);
+    if (!await mayAccessPushDevice(db, user.userId, id)) return Response.json({ error: "No se pudo verificar este dispositivo." }, { status: 403 });
     const [subscription, preferences] = await Promise.all([
       db.prepare("SELECT COUNT(*) count FROM push_subscriptions WHERE user_id=? AND device_id=? AND active=1").bind(user.userId, id).first<{ count: number }>(),
       db.prepare("SELECT * FROM push_preferences WHERE user_id=?").bind(user.userId).first<Record<string, unknown>>(),
@@ -33,13 +29,14 @@ export async function POST(request: Request) {
   try {
     const user = await currentUser(request), db = getD1(), id = deviceId(request);
     if (!validDevice(id)) return Response.json({ error: "Dispositivo inválido." }, { status: 400 });
+    if (!await mayAccessPushDevice(db, user.userId, id)) return Response.json({ error: "No se pudo verificar este dispositivo." }, { status: 403 });
     const body = await request.json() as Record<string, unknown>, action = String(body.action || "");
-    await migrateDeviceSubscription(db, user.userId, id);
     if (action === "subscribe") {
       if (!validSubscription(body.subscription)) return Response.json({ error: "Suscripción push inválida." }, { status: 400 });
       const subscription = body.subscription;
-      await db.prepare("INSERT INTO push_subscriptions (endpoint, user_id, device_id, p256dh, auth, expiration_time, user_agent, active) VALUES (?, ?, ?, ?, ?, ?, ?, 1) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, device_id=excluded.device_id, p256dh=excluded.p256dh, auth=excluded.auth, expiration_time=excluded.expiration_time, user_agent=excluded.user_agent, active=1, updated_at=CURRENT_TIMESTAMP, last_seen_at=CURRENT_TIMESTAMP")
+      const result = await db.prepare(UPSERT_PUSH_SUBSCRIPTION_SQL)
         .bind(subscription.endpoint, user.userId, id, subscription.keys.p256dh, subscription.keys.auth, subscription.expirationTime, request.headers.get("user-agent")?.slice(0, 300) || "").run();
+      if (changedRows(result) === 0) return Response.json({ error: "Esta suscripción pertenece a otra instalación. No se modificó." }, { status: 409 });
       await db.prepare("INSERT OR IGNORE INTO push_preferences (user_id) VALUES (?)").bind(user.userId).run();
     } else if (action === "unsubscribe") {
       const endpoint = typeof body.endpoint === "string" ? body.endpoint : "";

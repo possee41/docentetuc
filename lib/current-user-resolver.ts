@@ -6,7 +6,6 @@ type Database = {
   prepare(sql: string): { bind(...values: string[]): { first<T>(): Promise<T | null> } };
 };
 
-type CurrentUser = { userId: string; email: string; fullName: string | null; displayName: string };
 type Account = { accountId: string };
 
 export async function resolveCurrentUser(
@@ -14,7 +13,6 @@ export async function resolveCurrentUser(
   dependencies: {
     getDatabase: () => Database;
     getAccount: (request: Request) => Promise<Account | null>;
-    getFallbackUser: () => Promise<CurrentUser | null>;
   },
 ) {
   const deviceId = request.headers.get("x-docentetuc-device") || "";
@@ -33,21 +31,14 @@ export async function resolveCurrentUser(
         if (!account || owner.account_id !== account.accountId) throw new Error("UNAUTHENTICATED");
         return { userId: account.accountId, email: "", fullName: "Cuenta DocenteTuc", displayName: "Cuenta DocenteTuc" };
       }
-      if (proof === "invalid") {
-        if (account) return { userId: account.accountId, email: "", fullName: "Cuenta DocenteTuc", displayName: "Cuenta DocenteTuc" };
-        throw new Error("UNAUTHENTICATED");
-      }
+      if (proof === "valid") return installation;
     } catch (error) {
       if (error instanceof Error && error.message === "UNAUTHENTICATED") throw error;
-      if (!(error instanceof Error && /no such table:\s*account_installations/i.test(error.message))) throw new Error("UNAUTHENTICATED");
-      // Before migration 0014, legacy device-bound features remain available.
+      throw new Error("UNAUTHENTICATED");
     }
   }
 
-  // A signed-in but unlinked device keeps its independent legacy data until consent.
-  if (account && !installation) return { userId: account.accountId, email: "", fullName: "Cuenta DocenteTuc", displayName: "Cuenta DocenteTuc" };
-  const user = await dependencies.getFallbackUser();
-  if (user) return user;
-  if (installation) return installation;
+  // An unproven UUID never selects private device data, even beside a valid account session.
+  if (account) return { userId: account.accountId, email: "", fullName: "Cuenta DocenteTuc", displayName: "Cuenta DocenteTuc" };
   throw new Error("UNAUTHENTICATED");
 }
