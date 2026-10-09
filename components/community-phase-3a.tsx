@@ -3,10 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import type { CSSProperties, FormEvent } from "react";
 import { ArrowUpRight, Bookmark, BookmarkCheck, BookOpen, Check, ChevronDown, CircleUserRound, Clock3, Flag, Home, MessageCircle, MessagesSquare, MoreHorizontal, Send, ShieldCheck, UserRound, UsersRound, X } from "lucide-react";
 import { COMMUNITY_REPORT_REASONS, type CommunityComment, type CommunityFeedSort, type CommunityPost } from "@/lib/community";
 import { publicAvatarAssetPath, type PublicAvatarId, type PublicProfile } from "@/lib/public-profile";
+import { AppSidebar, AppSidebarEdge, AppSidebarTrigger, useAppSidebarState } from "@/components/app-sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
 type CommunityStatus = {
   authenticated: boolean;
@@ -177,6 +179,7 @@ function PostCard({ post, canContribute, canSave, saved, saving, onToggleSaved, 
 }
 
 export function CommunityPhase3A() {
+  const sidebar = useAppSidebarState(false);
   const [snapshot, setSnapshot] = useState<CommunityResponse | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<{ posts: CommunityPost[]; nextCursor: string | null; hasMore: boolean } | null>(null);
   const [view, setView] = useState<"feed" | "saved">("feed");
@@ -322,13 +325,20 @@ export function CommunityPhase3A() {
     catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo bloquear a esta persona."); }
   };
 
-  return <div className="min-h-dvh bg-[radial-gradient(ellipse_at_top,_#dff2ff_0%,_#f3f9fd_38%,_#f7fafc_100%)] pb-[calc(5.1rem+env(safe-area-inset-bottom))] text-[#0c2d5b]">
+  return <SidebarProvider open={sidebar.open} onOpenChange={sidebar.onOpenChange} data-sidebar-pinned={sidebar.pinned} className="dt-community-shell" style={{ "--sidebar-width": "17rem" } as CSSProperties}>
+    <AppSidebarEdge pinned={sidebar.pinned} onEnter={sidebar.enter} onLeave={sidebar.leave} />
+    <AppSidebar view="comunidad" pinned={sidebar.pinned} onTogglePin={sidebar.togglePin} onHoverEnter={sidebar.enter} onHoverLeave={sidebar.leave} />
+    <SidebarInset className="min-w-0">
+    <div className="min-h-dvh w-full bg-[radial-gradient(ellipse_at_top,_#dff2ff_0%,_#f3f9fd_38%,_#f7fafc_100%)] pb-[calc(5.1rem+env(safe-area-inset-bottom))] text-[#0c2d5b]">
     <div className="mx-auto max-w-6xl px-3 pt-3 sm:px-6 sm:pt-5">
       <nav aria-label="Cabecera de DocenteTuc" className="mb-3 flex items-center justify-between gap-3 rounded-full border border-white/80 bg-white/75 px-3 py-2 shadow-sm backdrop-blur sm:mb-4 sm:px-5">
+        <div className="flex min-w-0 items-center gap-2">
+        <AppSidebarTrigger pinned={sidebar.pinned} open={sidebar.open} onTogglePin={sidebar.togglePin} />
         <Link href="/" className="flex min-h-11 min-w-0 items-center gap-2.5 rounded-full pr-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600">
           <Image src="/icon-192.png" alt="" width={38} height={38} unoptimized className="size-9 shrink-0 rounded-xl" />
           <span className="truncate text-lg font-black tracking-tight sm:text-xl">Docente<span className="text-sky-600">Tuc</span></span>
         </Link>
+        </div>
         <Link href="/" className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-bold text-sky-800 hover:bg-sky-50"><Home className="size-4" /><span className="hidden sm:inline">Inicio</span><ArrowUpRight className="size-3.5" /></Link>
       </nav>
 
@@ -424,5 +434,7 @@ export function CommunityPhase3A() {
         ].map(({ label, href, icon: Icon }) => <Link key={label} href={href} aria-current={label === "Comunidad" ? "page" : undefined} className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 text-[9px] font-bold transition sm:min-h-16 sm:text-xs ${label === "Comunidad" ? "bg-[#e8f5ff] text-[#0878be]" : "text-slate-500 hover:bg-slate-50"}`}><Icon className="size-5 sm:size-[1.35rem]" aria-hidden="true" /><span className="whitespace-nowrap">{label}</span></Link>)}
       </div>
     </nav>
-  </div>;
+    </div>
+    </SidebarInset>
+  </SidebarProvider>;
 }

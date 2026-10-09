@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Bell, BookOpen, Bookmark, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, CircleUserRound, Clock3, Download, ExternalLink, GraduationCap, Home, Mail, MapPin, Menu, MessagesSquare, Moon, Phone, RefreshCw, Search, SlidersHorizontal, Sparkles, Star, Sun, UserRound, WifiOff, X } from "lucide-react";
+import { Bell, BookOpen, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, CircleUserRound, Clock3, Download, ExternalLink, GraduationCap, Home, Mail, MapPin, MessagesSquare, Moon, Phone, RefreshCw, Search, SlidersHorizontal, Sparkles, Star, Sun, WifiOff, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Toaster } from "@/components/ui/sonner";
@@ -40,18 +40,15 @@ import { HomeBannerContext } from "@/components/home-banner-context";
 import { PublicProfileSection } from "@/components/public-profile-section";
 import { AccountSignInSection } from "@/components/account-sign-in-section";
 import { GoogleAccountPhoto } from "@/components/google-account-photo";
+import { AppSidebar, AppSidebarEdge, AppSidebarTrigger, navigation, useAppSidebarState } from "@/components/app-sidebar";
+import type { AppView as View } from "@/components/app-sidebar";
 import { deviceRequestHeaders } from "@/lib/device-user";
 import { needsRecoveryNotice } from "@/lib/legacy-recovery-ui";
 
-type View = "inicio" | "vacantes" | "comunidad" | "capacitaciones" | "junta" | "informacion" | "agenda" | "alertas" | "guardados" | "perfil" | "cuentas";
 type Theme = "light" | "dark";
 type InstallationSecurity = "protected" | "linked" | "recovery_required" | "unavailable";
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
-const navigation: [View, string, typeof Home][] = [
-  ["inicio", "Inicio", Home], ["vacantes", "Designaciones", BriefcaseBusiness], ["comunidad", "Comunidad", MessagesSquare], ["capacitaciones", "Capacitaciones", GraduationCap],
-  ["junta", "Padrones y comunicados", BookOpen], ["informacion", "Información útil", Building2], ["agenda", "Agenda", CalendarDays], ["guardados", "Mis guardados", Bookmark], ["perfil", "Perfil docente", UserRound], ["cuentas", "Cuentas y accesos", CircleUserRound],
-];
 const viewTitles: Record<View, [string, string]> = {
   inicio: ["Inicio", "Lo más relevante según tus preferencias"], vacantes: ["Designaciones", "Pedidos de cobertura publicados en SIME"],
   capacitaciones: ["Capacitaciones", "Formación docente"], junta: ["Padrones y comunicados", "Llamados abiertos, padrones, comunicados y documentación oficial"],
@@ -68,12 +65,6 @@ const SIME_LOGIN = "https://sime.educaciontuc.gov.ar/Login/Login";
 const FDCI_LOGIN = "https://capacitaciondocente.educaciontuc.gov.ar/docentes";
 const INFOD_LOGIN = "https://aulastic.infd.edu.ar/";
 const EDUCATION_LEVELS = ["Inicial", "Primario", "Secundario", "Superior"];
-
-function AppSidebarNavigation({ view, onNavigate }: { view: View; onNavigate: (view: View) => void }) {
-  const { setOpen, setOpenMobile } = useSidebar();
-  const groups: [string, View[]][] = [["Uso diario", ["inicio", "vacantes", "comunidad", "capacitaciones", "agenda"]], ["Consultas", ["junta", "informacion"]], ["Personal", ["perfil", "guardados", "cuentas"]]];
-  return <SidebarMenu>{groups.map(([group, ids]) => <div key={group} className="mb-4"><p className="px-3 pb-1 text-[10px] font-black uppercase tracking-[.16em] text-white/45">{group}</p>{ids.map((id) => { const entry = navigation.find(([itemId]) => itemId === id)!; const [, label, Icon] = entry; return <SidebarMenuItem key={id}><SidebarMenuButton isActive={view === id} onClick={() => { onNavigate(id); setOpen(false); setOpenMobile(false); }} className="h-10 rounded-xl bg-white/8 px-3 font-semibold text-white hover:bg-white/15 hover:text-white data-[active=true]:bg-[#2eb6f3] data-[active=true]:font-black data-[active=true]:text-white"><Icon className="size-5" /><span>{label}</span></SidebarMenuButton></SidebarMenuItem>; })}</div>)}</SidebarMenu>;
-}
 
 const normalize = (value = "") => value.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 const publicationCircuitMatch = (item: Publication, circuit: string) => {
@@ -126,6 +117,7 @@ const lifecycleLabel = (status: ReturnType<typeof publicationLifecycle>) => ({ A
 
 export default function DocenteApp({ initialSection }: { initialSection?: string }) {
   const router = useRouter();
+  const sidebar = useAppSidebarState(true);
   const [data, setData] = useState<AppData | null>(null);
   const [accountPhoto, setAccountPhoto] = useState<{ authenticated: boolean; image: string | null }>({ authenticated: false, image: null });
   const [installationSecurity, setInstallationSecurity] = useState<InstallationSecurity>("unavailable");
@@ -405,17 +397,14 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const openDesignationOfficial = (item: Publication) => { localStorage.setItem("docentetuc-pending-designation", item.id); window.open(item.official_url, "_blank", "noopener,noreferrer"); };
   const recoveryRequired = needsRecoveryNotice(installationSecurity, installationBootstrapComplete, loading, Boolean(data));
   return (
-    <SidebarProvider defaultOpen className="dt-app-shell" style={{ "--sidebar-width": "17rem" } as CSSProperties}>
-      <Sidebar className="border-r border-white/10 text-white backdrop-blur-xl" collapsible="offcanvas">
-        <SidebarHeader className="p-5"><button onClick={() => setView("inicio")} className="flex items-center gap-3 text-left"><Image src="/icon-192.png" alt="" width={48} height={48} unoptimized className="size-12 rounded-2xl shadow-sm" /><span><span className="block text-xl font-black">DocenteTuc</span><span className="block text-xs text-white/55">Información docente</span></span></button></SidebarHeader>
-        <SidebarContent className="px-3"><AppSidebarNavigation view={view} onNavigate={(id) => navigateToView(id)} /></SidebarContent>
-        <SidebarFooter className="p-5"><p className="text-xs leading-relaxed text-white/45">Herramienta independiente. La fuente oficial prevalece siempre.</p></SidebarFooter>
-      </Sidebar>
+    <SidebarProvider open={sidebar.open} onOpenChange={sidebar.onOpenChange} data-sidebar-pinned={sidebar.pinned} className="dt-app-shell" style={{ "--sidebar-width": "17rem" } as CSSProperties}>
+      <AppSidebarEdge pinned={sidebar.pinned} onEnter={sidebar.enter} onLeave={sidebar.leave} />
+      <AppSidebar view={view} onNavigate={navigateToView} pinned={sidebar.pinned} onTogglePin={sidebar.togglePin} onHoverEnter={sidebar.enter} onHoverLeave={sidebar.leave} />
 
       <SidebarInset className="min-w-0 bg-[#f4f7f5] text-[var(--foreground)]">
         <AppBackground>
         <AppHeader className="mobile-topbar min-h-20 gap-3 border-[#dce8e1] px-4 md:px-8">
-          <SidebarTrigger className="size-11 rounded-xl bg-white md:hidden"><Menu /></SidebarTrigger>
+          <AppSidebarTrigger pinned={sidebar.pinned} open={sidebar.open} onTogglePin={sidebar.togglePin} />
           {view === "inicio" ? <div className="flex flex-1 items-center gap-3"><Image src="/icon-192.png" alt="" width={40} height={40} unoptimized className="size-10 rounded-xl md:hidden" /><span className="font-black text-[#062b55] md:hidden">DocenteTuc</span></div> : !["vacantes", "perfil", "cuentas"].includes(view) ? <div className="relative max-w-2xl flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#52708c]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={view === "capacitaciones" ? "Buscar capacitaciones" : "Buscar en DocenteTuc"} placeholder={view === "capacitaciones" ? "Buscar capacitaciones..." : "¿Qué estás buscando?"} className="h-12 rounded-2xl border-[#c8e1f1] bg-white pl-11 shadow-sm" />{query && <button aria-label="Limpiar búsqueda" onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div> : <div className="flex-1" />}
           {installPrompt && <Button onClick={install} variant="outline" className="hidden h-11 rounded-xl border-[#bdd0c6] bg-white sm:flex"><Download className="size-4" />Instalar</Button>}
           {view === "inicio" && accountPhoto.authenticated && <Button onClick={() => setView("cuentas")} size="icon" variant="outline" aria-label="Ir a Cuentas y accesos" className="size-11 shrink-0 rounded-full border-[#dce8e1] bg-white p-0"><GoogleAccountPhoto src={accountPhoto.image} /></Button>}
