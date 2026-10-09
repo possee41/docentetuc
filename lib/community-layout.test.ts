@@ -4,6 +4,7 @@ import { test } from "node:test";
 
 const source = readFileSync(new URL("../components/community-phase-3a.tsx", import.meta.url), "utf8");
 const rulesCard = readFileSync(new URL("../components/community-rules-card.tsx", import.meta.url), "utf8");
+const sidebar = readFileSync(new URL("../components/app-sidebar.tsx", import.meta.url), "utf8");
 
 test("las normas completas permanecen en una región desplazable accesible", () => {
   assert.match(source, /<CommunityRulesCard version=\{status\.rulesVersion\} text=\{status\.rulesText\} checked=\{normsChecked\}/);
@@ -20,4 +21,10 @@ test("la tarjeta no se superpone a la cabecera y deja espacio bajo la navegació
   assert.match(source, /<main className="mx-auto mt-4/);
   assert.match(source, /pb-\[calc\(7rem\+env\(safe-area-inset-bottom\)\)\]/);
   assert.match(source, /aria-label="Texto completo de las Normas aceptadas" tabIndex=\{0\}/);
+});
+
+test("la barra inferior de Comunidad queda limitada a móvil", () => {
+  assert.match(source, /pb-\[calc\(7rem\+env\(safe-area-inset-bottom\)\)\] text-\[#0c2d5b\] md:pb-8/);
+  assert.match(source, /aria-label="Navegación principal" className="[^"]*md:hidden"/);
+  assert.match(sidebar, /\["inicio", "comunidad", "agenda", "perfil", "cuentas"\]\.includes\(id\) \? "max-md:hidden"/);
 });

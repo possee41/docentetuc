@@ -330,7 +330,7 @@ export function CommunityPhase3A() {
     <AppSidebarEdge pinned={sidebar.pinned} onEnter={sidebar.enter} onLeave={sidebar.leave} />
     <AppSidebar view="comunidad" pinned={sidebar.pinned} onTogglePin={sidebar.togglePin} onHoverEnter={sidebar.enter} onHoverLeave={sidebar.leave} />
     <SidebarInset className="min-w-0">
-    <div className="min-h-dvh w-full bg-[radial-gradient(ellipse_at_top,_#dff2ff_0%,_#f3f9fd_38%,_#f7fafc_100%)] pb-[calc(7rem+env(safe-area-inset-bottom))] text-[#0c2d5b]">
+    <div className="min-h-dvh w-full bg-[radial-gradient(ellipse_at_top,_#dff2ff_0%,_#f3f9fd_38%,_#f7fafc_100%)] pb-[calc(7rem+env(safe-area-inset-bottom))] text-[#0c2d5b] md:pb-8">
     <div className="mx-auto max-w-6xl px-3 pt-3 sm:px-6 sm:pt-5">
       <nav aria-label="Cabecera de DocenteTuc" className="mb-3 flex items-center justify-between gap-3 rounded-full border border-white/80 bg-white/75 px-3 py-2 shadow-sm backdrop-blur sm:mb-4 sm:px-5">
         <div className="flex min-w-0 items-center gap-2">
@@ -419,7 +419,7 @@ export function CommunityPhase3A() {
       }} className="min-h-10 rounded-xl px-3 text-sm font-bold text-sky-800 hover:bg-sky-50">Desbloquear</button></li>)}</ul></details>}
     </main>
 
-    <nav aria-label="Navegación principal" className="fixed inset-x-0 bottom-0 z-40 border-t border-sky-100 bg-white/95 px-2 pt-2 shadow-[0_-8px_24px_rgba(18,72,116,.08)] backdrop-blur-md pb-[max(env(safe-area-inset-bottom),.45rem)]">
+    <nav aria-label="Navegación principal" className="fixed inset-x-0 bottom-0 z-40 border-t border-sky-100 bg-white/95 px-2 pt-2 shadow-[0_-8px_24px_rgba(18,72,116,.08)] backdrop-blur-md pb-[max(env(safe-area-inset-bottom),.45rem)] md:hidden">
       <div className="mx-auto grid max-w-3xl grid-cols-[1fr_1.3fr_1fr_1fr_1fr] items-center gap-1">
         {[
           { label: "Inicio", href: "/", icon: Home },
