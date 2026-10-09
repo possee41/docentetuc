@@ -44,6 +44,7 @@ import { AppSidebar, AppSidebarEdge, AppSidebarTrigger, navigation, useAppSideba
 import type { AppView as View } from "@/components/app-sidebar";
 import { deviceRequestHeaders } from "@/lib/device-user";
 import { needsRecoveryNotice } from "@/lib/legacy-recovery-ui";
+import { sectionUrl, viewFromSection } from "@/lib/app-navigation";
 
 type Theme = "light" | "dark";
 type InstallationSecurity = "protected" | "linked" | "recovery_required" | "unavailable";
@@ -56,10 +57,6 @@ const viewTitles: Record<View, [string, string]> = {
   agenda: ["Agenda docente", "Fechas y vencimientos de las publicaciones"], alertas: ["Alertas", "Novedades detectadas sin duplicados"],
   guardados: ["Mis guardados", "Publicaciones que elegiste conservar"], perfil: ["Tu perfil docente", "Preferencias usadas para ordenar la información"], cuentas: ["Cuentas y accesos", "Gestioná la identidad DocenteTuc y los servicios externos"],
   comunidad: ["Comunidad Docente", "Preguntá, compartí y ayudá a otros docentes"],
-};
-const viewFromSection = (section?: string): View => {
-  const allowed: View[] = ["inicio", "vacantes", "comunidad", "capacitaciones", "junta", "informacion", "agenda", "alertas", "guardados", "perfil", "cuentas"];
-  return allowed.includes(section as View) ? section as View : "inicio";
 };
 const SIME_LOGIN = "https://sime.educaciontuc.gov.ar/Login/Login";
 const FDCI_LOGIN = "https://capacitaciondocente.educaciontuc.gov.ar/docentes";
@@ -122,7 +119,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const [accountPhoto, setAccountPhoto] = useState<{ authenticated: boolean; image: string | null }>({ authenticated: false, image: null });
   const [installationSecurity, setInstallationSecurity] = useState<InstallationSecurity>("unavailable");
   const [installationBootstrapComplete, setInstallationBootstrapComplete] = useState(false);
-  const [view, setView] = useState<View>(() => viewFromSection(initialSection));
+  const [view, setViewState] = useState<View>(() => viewFromSection(initialSection));
   const [query, setQuery] = useState("");
   const [designationQuery, setDesignationQuery] = useState("");
   const [filter, setFilter] = useState("para-mi");
@@ -157,6 +154,38 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const [manualEventDate, setManualEventDate] = useState("");
   const loadRef = useRef<(syncIfEmpty?: boolean, showLoading?: boolean) => Promise<void>>(async () => {});
   const syncSourcesRef = useRef<(notify?: boolean) => Promise<void>>(async () => {});
+  const [navigationRestored, setNavigationRestored] = useState(false);
+  const setView = useCallback((target: View) => {
+    if (target === "comunidad") { router.push("/comunidad"); return; }
+    const url = sectionUrl(target);
+    if (`${location.pathname}${location.search}${location.hash}` !== url) {
+      history.pushState({ ...history.state, docentetuc: undefined, publicationId: undefined, usefulCategory: undefined }, "", url);
+    }
+    setViewState(target);
+  }, [router]);
+  const restoreNavigation = useCallback((section: View) => {
+    const saved = history.state?.docentetuc as Record<string, unknown> | undefined;
+    const text = (value: unknown, fallback = "") => typeof value === "string" ? value.slice(0, 200) : fallback;
+    if (saved?.section !== section) return;
+    setQuery(text(saved.query));
+    setDesignationQuery(text(saved.designationQuery));
+    setFilter(text(saved.filter, section === "informacion" || section === "junta" ? "todas" : "para-mi"));
+    setJuntaFilter(text(saved.juntaFilter, "todas") as typeof juntaFilter);
+    setDesignationCircuit(text(saved.designationCircuit, "todos"));
+    setCharacter(text(saved.character, "todos"));
+    setTrainingDate(text(saved.trainingDate));
+    setTrainingCircuit(text(saved.trainingCircuit, "todos"));
+    setTrainingSource(text(saved.trainingSource, "todas"));
+    setTrainingCompatibility(text(saved.trainingCompatibility, "todas"));
+    setTrainingSort(text(saved.trainingSort, "recommended"));
+  }, []);
+  useEffect(() => {
+    queueMicrotask(() => { restoreNavigation(viewFromSection(new URLSearchParams(location.search).get("section") || undefined)); setNavigationRestored(true); });
+  }, [restoreNavigation]);
+  useEffect(() => {
+    if (!navigationRestored) return;
+    history.replaceState({ ...history.state, docentetuc: { section: view, query, designationQuery, filter, juntaFilter, designationCircuit, character, trainingDate, trainingCircuit, trainingSource, trainingCompatibility, trainingSort } }, "", location.href);
+  }, [navigationRestored, view, query, designationQuery, filter, juntaFilter, designationCircuit, character, trainingDate, trainingCircuit, trainingSource, trainingCompatibility, trainingSort]);
   const refreshAccountPhoto = useCallback(async () => {
     try {
       const response = await fetch("/api/auth/status", { cache: "no-store", credentials: "same-origin" });
@@ -167,33 +196,33 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
       setAccountPhoto({ authenticated: false, image: null });
     }
   }, []);
-  useEffect(() => { const openProfile = () => setView("perfil"); window.addEventListener("docentetuc:open-profile", openProfile); return () => window.removeEventListener("docentetuc:open-profile", openProfile); }, []);
+  useEffect(() => { const openProfile = () => setView("perfil"); window.addEventListener("docentetuc:open-profile", openProfile); return () => window.removeEventListener("docentetuc:open-profile", openProfile); }, [setView]);
   useEffect(() => {
     queueMicrotask(() => { void refreshAccountPhoto(); });
     window.addEventListener("docentetuc:refresh-auth-status", refreshAccountPhoto);
     return () => window.removeEventListener("docentetuc:refresh-auth-status", refreshAccountPhoto);
   }, [refreshAccountPhoto]);
-  const openPublication = (publication: Publication) => { setSelected(publication); history.pushState({ publicationId: publication.id }, "", `#publicacion-${encodeURIComponent(publication.id)}`); };
+  const openPublication = (publication: Publication) => { setSelected(publication); history.pushState({ ...history.state, publicationId: publication.id }, "", `#publicacion-${encodeURIComponent(publication.id)}`); };
   const closePublication = () => { if (history.state?.publicationId) history.back(); else setSelected(null); };
 
   const load = useCallback(async (syncIfEmpty = true, showLoading = true) => {
     if (showLoading) setLoading(true);
     setLoadError("");
     try {
-      const response = await fetch("/api/app", { cache: "no-store", headers: apiHeaders() });
+      const response = await fetch("/api/app", { cache: "no-store", headers: apiHeaders(), signal: AbortSignal.timeout(15000) });
       if (response.status === 401) { setData(null); setLoadError("No se pudo verificar esta instalación o su cuenta. Sus datos se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."); return; }
       if (!response.ok) throw new Error("No se pudo cargar la información");
       const result = await response.json() as AppData;
       result.designations ||= []; result.manualEvents ||= []; if (result.profile) result.profile.roles ||= [];
       const deepLinkId = new URLSearchParams(location.search).get("publication"), deepLink = deepLinkId ? result.publications.find((item) => item.id === deepLinkId) : null;
-      if (deepLink) { setSelected(deepLink); setView(deepLink.kind === "vacante" ? "vacantes" : deepLink.kind === "capacitacion" ? "capacitaciones" : deepLink.kind === "informacion" ? "informacion" : "junta"); history.replaceState(null, "", location.pathname); }
+      if (deepLink) { const destination = deepLink.kind === "vacante" ? "vacantes" : deepLink.kind === "capacitacion" ? "capacitaciones" : deepLink.kind === "informacion" ? "informacion" : "junta"; setSelected(deepLink); setViewState(destination); history.replaceState({ ...history.state, docentetuc: undefined }, "", sectionUrl(destination)); }
       setData(result);
       localStorage.setItem("docentetuc-data-v1", JSON.stringify(result));
       if (syncIfEmpty && result.publications.length === 0 && !autoSyncStarted.current) {
         autoSyncStarted.current = true;
         window.setTimeout(() => { void syncSourcesRef.current(false); }, 0);
       }
-    } catch (error) { const cached = localStorage.getItem("docentetuc-data-v1"); if (cached) { try { const stored = JSON.parse(cached) as AppData; stored.designations ||= []; if (stored.profile) stored.profile.roles ||= []; setData(stored); return; } catch {} } const message = error instanceof Error ? error.message : "No se pudo cargar la información"; setLoadError(message); toast.error(message); }
+    } catch { const cached = localStorage.getItem("docentetuc-data-v1"); if (cached) { try { const stored = JSON.parse(cached) as AppData; stored.designations ||= []; if (stored.profile) stored.profile.roles ||= []; setData(stored); setLoadError("No pudimos actualizar la información. Mostramos la última copia disponible."); return; } catch {} } setLoadError("No pudimos cargar la información en este momento. Revisá tu conexión e intentá nuevamente."); }
     finally { if (showLoading) setLoading(false); }
   }, []);
 
@@ -229,7 +258,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
           try {
             const deviceId = localStorage.getItem("docentetuc-device-id");
             const headers = deviceId ? { "X-DocenteTuc-Device": deviceId } : undefined;
-            const response = await fetch("/api/installations/credential", { method: "POST", credentials: "same-origin", headers });
+            const response = await fetch("/api/installations/credential", { method: "POST", credentials: "same-origin", headers, signal: AbortSignal.timeout(15000) });
             const result = await response.json().catch(() => ({})) as { status?: string; deviceId?: string };
             if ((result.status === "created" || result.status === "ready") && typeof result.deviceId === "string") {
               localStorage.setItem("docentetuc-device-id", result.deviceId);
@@ -254,10 +283,15 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   }, []);
 
   useEffect(() => {
-    const onPopState = () => setSelected(null);
+    const onPopState = () => {
+      setSelected(null);
+      const section = viewFromSection(new URLSearchParams(location.search).get("section") || undefined);
+      setViewState(section);
+      restoreNavigation(section);
+    };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  }, [restoreNavigation]);
 
   useEffect(() => {
     if (!data) return;
@@ -272,7 +306,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     void Promise.resolve(context.registerTool({ name: "search_publications", title: "Buscar publicaciones", description: "Busca designaciones, vacantes, capacitaciones, llamados abiertos, padrones, comunicados y novedades visibles en DocenteTuc; cuando hay resultados, abre su módulo con el filtro de búsqueda específico.", inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: true }, execute(input: unknown) { const term = typeof input === "object" && input && "query" in input ? String((input as { query: unknown }).query).trim() : ""; const results = (data?.publications || []).filter((item) => normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(term))).slice(0, 20); const counts = new Map<string, number>(); for (const item of results) counts.set(item.kind, (counts.get(item.kind) || 0) + 1); const kind = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]; const destination: View | undefined = kind === "vacante" ? "vacantes" : kind === "capacitacion" ? "capacitaciones" : kind === "junta" ? "junta" : kind === "informacion" ? "informacion" : undefined; if (destination) { setView(destination); setFilter("todas"); if (destination === "vacantes") setDesignationQuery(term); else setQuery(term); } return { query: term, resultCount: results.length, openedModule: destination || null, results: results.map(({ id, title, kind: publicationKind, source }) => ({ id, title, kind: publicationKind, source })) }; } }, { signal: controller.signal })).catch(() => undefined);
     void Promise.resolve(context.registerTool({ name: "open_teacher_profile", title: "Abrir perfil docente", description: "Abre el formulario de preferencias del perfil docente.", inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: false }, execute() { setView("perfil"); return { opened: true }; } }, { signal: controller.signal })).catch(() => undefined);
     return () => controller.abort();
-  }, [data]);
+  }, [data, setView]);
 
   const savedMap = useMemo(() => new Map((data?.saved || []).map((item) => [item.publication_id, item])), [data]);
   const reminderMap = useMemo(() => new Map((data?.reminders || []).map((item) => [item.training_id, item])), [data]);
@@ -415,7 +449,9 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         {offline && <div className="flex items-center justify-center gap-2 bg-[#fff3dd] px-4 py-2 text-sm font-semibold text-[#7d541b]"><WifiOff className="size-4" />Sin conexión. Podés consultar la última información cargada.</div>}
 
         <div className="mobile-content mx-auto w-full max-w-7xl p-4 md:p-8">
+      {loadError && data && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950"><span>{loadError}</span><Button variant="outline" onClick={() => void load(false)} className="min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div>}
       {recoveryRequired && view !== "cuentas" ? <RecoveryRequiredNotice onOpenAccount={() => setView("cuentas")} />
+        : loadError && !data && view !== "inicio" && view !== "cuentas" ? <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><WifiOff className="mx-auto mb-3 size-8 text-[var(--accent-text)]" /><h1 className="font-black text-[var(--text-primary)]">No pudimos cargar esta sección</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{loadError}</p><Button onClick={() => void load(false)} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
         : view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={navigateToView} loading={loading} error={loadError} />
         : view === "perfil" ? <>
           <ProfileForm key={profile?.updated_at || "profile"} profile={profile} roleOptions={roleOptions} onSaved={() => void load(false)} />
@@ -476,8 +512,8 @@ function InformationHub({ items, query, onQuery, savedMap, onOpen, onSave, onAsk
   const allCategories = [...new Set(items.map((item) => item.category))], [category, setCategory] = useState<string | null>(null);
   const visible = (category ? items.filter((item) => item.category === category) : query ? items : []).filter((item) => !query || normalize(publicationSearchText(item)).includes(normalize(query)));
   const favorites = items.filter((item) => savedMap.has(item.id));
-  const openCategory = (name: string) => { setCategory(name); history.pushState({ usefulCategory: name }, "", `#util-${encodeURIComponent(name)}`); };
-  useEffect(() => { const onPopState = () => setCategory((history.state?.usefulCategory as string | undefined) || null); window.addEventListener("popstate", onPopState); return () => window.removeEventListener("popstate", onPopState); }, []);
+  const openCategory = (name: string) => { setCategory(name); history.pushState({ ...history.state, usefulCategory: name }, "", `#util-${encodeURIComponent(name)}`); };
+  useEffect(() => { queueMicrotask(() => setCategory((history.state?.usefulCategory as string | undefined) || null)); const onPopState = () => setCategory((history.state?.usefulCategory as string | undefined) || null); window.addEventListener("popstate", onPopState); return () => window.removeEventListener("popstate", onPopState); }, []);
   const usefulCard = (item: Publication) => { const metadata = usefulMetadata(item.metadata); return <article key={item.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-3 backdrop-blur-xl"><div className="flex items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] text-lg">{usefulCategoryIcons[item.category] || "ℹ️"}</span><button onClick={() => onOpen(item)} className="min-w-0 flex-1 text-left"><span className="text-[10px] font-black uppercase tracking-wide text-[var(--accent-text)]">{metadata?.recordType === "procedure" ? "TRÁMITE" : metadata?.recordType === "system" ? "SISTEMA" : "ORGANISMO"}</span><h2 className="font-black leading-tight text-[var(--text-primary)]">{item.title}</h2><p className="mt-0.5 line-clamp-2 text-sm text-[var(--text-muted)]">{item.summary}</p></button><button aria-label={savedMap.has(item.id) ? "Quitar de contactos" : "Guardar contacto"} onClick={() => onSave(item, !savedMap.has(item.id))} className="p-2 text-[var(--accent-text)]"><Star className={`size-5 ${savedMap.has(item.id) ? "fill-[#f4b942] text-[#9a6810]" : ""}`} /></button><ChevronRight className="size-4 shrink-0 text-[var(--text-muted)]" /></div></article>; };
   return <section className="space-y-4 pb-16 md:pb-0">
     <VisualSectionBanner kind="informacion" title={category || "Información útil"} description="Organismos, trámites y servicios docentes en un solo lugar." />

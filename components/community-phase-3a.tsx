@@ -38,6 +38,7 @@ async function readResponse<T>(response: Response): Promise<T> {
   if (!response.ok) throw new Error(result.error || "No se pudo completar la acción.");
   return result as T;
 }
+const loadingError = (reason: unknown, fallback: string) => reason instanceof DOMException && reason.name === "TimeoutError" ? "La consulta tardó demasiado. Intentá nuevamente." : reason instanceof Error ? reason.message : fallback;
 
 function jsonRequest(body: unknown, method = "POST") {
   return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
@@ -205,7 +206,7 @@ export function CommunityPhase3A() {
     if (append) setLoadingMore(true); else setLoading(true);
     if (!append) setSavedPostIds(new Set());
     try {
-      const result = await readResponse<CommunityResponse>(await fetch(`/api/community/posts?sort=${sort}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, { cache: "no-store", credentials: "same-origin" }));
+      const result = await readResponse<CommunityResponse>(await fetch(`/api/community/posts?sort=${sort}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, { cache: "no-store", credentials: "same-origin", signal: AbortSignal.timeout(15000) }));
       setSnapshot((current) => append && current ? { ...result, posts: [...current.posts, ...result.posts] } : result);
       setSnapshotSort(sort);
       if (result.status.authenticated) {
@@ -213,15 +214,15 @@ export function CommunityPhase3A() {
         if (visibleIds.length) {
           const query = new URLSearchParams();
           visibleIds.forEach((id) => query.append("postId", id));
-          const response = await fetch(`/api/community/saved-posts/status?${query}`, { cache: "no-store", credentials: "same-origin" });
+          const response = await fetch(`/api/community/saved-posts/status?${query}`, { cache: "no-store", credentials: "same-origin", signal: AbortSignal.timeout(15000) });
           if (response.ok) setSavedPostIds(new Set(((await response.json()) as { postIds: string[] }).postIds));
         } else setSavedPostIds(new Set());
       } else setSavedPostIds(new Set());
       if (!append && result.status.authenticated) {
-        const blockResult = await fetch("/api/community/blocks", { cache: "no-store", credentials: "same-origin" });
+        const blockResult = await fetch("/api/community/blocks", { cache: "no-store", credentials: "same-origin", signal: AbortSignal.timeout(15000) });
         setBlocks(blockResult.ok ? ((await blockResult.json()) as { blocks: Block[] }).blocks : []);
       } else if (!result.status.authenticated) setBlocks([]);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo cargar Comunidad."); }
+    } catch (reason) { setError(loadingError(reason, "No se pudo cargar Comunidad.")); }
     finally { setLoading(false); setLoadingMore(false); }
   }, [sort, snapshot]);
 
@@ -230,10 +231,10 @@ export function CommunityPhase3A() {
     if (append) setSavedLoadingMore(true); else setSavedLoading(true);
     if (!append) { setSavedSnapshot(null); setSavedPostIds(new Set()); }
     try {
-      const result = await readResponse<{ posts: CommunityPost[]; nextCursor: string | null; hasMore: boolean }>(await fetch(`/api/community/saved-posts${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`, { cache: "no-store", credentials: "same-origin" }));
+      const result = await readResponse<{ posts: CommunityPost[]; nextCursor: string | null; hasMore: boolean }>(await fetch(`/api/community/saved-posts${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`, { cache: "no-store", credentials: "same-origin", signal: AbortSignal.timeout(15000) }));
       setSavedSnapshot((current) => append && current ? { ...result, posts: [...current.posts, ...result.posts] } : result);
       setSavedPostIds((current) => new Set([...current, ...result.posts.map((post) => post.id)]));
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudieron cargar tus publicaciones guardadas."); }
+    } catch (reason) { setError(loadingError(reason, "No se pudieron cargar tus publicaciones guardadas.")); }
     finally { setSavedLoading(false); setSavedLoadingMore(false); }
   }, []);
 
@@ -241,22 +242,22 @@ export function CommunityPhase3A() {
     let active = true;
     const loadInitial = async () => {
       try {
-        const result = await readResponse<CommunityResponse>(await fetch(`/api/community/posts?sort=${sort}`, { cache: "no-store", credentials: "same-origin" }));
+        const result = await readResponse<CommunityResponse>(await fetch(`/api/community/posts?sort=${sort}`, { cache: "no-store", credentials: "same-origin", signal: AbortSignal.timeout(15000) }));
         if (!active) return;
         setSnapshot(result);
         setSnapshotSort(sort);
         if (result.status.authenticated) {
           const query = new URLSearchParams();
           result.posts.forEach((post) => query.append("postId", post.id));
-          const response = result.posts.length ? await fetch(`/api/community/saved-posts/status?${query}`, { cache: "no-store", credentials: "same-origin" }) : null;
+          const response = result.posts.length ? await fetch(`/api/community/saved-posts/status?${query}`, { cache: "no-store", credentials: "same-origin", signal: AbortSignal.timeout(15000) }) : null;
           if (active) setSavedPostIds(response?.ok ? new Set(((await response.json()) as { postIds: string[] }).postIds) : new Set());
         } else if (active) setSavedPostIds(new Set());
         if (result.status.authenticated) {
-          const blockResult = await fetch("/api/community/blocks", { cache: "no-store", credentials: "same-origin" });
+          const blockResult = await fetch("/api/community/blocks", { cache: "no-store", credentials: "same-origin", signal: AbortSignal.timeout(15000) });
           if (active) setBlocks(blockResult.ok ? ((await blockResult.json()) as { blocks: Block[] }).blocks : []);
         } else setBlocks([]);
       } catch (reason) {
-        if (active) setError(reason instanceof Error ? reason.message : "No se pudo cargar Comunidad.");
+        if (active) setError(loadingError(reason, "No se pudo cargar Comunidad."));
       } finally { if (active) setLoading(false); }
     };
     void loadInitial();
@@ -266,7 +267,7 @@ export function CommunityPhase3A() {
   const status = snapshot?.status;
   const accepted = Boolean(status && status.acceptedRulesVersion === status.rulesVersion);
   const canContribute = Boolean(status?.authenticated && status.profileConfigured && accepted);
-  const feedLoading = loading || snapshotSort !== sort;
+  const feedLoading = loading || (snapshotSort !== sort && !error);
   const viewLoading = view === "saved" ? savedLoading : feedLoading;
   const visiblePosts = view === "saved" ? savedSnapshot?.posts : snapshot?.posts;
   const visibleHasMore = view === "saved" ? savedSnapshot?.hasMore : snapshot?.hasMore;
@@ -356,7 +357,7 @@ export function CommunityPhase3A() {
     </div>
 
     <main className="mx-auto mt-4 w-full max-w-5xl px-3 sm:mt-5 sm:px-6">
-      {error && <p role="alert" className="mb-3 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800 shadow-sm">{error}</p>}
+      {error && <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800 shadow-sm"><span>{error}</span><button type="button" onClick={() => view === "saved" ? void loadSavedPage() : void loadPage()} className="min-h-10 rounded-xl border border-rose-300 bg-white px-4 font-bold">Reintentar</button></div>}
       {notice && <p role="status" className="mb-3 flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-900 shadow-sm"><Check className="mt-0.5 size-4 shrink-0" />{notice}</p>}
 
       {!loading && status && !status.authenticated && <section className="mb-4 rounded-[1.6rem] border border-amber-200 bg-white p-4 shadow-sm sm:p-5">

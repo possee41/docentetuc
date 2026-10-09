@@ -8,8 +8,10 @@ import type { LucideIcon } from "lucide-react";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 import { sidebarIsOpen, updateSidebarVisibility } from "@/lib/sidebar-visibility";
 import type { SidebarVisibility } from "@/lib/sidebar-visibility";
+import { sectionUrl } from "@/lib/app-navigation";
+import type { AppView } from "@/lib/app-navigation";
 
-export type AppView = "inicio" | "vacantes" | "comunidad" | "capacitaciones" | "junta" | "informacion" | "agenda" | "alertas" | "guardados" | "perfil" | "cuentas";
+export type { AppView } from "@/lib/app-navigation";
 
 export const navigation: [AppView, string, LucideIcon][] = [
   ["inicio", "Inicio", Home], ["vacantes", "Designaciones", BriefcaseBusiness], ["comunidad", "Comunidad", MessagesSquare], ["capacitaciones", "Capacitaciones", GraduationCap],
@@ -70,7 +72,7 @@ export function AppSidebar({ view, onNavigate, pinned, onTogglePin, onHoverEnter
   const navigate = (target: AppView) => {
     setOpenMobile(false);
     if (onNavigate) onNavigate(target);
-    else router.push(target === "comunidad" ? "/comunidad" : target === "inicio" ? "/" : `/?section=${target}`);
+    else router.push(sectionUrl(target));
   };
   return <Sidebar collapsible="offcanvas" className="z-40 border-r border-white/10 text-white backdrop-blur-xl" onMouseEnter={isMobile ? undefined : onHoverEnter} onMouseLeave={isMobile ? undefined : onHoverLeave}>
     <SidebarHeader className="p-5 pt-[max(1.25rem,env(safe-area-inset-top))]">
