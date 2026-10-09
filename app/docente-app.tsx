@@ -43,7 +43,6 @@ import { GoogleAccountPhoto } from "@/components/google-account-photo";
 import { AppSidebar, AppSidebarEdge, AppSidebarTrigger, navigation, useAppSidebarState } from "@/components/app-sidebar";
 import type { AppView as View } from "@/components/app-sidebar";
 import { deviceRequestHeaders } from "@/lib/device-user";
-import { needsRecoveryNotice } from "@/lib/legacy-recovery-ui";
 import { sectionUrl, viewFromSection } from "@/lib/app-navigation";
 
 type Theme = "light" | "dark";
@@ -70,7 +69,7 @@ const publicationCircuitMatch = (item: Publication, circuit: string) => {
   const inference = inferCircuit({ explicit: direct, locality: item.location || item.source_circuit_raw || "" });
   return circuitMatches(inference, [circuit]) === true;
 };
-const publicationLabel = (item: Publication) => item.kind === "vacante" ? (normalize(item.category).includes("llamado") ? "LLAMADO ABIERTO" : "DESIGNACIÓN") : item.kind === "capacitacion" ? "CAPACITACIÓN" : item.kind === "informacion" ? item.category.toUpperCase() : item.category.toUpperCase();
+const publicationLabel = (item: Publication) => item.kind === "vacante" && item.source === "SIME" ? "PUBLICACIÓN SIME" : item.kind === "vacante" ? "DESIGNACIÓN" : item.kind === "capacitacion" ? "CAPACITACIÓN" : item.category.toUpperCase();
 const publicationSearchText = (item: Publication) => [item.title, item.summary, item.level, item.area, item.junta, item.location, item.character, item.category, item.source, item.metadata, item.circuit, item.source_circuit_raw, item.kind === "vacante" ? "designaciones vacantes" : "", Date.now() - new Date(`${item.updated_at}Z`).getTime() < 30 * 864e5 ? "novedades" : ""].join(" ");
 const simeCodeForPublication = (item?: Pick<Publication, "metadata"> | null) => {
   if (!item?.metadata) return "";
@@ -116,6 +115,9 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const router = useRouter();
   const sidebar = useAppSidebarState(true);
   const [data, setData] = useState<AppData | null>(null);
+  const publicData = useRef<AppData | null>(null);
+  const privateDataVerified = useRef(false);
+  const [privateReady, setPrivateReady] = useState(false);
   const [accountPhoto, setAccountPhoto] = useState<{ authenticated: boolean; image: string | null }>({ authenticated: false, image: null });
   const [installationSecurity, setInstallationSecurity] = useState<InstallationSecurity>("unavailable");
   const [installationBootstrapComplete, setInstallationBootstrapComplete] = useState(false);
@@ -205,25 +207,50 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const openPublication = (publication: Publication) => { setSelected(publication); history.pushState({ ...history.state, publicationId: publication.id }, "", `#publicacion-${encodeURIComponent(publication.id)}`); };
   const closePublication = () => { if (history.state?.publicationId) history.back(); else setSelected(null); };
 
+  const loadPublic = useCallback(async () => {
+    try {
+      const response = await fetch("/api/public-app", { cache: "no-store", signal: AbortSignal.timeout(15_000) });
+      if (!response.ok) throw new Error("Public source unavailable");
+      const result = await response.json() as AppData;
+      publicData.current = result;
+      if (!privateDataVerified.current) setData(result);
+      try { localStorage.setItem("docentetuc-public-data-v1", JSON.stringify(result)); } catch { /* The live public response remains usable without offline storage. */ }
+    } catch {
+      const cached = localStorage.getItem("docentetuc-public-data-v1");
+      if (cached) {
+        try {
+          const stored = JSON.parse(cached) as AppData;
+          publicData.current = stored;
+          if (!privateDataVerified.current) setData(stored);
+          if (!privateDataVerified.current) setLoadError("No pudimos actualizar las fuentes. Mostramos la última copia pública disponible.");
+          return;
+        } catch { /* Ignore an invalid public cache. */ }
+      }
+      if (!privateDataVerified.current) setLoadError("No pudimos cargar la información pública. Intentá nuevamente.");
+    } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { queueMicrotask(() => { void loadPublic(); }); }, [loadPublic]);
+
   const load = useCallback(async (syncIfEmpty = true, showLoading = true) => {
     if (showLoading) setLoading(true);
     setLoadError("");
     try {
       const response = await fetch("/api/app", { cache: "no-store", headers: apiHeaders(), signal: AbortSignal.timeout(15000) });
-      if (response.status === 401) { setData(null); setLoadError("No se pudo verificar esta instalación o su cuenta. Sus datos se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."); return; }
+      if (response.status === 401) { privateDataVerified.current = false; setPrivateReady(false); setData(publicData.current); setLoadError("No se pudo verificar esta instalación o su cuenta. Sus datos privados se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."); return; }
       if (!response.ok) throw new Error("No se pudo cargar la información");
       const result = await response.json() as AppData;
       result.designations ||= []; result.manualEvents ||= []; if (result.profile) result.profile.roles ||= [];
       const deepLinkId = new URLSearchParams(location.search).get("publication"), deepLink = deepLinkId ? result.publications.find((item) => item.id === deepLinkId) : null;
       if (deepLink) { const destination = deepLink.kind === "vacante" ? "vacantes" : deepLink.kind === "capacitacion" ? "capacitaciones" : deepLink.kind === "informacion" ? "informacion" : "junta"; setSelected(deepLink); setViewState(destination); history.replaceState({ ...history.state, docentetuc: undefined }, "", sectionUrl(destination)); }
+      privateDataVerified.current = true;
+      setPrivateReady(true);
       setData(result);
-      localStorage.setItem("docentetuc-data-v1", JSON.stringify(result));
       if (syncIfEmpty && result.publications.length === 0 && !autoSyncStarted.current) {
         autoSyncStarted.current = true;
         window.setTimeout(() => { void syncSourcesRef.current(false); }, 0);
       }
-    } catch { const cached = localStorage.getItem("docentetuc-data-v1"); if (cached) { try { const stored = JSON.parse(cached) as AppData; stored.designations ||= []; if (stored.profile) stored.profile.roles ||= []; setData(stored); setLoadError("No pudimos actualizar la información. Mostramos la última copia disponible."); return; } catch {} } setLoadError("No pudimos cargar la información en este momento. Revisá tu conexión e intentá nuevamente."); }
-    finally { if (showLoading) setLoading(false); }
+    } catch { privateDataVerified.current = false; setPrivateReady(false); setData(publicData.current); setLoadError("No pudimos cargar los datos privados en este momento. La información pública sigue disponible; intentá nuevamente."); }
+    finally { setLoading(false); }
   }, []);
 
   const syncSources = useCallback(async (notify = true) => {
@@ -272,7 +299,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
             } else setInstallationSecurity("unavailable");
           } catch { setInstallationSecurity("unavailable"); }
           finally { setInstallationBootstrapComplete(true); }
-          await loadRef.current();
+          await loadRef.current(true, false);
         })();
       });
     }
@@ -311,7 +338,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
 
   const savedMap = useMemo(() => new Map((data?.saved || []).map((item) => [item.publication_id, item])), [data]);
   const reminderMap = useMemo(() => new Map((data?.reminders || []).map((item) => [item.training_id, item])), [data]);
-  const profile = data?.profile;
+  const profile = data?.profile ?? undefined;
   const designationAvailability = data ? designationEmptyState({
     filter, profileConfigured: hasDesignationProfilePreferences(profile),
     availableCount: data.publications.filter((item) => item.kind === "vacante").length,
@@ -430,7 +457,8 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     setView(target); setQuery(term); setDesignationQuery(""); setFilter(target === "informacion" || target === "junta" ? "todas" : "para-mi");
   };
   const openDesignationOfficial = (item: Publication) => { localStorage.setItem("docentetuc-pending-designation", item.id); window.open(item.official_url, "_blank", "noopener,noreferrer"); };
-  const recoveryRequired = needsRecoveryNotice(installationSecurity, installationBootstrapComplete, loading, Boolean(data));
+  const recoveryRequired = installationBootstrapComplete && installationSecurity === "recovery_required";
+  const privateView = ["agenda", "alertas", "guardados", "perfil"].includes(view);
   return (
     <SidebarProvider open={sidebar.open} onOpenChange={sidebar.onOpenChange} data-sidebar-pinned={sidebar.pinned} className="dt-app-shell" style={{ "--sidebar-width": "17rem" } as CSSProperties}>
       <AppSidebarEdge pinned={sidebar.pinned} onEnter={sidebar.enter} onLeave={sidebar.leave} />
@@ -450,9 +478,10 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         {offline && <div className="flex items-center justify-center gap-2 bg-[#fff3dd] px-4 py-2 text-sm font-semibold text-[#7d541b]"><WifiOff className="size-4" />Sin conexión. Podés consultar la última información cargada.</div>}
 
         <div className="mobile-content mx-auto w-full max-w-7xl p-4 md:p-8">
-      {loadError && data && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950"><span>{loadError}</span><Button variant="outline" onClick={() => void load(false)} className="min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div>}
-      {recoveryRequired && view !== "cuentas" ? <RecoveryRequiredNotice onOpenAccount={() => setView("cuentas")} />
-        : loadError && !data && view !== "inicio" && view !== "cuentas" ? <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><WifiOff className="mx-auto mb-3 size-8 text-[var(--accent-text)]" /><h1 className="font-black text-[var(--text-primary)]">No pudimos cargar esta sección</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{loadError}</p><Button onClick={() => void load(false)} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
+      {loadError && data && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950"><span>{loadError}</span><Button variant="outline" onClick={() => { void loadPublic(); void load(false, false); }} className="min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div>}
+      {privateView && !privateReady ? recoveryRequired ? <RecoveryRequiredNotice onOpenAccount={() => setView("cuentas")} />
+        : <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><h1 className="font-black text-[var(--text-primary)]">No podemos mostrar tus datos privados todavía</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">Verificá esta instalación o iniciá sesión con la cuenta vinculada. Tus datos permanecen conservados.</p><Button onClick={() => void load(false)} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
+        : loadError && !data && view !== "inicio" && view !== "cuentas" ? <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><WifiOff className="mx-auto mb-3 size-8 text-[var(--accent-text)]" /><h1 className="font-black text-[var(--text-primary)]">No pudimos cargar esta sección</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{loadError}</p><Button onClick={() => { void loadPublic(); void load(false, false); }} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
         : view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={navigateToView} loading={loading} error={loadError} />
         : view === "perfil" ? <>
           <ProfileForm key={profile?.updated_at || "profile"} profile={profile} roleOptions={roleOptions} onSaved={() => void load(false)} />
@@ -464,7 +493,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
               <h2 id="accounts-access-title" className="text-xl font-black text-[var(--text-primary)]">Mis cuentas y accesos</h2>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">Google autentica tu cuenta de DocenteTuc. Los accesos externos usan sus propias credenciales y no se comparten con DocenteTuc.</p>
             </div>
-            <AccountSignInSection headers={apiHeaders} installationSecurity={installationSecurity} onLinked={() => void load(false)} onSignedOut={() => setData(null)} />
+            <AccountSignInSection headers={apiHeaders} installationSecurity={installationSecurity} onLinked={() => void load(false)} onSignedOut={() => { privateDataVerified.current = false; setPrivateReady(false); setData(publicData.current); }} />
           </section>
           <PlatformAccessSection />
           <DataDeletionSection profile={profile ?? null} />

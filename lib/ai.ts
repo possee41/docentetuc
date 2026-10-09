@@ -214,7 +214,7 @@ export function retrievePublications(question: string, publications: Publication
       if (!training?.preinscripcionFechaConfirmada || !Number.isFinite(opening) || opening <= now.getTime()) return { item, score: -1 };
     }
     if (wantsVacancy && !wantsTraining && item.kind !== "vacante") return { item, score: -1 };
-    if (intent === "llamados" && !normalize(item.category).includes("llamado")) return { item, score: -1 };
+    if (intent === "llamados" && (item.kind !== "junta" || !normalize(item.category).includes("llamado"))) return { item, score: -1 };
     if (["documentos", "junta"].includes(intent) && item.kind !== "junta") return { item, score: -1 };
     if (intent === "junta" && /comunicad/.test(query) && !normalize(item.category).includes("comunicad")) return { item, score: -1 };
     if (intent === "junta" && /padron/.test(query) && !normalize(item.category).includes("padron")) return { item, score: -1 };

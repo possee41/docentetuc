@@ -191,6 +191,10 @@ test("recupera texto de comunicados y llamados desde el mismo RAG", () => {
   assert.deepEqual(retrievePublications("¿Qué llamados abiertos hay?", [publicDocument, openCall]).map((item) => item.id), ["llamado"]);
   assert.match(buildAIContext("documentación", [publicDocument]).context, /30 de septiembre/);
 });
+test("un registro SIME etiquetado abierto no se presenta como llamado presencial de Junta", () => {
+  const simeOpen = { ...vacancy, id: "sime-open", source: "SIME", category: "Llamado abierto", title: "Vacante SIME para inscripción" } as Publication;
+  assert.deepEqual(retrievePublications("¿Qué llamados abiertos hay?", [simeOpen, openCall]).map((item) => item.id), ["llamado"]);
+});
 test("comunicados recientes no mezclan capacitaciones ni padrones y advierten una verificación fallida", () => {
   const result = buildAIContext("¿Qué comunicados recientes hay para Nivel Superior?", [publicDocument, openCall, ...records], { sourceFailures: ["Comunicados"] });
   assert.deepEqual(result.sources.map((source) => source.id), ["comunicado"]);
