@@ -8,6 +8,7 @@ import { ArrowUpRight, Bookmark, BookmarkCheck, BookOpen, Check, ChevronDown, Ci
 import { COMMUNITY_REPORT_REASONS, type CommunityComment, type CommunityFeedSort, type CommunityPost } from "@/lib/community";
 import { publicAvatarAssetPath, type PublicAvatarId, type PublicProfile } from "@/lib/public-profile";
 import { AppSidebar, AppSidebarEdge, AppSidebarTrigger, useAppSidebarState } from "@/components/app-sidebar";
+import { CommunityRulesCard } from "@/components/community-rules-card";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
 type CommunityStatus = {
@@ -329,7 +330,7 @@ export function CommunityPhase3A() {
     <AppSidebarEdge pinned={sidebar.pinned} onEnter={sidebar.enter} onLeave={sidebar.leave} />
     <AppSidebar view="comunidad" pinned={sidebar.pinned} onTogglePin={sidebar.togglePin} onHoverEnter={sidebar.enter} onHoverLeave={sidebar.leave} />
     <SidebarInset className="min-w-0">
-    <div className="min-h-dvh w-full bg-[radial-gradient(ellipse_at_top,_#dff2ff_0%,_#f3f9fd_38%,_#f7fafc_100%)] pb-[calc(5.1rem+env(safe-area-inset-bottom))] text-[#0c2d5b]">
+    <div className="min-h-dvh w-full bg-[radial-gradient(ellipse_at_top,_#dff2ff_0%,_#f3f9fd_38%,_#f7fafc_100%)] pb-[calc(7rem+env(safe-area-inset-bottom))] text-[#0c2d5b]">
     <div className="mx-auto max-w-6xl px-3 pt-3 sm:px-6 sm:pt-5">
       <nav aria-label="Cabecera de DocenteTuc" className="mb-3 flex items-center justify-between gap-3 rounded-full border border-white/80 bg-white/75 px-3 py-2 shadow-sm backdrop-blur sm:mb-4 sm:px-5">
         <div className="flex min-w-0 items-center gap-2">
@@ -354,7 +355,7 @@ export function CommunityPhase3A() {
       </header>
     </div>
 
-    <main className="mx-auto -mt-5 w-full max-w-5xl px-3 sm:-mt-7 sm:px-6">
+    <main className="mx-auto mt-4 w-full max-w-5xl px-3 sm:mt-5 sm:px-6">
       {error && <p role="alert" className="mb-3 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800 shadow-sm">{error}</p>}
       {notice && <p role="status" className="mb-3 flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-900 shadow-sm"><Check className="mt-0.5 size-4 shrink-0" />{notice}</p>}
 
@@ -366,12 +367,7 @@ export function CommunityPhase3A() {
         <p className="font-extrabold text-[#173b5e]">Prepará tu perfil público</p><p className="mt-1 text-sm leading-relaxed text-slate-600">Antes de participar, elegí el nombre y el avatar que se mostrarán en Comunidad. Tu correo y tu perfil docente privado no son públicos.</p><Link href="/?section=perfil" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#0878be] px-4 font-bold text-white">Configurar perfil público<ArrowUpRight className="size-4" /></Link>
       </section>}
 
-      {!loading && status?.authenticated && status.profileConfigured && !accepted && <section className="mb-4 rounded-[1.6rem] border border-sky-200 bg-white p-4 shadow-[0_10px_30px_rgba(17,79,125,.07)] sm:p-5" aria-labelledby="community-rules-heading">
-        <div className="flex items-start gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-sky-50 text-sky-700"><ShieldCheck className="size-5" /></span><div className="min-w-0"><p className="text-xs font-black uppercase tracking-[.14em] text-sky-700">Antes de participar</p><h2 id="community-rules-heading" className="mt-1 text-lg font-black">Normas de la Comunidad · versión {status.rulesVersion}</h2></div></div>
-        <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{status.rulesText}</p>
-        <label className="mt-4 flex min-h-11 items-start gap-3 border-t border-slate-100 pt-4 text-sm font-semibold text-slate-700"><input type="checkbox" checked={normsChecked} onChange={(event) => setNormsChecked(event.target.checked)} className="mt-0.5 size-5 shrink-0 accent-sky-600" />Leí y acepto las Normas de Comunidad vigentes.</label>
-        <button type="button" disabled={!normsChecked || busy} onClick={() => void acceptRules()} className="mt-3 min-h-11 rounded-xl bg-[#0878be] px-5 font-bold text-white shadow-sm hover:bg-[#0669a8] disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Guardando…" : "Aceptar y continuar"}</button>
-      </section>}
+      {!loading && status?.authenticated && status.profileConfigured && !accepted && <CommunityRulesCard version={status.rulesVersion} text={status.rulesText} checked={normsChecked} busy={busy} onCheckedChange={setNormsChecked} onAccept={() => void acceptRules()} />}
 
       {canContribute && <section className="mb-5 rounded-[1.6rem] border border-sky-100 bg-white p-4 shadow-[0_10px_32px_rgba(17,79,125,.08)] sm:p-5">
         <form onSubmit={(event) => void submitPost(event)}>
@@ -382,7 +378,7 @@ export function CommunityPhase3A() {
         </form>
       </section>}
 
-      {accepted && <details className="mb-4 rounded-2xl border border-emerald-100 bg-white/85 px-4 py-3 text-sm text-slate-600"><summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 font-semibold [&::-webkit-details-marker]:hidden"><ShieldCheck className="size-4 text-emerald-600" />Normas aceptadas · versión {status?.rulesVersion}<ChevronDown className="ml-auto size-4" /></summary><p className="mt-2 whitespace-pre-wrap border-t border-slate-100 pt-3 leading-relaxed">{status?.rulesText}</p></details>}
+      {accepted && <details className="mb-4 rounded-2xl border border-emerald-100 bg-white/85 px-4 py-3 text-sm text-slate-600"><summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 font-semibold [&::-webkit-details-marker]:hidden"><ShieldCheck className="size-4 shrink-0 text-emerald-600" />Normas aceptadas · versión {status?.rulesVersion}<ChevronDown className="ml-auto size-4 shrink-0" /></summary><div role="region" aria-label="Texto completo de las Normas aceptadas" tabIndex={0} className="mt-2 max-h-48 overflow-y-auto border-t border-slate-100 pt-3 leading-relaxed break-words focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600"><p className="whitespace-pre-wrap first-line:font-bold">{status?.rulesText}</p></div></details>}
 
       <section aria-labelledby="community-feed-heading">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
