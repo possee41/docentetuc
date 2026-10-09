@@ -14,11 +14,11 @@ import type { AppView } from "@/lib/app-navigation";
 export type { AppView } from "@/lib/app-navigation";
 
 export const navigation: [AppView, string, LucideIcon][] = [
-  ["inicio", "Inicio", Home], ["vacantes", "Designaciones", BriefcaseBusiness], ["comunidad", "Comunidad", MessagesSquare], ["capacitaciones", "Capacitaciones", GraduationCap],
-  ["junta", "Padrones y comunicados", BookOpen], ["informacion", "Información útil", Building2], ["agenda", "Agenda", CalendarDays], ["guardados", "Mis guardados", Bookmark], ["perfil", "Perfil docente", UserRound], ["cuentas", "Cuentas y accesos", CircleUserRound],
+  ["inicio", "Inicio", Home], ["vacantes", "Inscripciones SIME", BriefcaseBusiness], ["actos", "Actos de designación", CalendarDays], ["llamados", "Llamados abiertos", BriefcaseBusiness], ["comunidad", "Comunidad", MessagesSquare], ["capacitaciones", "Capacitaciones", GraduationCap],
+  ["junta", "Consultas oficiales", BookOpen], ["padrones", "Padrones", BookOpen], ["comunicados", "Comunicados", MessagesSquare], ["informacion", "Información útil", Building2], ["agenda", "Agenda", CalendarDays], ["guardados", "Mis guardados", Bookmark], ["perfil", "Perfil docente", UserRound], ["cuentas", "Cuentas y accesos", CircleUserRound],
 ];
 
-const groups: [string, AppView[]][] = [["Uso diario", ["inicio", "vacantes", "comunidad", "capacitaciones", "agenda"]], ["Consultas", ["junta", "informacion"]], ["Personal", ["perfil", "guardados", "cuentas"]]];
+const groups: [string, AppView[]][] = [["Uso diario", ["inicio", "vacantes", "actos", "llamados", "comunidad", "capacitaciones", "agenda"]], ["Consultas", ["padrones", "comunicados", "informacion"]], ["Personal", ["perfil", "guardados", "cuentas"]]];
 
 export function useAppSidebarState(defaultPinned: boolean) {
   const [visibility, setVisibility] = useState<SidebarVisibility>({ pinned: defaultPinned, hovered: false });
