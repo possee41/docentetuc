@@ -26,6 +26,7 @@ function GoogleMark() {
 export function AccountSignInSection({ headers, installationSecurity, onLinked, onSignedOut }: { headers: () => HeadersInit; installationSecurity: "protected" | "linked" | "recovery_required" | "unavailable"; onLinked: () => void; onSignedOut: () => void }) {
   const [status, setStatus] = useState<AuthStatus>({ configured: false, authenticated: false, image: null, name: null, isAdmin: false });
   const [checking, setChecking] = useState(true);
+  const [statusError, setStatusError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [linkPreview, setLinkPreview] = useState<LinkPreview | null>(null);
   const [linkChecking, setLinkChecking] = useState(false);
@@ -40,7 +41,7 @@ export function AccountSignInSection({ headers, installationSecurity, onLinked, 
     setLinkChecking(true);
     setLinkError("");
     try {
-      const response = await fetch("/api/auth/link", { cache: "no-store", credentials: "same-origin", headers: headers() });
+      const response = await fetch("/api/auth/link", { cache: "no-store", credentials: "same-origin", headers: headers(), signal: AbortSignal.timeout(15_000) });
       const value = await response.json().catch(() => ({})) as LinkPreview & { error?: string };
       if (!response.ok) throw new Error(value.error || "No se pudo consultar la vinculación.");
       setLinkPreview(value);
@@ -50,31 +51,34 @@ export function AccountSignInSection({ headers, installationSecurity, onLinked, 
 
   const refresh = async () => {
     setChecking(true);
+    setStatusError(false);
     try {
-      const response = await fetch("/api/auth/status", { cache: "no-store", credentials: "same-origin" });
+      const response = await fetch("/api/auth/status", { cache: "no-store", credentials: "same-origin", signal: AbortSignal.timeout(15_000) });
       if (!response.ok) throw new Error("No se pudo consultar el estado de la cuenta.");
       const value = await response.json() as AuthStatus;
       setStatus({ configured: Boolean(value.configured), authenticated: Boolean(value.authenticated), image: typeof value.image === "string" ? value.image : null, name: typeof value.name === "string" ? value.name : null, isAdmin: value.isAdmin === true });
       if (value.authenticated) void refreshLinkPreview();
     } catch {
       setStatus({ configured: false, authenticated: false, image: null, name: null, isAdmin: false });
+      setStatusError(true);
     } finally { setChecking(false); }
   };
 
   useEffect(() => {
     let cancelled = false;
-    void fetch("/api/auth/status", { cache: "no-store", credentials: "same-origin" })
+    void fetch("/api/auth/status", { cache: "no-store", credentials: "same-origin", signal: AbortSignal.timeout(15_000) })
       .then(async (response) => {
         if (!response.ok) throw new Error("No se pudo consultar el estado de la cuenta.");
         return await response.json() as AuthStatus;
       })
       .then((value) => {
         if (!cancelled) {
+          setStatusError(false);
           setStatus({ configured: Boolean(value.configured), authenticated: Boolean(value.authenticated), image: typeof value.image === "string" ? value.image : null, name: typeof value.name === "string" ? value.name : null, isAdmin: value.isAdmin === true });
           if (value.authenticated) void refreshLinkPreview();
         }
       })
-      .catch(() => { if (!cancelled) setStatus({ configured: false, authenticated: false, image: null, name: null, isAdmin: false }); })
+      .catch(() => { if (!cancelled) { setStatus({ configured: false, authenticated: false, image: null, name: null, isAdmin: false }); setStatusError(true); } })
       .finally(() => { if (!cancelled) setChecking(false); });
     return () => { cancelled = true; };
   }, [refreshLinkPreview]);
@@ -193,7 +197,7 @@ export function AccountSignInSection({ headers, installationSecurity, onLinked, 
     <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[.15em] text-[var(--accent-text)]"><GoogleMark />Google</p>
     <h3 id="account-sign-in-title" className="mt-2 text-lg font-black">Cuenta de DocenteTuc</h3>
     <p className="mt-2 text-sm text-[var(--text-secondary)]">El acceso es opcional. Las consultas educativas siguen disponibles sin iniciar sesión. La cuenta no reemplaza ni comparte tu perfil docente privado o tu perfil público.</p>
-    {checking ? <p className="mt-4 text-sm text-[var(--text-muted)]" role="status">Consultando la cuenta…</p> : status.authenticated ? <div className="mt-4 space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-secondary)] p-4">
+    {checking ? <p className="mt-4 text-sm text-[var(--text-muted)]" role="status">Consultando la cuenta…</p> : statusError ? <div role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><span>No pudimos consultar la cuenta. Tus datos no se modificaron.</span><Button type="button" variant="outline" onClick={() => void refresh()} className="min-h-10 rounded-xl">Reintentar</Button></div> : status.authenticated ? <div className="mt-4 space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-secondary)] p-4">
       <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><GoogleAccountPhoto src={status.image} className="size-10 shrink-0" /><div className="min-w-0"><p className="truncate text-sm font-bold">{status.name || "Cuenta de DocenteTuc"}</p><p className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]"><CheckCircle2 className="size-3.5 text-emerald-600" />Cuenta conectada con Google</p></div></div><Button type="button" variant="outline" disabled={busy} onClick={() => void signOut()} className="min-h-11 rounded-xl"><LogOut className="size-4" />{busy ? "Procesando…" : "Cerrar sesión"}</Button></div>
       {installationSecurity === "recovery_required" && <p className="text-sm text-[var(--text-secondary)]">No se pudo verificar la credencial de esta instalación. Sus datos anteriores permanecen conservados, pero acceder a ellos requiere verificar su propiedad. Una cuenta previamente vinculada conserva acceso a sus propios datos; los datos legacy sin vínculo permanecen separados. Para solicitar ayuda, escribí a <a href="mailto:soporte.docentetuc@gmail.com" className="font-semibold text-[#075f9b] underline">soporte.docentetuc@gmail.com</a>.</p>}
       <p className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]"><Settings2 className="size-3.5" />Administrar cuenta de DocenteTuc</p>

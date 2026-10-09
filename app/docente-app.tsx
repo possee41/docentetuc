@@ -180,7 +180,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     setTrainingSort(text(saved.trainingSort, "recommended"));
   }, []);
   useEffect(() => {
-    queueMicrotask(() => { restoreNavigation(viewFromSection(new URLSearchParams(location.search).get("section") || undefined)); setNavigationRestored(true); });
+    queueMicrotask(() => { const section = viewFromSection(new URLSearchParams(location.search).get("section") || undefined); setViewState(section); restoreNavigation(section); setNavigationRestored(true); });
   }, [restoreNavigation]);
   useEffect(() => {
     if (!navigationRestored) return;
@@ -188,7 +188,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   }, [navigationRestored, view, query, designationQuery, filter, juntaFilter, designationCircuit, character, trainingDate, trainingCircuit, trainingSource, trainingCompatibility, trainingSort]);
   const refreshAccountPhoto = useCallback(async () => {
     try {
-      const response = await fetch("/api/auth/status", { cache: "no-store", credentials: "same-origin" });
+      const response = await fetch("/api/auth/status", { cache: "no-store", credentials: "same-origin", signal: AbortSignal.timeout(15_000) });
       if (!response.ok) throw new Error("No se pudo consultar el estado de la cuenta.");
       const status = await response.json() as { authenticated?: unknown; image?: unknown };
       setAccountPhoto({ authenticated: Boolean(status.authenticated), image: typeof status.image === "string" ? status.image : null });
@@ -229,15 +229,16 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const syncSources = useCallback(async (notify = true) => {
     setSyncing(true);
     try {
-      const response = await fetch("/api/sync", { method: "POST", headers: apiHeaders() });
-      const result = await response.json() as { error?: string; skipped?: boolean; count?: number; failures?: number };
+      const response = await fetch("/api/sync", { method: "POST", headers: apiHeaders(), signal: AbortSignal.timeout(60_000) });
+      const result = await response.json() as { error?: string; skipped?: boolean; count?: number; failures?: number; verifiedSources?: number };
       if (!response.ok) throw new Error(result.error || "No se pudo actualizar");
       if (notify) {
-        if (result.failures) toast.warning("Algunas fuentes oficiales no respondieron");
-        else toast.success(result.skipped ? "Las fuentes ya estaban actualizadas" : `${result.count ?? 0} publicaciones verificadas`);
+        if (result.skipped) toast.success("Las fuentes ya estaban actualizadas");
+        else if (result.failures) toast.warning(`${result.verifiedSources ?? 0} fuentes verificadas; ${result.failures} pendientes o no disponibles.`);
+        else toast.success(`${result.verifiedSources ?? 0} fuentes verificadas · ${result.count ?? 0} publicaciones revisadas.`);
       }
       await loadRef.current(false, false);
-    } catch (error) { const message = error instanceof Error ? error.message : "No se pudo actualizar"; if (notify) toast.error(message); }
+    } catch (error) { const message = error instanceof DOMException && error.name === "TimeoutError" ? "La actualización tardó demasiado. Podría seguir en curso; consultá nuevamente más tarde." : error instanceof Error ? error.message : "No se pudo actualizar"; if (notify) toast.error(message); }
     finally { setSyncing(false); }
   }, []);
 
