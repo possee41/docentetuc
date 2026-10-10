@@ -46,6 +46,9 @@ import { deviceRequestHeaders } from "@/lib/device-user";
 import { sectionUrl, viewFromSection } from "@/lib/app-navigation";
 import { boardItems } from "@/lib/board-view";
 import type { BoardView } from "@/lib/board-view";
+import { eventDate as officialEventDate, hasOfficialTopic, officialDateLabel, officialDestination, officialLifecycle, officialMetadata, readMetadata } from "@/lib/official-publication";
+import { officialSavedLookup, resolveOfficialAlias } from "@/lib/official-reconciliation";
+import { OfficialPublicationDetails, OfficialPublicationSummary } from "@/components/official-publication-details";
 
 type Theme = "light" | "dark";
 type InstallationSecurity = "protected" | "linked" | "recovery_required" | "unavailable";
@@ -55,7 +58,7 @@ const viewTitles: Record<View, [string, string]> = {
   inicio: ["Inicio", "Lo más relevante según tus preferencias"], vacantes: ["Inscripciones SIME", "Pedidos de cobertura publicados en SIME"],
   capacitaciones: ["Capacitaciones", "Formación docente"], junta: ["Consultas oficiales", "Padrones, comunicados y fuentes de las Juntas"],
   padrones: ["Padrones", "Listados y puntajes oficiales por Junta"], comunicados: ["Comunicados", "Documentos y avisos oficiales de las Juntas"],
-  actos: ["Actos de designación", "Fechas presenciales confirmadas por las Juntas"], llamados: ["Llamados abiertos", "Convocatorias con vigencia confirmada"],
+  actos: ["Actos de designación", "Fechas informadas por SIME y las Juntas; verificar horario y modalidad"], llamados: ["Llamados abiertos", "Convocatorias oficiales según el procedimiento; verificar requisitos y vigencia"],
   informacion: ["Información útil", "Organismos, trámites y servicios oficiales organizados por necesidad"],
   agenda: ["Agenda docente", "Fechas y vencimientos de las publicaciones"], alertas: ["Alertas", "Novedades detectadas sin duplicados"],
   guardados: ["Mis guardados", "Publicaciones que elegiste conservar"], perfil: ["Tu perfil docente", "Preferencias usadas para ordenar la información"], cuentas: ["Cuentas y accesos", "Gestioná la identidad DocenteTuc y los servicios externos"],
@@ -73,7 +76,7 @@ const publicationCircuitMatch = (item: Publication, circuit: string) => {
   const inference = inferCircuit({ explicit: direct, locality: item.location || item.source_circuit_raw || "" });
   return circuitMatches(inference, [circuit]) === true;
 };
-const publicationLabel = (item: Publication) => item.kind === "vacante" && item.source === "SIME" ? "PUBLICACIÓN SIME" : item.kind === "vacante" ? "DESIGNACIÓN" : item.kind === "capacitacion" ? "CAPACITACIÓN" : item.category.toUpperCase();
+const publicationLabel = (item: Publication) => officialMetadata(item)?.entity === "event" ? "ACTO DE DESIGNACIÓN" : hasOfficialTopic(item, "LLAMADO_ABIERTO") ? "LLAMADO ABIERTO" : hasOfficialTopic(item, "INSCRIPCION_SIME") ? "INSCRIPCIÓN SIME" : item.kind === "capacitacion" ? "CAPACITACIÓN" : item.category.toUpperCase();
 const publicationSearchText = (item: Publication) => [item.title, item.summary, item.level, item.area, item.junta, item.location, item.character, item.category, item.source, item.metadata, item.circuit, item.source_circuit_raw, item.kind === "vacante" ? "designaciones vacantes" : "", Date.now() - new Date(`${item.updated_at}Z`).getTime() < 30 * 864e5 ? "novedades" : ""].join(" ");
 const simeCodeForPublication = (item?: Pick<Publication, "metadata"> | null) => {
   if (!item?.metadata) return "";
@@ -83,16 +86,18 @@ const trainingPlatform = (source: string) => { const key = normalize(source); re
 const apiHeaders = (json = false) => {
   return deviceRequestHeaders(localStorage.getItem("docentetuc-device-id"), json);
 };
-const dateLabel = (value: string | null, withTime = false) => { const date = safeDate(value); return date ? new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Tucuman", day: "2-digit", month: "short", ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}) }).format(date) : "Sin fecha informada"; };
+const dateLabel = (value: string | null, withTime = false) => { const dateOnly = Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value)), date = safeDate(dateOnly ? `${value}T12:00:00-03:00` : value); return date ? new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Tucuman", day: "2-digit", month: "short", ...(withTime && !dateOnly ? { hour: "2-digit", minute: "2-digit" } : {}) }).format(date) : "Sin fecha informada"; };
 const fromNow = (value: string | null) => {
   const date = safeDate(value); if (!date) return "Sin fecha informada"; const hours = Math.ceil((date.getTime() - Date.now()) / 36e5);
   return hours <= 0 ? "Finalizó" : hours < 24 ? `Vence en ${hours} h` : `Vence en ${Math.ceil(hours / 24)} días`;
 };
 const tucumanDay = (value: Date | string) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(typeof value === "string" ? new Date(value) : value);
 const opensToday = (item: Publication) => { const opens = parseTrainingMetadata(item.metadata)?.registrationOpensAt; return Boolean(opens && tucumanDay(opens) === tucumanDay(new Date())); };
-const healthNameForPublication = (item: Publication) => item.source === "Padrones y Comunicados" ? item.category : item.source;
+const healthNameForPublication = (item: Publication) => item.source === "Padrones y Comunicados" ? officialMetadata(item)?.sourceCategory || item.category : item.source;
 const healthForPublication = (item: Publication, sync: SyncStatus[]) => sync.find((source) => source.source === healthNameForPublication(item));
 const publicationLifecycleForUI = (item: Publication, now = new Date()) => {
+  const official = officialLifecycle(item, now);
+  if (official) return official;
   const metadata = parseTrainingMetadata(item.metadata);
   const designation = item.kind === "vacante";
   return publicationLifecycle({
@@ -208,7 +213,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     window.addEventListener("docentetuc:refresh-auth-status", refreshAccountPhoto);
     return () => window.removeEventListener("docentetuc:refresh-auth-status", refreshAccountPhoto);
   }, [refreshAccountPhoto]);
-  const openPublication = (publication: Publication) => { setSelected(publication); history.pushState({ ...history.state, publicationId: publication.id }, "", `#publicacion-${encodeURIComponent(publication.id)}`); };
+  const openPublication = (publication: Publication) => { const canonical = resolveOfficialAlias(publication, data?.publications || []); setSelected(canonical); history.pushState({ ...history.state, publicationId: canonical.id }, "", `#publicacion-${encodeURIComponent(canonical.id)}`); };
   const closePublication = () => { if (history.state?.publicationId) history.back(); else setSelected(null); };
 
   const loadPublic = useCallback(async () => {
@@ -245,7 +250,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
       const result = await response.json() as AppData;
       result.designations ||= []; result.manualEvents ||= []; if (result.profile) result.profile.roles ||= [];
       const deepLinkId = new URLSearchParams(location.search).get("publication"), deepLink = deepLinkId ? result.publications.find((item) => item.id === deepLinkId) : null;
-      if (deepLink) { const destination = deepLink.kind === "vacante" ? "vacantes" : deepLink.kind === "capacitacion" ? "capacitaciones" : deepLink.kind === "informacion" ? "informacion" : deepLink.category === "Padrones" ? "padrones" : deepLink.category === "Llamados abiertos" ? "llamados" : deepLink.category === "Actos de designación" ? "actos" : "comunicados"; setSelected(deepLink); setViewState(destination); history.replaceState({ ...history.state, docentetuc: undefined }, "", sectionUrl(destination)); }
+      if (deepLink) { const canonical = resolveOfficialAlias(deepLink, data?.publications || []); const destination = canonical.kind === "capacitacion" ? "capacitaciones" : canonical.kind === "informacion" ? "informacion" : officialDestination(canonical); setSelected(canonical); setViewState(destination); history.replaceState({ ...history.state, docentetuc: undefined }, "", sectionUrl(destination)); }
       privateDataVerified.current = true;
       setPrivateReady(true);
       setData(result);
@@ -340,7 +345,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     return () => controller.abort();
   }, [data, setView]);
 
-  const savedMap = useMemo(() => new Map((data?.saved || []).map((item) => [item.publication_id, item])), [data]);
+  const savedMap = useMemo(() => officialSavedLookup(data?.saved || [], data?.publications || []), [data]);
   const reminderMap = useMemo(() => new Map((data?.reminders || []).map((item) => [item.training_id, item])), [data]);
   const profile = data?.profile ?? undefined;
   const designationAvailability = data ? designationEmptyState({
@@ -360,8 +365,8 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const relevantTraining = (publication: Publication) => publication.kind === "capacitacion" && matchProfile ? isEligibleForPersonalizedHome(publicationForMatch(publication), matchProfile) : false;
 
   function filteredPublications(search = query) {
-    let items = data?.publications || [];
-    if (view === "vacantes") items = items.filter((item) => item.kind === "vacante");
+    let items = (data?.publications || []).filter(item => !officialMetadata(item)?.canonicalId || resolveOfficialAlias(item, data?.publications || []).id === item.id);
+    if (view === "vacantes") items = items.filter((item) => hasOfficialTopic(item, "INSCRIPCION_SIME"));
     if (view === "capacitaciones") items = items.filter((item) => item.kind === "capacitacion" && (filter === "finalizadas" || enrollmentForUI(item) !== "CERRADA"));
     if (view === "junta") items = items.filter((item) => item.kind === "junta");
     if (view === "informacion") items = items.filter((item) => item.kind === "informacion");
@@ -415,14 +420,15 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   }
 
   const mutateSaved = async (action: "save" | "agenda" | "follow", publication: Publication, enabled: boolean, agenda?: { at?: string; notes?: string; reminderAt?: string }) => {
+    const storedId = savedMap.get(publication.id)?.publication_id || publication.id;
     setData((current) => {
       if (!current) return current;
-      const existing = current.saved.find((item) => item.publication_id === publication.id);
-      let saved = current.saved.filter((item) => item.publication_id !== publication.id);
-      if (action !== "save" || enabled) saved = [...saved, { publication_id: publication.id, in_agenda: action === "agenda" ? enabled : existing?.in_agenda || false, followed: action === "follow" ? enabled : existing?.followed || false, agenda_at: action === "agenda" ? (agenda?.at ? new Date(agenda.at).toISOString() : null) : existing?.agenda_at, agenda_notes: action === "agenda" ? agenda?.notes || "" : existing?.agenda_notes, agenda_reminder_at: action === "agenda" ? agenda?.reminderAt || null : existing?.agenda_reminder_at, agenda_reminder_notified: false, saved_at: existing?.saved_at || new Date().toISOString() }];
+      const existing = current.saved.find((item) => item.publication_id === storedId);
+      let saved = current.saved.filter((item) => item.publication_id !== storedId);
+      if (action !== "save" || enabled) saved = [...saved, { publication_id: storedId, in_agenda: action === "agenda" ? enabled : existing?.in_agenda || false, followed: action === "follow" ? enabled : existing?.followed || false, agenda_at: action === "agenda" ? (agenda?.at ? new Date(agenda.at).toISOString() : null) : existing?.agenda_at, agenda_notes: action === "agenda" ? agenda?.notes || "" : existing?.agenda_notes, agenda_reminder_at: action === "agenda" ? agenda?.reminderAt || null : existing?.agenda_reminder_at, agenda_reminder_notified: false, saved_at: existing?.saved_at || new Date().toISOString() }];
       return { ...current, saved };
     });
-    const response = await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action, publicationId: publication.id, enabled, agendaAt: agenda?.at ? new Date(agenda.at).toISOString() : undefined, agendaNotes: agenda?.notes, agendaReminderAt: agenda?.reminderAt }) });
+    const response = await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action, publicationId: storedId, enabled, agendaAt: agenda?.at ? new Date(agenda.at).toISOString() : undefined, agendaNotes: agenda?.notes, agendaReminderAt: agenda?.reminderAt }) });
     if (!response.ok) { toast.error("No se pudo guardar el cambio"); await load(false); } else toast.success(action === "save" ? (enabled ? "Guardado" : "Quitado de guardados") : action === "agenda" ? "Agenda actualizada" : "Seguimiento actualizado");
   };
 
@@ -454,13 +460,13 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   }).map((notice) => notice.publication_id)).size;
   const items = view === "inicio" ? [] : filteredPublications();
   const hasTrainingTerritoryData = (data?.publications || []).some((item) => item.kind === "capacitacion" && trainingPlatform(item.source) === "fdci" && item.circuit && item.circuit !== "UNKNOWN");
-  const designationMap = new Map((data?.designations || []).map((item) => [item.publication_id, item]));
+  const designationMap = officialSavedLookup(data?.designations || [], data?.publications || []);
   const roleOptions = [...new Set((data?.publications || []).filter((item) => item.kind === "vacante").map((item) => designationFacts(item).role).filter(Boolean))].slice(0, 80);
   const navigateToView = (target: View, term = "") => {
     if (target === "comunidad") { router.push("/comunidad"); return; }
     setView(target); setQuery(term); setDesignationQuery(""); setFilter(["informacion", "junta", "padrones", "comunicados", "actos", "llamados"].includes(target) ? "todas" : "para-mi");
   };
-  const openDesignationOfficial = (item: Publication) => { localStorage.setItem("docentetuc-pending-designation", item.id); window.open(item.official_url, "_blank", "noopener,noreferrer"); };
+  const openDesignationOfficial = (item: Publication) => { if (hasOfficialTopic(item, "INSCRIPCION_SIME")) localStorage.setItem("docentetuc-pending-designation", item.id); window.open(item.official_url, "_blank", "noopener,noreferrer"); };
   const recoveryRequired = installationBootstrapComplete && installationSecurity === "recovery_required";
   const privateView = ["agenda", "alertas", "guardados", "perfil"].includes(view);
   return (
@@ -574,13 +580,14 @@ function OfficialConsultations({ onView }: { onView: (view: View) => void }) {
 
 function OfficialBoardSection({ view, publications, query, junta, setJunta, onOpen }: { view: BoardView; publications: Publication[]; query: string; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; onOpen: (item: Publication) => void }) {
   const [title, description] = viewTitles[view];
-  const entries = boardItems(publications, view).filter((item) => (junta === "todas" || matchesJunta(item, junta)) && (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query))));
-  const sources = publications.filter((item) => item.id.startsWith("padrones:") && (view === "actos" ? item.category === "Comunicados" : view === "llamados" ? item.category === "Llamados abiertos" : false));
+  const matchesBoard = (item: Publication) => junta === "todas" || matchesJunta(item, junta) || (readMetadata(item.metadata).portalPlacements as { junta: string }[] | undefined)?.some(p => matchesJunta({ junta: p.junta, level: "" }, junta));
+  const entries = boardItems(publications, view).filter((item) => matchesBoard(item) && (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query))));
+  const sources = publications.filter((item) => item.id.startsWith("padrones:") && (view === "actos" || view === "comunicados" ? item.category === "Comunicados" : view === "llamados" ? item.category === "Llamados abiertos" : false) && matchesBoard(item));
   return <section className="space-y-4 pb-16 md:pb-0">
     <VisualSectionBanner kind={view === "padrones" || view === "llamados" ? "padrones" : "novedades"} title={title} description={description} />
     <div className="max-w-lg"><Label htmlFor="board-junta">Junta</Label><Select value={junta} onValueChange={(value) => setJunta((value || "todas") as typeof junta)}><SelectTrigger id="board-junta" className="mt-1 h-11 rounded-xl border-[#c8e1f1] bg-white"><SelectValue placeholder="Todas las juntas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
     {(view === "comunicados" || view === "padrones") && <p className="rounded-xl border border-[#c8e1f1] bg-white p-3 text-sm text-[#315d7a]">Estos son documentos oficiales. Una carpeta o un documento completo no equivale a un llamado vigente; comprobá siempre la fecha y los requisitos en la fuente.</p>}
-    {entries.length ? <div className="grid gap-3 md:grid-cols-2">{entries.map((item) => <Card as="article" key={item.id} className="rounded-2xl p-4"><p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"}</p><h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2>{(view === "actos" || view === "llamados") && <p className="mt-1 text-sm text-[var(--text-secondary)]">{dateLabel(item.starts_at, true)}{item.location ? ` · ${item.location}` : ""}</p>}<div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button><a href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial <ExternalLink className="size-4" /></a></div></Card>)}</div>
+    {entries.length ? <div className="grid gap-3 md:grid-cols-2">{entries.map((item) => <Card as="article" key={item.id} className="rounded-2xl p-4"><p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"}</p><h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2><OfficialPublicationSummary item={item} />{!officialMetadata(item) && (view === "actos" || view === "llamados") && <p className="mt-1 text-sm text-[var(--text-secondary)]">{dateLabel(item.starts_at, true)}{item.location ? ` · ${item.location}` : ""}</p>}<div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button><a href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial <ExternalLink className="size-4" /></a></div></Card>)}</div>
       : <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-primary)] p-5"><h2 className="font-bold text-[var(--text-primary)]">{view === "actos" || view === "llamados" ? "No hay registros individuales con fecha y vigencia verificadas en esta copia" : "No hay documentos indexados en esta vista"}</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">Esto no significa que la Junta no haya publicado novedades. Consultá las fuentes originales mientras se completa la clasificación.</p></div>}
     {sources.length > 0 && <div><h2 className="mb-2 font-bold text-[var(--text-primary)]">Documentos originales para verificar</h2><div className="flex flex-wrap gap-2">{sources.filter((item) => junta === "todas" || matchesJunta(item, junta)).map((item) => <a key={item.id} href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-[#c8e1f1] bg-white px-3 text-sm font-semibold text-[#075f9b]">{item.junta} <ExternalLink className="size-4" /></a>)}</div></div>}
     {!entries.length && !sources.length && <a href="https://padrones.educaciontuc.gov.ar/" target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-[#075f9b] underline">Consultar portal oficial de Juntas <ExternalLink className="size-4" /></a>}
@@ -604,7 +611,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const sync = data?.sync || [];
   const publicationMap = new Map(publications.map((item) => [item.id, item]));
   const currentForHome = (item: Publication) => canRecommendCurrentPublication({ lifecycle: publicationLifecycleForUI(item, now), health: healthForPublication(item, sync), now });
-  const eventDate = (item: Publication) => savedMap.get(item.id)?.agenda_at || parseTrainingMetadata(item.metadata)?.registrationOpensAt || item.ends_at || item.starts_at;
+  const eventDate = (item: Publication) => savedMap.get(item.id)?.agenda_at || officialEventDate(item) || parseTrainingMetadata(item.metadata)?.registrationOpensAt || item.ends_at || item.starts_at;
   const relevant = isEligible || matches;
   const agenda = publications.filter((item) => {
     const date = safeDate(eventDate(item));
@@ -614,7 +621,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const upcomingManualAgenda = manualEvents.flatMap((item) => { const startsAt = safeDate(item.starts_at); return startsAt && startsAt.getTime() >= now.getTime() ? [{ title: item.title, startsAt: item.starts_at }] : []; });
   const nextAgendaEntry = [...agenda.map((item) => ({ title: item.title, startsAt: eventDate(item) || "" })), ...upcomingManualAgenda].filter((item) => Boolean(safeDate(item.startsAt))).sort((a, b) => (safeDate(a.startsAt)?.getTime() ?? Number.MAX_SAFE_INTEGER) - (safeDate(b.startsAt)?.getTime() ?? Number.MAX_SAFE_INTEGER))[0];
   const todayEvents = agenda.filter((item) => calendarDayDistance(eventDate(item), now) === 0).length + manualEvents.filter((item) => calendarDayDistance(item.starts_at, now) === 0).length;
-  const vacancies = publications.filter((item) => item.kind === "vacante" && publicationLifecycleForUI(item, now) === "ACTIVE" && currentForHome(item) && relevant(item)).sort((a, b) => matchResult(b).score - matchResult(a).score);
+  const vacancies = publications.filter((item) => hasOfficialTopic(item, "INSCRIPCION_SIME") && publicationLifecycleForUI(item, now) === "ACTIVE" && currentForHome(item) && relevant(item)).sort((a, b) => matchResult(b).score - matchResult(a).score);
   const candidate = (item: Publication) => { const metadata = parseTrainingMetadata(item.metadata), result = matchResult(item); return { kind: item.kind === "informacion" ? "junta" as const : item.kind, registrationOpensAt: metadata?.registrationOpensAt, registrationClosesAt: metadata?.registrationClosesAt, eventAt: eventDate(item), matched: matches(item), inAgenda: Boolean(savedMap.get(item.id)?.in_agenda), updatedAt: item.updated_at, matchScore: result.status === "unconfigured" ? undefined : result.score }; };
   const compare = (a: Publication, b: Publication) => compareHomePriority(candidate(a), candidate(b), now);
   const profileReady = Boolean(profile && (profile.levels.length || profile.boards.length) && (profile.areas.length || profile.subjects.length || profile.roles.length || profile.circuits.length || profile.training_interests.length));
@@ -815,6 +822,7 @@ function PublicationList({ items, loading, savedMap, reminderMap, matchResult, o
       {metadata?.registrationOpensAt && (trainingState === "PROXIMAMENTE" || trainingState === "ABRE_HOY") && <div className="mb-4 rounded-2xl bg-[#fff4d6] p-4 text-[#6f4c00]"><strong className="block text-lg">{metadata.dateStatus === "tentative" ? "Fecha prevista · confirmar en fuente" : openingCountdown(metadata.registrationOpensAt, new Date(), metadata.registrationHasTime)}</strong><span className="text-sm">Abre: {dateLabel(metadata.registrationOpensAt, Boolean(metadata.registrationHasTime))}{metadata.registrationHasTime ? " hs" : ""}</span></div>}
       <button onClick={() => onOpen(item)} className="text-left"><h2 className="line-clamp-2 text-lg font-bold leading-snug hover:underline">{item.title}</h2><p className="mt-2 line-clamp-2 text-sm leading-relaxed text-[#657b73]">{item.summary || `Información publicada por ${item.source}.`}</p></button>
       {simeCode && <p className="mt-2 text-xs font-bold text-[#315d7a]">ID de trámite: {simeCode}</p>}
+      <OfficialPublicationSummary item={item} />
       {training ? <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-[#61766f]">{item.character && <span><strong>Modalidad:</strong> {item.character}</span>}{item.starts_at && <span><strong>Inicio:</strong> {dateLabel(item.starts_at)}</span>}{metadata?.registrationClosesAt && <span><strong>Inscripción hasta:</strong> {dateLabel(metadata.registrationClosesAt, true)}</span>}{item.location && <span className="col-span-2"><strong>Lugar:</strong> {item.location}</span>}</div> : <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#61766f]">{item.character && <span>{item.character}</span>}{item.junta && <span>{item.junta}</span>}{item.shift && <span>Turno {item.shift}</span>}{item.ends_at && <span className="ml-auto flex items-center gap-1 font-semibold text-[#9a641f]"><Clock3 className="size-4" />{fromNow(item.ends_at)}</span>}</div>}
       <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-[#e7eee9] pt-3">
         {training && metadata?.registrationOpensAt && (trainingState === "PROXIMAMENTE" || (trainingState === "ABRE_HOY" && metadata.registrationHasTime)) && <button onClick={() => onRemind(item)} className="flex min-h-10 items-center gap-2 rounded-xl bg-[#fff4d6] px-3 text-sm font-bold text-[#7b5500]"><Bell className="size-4" />{reminded ? "Aviso activo" : "Recordarme"}</button>}
@@ -833,14 +841,15 @@ function CompactItem({ item, saved, onOpen }: { item: Publication; saved: boolea
 function Agenda({ publications, savedMap, manualEvents, onOpen, onNewEvent, onEditEvent }: { publications: Publication[]; savedMap: Map<string, Saved>; manualEvents: ManualEvent[]; onOpen: (item: Publication) => void; onNewEvent: (date?: string) => void; onEditEvent: (event: ManualEvent) => void }) {
   const [mode, setMode] = useState<"month" | "week" | "agenda">("month"), [month, setMonth] = useState(() => { const date = new Date(); return new Date(date.getFullYear(), date.getMonth(), 1); }), [category, setCategory] = useState("todas"), [weekOffset, setWeekOffset] = useState(0);
   const now = new Date();
-  const publicationEvents = publications.filter((item) => Boolean(savedMap.get(item.id)?.in_agenda) && safeDate(parseTrainingMetadata(item.metadata)?.registrationOpensAt || item.ends_at || item.starts_at)).map((item) => ({ id: `publication:${item.id}`, title: item.title, category: item.kind === "vacante" ? "Designación" : item.category, starts_at: parseTrainingMetadata(item.metadata)?.registrationOpensAt || item.ends_at || item.starts_at!, manual: false as const, item }));
+  const agendaDate = (item: Publication) => savedMap.get(item.id)?.agenda_at || officialEventDate(item) || parseTrainingMetadata(item.metadata)?.registrationOpensAt || item.ends_at || item.starts_at;
+  const publicationEvents = publications.filter((item) => !officialMetadata(item)?.canonicalId && Boolean(savedMap.get(item.id)?.in_agenda) && safeDate(agendaDate(item))).map((item) => ({ id: `publication:${item.id}`, title: item.title, category: item.kind === "vacante" ? "Designación" : item.category, starts_at: agendaDate(item)!, manual: false as const, item }));
   const events = [...manualEvents.map((item) => ({ ...item, manual: true as const })), ...publicationEvents].filter((item) => category === "todas" || item.category === category).sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate(), firstDay = (new Date(month.getFullYear(), month.getMonth(), 1).getDay() + 6) % 7, calendarCells = Array.from({ length: Math.ceil((firstDay + daysInMonth) / 7) * 7 }, (_, index) => { const day = index - firstDay + 1; return day > 0 && day <= daysInMonth ? new Date(month.getFullYear(), month.getMonth(), day) : null; });
   const weekStart = new Date(now); weekStart.setDate(now.getDate() - (now.getDay() + 6) % 7 + weekOffset * 7); weekStart.setHours(0, 0, 0, 0);
   const weekDays = Array.from({ length: 7 }, (_, index) => { const date = new Date(weekStart); date.setDate(weekStart.getDate() + index); return date; });
   const dateInput = (date: Date) => { const local = new Date(date); local.setHours(9, 0, 0, 0); return dateTimeInput(local.toISOString()); };
   const eventForDay = (date: Date) => events.filter((event) => {
-    const start = new Date(event.starts_at), day = tucumanDay(date), first = tucumanDay(start);
+    const start = new Date(event.starts_at), day = tucumanDay(date), first = /^\d{4}-\d{2}-\d{2}$/.test(event.starts_at) ? event.starts_at : tucumanDay(start);
     if (event.manual && "recurrence" in event && event.recurrence && event.recurrence !== "none") {
       if (day < first) return false;
       if (event.recurrence === "daily") return true;
@@ -1234,6 +1243,7 @@ function PublicationSheet({ publication, saved, tracking, match, onClose, onAskA
         {publication && <div className="space-y-5 p-5 pb-24 md:p-6 md:pb-24">
           <Button onClick={() => onAskAI(publication)} className="h-11 w-full rounded-xl bg-[#0878be] text-white"><Sparkles className="size-4" />Preguntar a IA sobre esta información</Button>
           <div className="grid grid-cols-2 gap-3">{facts.filter(([, value]) => value !== undefined && value !== null && value !== "").map(([label, value]) => <div key={label} className="rounded-2xl border border-[#dce8e1] bg-white p-4"><p className="text-xs font-bold uppercase tracking-wide text-[#80938c]">{label}</p><p className="mt-1 font-semibold">{value}</p></div>)}</div>
+          <OfficialPublicationDetails item={publication} />
           <div className="rounded-2xl border border-[#dce8e1] bg-white p-5">
             <h3 className="font-bold">{publication.kind === "junta" ? "Contenido disponible en DocenteTuc" : publication.kind === "vacante" ? "Datos publicados por SIME" : "Descripción"}</h3>
             <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-[#5f756d]">{publication.summary || "No fue informada por la fuente oficial."}</p>
@@ -1266,7 +1276,7 @@ function PublicationSheet({ publication, saved, tracking, match, onClose, onAskA
             {publication.kind === "vacante" && tracking && <Button variant="outline" onClick={() => onEditDesignation(publication)} className="h-11 rounded-xl">Editar seguimiento</Button>}
           </div>
           {publication.kind === "vacante"
-            ? <Button type="button" onClick={() => onExternal(publication)} className="min-h-12 w-full rounded-xl bg-[#17362d] px-5 text-white">Inscribirme en sitio oficial <ExternalLink className="size-4" /></Button>
+            ? <Button type="button" onClick={() => onExternal(publication)} className="min-h-12 w-full rounded-xl bg-[#17362d] px-5 text-white">{hasOfficialTopic(publication, "INSCRIPCION_SIME") ? "Inscribirme en sitio oficial" : "Ver procedimiento en fuente oficial"} <ExternalLink className="size-4" /></Button>
             : <a href={publication.official_url} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#17362d] px-5 text-center font-bold text-white">{publication.kind === "capacitacion" ? trainingState === "ABIERTA" && training?.commissionId ? "CONTINUAR INSCRIPCIÓN EN SITIO OFICIAL" : "Ver detalle en sitio oficial" : publication.kind === "informacion" && info?.access === "private" ? "Abrir sistema oficial" : "Abrir fuente oficial"} <ExternalLink className="size-4" /></a>}
           <p className="rounded-xl bg-[#fff3dd] p-4 text-sm leading-relaxed text-[#7d541b]">{publication.kind === "vacante" ? "DocenteTuc organiza información pública. Abrir el sitio oficial no marca una inscripción; el estado sólo cambia cuando vos lo confirmás." : publication.kind === "junta" ? "DocenteTuc muestra el contenido público recuperable. Para archivos PDF o carpetas sin texto exportable, la fuente oficial conserva el documento completo." : publication.kind === "informacion" ? `Información oficial verificada el ${info?.lastVerified || "día no informado"}. DocenteTuc nunca solicita credenciales de sistemas gubernamentales.` : "La inscripción y cualquier gestión se completan siempre en el sitio oficial."}</p>
         </div>}

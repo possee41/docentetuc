@@ -13,6 +13,11 @@ import { notificationDedupeKey } from "@/lib/notification-events";
 import { circuitMatches, inferCircuit } from "@/lib/circuits";
 import { assessSourceSync, missingAfterValidatedSync, publicationLifecycle, SourceSyncError, sourceErrorCode, type SourceSyncStatus } from "@/lib/publication-lifecycle";
 import { collectSourcePages, fetchSourceJson } from "@/lib/source-fetch";
+import { fromStoredPublication, officialMetadata, officialLifecycle, readMetadata, withOfficial } from "@/lib/official-publication";
+import { applySimeDetail, normalizeSimeVacancy, selectSimeDetails, validSimeDetail, type SimeVacancy, type SimeDetail } from "@/lib/sime-publications";
+import { classifyDriveReference, documentReference, extractJuntaNotices } from "@/lib/junta-notices";
+import { BOARD_PORTAL, parseBoardPlacements } from "@/lib/board-sources";
+import { officialChange, reconcileOfficialPublications } from "@/lib/official-reconciliation";
 
 export const dynamic = "force-dynamic";
 
@@ -73,8 +78,9 @@ const publicTrainingPublications = (items: PublicTraining[], source: string) => 
   contentHash: await hash(JSON.stringify({ raw: item.raw, metadata: item.metadata, title: item.title, summary: item.summary, startsAt: item.startsAt, endsAt: item.endsAt, status: item.status })), sourceUpdatedAt: null,
 })));
 
-async function simePublications() {
+async function simePublications(previous: Map<string, { metadata: string }>) {
   const items: Publication[] = [];
+  const records = new Map<string, { vacancy: SimeVacancy; junta: string; juntaId: number }>();
   for (const [juntaId, junta] of juntas) {
     const periodData = await fetchSourceJson<{ periodos: { text: string }[] }>(`https://sime.educaciontuc.gov.ar/Vacantes/ObtenerPeriodos/${juntaId}?caracter=-1&tab=1`, {
       source: "SIME", signal: AbortSignal.timeout(15_000), headers: { Accept: "application/json", "User-Agent": "DocenteTuc/1.0 (+agregador de fuentes publicas)" },
@@ -90,15 +96,42 @@ async function simePublications() {
     if (!Array.isArray(data?.vacantes)) throw new SourceSyncError("SCHEMA_ERROR", "SIME vacantes shape changed");
     if (data.vacantes.some((vacancy) => !vacancy || !Number.isFinite(vacancy.id) || typeof vacancy.cargos !== "string")) throw new SourceSyncError("SCHEMA_ERROR", "SIME vacancy record shape changed");
     for (const vacancy of data.vacantes || []) {
-      const startsAt = simeDate(vacancy.fechaPublicacionInicio), endsAt = simeDate(vacancy.fechaPublicacionFin);
-      const first = vacancy.cargos.split(", ")[0].replace(/^\[[^\]]+\]\s*/, "");
-      const title = first.split(/\s+\[[^\]]*(?:TURNO|#)/i)[0].slice(0, 220);
-      const shift = vacancy.cargos.match(/TURNO\s+([^\]]+)/i)?.[1]?.trim() || "";
-      const metadata = { simeCode: vacancy.codigo, simeRecordId: String(vacancy.id) };
-      items.push({ id: `sime:${vacancy.id}`, source: "SIME", externalId: String(vacancy.id), kind: "vacante", category: vacancy.abierto ? "Llamado abierto" : "Vacante", title, summary: vacancy.cargos, level: junta, area: title, junta, location: "", shift, character: vacancy.caracter, startsAt, endsAt, status: isOpen(endsAt) ? "vigente" : "cerrada", officialUrl: `https://sime.educaciontuc.gov.ar/Vacantes/Detalle/${vacancy.id}?seleccionado=${juntaId - 1}&tab=1&accion=-1`, metadata: JSON.stringify(metadata), contentHash: await hashSourceSnapshot(vacancy, metadata), sourceUpdatedAt: startsAt, sourcePublishedAt: startsAt });
+      records.set(`sime:${vacancy.id}`, { vacancy, junta, juntaId });
+      items.push(normalizeSimeVacancy(vacancy, junta, juntaId, previous.get(`sime:${vacancy.id}`)?.metadata));
     }
   }
-  return items;
+  // Continue refreshing known upcoming Actos even after the enrollment closes
+  // and the vacancy leaves the current listing. Do not crawl historic archives.
+  const today = new Date().toISOString().slice(0, 10);
+  for (const [id, row] of previous) {
+    if (!id.startsWith("sime:") || records.has(id)) continue;
+    const m = officialMetadata(row), raw = readMetadata(row.metadata).simeVacancy as SimeVacancy | undefined;
+    const board = juntas.find(([, label]) => label === m?.junta);
+    if (!raw || !board || !m?.facts.designation || m.facts.designation.value.slice(0, 10) < today) continue;
+    records.set(id, { vacancy: raw, junta: board[1], juntaId: board[0] });
+    const item = normalizeSimeVacancy(raw, board[1], board[0], row.metadata);
+    const normalized = officialMetadata(item)!;
+    normalized.issues.push("No visible en listado vigente; el Acto se verifica por el detalle público.");
+    item.metadata = withOfficial(item.metadata, normalized);
+    items.push(item);
+  }
+  const warnings: string[] = [];
+  for (const item of selectSimeDetails(items)) {
+    try {
+      const response = await fetchSourceJson<{ vacante: SimeDetail }>(`https://sime.educaciontuc.gov.ar/Vacantes/ObtenerVacante/${item.externalId}?origen=&postulante=`, {
+        source: "SIME", signal: AbortSignal.timeout(15_000), headers: { Accept: "application/json" },
+      });
+      if (!validSimeDetail(response)) throw new SourceSyncError("SCHEMA_ERROR", "SIME detail shape changed");
+      applySimeDetail(item, response.vacante, new Date().toISOString());
+    } catch (error) {
+      applySimeDetail(item, null, new Date().toISOString());
+      warnings.push(`${item.id}: ${sourceErrorCode(error)}`);
+    }
+    const r = records.get(item.id)!;
+    const refreshed = normalizeSimeVacancy(r.vacancy, r.junta, r.juntaId, item.metadata);
+    items[items.findIndex(x => x.id === item.id)] = refreshed;
+  }
+  return { items, complete: warnings.length === 0, warnings: warnings.length ? { SIME: `Detalles parciales: ${warnings.join("; ")}` } : {} };
 }
 
 async function trainingPublications() {
@@ -146,6 +179,10 @@ async function infdPublications() {
 }
 
 async function boardPublications() {
+  let portalPlacements: ReturnType<typeof parseBoardPlacements> = [];
+  let portalWarning = "";
+  try { portalPlacements = parseBoardPlacements(await getHtml(BOARD_PORTAL)); }
+  catch { portalWarning = "Índice oficial no verificable en este intento; se conservaron las URLs registradas."; }
   const db = getD1();
   const storedCrawls = await db.prepare("SELECT root_id, queue_json, visited_json, working_json, snapshot_json, completed_at FROM board_crawl_state").all<{ root_id: string; queue_json: string; visited_json: string; working_json: string; snapshot_json: string; completed_at: string | null }>();
   const states = new Map(documents.filter(([, , , , url]) => url.includes("/drive/folders/")).map(([root, , , , url]) => {
@@ -160,18 +197,19 @@ async function boardPublications() {
   const categoryErrors: Record<string, unknown> = {};
   const warnings: Record<string, string> = {};
   let firstError: unknown = null;
-  const previousDrive = await db.prepare("SELECT id, summary, metadata, source_updated_at FROM publications WHERE source='Padrones y Comunicados' AND id LIKE 'drive:%'").all<{ id: string; summary: string; metadata: string; source_updated_at: string | null }>();
-  const previousDriveById = new Map(previousDrive.results.map((row) => [row.id, row]));
+  const previousDrive = await db.prepare("SELECT * FROM publications WHERE source='Padrones y Comunicados'").all<Record<string, unknown>>();
+  const previousNotices = previousDrive.results.map(fromStoredPublication);
+  const previousDriveById = new Map(previousNotices.map((row) => [row.id, row]));
   for (let offset = 0; offset < documents.length; offset += 4) {
     await Promise.all(documents.slice(offset, offset + 4).map(async ([externalId, title, category, junta, officialUrl]) => {
     try {
     const documentStatus = "Documento público · vigencia no informada";
-    let fingerprint = officialUrl, summary = `Documento público oficial de la Junta ${junta}.`, metadata = "{}";
+    let fingerprint = officialUrl, summary = `Documento público oficial de la Junta ${junta}.`, metadata = "{}", rawNoticeText: string | undefined;
     if (officialUrl.includes("docs.google.com/document/")) {
       const docId = officialUrl.split("/d/")[1].split("/")[0];
       const response = await fetch(`https://docs.google.com/document/d/${docId}/export?format=txt`, { signal: AbortSignal.timeout(40_000) });
       if (!response.ok) throw new Error(`HTTP_${response.status} ${officialUrl}`);
-      fingerprint = await response.text(); summary = plainDocumentText(fingerprint) || summary; metadata = JSON.stringify({ contentAvailable: true, format: "google-doc", textFormat: "txt" });
+      fingerprint = await response.text(); rawNoticeText = fingerprint; summary = plainDocumentText(fingerprint) || summary; metadata = JSON.stringify({ contentAvailable: true, format: "google-doc", textFormat: "txt" });
     } else if (officialUrl.includes("drive.google.com/drive/folders/")) {
       const folderId = officialUrl.split("/folders/")[1].split(/[?/#]/)[0];
       const previousState = states.get(externalId)!;
@@ -194,24 +232,41 @@ async function boardPublications() {
         metadata = JSON.stringify({ contentAvailable: true, format: "drive-folder", itemCount: entries.length, fullScanAt: result.state.completedAt });
         for (const entry of entries) {
           const entryUrl = driveEntryUrl(entry), isGoogleDoc = entry.mimeType === "application/vnd.google-apps.document";
-          let entrySummary = `${entry.name}. Archivo público oficial disponible en Google Drive.`, contentAvailable = false, textFormat: string | undefined;
+          let entrySummary = `${entry.name}. Archivo público oficial disponible en Google Drive.`, contentAvailable = false, textFormat: string | undefined, entryNoticeText: string | undefined;
           const previous = previousDriveById.get(`drive:${externalId}:${entry.id}`);
           let previousMetadata: { contentAvailable?: boolean; textFormat?: string } = {};
           try { previousMetadata = JSON.parse(previous?.metadata || "{}"); } catch {}
-          if (isGoogleDoc && previousMetadata.contentAvailable && previous?.source_updated_at === entry.updatedAt) {
+          const cachedNotices = previousNotices.filter(x => officialMetadata(x)?.sourceRootId === `drive:${externalId}:${entry.id}`);
+          if (isGoogleDoc && previousMetadata.contentAvailable && previous?.sourceUpdatedAt === entry.updatedAt && cachedNotices.length) {
             entrySummary = previous.summary; contentAvailable = true; textFormat = previousMetadata.textFormat || "html";
+            publications.push(...cachedNotices);
           } else if (isGoogleDoc && exportedDriveDocs < 4) {
             exportedDriveDocs++;
             try {
               const documentResponse = await fetch(`https://docs.google.com/document/d/${entry.id}/export?format=txt`, { signal: AbortSignal.timeout(40_000) });
-              if (documentResponse.ok) { entrySummary = plainDocumentText(await documentResponse.text()) || entrySummary; contentAvailable = true; textFormat = "txt"; }
+              if (documentResponse.ok) { entryNoticeText = await documentResponse.text(); entrySummary = plainDocumentText(entryNoticeText) || entrySummary; contentAvailable = true; textFormat = "txt"; }
             } catch (error) { console.warn("drive_document_text_unavailable", entry.id, error); }
           }
-          publications.push({ id: `drive:${externalId}:${entry.id}`, source: "Padrones y Comunicados", externalId: entry.id, kind: "junta", category, title: entry.name, summary: entrySummary, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: documentStatus, officialUrl: entryUrl, metadata: JSON.stringify({ contentAvailable, format: entry.mimeType, parent: externalId, textFormat }), contentHash: await hash([entry.name, entry.mimeType, entry.updatedAt, entrySummary, documentStatus].join("|")), sourceUpdatedAt: entry.updatedAt });
+          const entryPublication: Publication = { id: `drive:${externalId}:${entry.id}`, source: "Padrones y Comunicados", externalId: entry.id, kind: "junta", category, title: entry.name, summary: entrySummary, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: documentStatus, officialUrl: entryUrl, metadata: JSON.stringify({ contentAvailable, format: entry.mimeType, parent: externalId, textFormat }), contentHash: "", sourceUpdatedAt: entry.updatedAt };
+          publications.push(classifyDriveReference(entryPublication, entry.mimeType));
+          if (entryNoticeText !== undefined) publications.push(...extractJuntaNotices(entryPublication, entryNoticeText, previousNotices));
         }
       }
     }
-    publications.push({ id: `padrones:${externalId}`, source: "Padrones y Comunicados", externalId, kind: "junta", category, title, summary, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: documentStatus, officialUrl, metadata, contentHash: await hash(`${fingerprint}|${documentStatus}`), sourceUpdatedAt: null });
+    const placements = portalPlacements.filter(x => x.url === officialUrl);
+    const previousRoot = previousDriveById.get(`padrones:${externalId}`);
+    const oldPlacements = readMetadata(previousRoot?.metadata).portalPlacements;
+    metadata = JSON.stringify({ ...readMetadata(metadata), portalPlacements: placements.length ? placements : oldPlacements || [], portalWarning });
+    const rootPublication: Publication = { id: `padrones:${externalId}`, source: "Padrones y Comunicados", externalId, kind: "junta", category, title, summary, level: "", area: "", junta, location: "", shift: "", character: "", startsAt: null, endsAt: null, status: documentStatus, officialUrl, metadata, contentHash: await hash(`${fingerprint}|${documentStatus}`), sourceUpdatedAt: null };
+    publications.push(documentReference(rootPublication));
+    if (rawNoticeText !== undefined) {
+      const notices = extractJuntaNotices(rootPublication, rawNoticeText, previousNotices);
+      publications.push(...notices);
+      if (!notices.length) {
+        incompleteCategories.add(category);
+        warnings[category] = `${externalId}: no se reconocieron límites de avisos; se mantiene la referencia oficial.`;
+      }
+    }
     } catch (error) {
       incompleteCategories.add(category);
       categoryErrors[category] = error;
@@ -236,12 +291,12 @@ async function usefulPublications(): Promise<Publication[]> {
 
 async function runSync() {
   const db = getD1();
-  const previous = await db.prepare("SELECT id, source, category, kind, status, source_status, registration_open_at, registration_close_at, expires_at, content_hash, starts_at, ends_at, metadata, normalized_status, title, summary, level, area, junta, location, shift, character, source_updated_at FROM publications").all<{ id: string; source: string; category: string; kind: string; status: string; source_status: string; registration_open_at: string | null; registration_close_at: string | null; expires_at: string | null; content_hash: string; starts_at: string | null; ends_at: string | null; metadata: string; normalized_status: string; title: string; summary: string; level: string; area: string; junta: string; location: string; shift: string; character: string; source_updated_at: string | null }>();
+  const previous = await db.prepare("SELECT id, external_id, official_url, source_published_at, source, category, kind, status, source_status, registration_open_at, registration_close_at, expires_at, content_hash, starts_at, ends_at, metadata, normalized_status, title, summary, level, area, junta, location, shift, character, source_updated_at FROM publications").all<{ id: string; external_id: string; official_url: string; source_published_at: string | null; source: string; category: string; kind: string; status: string; source_status: string; registration_open_at: string | null; registration_close_at: string | null; expires_at: string | null; content_hash: string; starts_at: string | null; ends_at: string | null; metadata: string; normalized_status: string; title: string; summary: string; level: string; area: string; junta: string; location: string; shift: string; character: string; source_updated_at: string | null }>();
   let rowsRead = Number(previous.meta?.rows_read || previous.results.length);
   const old = new Map(previous.results.map((row) => [row.id, row]));
   const sourceHealthNames = ["SIME", "Capacitación Docente", "Padrones", "Llamados abiertos", "Comunicados", "Resoluciones", "Información oficial Tucumán", "CeNET / INET", "INFoD / AulaS-TIC"];
   const collectors: { source: string; run: () => Promise<Publication[] | { items: Publication[]; complete: boolean; incompleteCategories?: string[]; warnings?: Record<string, string>; categoryErrors?: Record<string, unknown> }> }[] = [
-    { source: "SIME", run: simePublications },
+    { source: "SIME", run: () => simePublications(old) },
     { source: "Capacitación Docente", run: trainingPublications },
     { source: "Padrones y Comunicados", run: boardPublications },
     { source: "Información oficial Tucumán", run: usefulPublications },
@@ -262,7 +317,18 @@ async function runSync() {
       return { source: collector.source, items: [] as Publication[], complete: false, incompleteCategories: [] as string[], warnings: {} as Record<string, string>, categoryErrors: {} as Record<string, unknown>, error };
     }
   }));
-  const unnormalized = collected.flatMap((result) => result.items);
+  const sourceItems = collected.flatMap((result) => result.items);
+  const presentIds = new Set(sourceItems.map(x => x.id));
+  // A partial source must not discard already recovered notices or their
+  // evidence while other collectors happen to succeed.
+  for (const row of previous.results) {
+    const m = officialMetadata(row), collector = collected.find(x => x.source === row.source);
+    if (!m || presentIds.has(row.id) || !collector) continue;
+    if (collector.error || !collector.complete && (row.source === "SIME" || collector.incompleteCategories.includes(m.sourceCategory || row.category))) {
+      sourceItems.push(fromStoredPublication(row)); presentIds.add(row.id);
+    }
+  }
+  const unnormalized = reconcileOfficialPublications(sourceItems);
   const publications = await Promise.all(unnormalized.map(async (item) => {
     let metadata: Record<string, unknown> = {};
     try { metadata = JSON.parse(item.metadata || "{}") as Record<string, unknown>; } catch {}
@@ -279,7 +345,9 @@ async function runSync() {
     const simeSchoolText = item.source === "SIME" ? item.title : "";
     const locality = [metadata.locality, metadata.localidad, metadata.location, metadata.ubicacion, item.location, labeledPlace, simeSchoolText].map(asText).filter(Boolean).join(" · ");
     const inferred = inferCircuit({ explicit, department, locality });
-    return { ...item, circuit: inferred.normalizedCircuit, sourceCircuitRaw: inferred.sourceCircuitRaw, circuitInferenceSource: inferred.circuitInferenceSource, circuitConfidence: inferred.circuitConfidence, contentHash: await hash(`${item.contentHash}|circuit:${inferred.normalizedCircuit}|raw:${inferred.sourceCircuitRaw}|via:${inferred.circuitInferenceSource}`) };
+    const normalizedHash = officialMetadata(item) ? await hash(JSON.stringify({ title: item.title, summary: item.summary, metadata: readMetadata(item.metadata),
+      startsAt: item.startsAt, endsAt: item.endsAt, category: item.category, location: item.location, status: item.status, sourceHash: item.contentHash })) : item.contentHash;
+    return { ...item, circuit: inferred.normalizedCircuit, sourceCircuitRaw: inferred.sourceCircuitRaw, circuitInferenceSource: inferred.circuitInferenceSource, circuitConfidence: inferred.circuitConfidence, contentHash: await hash(`${normalizedHash}|circuit:${inferred.normalizedCircuit}|raw:${inferred.sourceCircuitRaw}|via:${inferred.circuitInferenceSource}`) };
   }));
   const { fresh, changed, unchanged, writes } = diffByHash(old, publications);
   const metadataOf = (value: string | undefined) => { try { return JSON.parse(value || "{}") as Record<string, unknown>; } catch { return {}; } };
@@ -288,6 +356,7 @@ async function runSync() {
     if (!previousItem) return false;
     if (item.kind === "junta" && previousItem.status === "vigente" && item.status.startsWith("Documento público")) return false;
     if (item.kind === "junta" && isDocumentTextExportMigration(previousItem.metadata, item.metadata || "{}", previousItem.source_updated_at, item.sourceUpdatedAt)) return false;
+    if (officialChange(previousItem.metadata, item.metadata)) return true;
     if (item.source === "INFoD / AulaS-TIC" && previousItem.title === item.title && previousItem.status === item.status && previousItem.starts_at === item.startsAt && previousItem.ends_at === item.endsAt) return false;
     if (hasMeaningfulPublicationChange({ ...previousItem, startsAt: previousItem.starts_at, endsAt: previousItem.ends_at, sourceUpdatedAt: previousItem.source_updated_at }, item)) return true;
     if (item.kind !== "capacitacion") return false;
@@ -298,7 +367,7 @@ async function runSync() {
   const now = new Date();
   const lifecycleById = new Map(publications.map((item) => {
     const metadata = metadataOf(item.metadata);
-    const lifecycle = publicationLifecycle({ sourceStatus: item.status, sourceStatusIsExplicit: true,
+    const lifecycle = officialLifecycle(item, now) ?? publicationLifecycle({ sourceStatus: item.status, sourceStatusIsExplicit: true,
       registrationOpenAt: typeof metadata.registrationOpensAt === "string" ? metadata.registrationOpensAt : null,
       registrationCloseAt: typeof metadata.registrationClosesAt === "string" ? metadata.registrationClosesAt : null,
       expiresAt: item.kind === "vacante" ? item.endsAt : typeof metadata.courseEndsAt === "string" ? metadata.courseEndsAt : null,
@@ -310,7 +379,8 @@ async function runSync() {
       const metadata = metadataOf(item.metadata);
       const registrationOpenAt = typeof metadata.registrationOpensAt === "string" ? metadata.registrationOpensAt : null;
       const registrationCloseAt = typeof metadata.registrationClosesAt === "string" ? metadata.registrationClosesAt : null;
-      const expiresAt = item.kind === "vacante" ? item.endsAt : typeof metadata.courseEndsAt === "string" ? metadata.courseEndsAt : null;
+    const official = officialMetadata(item), directCall = official?.topics.includes("LLAMADO_ABIERTO") && !official?.topics.includes("INSCRIPCION_SIME");
+    const expiresAt = directCall ? official?.facts.registrationEnd?.precision === "datetime" ? official.facts.registrationEnd.value : null : item.kind === "vacante" ? item.endsAt : typeof metadata.courseEndsAt === "string" ? metadata.courseEndsAt : null;
       return db.prepare(`INSERT INTO publications (id, source, external_id, kind, category, title, summary, level, area, junta, location, shift, character, circuit, source_circuit_raw, circuit_inference_source, starts_at, ends_at, status, official_url, metadata, content_hash, source_updated_at, last_seen_at, last_changed_at, source_published_at, registration_open_at, registration_close_at, expires_at, source_status, normalized_status, circuit_confidence)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET source=excluded.source, category=excluded.category, title=excluded.title, summary=excluded.summary, level=excluded.level, area=excluded.area, junta=excluded.junta, location=excluded.location, shift=excluded.shift, character=excluded.character, circuit=excluded.circuit, source_circuit_raw=excluded.source_circuit_raw, circuit_inference_source=excluded.circuit_inference_source, starts_at=excluded.starts_at, ends_at=excluded.ends_at, status=excluded.status, official_url=excluded.official_url, metadata=excluded.metadata, content_hash=excluded.content_hash, source_updated_at=excluded.source_updated_at, last_seen_at=excluded.last_seen_at, last_changed_at=excluded.last_changed_at, source_published_at=excluded.source_published_at, registration_open_at=excluded.registration_open_at, registration_close_at=excluded.registration_close_at, expires_at=excluded.expires_at, source_status=excluded.source_status, normalized_status=excluded.normalized_status, removed_at=NULL, circuit_confidence=excluded.circuit_confidence, updated_at=CURRENT_TIMESTAMP`)
@@ -327,8 +397,8 @@ async function runSync() {
 
   const sourceGroup = (healthSource: string) => {
     if (["Padrones", "Llamados abiertos", "Comunicados", "Resoluciones"].includes(healthSource)) return {
-      source: "Padrones y Comunicados", filter: (item: { category: string }) => item.category === healthSource,
-      oldRows: previous.results.filter((item) => item.source === "Padrones y Comunicados" && item.category === healthSource),
+      source: "Padrones y Comunicados", filter: (item: { category: string; metadata?: string }) => (officialMetadata(item)?.sourceCategory || item.category) === healthSource,
+      oldRows: previous.results.filter((item) => item.source === "Padrones y Comunicados" && (officialMetadata(item)?.sourceCategory || item.category) === healthSource),
     };
     return { source: healthSource, filter: () => true, oldRows: previous.results.filter((item) => item.source === healthSource) };
   };
@@ -342,12 +412,13 @@ async function runSync() {
     const status = assessSourceSync({ previousCount: oldRows.length, recordsFound: current.length, complete, error });
     return { source, storageSource: sourceGroup(source).source, current, oldRows, status, error };
   });
-  const sourceHealthByPublication = (item: Publication) => item.source === "Padrones y Comunicados" ? item.category : item.source;
+  const sourceHealthByPublication = (item: Publication) => item.source === "Padrones y Comunicados" ? officialMetadata(item)?.sourceCategory || item.category : item.source;
   const healthBySource = new Map(health.map((item) => [item.source, item]));
   const removedBySource = new Map<string, number>();
   for (const item of health) {
     const previousIds = item.oldRows.filter((row) => {
       const metadata = metadataOf(row.metadata);
+      if (officialMetadata(row)?.entity === "event") return false;
       const state = publicationLifecycle({ normalizedStatus: row.normalized_status, sourceStatus: row.source_status || row.status, sourceStatusIsExplicit: true,
         registrationOpenAt: row.registration_open_at || (typeof metadata.registrationOpensAt === "string" ? metadata.registrationOpensAt : null),
         registrationCloseAt: row.registration_close_at || (typeof metadata.registrationClosesAt === "string" ? metadata.registrationClosesAt : null),
@@ -452,9 +523,13 @@ async function runSync() {
 
   const profiles = await db.prepare("SELECT * FROM profiles").all<Record<string, unknown>>();
   rowsRead += Number(profiles.meta?.rows_read || profiles.results.length);
-  const interesting = [...fresh, ...notificationChanges].filter((item) => !item.id.startsWith("drive:") && item.kind !== "informacion"
+  const interesting = [...fresh, ...notificationChanges].filter((item) => {
+    const m = officialMetadata(item);
+    return (!m || !m.canonicalId && m.entity !== "reference" && !m.candidateIds?.length && !m.topics.includes("CLASIFICACION_PENDIENTE"))
+    && !item.id.startsWith("drive:") && item.kind !== "informacion"
     && ["ACTIVE", "UPCOMING"].includes(String(lifecycleById.get(item.id)))
-    && healthBySource.get(sourceHealthByPublication(item))?.status === "OK");
+    && healthBySource.get(sourceHealthByPublication(item))?.status === "OK";
+  });
   for (const profile of profiles.results) {
     const fullProfile = { level: String(profile.level || ""), levels: String(profile.level || "").split(/[,;|]/).filter(Boolean), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), boards: String(profile.junta || "").split(/[,;|]/).filter(Boolean), roles: String(profile.roles || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), characters: String(profile.characters || "").split(/[,;|]/).filter(Boolean), circuits: String(profile.circuits || "").split(/[,;|]/).filter(Boolean), personalMatchThreshold: Number(profile.personal_match_threshold) || 85, wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") };
     const match = (item: Publication) => {
@@ -479,7 +554,7 @@ async function runSync() {
       const dateChanged = Boolean(previous && [previous.starts_at, previous.ends_at, previousMetadata?.registrationOpensAt, previousMetadata?.registrationClosesAt, previousMetadata?.courseStartsAt, previousMetadata?.courseEndsAt, previousMetadata?.dateStatus].join("|") !== [item.startsAt, item.endsAt, metadata?.registrationOpensAt, metadata?.registrationClosesAt, metadata?.courseStartsAt, metadata?.courseEndsAt, metadata?.dateStatus].join("|"));
       const designationMatch = item.kind === "vacante" ? profileMatch({ ...item, role: designationRoleFromTitle(item.title) }, fullProfile) : null;
       const designationType = designationMatch ? `DESIGNACION_${designationMatch.status === "exact" ? "EXACTA" : "PARCIAL"}_${designationMatch.criteria.some((criterion) => criterion.key === "role" && criterion.matched) ? "CARGO" : "GENERAL"}` : "DESIGNACION_NUEVA";
-      const type = old.has(item.id) ? (item.kind === "junta" ? item.category === "Comunicados" ? "COMUNICADO_ACTUALIZADO" : "PADRON_ACTUALIZADO" : item.kind === "vacante" ? "DESIGNACION_CAMBIO" : dateChanged ? "FECHA_CAMBIADA" : item.kind === "capacitacion" ? "CAPACITACION_ACTUALIZADA" : "FECHA_IMPORTANTE") : item.kind === "vacante" ? designationType : metadata?.entity === "commission" ? "COMISION_NUEVA" : item.kind === "capacitacion" ? "CAPACITACION_NUEVA" : item.category === "Comunicados" ? "COMUNICADO_NUEVO" : "PADRON_NUEVO";
+      const type = officialMetadata(item)?.entity === "event" ? old.has(item.id) ? "FECHA_CAMBIADA" : "FECHA_IMPORTANTE" : old.has(item.id) ? (item.kind === "junta" ? item.category === "Comunicados" ? "COMUNICADO_ACTUALIZADO" : "PADRON_ACTUALIZADO" : item.kind === "vacante" ? "DESIGNACION_CAMBIO" : dateChanged ? "FECHA_CAMBIADA" : item.kind === "capacitacion" ? "CAPACITACION_ACTUALIZADA" : "FECHA_IMPORTANTE") : item.kind === "vacante" ? designationType : metadata?.entity === "commission" ? "COMISION_NUEVA" : item.kind === "capacitacion" ? "CAPACITACION_NUEVA" : item.category === "Comunicados" ? "COMUNICADO_NUEVO" : "PADRON_NUEVO";
       const eventDate = metadata?.registrationOpensAt || metadata?.registrationClosesAt || item.endsAt || item.startsAt || item.sourceUpdatedAt || item.contentHash;
       const eventIdentity = old.has(item.id) ? `change:${item.contentHash}` : `date:${eventDate}`;
       const dedupeKey = notificationDedupeKey(item.id, type, eventIdentity);

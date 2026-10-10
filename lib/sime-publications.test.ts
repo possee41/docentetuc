@@ -1,0 +1,34 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { applySimeDetail, designationFromOpportunity, normalizeSimeVacancy, selectSimeDetails, validSimeDetail } from "./sime-publications.ts";
+import { officialMetadata } from "./official-publication.ts";
+const raw = { id: 1, codigo: "PDVC-20261009-142784", caracter: "SUPLENTE", fechaPublicacionInicio: "09/10/2026 18:00", fechaPublicacionFin: "14/10/2026 18:00", cargos: "[9000306/00] ESC. 172 - MAESTRO DE JARDIN - 116 [TURNO TARDE]", abierto: true };
+test("detalle SIME produce acto sin Comunicado y conserva ID de inscripción", () => {
+  let item = normalizeSimeVacancy(raw, "Primaria", 1);
+  applySimeDetail(item, { fechaDesignacion: "15/10/2026" }, "2026-10-09T12:00:00Z");
+  item = normalizeSimeVacancy(raw, "Primaria", 1, item.metadata);
+  const act = designationFromOpportunity(item)!;
+  assert.equal(item.id, "sime:1");
+  assert.equal(act.id, "acto:sime:1");
+  assert.equal(act.endsAt, null);
+  assert.equal(act.startsAt, null);
+  assert.equal(officialMetadata(act)?.facts.designation.value, "2026-10-15");
+  assert.deepEqual(officialMetadata(item)?.topics, ["LLAMADO_ABIERTO"]);
+});
+test("dato provisional sigue siendo acto, no se copia como horario confirmado", () => {
+  let item = normalizeSimeVacancy(raw, "Técnica", 3);
+  applySimeDetail(item, { fechaDesignacion: "16/10/2026 09:00 a.m.", descripcion: "HORARIO A CONFIRMAR EN COMUNICADOS" }, "2026-10-09");
+  item = normalizeSimeVacancy(raw, "Técnica", 3, item.metadata);
+  assert.equal(designationFromOpportunity(item)?.startsAt, null);
+  assert.equal(officialMetadata(item)?.facts.designation.status, "provisional");
+  applySimeDetail(item, null, "2026-10-10");
+  assert.equal(officialMetadata(item)?.detailStatus, "STALE");
+});
+test("detalle no persiste datos del designado y rotación no bloquea registros", () => {
+  const item = normalizeSimeVacancy(raw, "Primaria", 1);
+  assert.equal(validSimeDetail({ vacante: { fechaDesignacion: 42 } }), false);
+  applySimeDetail(item, { fechaDesignacion: "15/10/2026", designado: "NO ALMACENAR" } as never, "2026-10-09");
+  assert.equal(item.metadata?.includes("NO ALMACENAR"), false);
+  const other = normalizeSimeVacancy({ ...raw, id: 2 }, "Primaria", 1);
+  assert.equal(selectSimeDetails([item, other], 1)[0].id, "sime:2");
+});

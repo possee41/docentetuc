@@ -17,8 +17,8 @@ test("toda ficha conserva fuente y fecha de verificación", () => {
 test("/api/app conserva Información útil aunque haya más publicaciones que el límite", () => {
   const db = new DatabaseSync(":memory:");
   try {
-    db.exec("CREATE TABLE publications (id TEXT PRIMARY KEY, kind TEXT, starts_at TEXT, ends_at TEXT, updated_at TEXT)");
-    const insert = db.prepare("INSERT INTO publications VALUES (?, ?, NULL, NULL, ?)");
+    db.exec("CREATE TABLE publications (id TEXT PRIMARY KEY, kind TEXT, starts_at TEXT, ends_at TEXT, updated_at TEXT, metadata TEXT DEFAULT '{}')");
+    const insert = db.prepare("INSERT INTO publications (id, kind, starts_at, ends_at, updated_at) VALUES (?, ?, NULL, NULL, ?)");
     for (let index = 0; index < 1501; index++) insert.run(`other:${index}`, "vacante", "2026-09-30");
     for (const item of usefulInformation) insert.run(`info:${item.id}`, "informacion", "2026-09-27");
     const rows = db.prepare(APP_PUBLICATIONS_QUERY).all() as { kind: string }[];
