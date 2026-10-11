@@ -9,11 +9,13 @@ test("fechas válidas, sin inventar hora y conversión AM/PM", () => {
   for (const raw of ["31/02/2026", "15/13/2026", "15/10/2026 29:00", "15/10/26"]) assert.equal(parseOfficialDate(raw), null);
 });
 test("abierto no prueba inscripción online, ambas secciones exigen evidencia", () => {
-  assert.deepEqual(opportunityTopics(procedureFromText("Presentarse directamente en Junta", true), true), ["LLAMADO_ABIERTO"]);
-  assert.deepEqual(opportunityTopics(procedureFromText("INSCRIPCIÓN SIME del 2 al 6. Presentación presencial de documentación.", true), true), ["INSCRIPCION_SIME", "LLAMADO_ABIERTO"]);
-  assert.deepEqual(opportunityTopics(procedureFromText("", true), true), ["LLAMADO_ABIERTO"]);
-  assert.equal(procedureFromText("Sin inscripción en SIME. Presentarse directamente.", true), "direct");
+  assert.deepEqual(opportunityTopics(procedureFromText("Presentarse directamente en Junta")), ["LLAMADO_ABIERTO"]);
+  assert.deepEqual(opportunityTopics(procedureFromText("INSCRIPCIÓN SIME del 2 al 6. Presentación presencial de documentación.")), ["INSCRIPCION_SIME"]);
+  assert.deepEqual(opportunityTopics(procedureFromText("INSCRIPCIÓN SIME del 2 al 6. Presentación directa ante Junta.")), ["INSCRIPCION_SIME", "LLAMADO_ABIERTO"]);
+  assert.deepEqual(opportunityTopics(procedureFromText("")), ["CLASIFICACION_PENDIENTE"]);
+  assert.equal(procedureFromText("Sin inscripción en SIME. Presentarse directamente."), "direct");
   assert.equal(hasOfficialTopic({ kind: "vacante", source: "SIME", category: "Llamado abierto" }, "INSCRIPCION_SIME"), false);
+  assert.equal(hasOfficialTopic({ kind: "vacante", source: "SIME", category: "Vacante" }, "CLASIFICACION_PENDIENTE"), true);
 });
 test("el acto válido con horario provisional no autoriza recordatorio horario", () => {
   const m = newOfficial("event", "Técnica", [source]);

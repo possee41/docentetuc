@@ -1,4 +1,5 @@
 import { plainDocumentText } from "./public-documents.ts";
+import { padronTitleFacts } from "./padron-documents.ts";
 import { extractCodes, extractOfficialScope, newOfficial, normalizeOfficialText, noticeAnchor, parseOfficialDate, procedureFromText, opportunityTopics, withOfficial, type CollectedPublication, type OfficialFact, type OfficialMetadata, type OfficialSource } from "./official-publication.ts";
 
 export type NoticeBlock = { text: string; section: string };
@@ -66,8 +67,8 @@ export function classifyJuntaBlock(block: NoticeBlock, junta: string, source: Of
   const called = !instructional && /\bllamado(?:s)? abierto(?:s)?\b/.test(n) &&
     (!!m.codes.length || !!m.scope.school || /\b(?:convoca|inscripcion|recepcion de documentacion)\b/.test(n));
   if (called) {
-    m.entity = "opportunity"; m.procedure = procedureFromText(text, undefined);
-    m.topics = opportunityTopics(m.procedure, true); m.abierto = true;
+    m.entity = "opportunity"; m.procedure = procedureFromText(text);
+    m.topics = opportunityTopics(m.procedure); m.abierto = true;
     const window = text.match(new RegExp(`inscripci[oó]n(?:\\s+(?:en|sime|online|on line)){0,3}\\s*[:–-]?\\s*(${datePattern})\\s*(?:al|hasta)\\s*(${datePattern})`, "i"));
     if (window) {
       const a = parseDateInText(window[1]), b = parseDateInText(window[2]);
@@ -119,8 +120,15 @@ export function documentReference(item: CollectedPublication) {
 export function classifyDriveReference(item: CollectedPublication, mime: string) {
   const ref = documentReference(item);
   if (mime !== "application/vnd.google-apps.folder" && /\bpadr[oó]n(?:es)?\b/i.test(item.title)) {
-    const m = newOfficial("padron", item.junta, [{ id: item.id, source: "Junta", url: item.officialUrl, excerpt: item.title }], item.category);
-    m.topics = ["PADRON"]; ref.metadata = withOfficial(ref.metadata, m);
+    const evidence = { id: item.id, source: "Junta", url: item.officialUrl, excerpt: item.title };
+    const m = newOfficial("padron", item.junta, [evidence], item.category);
+    m.topics = ["PADRON"];
+    const parsed = padronTitleFacts(item.title);
+    if (parsed.year) m.facts.padronYear = sourceFact(String(parsed.year), evidence);
+    if (parsed.type !== "Otro") m.facts.padronType = sourceFact(parsed.type, evidence);
+    if (parsed.subject) m.facts.padronSubject = sourceFact(parsed.subject, evidence);
+    if (parsed.version) m.facts.padronVersion = sourceFact(parsed.version, evidence);
+    ref.metadata = withOfficial(ref.metadata, m);
   }
   return ref;
 }

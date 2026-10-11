@@ -92,7 +92,7 @@ export function extractOfficialScope(text: string): OfficialScope {
     character: n.match(/\b(interino|suplente|titular)\b/)?.[1] || null,
     circuit: n.match(/\bcircuito\s+(iv|iii|ii|i|v|[1-5])\b/)?.[1]?.toUpperCase() || null };
 }
-export function procedureFromText(text: string, abierto: boolean | undefined): OfficialMetadata["procedure"] {
+export function procedureFromText(text: string): OfficialMetadata["procedure"] {
   const t = normalizeOfficialText(text);
   const deniedOnline = /sin (?:inscripcion|postulacion)(?:\s+\w+){0,3}\s+sime/.test(t);
   const online = !deniedOnline && /(?:inscri(?:pcion|pciones|birse)|postula(?:cion|ciones|rse)).{0,70}(?:sime|on\s*line|en linea)|sime.{0,45}(?:inscri(?:pcion|pciones|birse)|postula(?:cion|rse))/.test(t);
@@ -100,30 +100,27 @@ export function procedureFromText(text: string, abierto: boolean | undefined): O
   if (online && direct) return "both";
   if (online) return "online_sime";
   if (direct) return "direct";
-  // Ordinary SIME postings use its standard postulation procedure. The special
-  // abierto circuit is NOT proof of online enrollment and never inherits it.
-  return abierto === false ? "online_sime" : "unknown";
+  // Neither value of abierto proves how a teacher must apply.
+  return "unknown";
 }
-export function opportunityTopics(procedure: OfficialMetadata["procedure"], abierto: boolean) {
+export function opportunityTopics(procedure: OfficialMetadata["procedure"]) {
   const topics: OfficialTopic[] = [];
   if (procedure === "online_sime" || procedure === "both") topics.push("INSCRIPCION_SIME");
-  if (abierto) topics.push("LLAMADO_ABIERTO");
+  if (procedure === "direct" || procedure === "both") topics.push("LLAMADO_ABIERTO");
   if (!topics.length) topics.push("CLASIFICACION_PENDIENTE");
   return topics;
 }
 export function hasOfficialTopic(item: MetadataLike, topic: OfficialTopic) {
   const m = officialMetadata(item);
   if (m) return !m.canonicalId && m.topics.includes(topic);
-  if (topic === "INSCRIPCION_SIME") {
-    // Legacy open calls must not leak into online enrollment while waiting
-    // for their next detail sync.
-    return item.kind === "vacante" && item.source === "SIME" && !/llamado/i.test(item.category || "");
-  }
+  if (topic === "INSCRIPCION_SIME") return false; // No legacy category proves online enrollment.
+  if (topic === "CLASIFICACION_PENDIENTE") return item.kind === "vacante" && item.source === "SIME";
   const categories: Partial<Record<OfficialTopic, string>> = { PADRON: "Padrones", ACTO_DESIGNACION: "Actos de designación", LLAMADO_ABIERTO: "Llamados abiertos", OTRO_COMUNICADO: "Comunicados" };
   return item.kind === "junta" && item.category === categories[topic];
 }
 export function officialDestination(item: MetadataLike) {
   if (hasOfficialTopic(item, "INSCRIPCION_SIME")) return "vacantes";
+  if (item.source === "SIME" && hasOfficialTopic(item, "CLASIFICACION_PENDIENTE")) return "vacantes";
   if (hasOfficialTopic(item, "LLAMADO_ABIERTO")) return "llamados";
   if (hasOfficialTopic(item, "ACTO_DESIGNACION")) return "actos";
   if (hasOfficialTopic(item, "PADRON")) return "padrones";

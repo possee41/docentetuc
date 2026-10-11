@@ -17,8 +17,8 @@ export function normalizeSimeVacancy(v: SimeVacancy, junta: string, juntaId: num
   const old = officialMetadata({ metadata: previousMetadata });
   m.abierto = v.abierto;
   m.codes = [v.codigo].filter(Boolean);
-  m.procedure = procedureFromText(description, v.abierto);
-  m.topics = opportunityTopics(m.procedure, v.abierto);
+  m.procedure = procedureFromText(description);
+  m.topics = opportunityTopics(m.procedure);
   m.positions = v.cargos.split(/,\s*(?=\[\d{7,9}\/\d{2}\])/).map(extractOfficialScope);
   m.scope = m.positions.length === 1 ? m.positions[0] : extractOfficialScope("");
   m.scope.character = v.caracter;
@@ -42,11 +42,11 @@ export function normalizeSimeVacancy(v: SimeVacancy, junta: string, juntaId: num
     if (appointment) m.facts.designation = appointment;
     m.sources.push(ds);
   }
-  if (v.abierto && m.procedure === "unknown") m.issues.push("Procedimiento de inscripción no informado; abierto:true no demuestra inscripción online.");
+  if (m.procedure === "unknown") m.issues.push("Procedimiento pendiente de verificar; el campo abierto no demuestra la modalidad de inscripción.");
   const first = v.cargos.split(", ")[0].replace(/^\[[^\]]+\]\s*/, "");
   const title = first.split(/\s+\[[^\]]*(?:TURNO|#)/i)[0].slice(0, 220);
   const startsAt = start?.precision === "datetime" ? start.value : null, endsAt = end?.precision === "datetime" ? end.value : null;
-  return { id, source: "SIME", externalId: String(v.id), kind: "vacante", category: v.abierto ? "Llamado abierto" : "Vacante", title,
+  return { id, source: "SIME", externalId: String(v.id), kind: "vacante", category: m.procedure === "unknown" ? "Procedimiento pendiente de verificar" : m.procedure === "direct" ? "Llamado abierto" : "Vacante", title,
     summary: [v.cargos, description].filter(Boolean).join("\n\n"), level: junta, area: title, junta, location: "", shift: m.scope.shift || "", character: v.caracter,
     startsAt, endsAt, status: endsAt && Date.parse(endsAt) < now.getTime() ? "cerrada" : "vigente", officialUrl: url,
     metadata: withOfficial(JSON.stringify({ ...cached, simeCode: v.codigo, simeRecordId: String(v.id), simeVacancy: v }), m), contentHash: "", sourceUpdatedAt: startsAt, sourcePublishedAt: startsAt };

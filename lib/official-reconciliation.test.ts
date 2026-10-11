@@ -15,10 +15,19 @@ test("mismo llamado en SIME y Junta da una oportunidad canónica con ambas evide
   const notice = extractJuntaNotices(root, `LLAMADO ABIERTO\n09/10/2026\n${raw.codigo}\nINSCRIPCIÓN SIME: 09/10/2026 al 14/10/2026`)[0];
   const rows = reconcileOfficialPublications([vacancy(), notice]);
   const sime = rows.find(x => x.id === "sime:1")!;
-  assert.deepEqual(officialMetadata(sime)?.topics, ["INSCRIPCION_SIME", "LLAMADO_ABIERTO"]);
+  assert.deepEqual(officialMetadata(sime)?.topics, ["INSCRIPCION_SIME"]);
   assert.equal(officialMetadata(rows.find(x => x.id === notice.id)!)?.canonicalId, sime.id);
   assert.equal(resolveOfficialAlias(rows.find(x => x.id === notice.id)!, rows).id, "sime:1");
   assert.ok(officialMetadata(sime)!.sources.length >= 3);
+});
+test("aviso de presentación directa reclasifica la oportunidad SIME pendiente sin duplicar ID", () => {
+  const notice = extractJuntaNotices(root, `LLAMADO ABIERTO\n09/10/2026\n${raw.codigo}\nSin inscripción en SIME. Presentarse directamente ante la Junta.`)[0];
+  const rows = reconcileOfficialPublications([vacancy(), notice]);
+  const sime = rows.find(item => item.id === "sime:1")!;
+  assert.equal(officialMetadata(sime)?.procedure, "direct");
+  assert.deepEqual(officialMetadata(sime)?.topics, ["LLAMADO_ABIERTO"]);
+  assert.equal(sime.category, "Llamado abierto");
+  assert.equal(officialMetadata(rows.find(item => item.id === notice.id)!)?.canonicalId, "sime:1");
 });
 test("códigos distintos impiden fusionar cargos iguales; datos faltantes no suman", () => {
   const a = officialMetadata(vacancy())!, b = structuredClone(a); b.codes = ["PDVC-20261009-123456"];

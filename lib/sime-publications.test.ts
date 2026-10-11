@@ -13,7 +13,7 @@ test("detalle SIME produce acto sin Comunicado y conserva ID de inscripción", (
   assert.equal(act.endsAt, null);
   assert.equal(act.startsAt, null);
   assert.equal(officialMetadata(act)?.facts.designation.value, "2026-10-15");
-  assert.deepEqual(officialMetadata(item)?.topics, ["LLAMADO_ABIERTO"]);
+  assert.deepEqual(officialMetadata(item)?.topics, ["CLASIFICACION_PENDIENTE"]);
 });
 test("dato provisional sigue siendo acto, no se copia como horario confirmado", () => {
   let item = normalizeSimeVacancy(raw, "Técnica", 3);
@@ -31,4 +31,21 @@ test("detalle no persiste datos del designado y rotación no bloquea registros",
   assert.equal(item.metadata?.includes("NO ALMACENAR"), false);
   const other = normalizeSimeVacancy({ ...raw, id: 2 }, "Primaria", 1);
   assert.equal(selectSimeDetails([item, other], 1)[0].id, "sime:2");
+});
+test("SIME espera evidencia, reclasifica sin cambiar ID y mantiene el acto separado", () => {
+  const closed = { ...raw, abierto: false };
+  let item = normalizeSimeVacancy(closed, "Primaria", 1);
+  assert.equal(officialMetadata(item)?.procedure, "unknown");
+  assert.deepEqual(officialMetadata(item)?.topics, ["CLASIFICACION_PENDIENTE"]);
+  assert.equal(item.category, "Procedimiento pendiente de verificar");
+  applySimeDetail(item, { descripcion: "Inscripción online por SIME del 09/10 al 14/10", fechaDesignacion: "15/10/2026" }, "2026-10-09");
+  item = normalizeSimeVacancy(closed, "Primaria", 1, item.metadata);
+  assert.equal(item.id, "sime:1");
+  assert.deepEqual(officialMetadata(item)?.topics, ["INSCRIPCION_SIME"]);
+  assert.deepEqual(officialMetadata(designationFromOpportunity(item)!)?.topics, ["ACTO_DESIGNACION"]);
+  assert.equal(designationFromOpportunity(item)?.id, "acto:sime:1");
+  applySimeDetail(item, { descripcion: "Sin inscripción en SIME. Presentarse directamente en Junta." }, "2026-10-10");
+  item = normalizeSimeVacancy({ ...closed, abierto: true }, "Primaria", 1, item.metadata);
+  assert.equal(item.id, "sime:1");
+  assert.deepEqual(officialMetadata(item)?.topics, ["LLAMADO_ABIERTO"]);
 });

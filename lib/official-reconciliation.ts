@@ -51,10 +51,12 @@ function enrich(target: CollectedPublication, incoming: CollectedPublication) {
     const value = `${a.facts.designation.value.slice(0, 10)}T${b.facts.designationTime.value}:00-03:00`;
     a.facts.designation = combineFact(a.facts.designation, { value, precision: "datetime", status: "reported", evidence: b.facts.designationTime.evidence }, !!b.correction);
   }
-  if (a.entity === "opportunity" && (b.procedure === "online_sime" || b.procedure === "both")) {
-    a.procedure = a.procedure === "direct" ? "both" : b.procedure;
-    a.topics = opportunityTopics(a.procedure, !!a.abierto);
-    a.issues = a.issues.filter(x => !x.startsWith("Procedimiento de inscripción no informado"));
+  if (a.entity === "opportunity" && b.procedure !== "unknown") {
+    a.procedure = a.procedure !== "unknown" && a.procedure !== b.procedure ? "both" : b.procedure;
+    a.topics = opportunityTopics(a.procedure);
+    a.issues = a.issues.filter(x => !x.startsWith("Procedimiento pendiente de verificar"));
+    if (target.source === "SIME" && target.category === "Procedimiento pendiente de verificar")
+      target.category = a.procedure === "direct" ? "Llamado abierto" : "Vacante";
   }
   a.issues = [...new Set(a.issues)];
   target.metadata = withOfficial(target.metadata, a);
