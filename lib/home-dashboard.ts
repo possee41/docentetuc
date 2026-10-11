@@ -33,6 +33,13 @@ export const registrationState = (opensAt: string | null | undefined, closesAt: 
   return "future";
 };
 
+export const homeTrainingEnrollmentRank = (opensAt: string | null | undefined, closesAt: string | null | undefined, now: Date) => {
+  const state = registrationState(opensAt, closesAt, now);
+  if (state === "open") return closesAt && Date.parse(closesAt) - now.getTime() <= 3 * 86_400_000 ? 2 : 0;
+  if (["today", "tomorrow", "two-three", "four-seven", "eight-fourteen"].includes(state)) return 1;
+  return 3;
+};
+
 const registrationRank: Record<RegistrationState, number> = { today: 0, tomorrow: 1, "two-three": 2, "four-seven": 3, "eight-fourteen": 4, open: 5, future: 9, closed: 10, unknown: 10 };
 const urgencyPoints: Record<RegistrationState, number> = { today: 50, tomorrow: 45, "two-three": 40, "four-seven": 30, "eight-fourteen": 20, open: 10, future: 0, closed: -1000, unknown: -1000 };
 export const trainingPriorityScore = (candidate: HomePriorityCandidate, now: Date) => (candidate.matchScore ?? 50) * 2 + urgencyPoints[registrationState(candidate.registrationOpensAt, candidate.registrationClosesAt, now)];

@@ -82,6 +82,7 @@ export function publicationLifecycle(input: {
   if (dateStatus !== "tentative" && input.sourceStatusIsExplicit && /cerrad|finaliz|vencid|expired|closed/i.test(source)) return "CLOSED";
   // Parser-derived course states are not proof when the source marks its dates
   // tentative, as a general catalogue window, or unknown.
+  if (dateStatus === "tentative" && input.sourceStatusIsExplicit && /abiert/i.test(source) && input.registrationCloseAt && Date.parse(input.registrationCloseAt) >= now) return "ACTIVE";
   if (["tentative", "general_window", "unknown"].includes(dateStatus)) return "UNKNOWN";
   const expiry = input.expiresAt ? Date.parse(input.expiresAt) : Number.NaN;
   if (Number.isFinite(expiry) && expiry < now) return "EXPIRED";

@@ -125,4 +125,5 @@ test("cohorte tentativa CeNET se anuncia antes, pero no se declara abierta sin c
   assert.equal(enrollmentState(metadata, "próximamente", "UNKNOWN", now), "PROXIMAMENTE");
   assert.equal(enrollmentState(metadata, "próximamente", "UNKNOWN", new Date("2026-10-06T12:00:00-03:00")), "SIN_FECHA_CONFIRMADA");
   assert.equal(enrollmentState(metadata, "próximamente", "UNKNOWN", new Date("2026-10-13T12:00:00-03:00")), "CERRADA");
+  assert.equal(enrollmentState(metadata, "inscripción abierta", "ACTIVE", new Date("2026-10-11T12:00:00-03:00")), "ABIERTA", "el aviso explícito de la cohorte confirma el estado, no las fechas tentativas");
 });

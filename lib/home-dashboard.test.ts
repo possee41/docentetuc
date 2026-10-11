@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calendarDayDistance, compareHomePriority, homePriority, registrationState, trainingPriorityScore, type HomePriorityCandidate } from "./home-dashboard.ts";
+import { calendarDayDistance, compareHomePriority, homePriority, homeTrainingEnrollmentRank, registrationState, trainingPriorityScore, type HomePriorityCandidate } from "./home-dashboard.ts";
 import { isEligibleForPersonalizedHome, profileMatch } from "./matching.ts";
 
 const now = new Date("2026-09-27T12:00:00-03:00");
@@ -31,6 +31,13 @@ test("clasifica toda la ventana de inscripción y descarta cerradas", () => {
   assert.equal(registrationState("2026-10-17T00:00:00-03:00", null, now), "future");
   assert.equal(registrationState("2026-09-20T00:00:00-03:00", "2026-09-30T23:59:59-03:00", now), "open");
   assert.equal(registrationState("2026-09-20T00:00:00-03:00", "2026-09-26T23:59:59-03:00", now), "closed");
+});
+
+test("Inicio ordena abiertas, próximas aperturas y luego cierres cercanos", () => {
+  const open = homeTrainingEnrollmentRank("2026-09-20T00:00:00-03:00", "2026-10-20T23:59:59-03:00", now);
+  const upcoming = homeTrainingEnrollmentRank("2026-09-29T00:00:00-03:00", "2026-10-20T23:59:59-03:00", now);
+  const closing = homeTrainingEnrollmentRank("2026-09-20T00:00:00-03:00", "2026-09-29T23:59:59-03:00", now);
+  assert.deepEqual([open, upcoming, closing], [0, 1, 2]);
 });
 
 test("combina compatibilidad y urgencia aun sin perfil", () => {

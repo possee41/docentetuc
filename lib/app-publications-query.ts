@@ -1,5 +1,5 @@
 export const APP_PUBLICATIONS_QUERY = `SELECT * FROM publications
-  WHERE kind='informacion' OR id IN (
+  WHERE kind IN ('informacion','capacitacion') OR id IN (
     SELECT id FROM publications WHERE kind<>'informacion'
     ORDER BY CASE WHEN json_valid(metadata) THEN
       CASE WHEN json_extract(metadata,'$.official.entity')='event'

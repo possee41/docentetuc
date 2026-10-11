@@ -5,7 +5,7 @@ import { designationRoleFromTitle, isEligibleForPersonalizedHome, matchesProfile
 import { driveEntryUrl, fetchPublicDrivePage, plainDocumentText } from "@/lib/public-documents";
 import { advanceBoardCrawl, boardCrawlReadyForNextCycle, boardQueueJson, initialBoardCrawl, restoreBoardCrawl } from "@/lib/board-crawl";
 import { mergeTrainingData, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
-import { isCenetMarkupRecognized, parseCenetTrainings, parseInfdCatalog, parseInfdTrainings, type PublicTraining } from "@/lib/external-trainings";
+import { isCenetMarkupRecognized, isHistoricalCenetOffer, parseCenetTrainings, parseInfdCatalog, parseInfdTrainings, parseInfdWebinars, type PublicTraining } from "@/lib/external-trainings";
 import { usefulInformation } from "@/lib/useful-information";
 import { registrationState } from "@/lib/home-dashboard";
 import { diffByHash, hashSourceSnapshot, hasMeaningfulPublicationChange, isDocumentTextExportMigration } from "@/lib/sync-diff";
@@ -72,7 +72,7 @@ async function getHtml(url: string, traceSource?: string) {
 }
 
 const publicTrainingPublications = (items: PublicTraining[], source: string) => Promise.all(items.map(async (item): Promise<Publication> => ({
-  id: item.id, source, externalId: item.externalId, kind: "capacitacion", category: source,
+  id: item.id, source, externalId: item.externalId, kind: "capacitacion", category: item.metadata.category || source,
   title: item.title, summary: item.summary, level: item.level, area: item.area, junta: "", location: "Online", shift: "", character: item.modality,
   startsAt: item.startsAt, endsAt: item.endsAt, status: item.status, officialUrl: item.officialUrl, metadata: JSON.stringify(item.metadata),
   contentHash: await hash(JSON.stringify({ raw: item.raw, metadata: item.metadata, title: item.title, summary: item.summary, startsAt: item.startsAt, endsAt: item.endsAt, status: item.status })), sourceUpdatedAt: null,
@@ -170,7 +170,10 @@ async function cenetPublications() {
 async function infdPublications() {
   const catalogUrl = "https://red.infd.edu.ar/cursos-nacionales-2/", catalogHtml = await getHtml(catalogUrl, "INFoD"), catalog = parseInfdCatalog(catalogHtml);
   if (!catalog.pages.length) throw new Error("FORMAT_CHANGED INFoD course links not found");
-  const pages = await collectSourcePages(catalog.pages, async (url) => parseInfdTrainings(await getHtml(url, "INFoD"), url, catalog));
+  const pages = await collectSourcePages(catalog.pages, async (url) => {
+    const html = await getHtml(url, "INFoD");
+    return url.includes("/webinarios/") ? parseInfdWebinars(html, url) : parseInfdTrainings(html, url, catalog);
+  });
   const diagnostics = pages.diagnostics;
   console.log("infd_pages_sync", diagnostics);
   const failures = diagnostics.filter((page) => page.errorCode).map((page) => `${page.page}: ${page.errorCode}`);
@@ -416,7 +419,10 @@ async function runSync() {
   const healthBySource = new Map(health.map((item) => [item.source, item]));
   const removedBySource = new Map<string, number>();
   for (const item of health) {
+    const advertisedCenetId = item.source === "CeNET / INET" ? item.current[0]?.id : undefined;
     const previousIds = item.oldRows.filter((row) => {
+      // CeNET publishes only the advertised cohort. An older cohort is historical, not deleted from the source.
+      if (advertisedCenetId && isHistoricalCenetOffer(row.id, advertisedCenetId)) return false;
       const metadata = metadataOf(row.metadata);
       if (officialMetadata(row)?.entity === "event") return false;
       const state = publicationLifecycle({ normalizedStatus: row.normalized_status, sourceStatus: row.source_status || row.status, sourceStatusIsExplicit: true,

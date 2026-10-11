@@ -15,6 +15,11 @@ export type TrainingMetadata = {
   courseEndsAt?: string;
   source?: string;
   sourceUrl?: string;
+  category?: string;
+  cohort?: number;
+  duration?: string;
+  certifiedHours?: string;
+  registrationUrl?: string;
   dateStatus?: "confirmed" | "tentative" | "course_confirmed" | "general_window" | "unknown";
   generalWindowOpensAt?: string;
   generalWindowClosesAt?: string;
@@ -68,7 +73,7 @@ export function enrollmentState(metadata: TrainingMetadata | null, sourceStatus 
     if (day.format(now) === day.format(new Date(opens))) return "ABRE_HOY";
   }
   // A tentative calendar is a forecast, not proof that registration actually opened.
-  if (metadata.dateStatus === "tentative") return "SIN_FECHA_CONFIRMADA";
+  if (metadata.dateStatus === "tentative") return /abiert/i.test(sourceStatus) && Number.isFinite(closes) && time <= closes ? "ABIERTA" : "SIN_FECHA_CONFIRMADA";
   if (Number.isFinite(closes) && time <= closes && (Number.isFinite(opens) || /abiert/i.test(sourceStatus))) return "ABIERTA";
   if (Number.isFinite(opens) && /abiert/i.test(sourceStatus)) return "ABIERTA";
   return "SIN_FECHA_CONFIRMADA";
