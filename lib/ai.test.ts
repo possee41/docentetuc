@@ -221,7 +221,7 @@ test("la procedencia oficial conserva nombre y enlace HTTPS, pero no expone el I
   assert.equal(result.sources[0]?.sourceType, "official");
   assert.equal(result.sources[0]?.url, "https://sime.educaciontuc.gov.ar/Vacantes/Detalle/1");
   assert.doesNotMatch(result.context, /internal-publication-id-should-not-leak/);
-  assert.deepEqual(publicAISources(result.sources), [{ title: "Designaciones de Filosofía", source: "SIME", sourceType: "official", url: "https://sime.educaciontuc.gov.ar/Vacantes/Detalle/1" }]);
+  assert.deepEqual(publicAISources(result.sources), [{ title: "Designaciones de Filosofía", source: "SIME", sourceType: "official", url: "https://sime.educaciontuc.gov.ar/Vacantes/Detalle/1", updatedAt: result.sources[0].updatedAt }]);
   assert.deepEqual(safeAISourceUrl("javascript:alert(1)"), "");
   assert.deepEqual(safeAISourceUrl("http://sime.educaciontuc.gov.ar/"), "");
 });

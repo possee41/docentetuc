@@ -4,15 +4,16 @@ import { usefulMetadata } from "./useful-information.ts";
 import type { DesignationTracking, Profile, Publication } from "./types.ts";
 
 export type AIConfig = { provider: string; apiKey: string; model: string };
-export type AISource = { id: string; title: string; source: string; sourceType: "official" | "internal" | "complementary"; url: string; updatedAt: string; status: string };
-export type PublicAISource = Pick<AISource, "title" | "source" | "sourceType" | "url">;
+export type AISource = { id: string; title: string; source: string; sourceType: "official" | "internal" | "complementary" | "web_official" | "web_external"; url: string; updatedAt: string; status: string };
+export type PublicAISource = Pick<AISource, "title" | "source" | "sourceType" | "url"> & { checkedAt?: string; updatedAt?: string };
 export type AIIntent = "capacitaciones" | "inscripcion" | "vacantes" | "designaciones" | "llamados" | "agenda" | "perfil" | "novedades" | "documentos" | "junta" | "licencias" | "inasistencia" | "titulos" | "informacion" | "app" | "busqueda_general" | "conversacion_general";
 export type AIContextInput = { type: string; id?: string; title?: string };
 export type AIAgendaEntry = { id: string; title: string; startsAt: string; category?: string; recurrence?: string; updatedAt?: string; kind: "publication" | "manual" };
 export type AISourceIssue = { source: string; state: "unavailable" | "unverified" };
 export type AISourceHealthRow = { source: string; error?: string | null; sync_status?: string | null };
 export type AIContextOptions = { profile?: Profile; agendaIds?: string[]; agendaEntries?: AIAgendaEntry[]; designations?: DesignationTracking[]; context?: AIContextInput; sourceFailures?: string[]; sourceNotVerified?: string[]; now?: Date };
-export interface AIProvider { generate(input: string, instructions: string): Promise<string>; }
+export type GroundedAnswer = { answer: string; sources: PublicAISource[]; searchSuggestions: string; checkedAt: string };
+export interface AIProvider { generate(input: string, instructions: string): Promise<string>; generateGrounded?(input: string, instructions: string): Promise<GroundedAnswer>; }
 
 export function aiResponseCacheKey(userId: string, intent: AIIntent, message: string, latestPublicationUpdate: string) {
   return `${userId}:${intent}:${message.toLocaleLowerCase("es")}:${latestPublicationUpdate || "empty"}`;
@@ -27,6 +28,7 @@ const sourcesForIntent: Partial<Record<AIIntent, string[]>> = {
 };
 
 function relevantSourcesForQuestion(intent: AIIntent, question: string) {
+  if (intent === "designaciones" && /actos? de designaci[oó]n/i.test(question)) return ["SIME", "Comunicados"];
   const requestedBoardSource = /comunicad/i.test(question) ? "Comunicados" : /padr[oó]n/i.test(question) ? "Padrones" : /resoluci[oó]n/i.test(question) ? "Resoluciones" : null;
   const relevant = intent === "junta" && requestedBoardSource ? [requestedBoardSource] : sourcesForIntent[intent] || [];
   // A generic information intent does not make the SIME vacancy feed relevant to CENDIE, salaries, etc.
@@ -63,7 +65,7 @@ export function safeAISourceUrl(value: string | null | undefined): string {
 }
 
 export function publicAISources(sources: AISource[]): PublicAISource[] {
-  return sources.map(({ title, source, sourceType, url }) => ({ title, source, sourceType, url }));
+  return sources.map(({ title, source, sourceType, url, updatedAt }) => ({ title, source, sourceType, url, ...(Number.isFinite(Date.parse(updatedAt)) ? { updatedAt } : {}) }));
 }
 
 export class AIProviderError extends Error {
@@ -100,6 +102,26 @@ export class GeminiProvider implements AIProvider {
     const text = first?.content?.parts?.map((part) => part.text || "").join("\n").trim();
     if (!text) throw new AIProviderError("El proveedor no devolvió texto.", 502);
     return text;
+  }
+  async generateGrounded(input: string, instructions: string): Promise<GroundedAnswer> {
+    const data = await request(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}:generateContent`, {
+      method: "POST",
+      headers: { "x-goog-api-key": this.apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: instructions }] }, contents: [{ role: "user", parts: [{ text: input }] }], tools: [{ google_search: {} }], generationConfig: { maxOutputTokens: 700, temperature: 0.2 } }),
+    });
+    const first = (Array.isArray(data.candidates) ? data.candidates[0] : undefined) as { content?: { parts?: { text?: string }[] }; groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[]; searchEntryPoint?: { renderedContent?: string } } } | undefined;
+    const answer = first?.content?.parts?.map((part) => part.text || "").join("\n").trim() || "";
+    const checkedAt = new Date().toISOString();
+    const suggestions = first?.groundingMetadata?.searchEntryPoint?.renderedContent || "";
+    // Google requires the associated Search Suggestions to accompany grounded results.
+    const { safeSearchSuggestionsMarkup, webSourceType } = await import("./ai-web.ts");
+    if (!answer || !safeSearchSuggestionsMarkup(suggestions)) throw new AIProviderError("La búsqueda no devolvió evidencia verificable.", 502);
+    const sources = (first?.groundingMetadata?.groundingChunks || []).flatMap((chunk) => {
+      const title = chunk.web?.title?.trim() || "", url = safeAISourceUrl(chunk.web?.uri);
+      return title && url ? [{ title, source: title, sourceType: webSourceType(title), url, checkedAt }] : [];
+    }).filter((source, index, all) => all.findIndex((other) => other.url === source.url) === index).slice(0, 5);
+    if (!sources.length) throw new AIProviderError("La búsqueda no devolvió fuentes verificables.", 502);
+    return { answer, sources, searchSuggestions: suggestions, checkedAt };
   }
 }
 
@@ -149,7 +171,8 @@ export function detectIntent(question: string): AIIntent {
 
 function requestedDay(question: string, now: Date) {
   const query = normalize(question), [year, month, day] = dayKey(now).split("-").map(Number), date = new Date(Date.UTC(year, month - 1, day, 12));
-  if (/\bmanana\b/.test(query)) date.setUTCDate(date.getUTCDate() + 1);
+  if (/\bpasado manana\b/.test(query)) date.setUTCDate(date.getUTCDate() + 2);
+  else if (/\bmanana\b/.test(query)) date.setUTCDate(date.getUTCDate() + 1);
   else if (!/\bhoy\b/.test(query)) {
     const weekdays = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
     const wanted = weekdays.findIndex((day) => new RegExp(`\\b${day}\\b`).test(query));
@@ -177,6 +200,11 @@ function eventOccursOn(entry: AIAgendaEntry, targetDay: string) {
 function relevantAgendaEntries(question: string, entries: AIAgendaEntry[], now: Date) {
   const query = normalize(question), requested = requestedDay(question, now);
   if (requested) return entries.filter((entry) => eventOccursOn(entry, requested));
+  if (/\bla semana que viene\b/.test(query)) {
+    const [year, month, day] = dayKey(now).split("-").map(Number), start = new Date(Date.UTC(year, month - 1, day, 12));
+    start.setUTCDate(start.getUTCDate() + ((8 - start.getUTCDay()) % 7 || 7));
+    return entries.filter((entry) => Array.from({ length: 7 }, (_, offset) => eventOccursOn(entry, dayKey(new Date(start.getTime() + offset * 86_400_000)))).some(Boolean));
+  }
   if (/\b(esta semana|durante la semana)\b/.test(query)) {
     const [year, month, day] = dayKey(now).split("-").map(Number);
     return entries.filter((entry) => Array.from({ length: 7 }, (_, offset) => eventOccursOn(entry, dayKey(new Date(Date.UTC(year, month - 1, day + offset, 12))))).some(Boolean));
@@ -188,14 +216,14 @@ export function retrievePublications(question: string, publications: Publication
   const query = normalize(question), words = tokens(question), agendaEntries = options.agendaEntries || (options.agendaIds || []).map((id) => ({ id, title: "", startsAt: "", kind: "publication" as const })), agenda = new Set(agendaEntries.map((entry) => entry.id)), agendaEntryMap = new Map(agendaEntries.map((entry) => [entry.id, entry])), intent = detectIntent(question);
   if (intent === "conversacion_general") return [];
   if (/\b(no existe|inexistente|fictici|inventad)/.test(query)) return [];
-  const wantsTraining = ["capacitaciones", "inscripcion"].includes(intent), wantsVacancy = ["vacantes", "designaciones"].includes(intent);
+  const wantsTraining = ["capacitaciones", "inscripcion"].includes(intent), wantsActs = /actos? de designaci[oó]n/i.test(question), wantsVacancy = ["vacantes", "designaciones"].includes(intent) && !wantsActs;
   const trainingSource = wantsTraining && /\bfdci\b/.test(query) ? "Capacitación Docente"
     : wantsTraining && /\b(infod|aula[s-]?tic)\b/.test(query) ? "INFoD / AulaS-TIC"
     : wantsTraining && /\b(cenet|inet)\b/.test(query) ? "CeNET / INET" : null;
   const confirmedPreinscription = wantsTraining && /preinscrip/.test(query) && /confirmad/.test(query) && /proxim/.test(query);
   const asksOpenTraining = wantsTraining && /\b(inscrip\w*|preinscrip\w*)\b/.test(query) && /\b(abiert\w*)\b/.test(query);
   const asksUpcomingTraining = wantsTraining && /\b(proxim\w*|abre\w*|esta semana)\b/.test(query);
-  const wantsAgenda = intent === "agenda", now = options.now || new Date(), requested = wantsAgenda ? requestedDay(question, now) : null;
+  const wantsAgenda = intent === "agenda", now = options.now || new Date(), requested = wantsAgenda || wantsActs ? requestedDay(question, now) : null;
   const wantsMatches = wantsPersonalizedQuestion(query);
   const configuredProfile = options.profile ? matchProfile(options.profile) : null;
   return publications.map((item) => {
@@ -220,6 +248,7 @@ export function retrievePublications(question: string, publications: Publication
       if (!training?.preinscripcionFechaConfirmada || !Number.isFinite(opening) || opening <= now.getTime()) return { item, score: -1 };
     }
     if (wantsVacancy && !wantsTraining && item.kind !== "vacante") return { item, score: -1 };
+    if (wantsActs && (item.kind !== "junta" || !/actos? de designacion/.test(normalize(item.category)))) return { item, score: -1 };
     if (intent === "llamados" && (item.kind !== "junta" || !normalize(item.category).includes("llamado"))) return { item, score: -1 };
     if (["documentos", "junta"].includes(intent) && item.kind !== "junta") return { item, score: -1 };
     if (intent === "junta" && /comunicad/.test(query) && !normalize(item.category).includes("comunicad")) return { item, score: -1 };
