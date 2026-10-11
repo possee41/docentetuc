@@ -26,7 +26,7 @@ import { isGeneralNotice } from "@/lib/notice-classification";
 import type { MatchResult } from "@/lib/matching";
 import { safeDate } from "@/lib/safe-date";
 import { enrollmentState, openingCountdown, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
-import { calendarDayDistance, compareHomePriority, homePriority, registrationState } from "@/lib/home-dashboard";
+import { calendarDayDistance, compareHomePriority, homePriority, homeTrainingEnrollmentRank, registrationState } from "@/lib/home-dashboard";
 import { DESIGNATION_STATUSES, designationFacts } from "@/lib/designations";
 import { circuitMatches, inferCircuit, TUCUMAN_CIRCUITS } from "@/lib/circuits";
 import { OFFICIAL_CHARACTERS, OFFICIAL_JUNTAS, matchesCharacter, matchesJunta, normalizeJunta, normalizeSearchText } from "@/lib/juntas";
@@ -46,6 +46,7 @@ import { deviceRequestHeaders } from "@/lib/device-user";
 import { sectionUrl, viewFromSection } from "@/lib/app-navigation";
 import { boardItems } from "@/lib/board-view";
 import type { BoardView } from "@/lib/board-view";
+import { groupPadrones, padronDocuments, padronSelection, padronTitleFacts, padronYear } from "@/lib/padron-documents";
 import { eventDate as officialEventDate, hasOfficialTopic, officialDateLabel, officialDestination, officialLifecycle, officialMetadata, readMetadata } from "@/lib/official-publication";
 import { officialSavedLookup, resolveOfficialAlias } from "@/lib/official-reconciliation";
 import { OfficialPublicationDetails, OfficialPublicationSummary } from "@/components/official-publication-details";
@@ -76,7 +77,7 @@ const publicationCircuitMatch = (item: Publication, circuit: string) => {
   const inference = inferCircuit({ explicit: direct, locality: item.location || item.source_circuit_raw || "" });
   return circuitMatches(inference, [circuit]) === true;
 };
-const publicationLabel = (item: Publication) => officialMetadata(item)?.entity === "event" ? "ACTO DE DESIGNACIÓN" : hasOfficialTopic(item, "LLAMADO_ABIERTO") ? "LLAMADO ABIERTO" : hasOfficialTopic(item, "INSCRIPCION_SIME") ? "INSCRIPCIÓN SIME" : item.kind === "capacitacion" ? "CAPACITACIÓN" : item.category.toUpperCase();
+const publicationLabel = (item: Publication) => officialMetadata(item)?.entity === "event" ? "ACTO DE DESIGNACIÓN" : hasOfficialTopic(item, "LLAMADO_ABIERTO") ? "LLAMADO ABIERTO" : hasOfficialTopic(item, "INSCRIPCION_SIME") ? "INSCRIPCIÓN SIME" : hasOfficialTopic(item, "CLASIFICACION_PENDIENTE") ? "PROCEDIMIENTO PENDIENTE DE VERIFICAR" : item.kind === "capacitacion" ? "CAPACITACIÓN" : item.category.toUpperCase();
 const publicationSearchText = (item: Publication) => [item.title, item.summary, item.level, item.area, item.junta, item.location, item.character, item.category, item.source, item.metadata, item.circuit, item.source_circuit_raw, item.kind === "vacante" ? "designaciones vacantes" : "", Date.now() - new Date(`${item.updated_at}Z`).getTime() < 30 * 864e5 ? "novedades" : ""].join(" ");
 const simeCodeForPublication = (item?: Pick<Publication, "metadata"> | null) => {
   if (!item?.metadata) return "";
@@ -116,7 +117,7 @@ const enrollmentLabel = (item: Publication, now = new Date()) => {
   const state = enrollmentForUI(item, now), tentative = parseTrainingMetadata(item.metadata)?.dateStatus === "tentative";
   return state === "PROXIMAMENTE" ? tentative ? "Preinscripción prevista · fecha tentativa" : "Próximamente"
     : state === "ABRE_HOY" ? tentative ? "Apertura prevista hoy · confirmar en fuente" : "Abre hoy"
-    : state === "ABIERTA" ? "Inscripción abierta" : state === "CERRADA" ? "Inscripción cerrada" : "Fecha de inscripción no confirmada";
+    : state === "ABIERTA" ? "Inscripción abierta" : state === "CERRADA" ? item.status === "en curso" ? "En cursado — inscripción cerrada" : item.status === "finalizada" ? "Finalizado — inscripción cerrada" : "Inscripción cerrada" : "Fecha de inscripción no confirmada";
 };
 const lifecycleLabel = (status: ReturnType<typeof publicationLifecycle>) => ({ ACTIVE: "Vigente", UPCOMING: "Próxima apertura", CLOSED: "Cerrada", EXPIRED: "Vencida", REMOVED_FROM_SOURCE: "Ya no aparece en la fuente", UNKNOWN: "Estado sin confirmar" })[status];
 
@@ -131,9 +132,11 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const [installationSecurity, setInstallationSecurity] = useState<InstallationSecurity>("unavailable");
   const [installationBootstrapComplete, setInstallationBootstrapComplete] = useState(false);
   const [view, setViewState] = useState<View>(() => viewFromSection(initialSection));
+  const viewRef = useRef(view);
+  useEffect(() => { viewRef.current = view; }, [view]);
   const [query, setQuery] = useState("");
   const [designationQuery, setDesignationQuery] = useState("");
-  const [filter, setFilter] = useState("para-mi");
+  const [filter, setFilter] = useState(() => viewFromSection(initialSection) === "capacitaciones" ? "todas" : "para-mi");
   const [juntaFilter, setJuntaFilter] = useState<(typeof OFFICIAL_JUNTAS)[number]["id"] | "todas">("todas");
   const [designationCircuit, setDesignationCircuit] = useState("todos");
   const [character, setCharacter] = useState("todos");
@@ -168,6 +171,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const [navigationRestored, setNavigationRestored] = useState(false);
   const setView = useCallback((target: View) => {
     if (target === "comunidad") { router.push("/comunidad"); return; }
+    if (target === "capacitaciones" && viewRef.current !== "capacitaciones") setFilter("todas");
     const url = sectionUrl(target);
     if (`${location.pathname}${location.search}${location.hash}` !== url) {
       history.pushState({ ...history.state, docentetuc: undefined, publicationId: undefined, usefulCategory: undefined }, "", url);
@@ -180,7 +184,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     if (saved?.section !== section) return;
     setQuery(text(saved.query));
     setDesignationQuery(text(saved.designationQuery));
-    setFilter(text(saved.filter, ["informacion", "junta", "padrones", "comunicados", "actos", "llamados"].includes(section) ? "todas" : "para-mi"));
+    setFilter(text(saved.filter, ["capacitaciones", "informacion", "junta", "padrones", "comunicados", "actos", "llamados"].includes(section) ? "todas" : "para-mi"));
     setJuntaFilter(text(saved.juntaFilter, "todas") as typeof juntaFilter);
     setDesignationCircuit(text(saved.designationCircuit, "todos"));
     setCharacter(text(saved.character, "todos"));
@@ -366,8 +370,8 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
 
   function filteredPublications(search = query) {
     let items = (data?.publications || []).filter(item => !officialMetadata(item)?.canonicalId || resolveOfficialAlias(item, data?.publications || []).id === item.id);
-    if (view === "vacantes") items = items.filter((item) => hasOfficialTopic(item, "INSCRIPCION_SIME"));
-    if (view === "capacitaciones") items = items.filter((item) => item.kind === "capacitacion" && (filter === "finalizadas" || enrollmentForUI(item) !== "CERRADA"));
+    if (view === "vacantes") items = items.filter((item) => hasOfficialTopic(item, "INSCRIPCION_SIME") || item.source === "SIME" && hasOfficialTopic(item, "CLASIFICACION_PENDIENTE"));
+    if (view === "capacitaciones") items = items.filter((item) => item.kind === "capacitacion");
     if (view === "junta") items = items.filter((item) => item.kind === "junta");
     if (view === "informacion") items = items.filter((item) => item.kind === "informacion");
     if (view === "guardados") items = items.filter((item) => savedMap.has(item.id));
@@ -512,12 +516,14 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
           : view === "agenda" ? <Agenda publications={data?.publications || []} savedMap={savedMap} manualEvents={data?.manualEvents || []} onOpen={openPublication} onNewEvent={(date) => { setManualEventDate(date || ""); setManualEvent("new"); }} onEditEvent={setManualEvent} />
         : view === "informacion" ? <InformationHub items={items} query={query} onQuery={setQuery} savedMap={savedMap} onOpen={openPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAskAI={() => openAI({ type: "informacion", title: viewTitles.informacion[0] })} />
         : view === "junta" ? <OfficialConsultations onView={navigateToView} />
-        : ["padrones", "comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection view={view as BoardView} publications={data?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
+        : view === "padrones" ? <PadronSection query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} />
+        : ["comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection view={view as BoardView} publications={data?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
             <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void syncSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
             <Filters filter={filter} setFilter={setFilter} junta={juntaFilter} setJunta={setJuntaFilter} character={character} setCharacter={setCharacter} query={designationQuery} setQuery={setDesignationQuery} kind={view} date={trainingDate} setDate={setTrainingDate} source={trainingSource} setSource={setTrainingSource} compatibility={trainingCompatibility} setCompatibility={setTrainingCompatibility} sort={trainingSort} setSort={setTrainingSort} hasTrainingTerritoryData={hasTrainingTerritoryData} circuit={view === "vacantes" ? designationCircuit : trainingCircuit} setCircuit={view === "vacantes" ? setDesignationCircuit : setTrainingCircuit} />
+            {view === "vacantes" && items.some(item => hasOfficialTopic(item, "CLASIFICACION_PENDIENTE")) && <p role="note" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Los registros con «Procedimiento pendiente de verificar» no están confirmados como inscripciones online. Consultá el detalle oficial antes de actuar.</p>}
              {view === "vacantes" && !loading && items.length === 0 && (designationAvailability.profileRequired || designationAvailability.sourceUnavailable || designationAvailability.sourceVerifiedEmpty)
                ? <DesignationEmptyState {...designationAvailability} onCompleteProfile={() => setView("perfil")} />
-               : <PublicationList items={items} loading={loading} savedMap={savedMap} reminderMap={reminderMap} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} emptyContext={view === "capacitaciones" ? trainingSource === "platform:fdci" ? "FDCI" : trainingSource === "platform:infod" ? "INFoD" : trainingSource === "platform:cenet" ? "CeNET / INET" : "las plataformas seleccionadas" : "esta búsqueda"} onClearFilters={() => { setTrainingSource("todas"); setTrainingDate(""); setTrainingCircuit("todos"); setDesignationCircuit("todos"); setTrainingCompatibility("todas"); setJuntaFilter("todas"); setCharacter("todos"); setFilter(view === "capacitaciones" ? "para-mi" : "todas"); setDesignationQuery(""); setQuery(""); }} />}
+               : <PublicationList items={items} loading={loading} savedMap={savedMap} reminderMap={reminderMap} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} emptyContext={view === "capacitaciones" ? trainingSource === "platform:fdci" ? "FDCI" : trainingSource === "platform:infod" ? "INFoD" : trainingSource === "platform:cenet" ? "CeNET / INET" : "las plataformas seleccionadas" : "esta búsqueda"} onClearFilters={() => { setTrainingSource("todas"); setTrainingDate(""); setTrainingCircuit("todos"); setDesignationCircuit("todos"); setTrainingCompatibility("todas"); setJuntaFilter("todas"); setCharacter("todos"); setFilter("todas"); setDesignationQuery(""); setQuery(""); }} />}
           </>}
         </div>
 
@@ -578,6 +584,69 @@ function OfficialConsultations({ onView }: { onView: (view: View) => void }) {
   </section>;
 }
 
+function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; onOpen: (item: Publication) => void }) {
+  const [rows, setRows] = useState<Publication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const [tab, setTab] = useState<"current" | "history" | "undetermined">("current");
+  useEffect(() => {
+    const controller = new AbortController();
+    const load = async () => {
+      setLoading(true); setError("");
+      try {
+        const found: Publication[] = [];
+        let cursor = "";
+        // ponytail: 20k-document safety cap; add server-side year cursors if the corpus outgrows it.
+        for (let page = 0; page < 100; page++) {
+          const response = await fetch(`/api/boards/padrones?cursor=${encodeURIComponent(cursor)}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
+          if (!response.ok) throw new Error("No pudimos consultar los padrones.");
+          const result = await response.json() as { items: Publication[]; nextCursor: string | null };
+          if (!Array.isArray(result.items) || result.nextCursor && result.nextCursor === cursor) throw new Error("La consulta de padrones devolvió una página inválida.");
+          found.push(...result.items);
+          if (!result.nextCursor) { if (!controller.signal.aborted) setRows(found); return; }
+          cursor = result.nextCursor;
+        }
+        throw new Error("La consulta de padrones requiere más páginas de las previstas.");
+      } catch {
+        if (!controller.signal.aborted) setError("No pudimos consultar todos los padrones en este momento.");
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
+    void load();
+    return () => controller.abort();
+  }, [retry]);
+  const selection = padronSelection(padronDocuments(rows));
+  const chosen = tab === "history" ? selection.history : tab === "undetermined" ? selection.undetermined : selection.current;
+  const visible = chosen.filter(item => (junta === "todas" || matchesJunta(item, junta)) &&
+    (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query))));
+  const groups = groupPadrones(visible);
+  return <section className="space-y-4 pb-16 md:pb-0">
+    <VisualSectionBanner kind="padrones" title={`Padrones ${selection.year}`} description={selection.year < selection.currentYear ? `Último padrón disponible: ${selection.year}` : "Listados y puntajes oficiales por Junta"} />
+    <div className="flex flex-wrap gap-2" role="group" aria-label="Período de padrones">
+      {([["current", `Padrones ${selection.year}`], ["history", "Historial"], ["undetermined", "Año no determinado"]] as const).map(([key, label]) =>
+        <Button key={key} variant={tab === key ? "default" : "outline"} onClick={() => setTab(key)} className="min-h-10 rounded-xl" aria-pressed={tab === key}>{label}</Button>)}
+    </div>
+    <div className="max-w-lg"><Label htmlFor="padron-junta">Junta</Label><Select value={junta} onValueChange={(value) => setJunta((value || "todas") as typeof junta)}><SelectTrigger id="padron-junta" className="mt-1 h-11 rounded-xl border-[#c8e1f1] bg-white"><SelectValue placeholder="Todas las juntas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map(item => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
+    <p className="rounded-xl border border-[#c8e1f1] bg-white p-3 text-sm text-[#315d7a]">Solo se asigna un año cuando el título oficial identifica el padrón o su vigencia. La fecha de descarga no determina el año.</p>
+    {loading ? <p role="status" className="rounded-xl bg-white p-4">Consultando padrones publicados…</p> : error ? <div role="alert" className="rounded-xl border border-amber-200 bg-white p-4"><p>{error}</p><Button variant="outline" onClick={() => setRetry(value => value + 1)} className="mt-3 min-h-10 rounded-xl">Reintentar</Button></div>
+      : groups.length ? <div className="grid gap-3 md:grid-cols-2">{groups.map(group => {
+        const item = group[0], facts = padronTitleFacts(item.title);
+        return <Card as="article" key={item.id} className="rounded-2xl p-4">
+          <p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"} · {facts.type} · {padronYear(item) ?? "Año no determinado"}</p>
+          <h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2>
+          {facts.subject && <p className="mt-1 text-sm text-[var(--text-secondary)]">{facts.subject}</p>}
+          {group.length > 1 && <p className="mt-1 text-xs text-[var(--text-secondary)]">Enlaces relacionados por título; comprobá cada documento en la fuente.</p>}
+          <div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button>
+            {group.map((source, index) => <a key={source.id} href={source.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial{group.length > 1 ? ` ${index + 1}` : ""} <ExternalLink className="size-4" /></a>)}
+          </div>
+        </Card>;
+      })}</div> : <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-white p-5">No hay padrones verificados para esta selección. Consultá el historial o el portal oficial.</div>}
+    <a href="https://padrones.educaciontuc.gov.ar/" target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-[#075f9b] underline">Consultar portal oficial de Juntas <ExternalLink className="size-4" /></a>
+  </section>;
+}
+
 function OfficialBoardSection({ view, publications, query, junta, setJunta, onOpen }: { view: BoardView; publications: Publication[]; query: string; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; onOpen: (item: Publication) => void }) {
   const [title, description] = viewTitles[view];
   const matchesBoard = (item: Publication) => junta === "todas" || matchesJunta(item, junta) || (readMetadata(item.metadata).portalPlacements as { junta: string }[] | undefined)?.some(p => matchesJunta({ junta: p.junta, level: "" }, junta));
@@ -627,12 +696,15 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const profileReady = Boolean(profile && (profile.levels.length || profile.boards.length) && (profile.areas.length || profile.subjects.length || profile.roles.length || profile.circuits.length || profile.training_interests.length));
   const upcoming = publications.filter((item) => {
     const metadata = parseTrainingMetadata(item.metadata);
-    return item.kind === "capacitacion" && ["confirmed", "course_confirmed"].includes(String(metadata?.dateStatus || "").toLowerCase())
+    return item.kind === "capacitacion" && (["confirmed", "course_confirmed"].includes(String(metadata?.dateStatus || "").toLowerCase()) || (metadata?.dateStatus === "tentative" && item.status === "inscripción abierta"))
       && currentForHome(item) && ["today", "tomorrow", "two-three", "four-seven", "eight-fourteen", "open"].includes(registrationState(metadata?.registrationOpensAt, metadata?.registrationClosesAt, now));
   }).sort((a, b) => {
-    const aOpen = Date.parse(parseTrainingMetadata(a.metadata)?.registrationOpensAt || ""), bOpen = Date.parse(parseTrainingMetadata(b.metadata)?.registrationOpensAt || "");
+    const aDates = parseTrainingMetadata(a.metadata), bDates = parseTrainingMetadata(b.metadata);
+    const aRank = homeTrainingEnrollmentRank(aDates?.registrationOpensAt, aDates?.registrationClosesAt, now);
+    const bRank = homeTrainingEnrollmentRank(bDates?.registrationOpensAt, bDates?.registrationClosesAt, now);
+    if (aRank !== bRank) return aRank - bRank;
+    const aOpen = Date.parse(aDates?.registrationOpensAt || ""), bOpen = Date.parse(bDates?.registrationOpensAt || "");
     const aFuture = Number.isFinite(aOpen) && aOpen > now.getTime(), bFuture = Number.isFinite(bOpen) && bOpen > now.getTime();
-    if (aFuture !== bFuture) return aFuture ? -1 : 1;
     if (aFuture && bFuture && a.source === "Capacitación Docente" && b.source === "Capacitación Docente") return aOpen - bOpen;
     return Number(relevant(b)) - Number(relevant(a)) || compare(a, b);
   });
@@ -770,18 +842,18 @@ function PageHeader({ view, count, filter = "todas", query = "", syncing = false
   const isComunicados = filter === "comunicados" || (filter !== "nuevas" && /comunicad/.test(normalize(query)));
   const isNewsTab = view === "junta" && (isNovedades || isComunicados);
   const title = isNewsTab ? (isNovedades ? "Novedades" : "Comunicados") : defaultTitle;
-  const action = <div className="flex flex-wrap gap-2">{onAskAI && <Button onClick={onAskAI} className="rounded-xl bg-[#0878be] text-[var(--text-on-accent)]"><Sparkles className="size-4" />Preguntar a IA</Button>}{onSync && <Button onClick={onSync} disabled={syncing} variant="outline" className="dt-refresh-button rounded-xl"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />Actualizar</Button>}</div>;
+  const action = view === "vacantes" || view === "capacitaciones" ? undefined : <div className="flex flex-wrap gap-2">{onAskAI && <Button onClick={onAskAI} className="rounded-xl bg-[#0878be] text-[var(--text-on-accent)]"><Sparkles className="size-4" />Preguntar a IA</Button>}{onSync && <Button onClick={onSync} disabled={syncing} variant="outline" className="dt-refresh-button rounded-xl"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />Actualizar</Button>}</div>;
   const kind = view === "vacantes" || view === "capacitaciones" ? view : view === "junta" ? (isNewsTab ? "novedades" : "padrones") : "informacion";
   return <VisualSectionBanner kind={kind} title={title} description={view === "perfil" ? subtitle : `${subtitle} · ${count} resultados`} action={action} />;
 }
 
 function Filters({ filter, setFilter: onFilterChange, junta, setJunta, character, setCharacter, query, setQuery, kind, date, setDate, source, setSource: onSourceChange, compatibility, setCompatibility, sort, setSort, hasTrainingTerritoryData, circuit, setCircuit }: { filter: string; setFilter: (value: string) => void; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; character: string; setCharacter: (value: string) => void; query: string; setQuery: (value: string) => void; kind: View; date: string; setDate: (value: string) => void; source: string; setSource: (value: string) => void; compatibility: string; setCompatibility: (value: string) => void; sort: string; setSort: (value: string) => void; hasTrainingTerritoryData: boolean; circuit: string; setCircuit: (value: string) => void }) {
   const setFilter = (value: string) => onFilterChange(value);
-  const setSource = (value: string) => onSourceChange(value);
-  const activeFilterCount = kind === "capacitaciones" ? Number(source !== "todas") + Number(filter !== "para-mi") + Number(character !== "todos") + Number(date !== "") + Number(compatibility !== "todas") + Number(circuit !== "todos") : Number(junta !== "todas") + Number(character !== "todos") + Number(kind === "vacantes" && circuit !== "todos") + Number(query.trim() !== "");
-  const clearTrainingFilters = () => { setSource("todas"); setCharacter("todos"); setDate(""); setCompatibility("todas"); setCircuit("todos"); setFilter("para-mi"); };
+  const setSource = (value: string) => { onSourceChange(value); if (kind === "capacitaciones") setFilter("todas"); };
+  const activeFilterCount = kind === "capacitaciones" ? Number(source !== "todas") + Number(filter !== "todas") + Number(character !== "todos") + Number(date !== "") + Number(compatibility !== "todas") + Number(circuit !== "todos") : Number(junta !== "todas") + Number(character !== "todos") + Number(kind === "vacantes" && circuit !== "todos") + Number(query.trim() !== "");
+  const clearTrainingFilters = () => { setSource("todas"); setCharacter("todos"); setDate(""); setCompatibility("todas"); setCircuit("todos"); setFilter("todas"); };
   const clearDesignationFilters = () => { setJunta("todas"); setCharacter("todos"); setCircuit("todos"); setQuery(""); setFilter("para-mi"); };
-  const tabs = kind === "capacitaciones" ? [["para-mi", "⭐ Para mí"], ["proximamente", "Próximas"], ["abiertas", "Abiertas"]] as const : kind === "junta" ? [["para-mi", "Para mí"], ["todas", "Todo"], ["llamados", "Llamados abiertos"], ["padrones", "Padrones"], ["comunicados", "Comunicados"], ["nuevas", "Novedades"]] as const : kind === "vacantes" ? [["para-mi", "⭐ Para mí"], ["todas", "Todas"], ["finalizadas", "Finalizadas"]] as const : [["para-mi", "Para mí"], ["todas", "Todas"]] as const;
+  const tabs = kind === "capacitaciones" ? [["todas", "Todas"], ["para-mi", "⭐ Para mí"], ["proximamente", "Próximas"], ["abiertas", "Abiertas"]] as const : kind === "junta" ? [["para-mi", "Para mí"], ["todas", "Todo"], ["llamados", "Llamados abiertos"], ["padrones", "Padrones"], ["comunicados", "Comunicados"], ["nuevas", "Novedades"]] as const : kind === "vacantes" ? [["para-mi", "⭐ Para mí"], ["todas", "Todas"], ["finalizadas", "Finalizadas"]] as const : [["para-mi", "Para mí"], ["todas", "Todas"]] as const;
   return <section className="mb-6 rounded-2xl border border-[#c8e1f1] bg-white p-3 shadow-sm">
     {kind === "capacitaciones" && <><p className="mb-1 text-xs font-black uppercase tracking-wide text-[#52708c]">Plataformas</p><div className="flex flex-wrap gap-2 pb-1">{[["platform:fdci", "FDCI"], ["platform:infod", "INFoD"], ["platform:cenet", "CeNET"], ["todas", "Ver todas"]].map(([id, label]) => <FilterChip key={id} onClick={() => setSource(id)} selected={source === id} className="min-h-10 px-4 text-sm font-bold">{label}</FilterChip>)}</div>{source !== "todas" && <p className="mt-1 text-xs font-semibold text-[#315d7a]">{source === "platform:fdci" ? "FDCI" : source === "platform:infod" ? "INFoD / AulaS-TIC" : "CeNET / INET"} <button onClick={() => setSource("todas")} className="ml-1 underline">× Quitar filtro</button></p>}</>}
     <div className="mt-2 flex gap-2 overflow-x-auto border-t border-[#e3eff7] pt-2">{tabs.map(([id, label]) => <FilterChip key={id} onClick={() => setFilter(id)} selected={filter === id} className="min-h-9 shrink-0 px-3 text-xs font-bold">{label}</FilterChip>)}</div>
@@ -1215,11 +1287,11 @@ function PublicationSheet({ publication, saved, tracking, match, onClose, onAskA
     ["Circuito", publication.circuit && publication.circuit !== "UNKNOWN" ? `${publication.circuit}${publication.circuit_confidence != null ? ` · confianza ${publication.circuit_confidence}%` : ""}` : "No recuperado del listado sincronizado; verificar en ficha oficial SIME"],
     ["Turno", publication.shift || "No informado por SIME"], ["Localidad", publication.location || "No informada por SIME"], ["Estado en DocenteTuc", lifecycleLabel(lifecycle)]
   ] : publication.kind === "capacitacion" ? [
-    ["Estado de inscripción", enrollmentLabel(publication)], ["Fuente", training?.source || publication.source], ["Fecha publicada por la fuente", publication.source_published_at || null], ["Estado de fechas", training?.dateStatus === "tentative" ? "Tentativas según la fuente" : training?.dateStatus === "general_window" ? "Ventana general, no específica del curso" : training?.dateStatus === "course_confirmed" ? "Confirmadas para este curso" : training?.dateStatus === "confirmed" ? "Confirmadas por la fuente" : "Fecha no confirmada"], ["Comisión", training?.commissionId], ["Nivel", publication.level], ["Área", publication.area], ["Modalidad", publication.character],
+    ["Estado de inscripción", enrollmentLabel(publication)], ["Fuente", training?.source || publication.source], ["Propuesta / categoría", training?.category], ["Cohorte", training?.cohort], ["Duración", training?.duration], ["Fecha publicada por la fuente", publication.source_published_at || null], ["Estado de fechas", training?.dateStatus === "tentative" ? "Tentativas según la fuente" : training?.generalWindowOpensAt && training.registrationOpensAt === training.generalWindowOpensAt && training.registrationClosesAt === training.generalWindowClosesAt ? "Inscripción común de la convocatoria" : training?.dateStatus === "general_window" ? "Ventana general, no específica del curso" : training?.dateStatus === "course_confirmed" ? "Confirmadas para este curso" : training?.dateStatus === "confirmed" ? "Confirmadas por la fuente" : "Fecha no confirmada"], ["Comisión", training?.commissionId], ["Nivel", publication.level], ["Área", publication.area], ["Modalidad", publication.character],
     ["Inicio", publication.starts_at ? dateLabel(publication.starts_at) : null], ["Finalización", training?.courseEndsAt ? dateLabel(training.courseEndsAt) : null],
     ["Apertura de inscripción", training?.registrationOpensAt ? dateLabel(training.registrationOpensAt, true) : null], ["Cierre de inscripción", training?.registrationClosesAt ? dateLabel(training.registrationClosesAt, true) : null],
     ["Lugar", publication.location], ["Dirección", training?.address], ["Cupo", training?.capacity], ["Cupo de preinscripción", training?.preCapacity],
-    ["Carga horaria", training?.hours != null ? `${training.hours} horas cátedra` : null], ["Encuentros", training?.meetings], ["Institución", training?.organization],
+    ["Carga horaria", training?.certifiedHours || (training?.hours != null ? `${training.hours} horas cátedra` : null)], ["Encuentros", training?.meetings], ["Institución", training?.organization],
   ] : [["Estado en DocenteTuc", lifecycleLabel(lifecycle)], ["Estado informado por la fuente", publication.status], ["Publicada / actualizada por origen", publication.source_published_at || null], ["Circuito inferido", publication.circuit && publication.circuit !== "UNKNOWN" ? `${publication.circuit}${publication.circuit_confidence != null ? ` · confianza ${publication.circuit_confidence}%` : ""}` : "Desconocido"], ["Nivel / Junta", publication.level || publication.junta], ["Carácter / modalidad", publication.character], ["Turno", publication.shift], ["Lugar", publication.location], ["Cierre", publication.ends_at ? dateLabel(publication.ends_at, true) : null]] : [];
   const insufficient = Boolean(match && (match.confidence < 70 || (match.criteria.length > 0 && match.criteria.every((criterion) => !criterion.available))));
   const criteriaView = match?.criteria.map((criterion) => <div key={criterion.key} className="flex gap-3 text-sm">
@@ -1278,6 +1350,7 @@ function PublicationSheet({ publication, saved, tracking, match, onClose, onAskA
           {publication.kind === "vacante"
             ? <Button type="button" onClick={() => onExternal(publication)} className="min-h-12 w-full rounded-xl bg-[#17362d] px-5 text-white">{hasOfficialTopic(publication, "INSCRIPCION_SIME") ? "Inscribirme en sitio oficial" : "Ver procedimiento en fuente oficial"} <ExternalLink className="size-4" /></Button>
             : <a href={publication.official_url} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#17362d] px-5 text-center font-bold text-white">{publication.kind === "capacitacion" ? trainingState === "ABIERTA" && training?.commissionId ? "CONTINUAR INSCRIPCIÓN EN SITIO OFICIAL" : "Ver detalle en sitio oficial" : publication.kind === "informacion" && info?.access === "private" ? "Abrir sistema oficial" : "Abrir fuente oficial"} <ExternalLink className="size-4" /></a>}
+          {training?.registrationUrl && training.registrationUrl !== publication.official_url && <a href={training.registrationUrl} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#0878be] bg-white px-5 text-center font-bold text-[#0878be]">{trainingState === "ABIERTA" ? "Ingresar a inscripción oficial" : "Consultar inscripción en sitio oficial"} <ExternalLink className="size-4" /></a>}
           <p className="rounded-xl bg-[#fff3dd] p-4 text-sm leading-relaxed text-[#7d541b]">{publication.kind === "vacante" ? "DocenteTuc organiza información pública. Abrir el sitio oficial no marca una inscripción; el estado sólo cambia cuando vos lo confirmás." : publication.kind === "junta" ? "DocenteTuc muestra el contenido público recuperable. Para archivos PDF o carpetas sin texto exportable, la fuente oficial conserva el documento completo." : publication.kind === "informacion" ? `Información oficial verificada el ${info?.lastVerified || "día no informado"}. DocenteTuc nunca solicita credenciales de sistemas gubernamentales.` : "La inscripción y cualquier gestión se completan siempre en el sitio oficial."}</p>
         </div>}
       </SheetContent>
