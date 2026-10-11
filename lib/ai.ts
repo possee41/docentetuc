@@ -199,18 +199,24 @@ export function retrievePublications(question: string, publications: Publication
   const wantsMatches = wantsPersonalizedQuestion(query);
   const configuredProfile = options.profile ? matchProfile(options.profile) : null;
   return publications.map((item) => {
+    // An explicitly opened detail is authoritative for context selection. Keep
+    // that existing record available even when date/state filters would hide
+    // it from list-oriented questions; never bypass type/source/ownership
+    // checks, and never invent a record for an unknown id.
+    const isFocusedContext = item.id === options.context?.id;
     if (wantsAgenda && !agenda.has(item.id)) return { item, score: -1 };
     if (wantsTraining && item.kind !== "capacitacion") return { item, score: -1 };
     if (trainingSource && item.source !== trainingSource) return { item, score: -1 };
     const training = wantsTraining ? parseTrainingMetadata(item.metadata) : null;
     const trainingState = wantsTraining ? enrollmentState(training, item.source_status || item.status, item.normalized_status, now) : null;
     const opening = training?.registrationOpensAt ? Date.parse(training.registrationOpensAt) : Number.NaN;
-    if (wantsTraining && trainingState === "CERRADA") return { item, score: -1 };
-    if (asksOpenTraining && trainingState !== "ABIERTA") return { item, score: -1 };
-    if (asksUpcomingTraining && !Number.isFinite(opening)) return { item, score: -1 };
-    if (asksUpcomingTraining && !["PROXIMAMENTE", "ABRE_HOY"].includes(trainingState || "")) return { item, score: -1 };
-    if (/\besta semana\b/.test(query) && asksUpcomingTraining && (opening < now.getTime() || opening > now.getTime() + 7 * 86_400_000)) return { item, score: -1 };
-    if (confirmedPreinscription) {
+    const preserveForContext = isFocusedContext || wantsMatches;
+    if (!preserveForContext && wantsTraining && trainingState === "CERRADA") return { item, score: -1 };
+    if (!preserveForContext && asksOpenTraining && trainingState !== "ABIERTA") return { item, score: -1 };
+    if (!preserveForContext && asksUpcomingTraining && !Number.isFinite(opening)) return { item, score: -1 };
+    if (!preserveForContext && asksUpcomingTraining && !["PROXIMAMENTE", "ABRE_HOY"].includes(trainingState || "")) return { item, score: -1 };
+    if (!preserveForContext && /\besta semana\b/.test(query) && asksUpcomingTraining && (opening < now.getTime() || opening > now.getTime() + 7 * 86_400_000)) return { item, score: -1 };
+    if (!preserveForContext && confirmedPreinscription) {
       if (!training?.preinscripcionFechaConfirmada || !Number.isFinite(opening) || opening <= now.getTime()) return { item, score: -1 };
     }
     if (wantsVacancy && !wantsTraining && item.kind !== "vacante") return { item, score: -1 };
@@ -220,8 +226,8 @@ export function retrievePublications(question: string, publications: Publication
     if (intent === "junta" && /padron/.test(query) && !normalize(item.category).includes("padron")) return { item, score: -1 };
     if (["informacion", "licencias", "inasistencia", "titulos"].includes(intent) && item.kind !== "informacion") return { item, score: -1 };
     const eventDate = agendaEntryMap.get(item.id)?.startsAt || item.ends_at || item.starts_at || (item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata)?.registrationOpensAt : undefined);
-    if (requested && (!eventDate || dayKey(eventDate) !== requested)) return { item, score: -1 };
-    if (wantsAgenda && /esta semana/.test(query) && (!eventDate || new Date(eventDate).getTime() < now.getTime() || new Date(eventDate).getTime() > now.getTime() + 7 * 86400000)) return { item, score: -1 };
+    if (!isFocusedContext && requested && (!eventDate || dayKey(eventDate) !== requested)) return { item, score: -1 };
+    if (!isFocusedContext && wantsAgenda && /esta semana/.test(query) && (!eventDate || new Date(eventDate).getTime() < now.getTime() || new Date(eventDate).getTime() > now.getTime() + 7 * 86400000)) return { item, score: -1 };
     const match = configuredProfile ? profileMatch(forMatch(item), configuredProfile) : null;
     if (wantsMatches && (!configuredProfile || !match || !isEligibleForPersonalizedHome(forMatch(item), configuredProfile))) return { item, score: -1 };
     const haystack = normalize([item.title, item.summary, item.kind, item.category, item.level, item.area, item.location, item.source, item.status].join(" "));
