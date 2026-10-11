@@ -1,7 +1,8 @@
 "use client";
 
+/* eslint-disable @next/next/no-html-link-for-pages -- vinext Link currently throws during client navigation from Comunidad. */
+
 import Image from "next/image";
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, FormEvent } from "react";
 import { ArrowUpRight, Bookmark, BookmarkCheck, BookOpen, Check, ChevronDown, CircleUserRound, Clock3, Flag, Home, MessageCircle, MessagesSquare, MoreHorizontal, Send, ShieldCheck, UserRound, UsersRound, X } from "lucide-react";
@@ -336,12 +337,12 @@ export function CommunityPhase3A() {
       <nav aria-label="Cabecera de DocenteTuc" className="mb-3 flex items-center justify-between gap-3 rounded-full border border-white/80 bg-white/75 px-3 py-2 shadow-sm backdrop-blur sm:mb-4 sm:px-5">
         <div className="flex min-w-0 items-center gap-2">
         <AppSidebarTrigger pinned={sidebar.pinned} open={sidebar.open} onTogglePin={sidebar.togglePin} />
-        <Link href="/" className="flex min-h-11 min-w-0 items-center gap-2.5 rounded-full pr-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600">
+        <a href="/" className="flex min-h-11 min-w-0 items-center gap-2.5 rounded-full pr-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600">
           <Image src="/icon-192.png" alt="" width={38} height={38} unoptimized className="size-9 shrink-0 rounded-xl" />
           <span className="truncate text-lg font-black tracking-tight sm:text-xl">Docente<span className="text-sky-600">Tuc</span></span>
-        </Link>
+        </a>
         </div>
-        <Link href="/" className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-bold text-sky-800 hover:bg-sky-50"><Home className="size-4" /><span className="hidden sm:inline">Inicio</span><ArrowUpRight className="size-3.5" /></Link>
+        <a href="/" className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-bold text-sky-800 hover:bg-sky-50"><Home className="size-4" /><span className="hidden sm:inline">Inicio</span><ArrowUpRight className="size-3.5" /></a>
       </nav>
 
       <header className="community-hero relative isolate flex min-h-[220px] items-center overflow-hidden rounded-[1.7rem] border border-white/80 bg-[#d7efff] shadow-[0_14px_36px_rgba(32,111,173,.12)] sm:min-h-[290px]">
@@ -361,11 +362,11 @@ export function CommunityPhase3A() {
       {notice && <p role="status" className="mb-3 flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-900 shadow-sm"><Check className="mt-0.5 size-4 shrink-0" />{notice}</p>}
 
       {!loading && status && !status.authenticated && <section className="mb-4 rounded-[1.6rem] border border-amber-200 bg-white p-4 shadow-sm sm:p-5">
-        <p className="font-extrabold text-[#173b5e]">Sumate a la conversación</p><p className="mt-1 text-sm leading-relaxed text-slate-600">Para publicar o responder, iniciá sesión con tu cuenta de DocenteTuc. Podés leer las publicaciones sin compartir datos privados.</p><Link href="/?section=cuentas" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#0878be] px-4 font-bold text-white">Continuar con Google<ArrowUpRight className="size-4" /></Link>
+        <p className="font-extrabold text-[#173b5e]">Sumate a la conversación</p><p className="mt-1 text-sm leading-relaxed text-slate-600">Para publicar o responder, iniciá sesión con tu cuenta de DocenteTuc. Podés leer las publicaciones sin compartir datos privados.</p><a href="/?section=cuentas" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#0878be] px-4 font-bold text-white">Continuar con Google<ArrowUpRight className="size-4" /></a>
       </section>}
 
       {!loading && status?.authenticated && !status.profileConfigured && <section className="mb-4 rounded-[1.6rem] border border-amber-200 bg-white p-4 shadow-sm sm:p-5">
-        <p className="font-extrabold text-[#173b5e]">Prepará tu perfil público</p><p className="mt-1 text-sm leading-relaxed text-slate-600">Antes de participar, elegí el nombre y el avatar que se mostrarán en Comunidad. Tu correo y tu perfil docente privado no son públicos.</p><Link href="/?section=perfil" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#0878be] px-4 font-bold text-white">Configurar perfil público<ArrowUpRight className="size-4" /></Link>
+        <p className="font-extrabold text-[#173b5e]">Prepará tu perfil público</p><p className="mt-1 text-sm leading-relaxed text-slate-600">Antes de participar, elegí el nombre y el avatar que se mostrarán en Comunidad. Tu correo y tu perfil docente privado no son públicos.</p><a href="/?section=perfil" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#0878be] px-4 font-bold text-white">Configurar perfil público<ArrowUpRight className="size-4" /></a>
       </section>}
 
       {!loading && status?.authenticated && status.profileConfigured && !accepted && <CommunityRulesCard version={status.rulesVersion} text={status.rulesText} checked={normsChecked} busy={busy} onCheckedChange={setNormsChecked} onAccept={() => void acceptRules()} />}
@@ -428,7 +429,7 @@ export function CommunityPhase3A() {
           { label: "Agenda", href: "/?section=agenda", icon: Clock3 },
           { label: "Perfil", href: "/?section=perfil", icon: UserRound },
           { label: "Cuenta", href: "/?section=cuentas", icon: CircleUserRound },
-        ].map(({ label, href, icon: Icon }) => <Link key={label} href={href} aria-current={label === "Comunidad" ? "page" : undefined} className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 text-[9px] font-bold transition sm:min-h-16 sm:text-xs ${label === "Comunidad" ? "bg-[#e8f5ff] text-[#0878be]" : "text-slate-500 hover:bg-slate-50"}`}><Icon className="size-5 sm:size-[1.35rem]" aria-hidden="true" /><span className="whitespace-nowrap">{label}</span></Link>)}
+        ].map(({ label, href, icon: Icon }) => <a key={label} href={href} aria-current={label === "Comunidad" ? "page" : undefined} className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 text-[9px] font-bold transition sm:min-h-16 sm:text-xs ${label === "Comunidad" ? "bg-[#e8f5ff] text-[#0878be]" : "text-slate-500 hover:bg-slate-50"}`}><Icon className="size-5 sm:size-[1.35rem]" aria-hidden="true" /><span className="whitespace-nowrap">{label}</span></a>)}
       </div>
     </nav>
     </div>

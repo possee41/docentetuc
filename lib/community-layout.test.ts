@@ -28,3 +28,8 @@ test("la barra inferior de Comunidad queda limitada a móvil", () => {
   assert.match(source, /aria-label="Navegación principal" className="[^"]*md:hidden"/);
   assert.match(sidebar, /\["inicio", "comunidad", "agenda", "perfil", "cuentas"\]\.includes\(id\) \? "max-md:hidden"/);
 });
+
+test("la navegación inferior de Comunidad utiliza enlaces nativos operativos", () => {
+  assert.doesNotMatch(source, /from "next\/link"/);
+  assert.match(source, /aria-label="Navegación principal"[\s\S]*?\.map\(\(\{ label, href, icon: Icon \}\) => <a key=\{label\} href=\{href\}/);
+});
