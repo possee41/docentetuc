@@ -4,7 +4,7 @@ import { getDocenteTucAuth } from "@/lib/auth";
 import { accountFromValidatedSession } from "@/lib/auth-identity";
 import { communityDatabase } from "@/lib/community-route";
 import { isCommunityAdmin } from "@/lib/community-admin";
-import { CommunityAdminPanel } from "@/components/community-admin-panel";
+import { AdminPanel } from "@/components/admin-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -16,5 +16,5 @@ export default async function AdminPage() {
   try {
     if (!await isCommunityAdmin(await communityDatabase(), account.accountId)) notFound();
   } catch { notFound(); }
-  return <CommunityAdminPanel />;
+  return <AdminPanel />;
 }

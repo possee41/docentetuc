@@ -50,6 +50,7 @@ import { groupPadrones, padronDocuments, padronSelection, padronTitleFacts, padr
 import { eventDate as officialEventDate, hasOfficialTopic, officialDateLabel, officialDestination, officialLifecycle, officialMetadata, readMetadata } from "@/lib/official-publication";
 import { officialSavedLookup, resolveOfficialAlias } from "@/lib/official-reconciliation";
 import { OfficialPublicationDetails, OfficialPublicationSummary } from "@/components/official-publication-details";
+import type { AdminNotice } from "@/lib/admin-notices";
 
 type Theme = "light" | "dark";
 type InstallationSecurity = "protected" | "linked" | "recovery_required" | "unavailable";
@@ -756,8 +757,31 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
 
     <section className="home-section"><div className="home-section-title"><div><p>TRÁMITES</p><h2>Información para resolver gestiones</h2></div><button onClick={() => onView("informacion")}>Ver trámites <ChevronRight className="size-4" /></button></div><button className="home-profile-nudge" onClick={() => onView("informacion")}><span><strong>Sueldo, legajo, licencias y certificados</strong><small>Consultá organismos, requisitos publicados y accesos oficiales.</small></span><ChevronRight className="size-5" /></button></section>
 
-    <section className="home-section home-latest"><div className="home-section-title"><div><p>NOVEDADES RELEVANTES</p><h2>Información para tu actividad</h2></div><button onClick={() => onView("comunicados")}>Ver comunicados <ChevronRight className="size-4" /></button></div>{importantNotice && <button className="home-alert" onClick={() => onOpen(importantNotice.publication!)}><span>📣</span><span><strong>{isGeneralNotice(importantNotice.publication!) ? "INFORMACIÓN GENERAL" : "NOVEDAD PARA VOS"}</strong><small>{importantNotice.notice.title}</small></span><ChevronRight className="size-5" /></button>}{latest.length ? <div>{latest.map((item) => <CompactItem key={item.id} item={item} saved={savedMap.has(item.id)} onOpen={() => onOpen(item)} />)}</div> : !importantNotice && <p className="home-empty-line">No hay novedades relevantes nuevas.</p>}</section>
+    <section className="home-section home-latest"><div className="home-section-title"><div><p>NOVEDADES RELEVANTES</p><h2>Información para tu actividad</h2></div><button onClick={() => onView("comunicados")}>Ver comunicados <ChevronRight className="size-4" /></button></div><HomeAdminNotices />{importantNotice && <button className="home-alert" onClick={() => onOpen(importantNotice.publication!)}><span>📣</span><span><strong>{isGeneralNotice(importantNotice.publication!) ? "INFORMACIÓN GENERAL" : "NOVEDAD PARA VOS"}</strong><small>{importantNotice.notice.title}</small></span><ChevronRight className="size-5" /></button>}{latest.length ? <div>{latest.map((item) => <CompactItem key={item.id} item={item} saved={savedMap.has(item.id)} onOpen={() => onOpen(item)} />)}</div> : !importantNotice && <p className="home-empty-line">No hay novedades relevantes nuevas.</p>}</section>
   </div>;
+}
+
+function HomeAdminNotices() {
+  const [notices, setNotices] = useState<AdminNotice[]>([]);
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/notices", { cache: "no-store" });
+        if (!response.ok) return;
+        const rows = await response.json() as AdminNotice[];
+        if (active) setNotices(Array.isArray(rows) ? rows : []);
+      } catch { /* Official publications remain visible if notices are unavailable. */ }
+    };
+    void refresh();
+    const timer = window.setInterval(() => { void refresh(); }, 60_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
+  return <div className="space-y-2">{notices.map((notice) => <article key={notice.id} className="rounded-xl border border-[var(--warning-border)] bg-[var(--warning-bg)] p-3 text-[var(--text-primary)]">
+    <strong className="block text-xs uppercase tracking-wide text-[var(--warning-text)]">{notice.priority === "urgente" ? "Aviso urgente" : notice.priority === "importante" ? "Aviso importante" : "Aviso de DocenteTuc"}</strong>
+    <h3 className="mt-1 font-black">{notice.title}</h3><p className="mt-1 whitespace-pre-wrap break-words text-sm">{notice.body}</p>
+    {notice.url && <a href={notice.url} target="_blank" rel="noreferrer" className="mt-2 inline-flex min-h-10 items-center text-sm font-bold underline">Más información ↗</a>}
+  </article>)}</div>;
 }
 
 function HomeSkeleton() { return <div className="home-skeleton" aria-label="Cargando oportunidades"><span /><span /><span /></div>; }
