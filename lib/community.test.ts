@@ -39,6 +39,7 @@ const NOW = Date.UTC(2026, 9, 5, 15, 0);
 const MIGRATION = readFileSync(new URL("../migrations/0015_community.sql", import.meta.url), "utf8");
 const SAVED_MIGRATION = readFileSync(new URL("../migrations/0016_community_saved_posts.sql", import.meta.url), "utf8");
 const ADMIN_MIGRATION = readFileSync(new URL("../migrations/0018_community_admin.sql", import.meta.url), "utf8");
+const PRE_MODERATION_MIGRATION = readFileSync(new URL("../migrations/0020_community_pre_moderation.sql", import.meta.url), "utf8");
 const SAVED_ROUTE = readFileSync(new URL("../app/api/community/posts/[postId]/saved/route.ts", import.meta.url), "utf8");
 
 type Bound = {
@@ -92,7 +93,7 @@ function setup() {
     );
     CREATE TABLE profiles (user_id TEXT PRIMARY KEY, private_data TEXT);
   `);
-  raw.exec(`${MIGRATION}\n${SAVED_MIGRATION}\n${ADMIN_MIGRATION}`);
+  raw.exec(`${MIGRATION}\n${SAVED_MIGRATION}\n${ADMIN_MIGRATION}\n${PRE_MODERATION_MIGRATION}`);
   for (const [id, email, name, publicName] of [
     [ACCOUNT_A, EMAIL_A, "Private Name A", "Docente A"],
     [ACCOUNT_B, EMAIL_B, "Private Name B", "Docente B"],

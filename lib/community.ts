@@ -1,4 +1,5 @@
 import { PUBLIC_AVATAR_IDS, validatePublicProfile, type PublicAvatarId, type PublicProfile } from "./public-profile.ts";
+import { localDraftClassifier, normalizePreModerationResult, type CommunityDraftClassifier, type DraftType, type PreModerationResult } from "./community-pre-moderation.ts";
 
 export const COMMUNITY_RULES_VERSION = "1";
 export const COMMUNITY_RULES_TEXT = `Comunidad DocenteTuc\n\nEspacio destinado a consultas, experiencias, problemas, recursos y ayuda relacionados con la docencia.\n\nNo se permite:\n• contenido ajeno a la temática docente;\n• insultar, agredir, hostigar o amenazar;\n• denigrar o humillar;\n• discriminación;\n• publicar datos personales o sensibles de terceros;\n• spam o publicidad engañosa;\n• actividades ilegales.\n\nLos contenidos que incumplan estas normas podrán ser reportados y moderados.`;
@@ -72,6 +73,7 @@ export function communityErrorResponse(error: unknown) {
       RULES_ACCEPTANCE_REQUIRED: "Confirmá que aceptás las Normas de Comunidad.",
       SCHEMA_UNAVAILABLE: "Comunidad todavía no está habilitada en esta base local.",
       REQUEST_TOO_LARGE: "El pedido supera el tamaño permitido.",
+      PARTICIPATION_RESTRICTED: "Tu participación en Comunidad está restringida. Contactá a soporte si necesitás revisar esta decisión.",
     };
     return Response.json({ error: messages[detail.code] || "No se pudo completar la solicitud." }, {
       status,
@@ -112,7 +114,37 @@ async function assertReady(database: CommunityDatabase, accountId: string) {
   const acceptance = await database.prepare("SELECT rules_version FROM community_rules_acceptances WHERE user_id=?")
     .bind(accountId).first<{ rules_version: string }>();
   if (acceptance?.rules_version !== COMMUNITY_RULES_VERSION) throwCommunity("RULES_REQUIRED", 428);
+  if (await database.prepare("SELECT 1 AS found FROM community_user_restrictions WHERE user_id=?")
+    .bind(accountId).first()) throwCommunity("PARTICIPATION_RESTRICTED", 403);
   return profile;
+}
+
+async function decideDraft(database: CommunityDatabase, accountId: string, type: DraftType, text: string,
+  now: number, classifier: CommunityDraftClassifier): Promise<PreModerationResult> {
+  const table = type === "post" ? "community_posts" : "community_comments";
+  const duplicate = await database.prepare(`SELECT 1 AS found FROM ${table}
+    WHERE author_user_id=? AND body=? AND created_at>=? LIMIT 1`)
+    .bind(accountId, text, new Date(now - 60 * 60_000).toISOString()).first();
+  if (duplicate) return { decision: "pending_review", categories: ["spam"], confidence: 0.9,
+    reason: "Contenido idéntico reciente", reviewRequired: true };
+  try { return normalizePreModerationResult(await classifier(text, type)); }
+  catch { return { decision: "pending_review", categories: ["uncertain"], confidence: 0,
+    reason: "Evaluación automática no disponible", reviewRequired: true }; }
+}
+
+function preModerationInsert(database: CommunityDatabase, type: DraftType, id: string, result: PreModerationResult, now: number) {
+  return database.prepare(`INSERT INTO community_pre_moderation
+    (target_type, post_id, comment_id, decision, categories, confidence, reason, decision_source, created_at)
+    VALUES(?, ?, ?, ?, ?, ?, ?, 'automatic', ?)`).bind(type, type === "post" ? id : null,
+      type === "comment" ? id : null, result.decision, JSON.stringify(result.categories), result.confidence,
+      result.reason, new Date(now).toISOString());
+}
+
+function preModerationEvent(database: CommunityDatabase, type: DraftType, id: string, result: PreModerationResult, now: number) {
+  return database.prepare(`INSERT INTO community_pre_moderation_events
+    (id, target_type, post_id, comment_id, action, reason, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)`)
+    .bind(crypto.randomUUID(), type, type === "post" ? id : null, type === "comment" ? id : null,
+      result.decision, result.reason, new Date(now).toISOString());
 }
 
 async function consumeRateLimit(database: CommunityDatabase, accountId: string, action: keyof typeof RATE_LIMITS, now: number) {
@@ -416,23 +448,28 @@ export async function listCommunityComments(database: CommunityDatabase, postId:
   });
 }
 
-export async function createCommunityPost(database: CommunityDatabase, accountId: string, input: unknown, now = Date.now()) {
+export async function createCommunityPost(database: CommunityDatabase, accountId: string, input: unknown, now = Date.now(), classifier: CommunityDraftClassifier = localDraftClassifier) {
   await assertReady(database, accountId);
   const text = normalizedText(input, MAX_POST_LENGTH);
   await consumeRateLimit(database, accountId, "post", now);
   const id = crypto.randomUUID();
-  await database.prepare("INSERT INTO community_posts(id, author_user_id, body, created_at) VALUES(?, ?, ?, ?)")
-    .bind(id, accountId, text, new Date(now).toISOString()).run();
-  return { id, text };
+  const decision = await decideDraft(database, accountId, "post", text, now, classifier);
+  await database.batch([
+    database.prepare("INSERT INTO community_posts(id, author_user_id, body, created_at, moderation_status, moderated_at) VALUES(?, ?, ?, ?, ?, ?)")
+      .bind(id, accountId, text, new Date(now).toISOString(), decision.decision === "approved" ? "visible" : "hidden",
+        decision.decision === "approved" ? null : new Date(now).toISOString()),
+    preModerationInsert(database, "post", id, decision, now), preModerationEvent(database, "post", id, decision, now),
+  ]);
+  return { id, text, moderationStatus: decision.decision };
 }
 
-export async function editCommunityPost(database: CommunityDatabase, accountId: string, postId: string, input: unknown, now = Date.now()) {
+export async function editCommunityPost(database: CommunityDatabase, accountId: string, postId: string, input: unknown, now = Date.now(), classifier: CommunityDraftClassifier = localDraftClassifier) {
   await assertReady(database, accountId);
   if (!validId(postId)) throwCommunity("NOT_FOUND", 404);
   const text = normalizedText(input, MAX_POST_LENGTH);
-  const result = await database.prepare("UPDATE community_posts SET body=?, edited_at=? WHERE id=? AND author_user_id=? AND moderation_status='visible'")
-    .bind(text, new Date(now).toISOString(), postId, accountId).run();
-  if (Number(result.meta?.changes ?? 0) === 0) {
+  const owned = await database.prepare("SELECT 1 AS found FROM community_posts WHERE id=? AND author_user_id=? AND moderation_status='visible'")
+    .bind(postId, accountId).first();
+  if (!owned) {
     const owner = await database.prepare("SELECT 1 AS found FROM community_posts WHERE id=? AND author_user_id=?")
       .bind(postId, accountId).first();
     if (owner) throwCommunity("NOT_FOUND", 404);
@@ -440,7 +477,20 @@ export async function editCommunityPost(database: CommunityDatabase, accountId: 
       .bind(postId).first();
     throwCommunity(exists ? "NOT_OWNER" : "NOT_FOUND", exists ? 403 : 404);
   }
-  return { id: postId, text, editedAt: new Date(now).toISOString() };
+  const decision = await decideDraft(database, accountId, "post", text, now, classifier);
+  await database.batch([
+    database.prepare("UPDATE community_posts SET body=?, edited_at=?, moderation_status=?, moderated_at=? WHERE id=? AND author_user_id=? AND moderation_status='visible'")
+      .bind(text, new Date(now).toISOString(), decision.decision === "approved" ? "visible" : "hidden",
+        decision.decision === "approved" ? null : new Date(now).toISOString(), postId, accountId),
+    database.prepare(`INSERT INTO community_pre_moderation(target_type, post_id, decision, categories, confidence, reason, decision_source, created_at, reviewed_by, reviewed_at)
+      VALUES('post', ?, ?, ?, ?, ?, 'automatic', ?, NULL, NULL)
+      ON CONFLICT(post_id) WHERE post_id IS NOT NULL DO UPDATE SET decision=excluded.decision, categories=excluded.categories,
+      confidence=excluded.confidence, reason=excluded.reason, decision_source='automatic',
+      created_at=excluded.created_at, reviewed_by=NULL, reviewed_at=NULL`)
+      .bind(postId, decision.decision, JSON.stringify(decision.categories), decision.confidence, decision.reason, new Date(now).toISOString()),
+    preModerationEvent(database, "post", postId, decision, now),
+  ]);
+  return { id: postId, text, editedAt: new Date(now).toISOString(), moderationStatus: decision.decision };
 }
 
 export async function deleteCommunityPost(database: CommunityDatabase, accountId: string, postId: string) {
@@ -456,7 +506,7 @@ export async function deleteCommunityPost(database: CommunityDatabase, accountId
   return { deleted: true };
 }
 
-export async function createCommunityComment(database: CommunityDatabase, accountId: string, postId: string, input: unknown, now = Date.now()) {
+export async function createCommunityComment(database: CommunityDatabase, accountId: string, postId: string, input: unknown, now = Date.now(), classifier: CommunityDraftClassifier = localDraftClassifier) {
   await assertReady(database, accountId);
   if (!validId(postId)) throwCommunity("NOT_FOUND", 404);
   const post = await database.prepare("SELECT id FROM community_posts WHERE id=? AND moderation_status='visible'")
@@ -465,18 +515,23 @@ export async function createCommunityComment(database: CommunityDatabase, accoun
   const text = normalizedText(input, MAX_COMMENT_LENGTH);
   await consumeRateLimit(database, accountId, "comment", now);
   const id = crypto.randomUUID();
-  await database.prepare("INSERT INTO community_comments(id, post_id, author_user_id, body, created_at) VALUES(?, ?, ?, ?, ?)")
-    .bind(id, postId, accountId, text, new Date(now).toISOString()).run();
-  return { id, postId, text };
+  const decision = await decideDraft(database, accountId, "comment", text, now, classifier);
+  await database.batch([
+    database.prepare("INSERT INTO community_comments(id, post_id, author_user_id, body, created_at, moderation_status, moderated_at) VALUES(?, ?, ?, ?, ?, ?, ?)")
+      .bind(id, postId, accountId, text, new Date(now).toISOString(), decision.decision === "approved" ? "visible" : "hidden",
+        decision.decision === "approved" ? null : new Date(now).toISOString()),
+    preModerationInsert(database, "comment", id, decision, now), preModerationEvent(database, "comment", id, decision, now),
+  ]);
+  return { id, postId, text, moderationStatus: decision.decision };
 }
 
-export async function editCommunityComment(database: CommunityDatabase, accountId: string, commentId: string, input: unknown, now = Date.now()) {
+export async function editCommunityComment(database: CommunityDatabase, accountId: string, commentId: string, input: unknown, now = Date.now(), classifier: CommunityDraftClassifier = localDraftClassifier) {
   await assertReady(database, accountId);
   if (!validId(commentId)) throwCommunity("NOT_FOUND", 404);
   const text = normalizedText(input, MAX_COMMENT_LENGTH);
-  const result = await database.prepare("UPDATE community_comments SET body=?, edited_at=? WHERE id=? AND author_user_id=? AND moderation_status='visible'")
-    .bind(text, new Date(now).toISOString(), commentId, accountId).run();
-  if (Number(result.meta?.changes ?? 0) === 0) {
+  const owned = await database.prepare("SELECT 1 AS found FROM community_comments WHERE id=? AND author_user_id=? AND moderation_status='visible'")
+    .bind(commentId, accountId).first();
+  if (!owned) {
     const exists = await database.prepare("SELECT 1 AS found FROM community_comments WHERE id=?")
       .bind(commentId).first();
     if (!exists) throwCommunity("NOT_FOUND", 404);
@@ -484,7 +539,20 @@ export async function editCommunityComment(database: CommunityDatabase, accountI
       .bind(commentId, accountId).first();
     throwCommunity(owner ? "NOT_FOUND" : "NOT_OWNER", owner ? 404 : 403);
   }
-  return { id: commentId, text, editedAt: new Date(now).toISOString() };
+  const decision = await decideDraft(database, accountId, "comment", text, now, classifier);
+  await database.batch([
+    database.prepare("UPDATE community_comments SET body=?, edited_at=?, moderation_status=?, moderated_at=? WHERE id=? AND author_user_id=? AND moderation_status='visible'")
+      .bind(text, new Date(now).toISOString(), decision.decision === "approved" ? "visible" : "hidden",
+        decision.decision === "approved" ? null : new Date(now).toISOString(), commentId, accountId),
+    database.prepare(`INSERT INTO community_pre_moderation(target_type, comment_id, decision, categories, confidence, reason, decision_source, created_at, reviewed_by, reviewed_at)
+      VALUES('comment', ?, ?, ?, ?, ?, 'automatic', ?, NULL, NULL)
+      ON CONFLICT(comment_id) WHERE comment_id IS NOT NULL DO UPDATE SET decision=excluded.decision, categories=excluded.categories,
+      confidence=excluded.confidence, reason=excluded.reason, decision_source='automatic',
+      created_at=excluded.created_at, reviewed_by=NULL, reviewed_at=NULL`)
+      .bind(commentId, decision.decision, JSON.stringify(decision.categories), decision.confidence, decision.reason, new Date(now).toISOString()),
+    preModerationEvent(database, "comment", commentId, decision, now),
+  ]);
+  return { id: commentId, text, editedAt: new Date(now).toISOString(), moderationStatus: decision.decision };
 }
 
 export async function deleteCommunityComment(database: CommunityDatabase, accountId: string, commentId: string) {
@@ -617,6 +685,10 @@ export async function moderateCommunityContent(database: CommunityDatabase, mode
   const table = targetType === "post" ? "community_posts" : "community_comments";
   const exists = await database.prepare(`SELECT id FROM ${table} WHERE id=?`).bind(targetId).first();
   if (!exists) throwCommunity("NOT_FOUND", 404);
+  if (action === "restore" && await database.prepare(`SELECT 1 AS found FROM community_pre_moderation
+    WHERE ${targetType === "post" ? "post_id" : "comment_id"}=? AND decision<>'approved'`).bind(targetId).first()) {
+    throwCommunity("INVALID_TARGET", 409);
+  }
   const status = action === "restore" ? "visible" : action === "hide" ? "hidden" : "removed";
   const targetColumns = targetType === "post" ? { postId: targetId, commentId: null } : { postId: null, commentId: targetId };
   const statements = [

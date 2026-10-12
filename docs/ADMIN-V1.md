@@ -16,6 +16,6 @@ Las mutaciones leen un JSON acotado a 12 KiB antes de responder 401/403: en el W
 - Publicaciones: lectura paginada de registros no retirados, 50 por página; los filtros consultan D1 sin modificar contenido. Las categorías de designaciones se derivan de la clasificación oficial ya existente.
 - Sincronizaciones: última ejecución, último éxito, estado, cantidad y código de error sanitizado. No se muestran mensajes crudos de error ni hay botón de ejecución. La próxima ejecución por fuente no puede inferirse con fiabilidad de `sync_state`.
 - IA: proveedor/modelo configurados, disponibilidad **de configuración** (no prueba de conectividad), intentos agregados de la ventana activa de rate limit y estado declarado del respaldo web. No hay historial persistente de errores de IA; el panel no inventa uno.
-- Comunidad: reutiliza la moderación posterior existente; la revisión preventiva es una capa separada.
+- Comunidad: conserva reportes y moderación posterior. La revisión preventiva adicional se documenta por separado en `COMUNIDAD-PREMODERACION-1.1.md` y requiere `0020`.
 
 Antes de desplegar: repetir tests/TypeScript/lint/build y comprobar 401/403 con cuentas de prueba y un aviso futuro, vigente, vencido e inactivo. Esos escenarios pasaron en D1 local aislada; no equivalen a validación de producción. Para producción, solicitar autorización independiente antes de migrar D1 o activar una versión de Worker.

@@ -6,6 +6,7 @@ import { accountDataDeletionStatements } from "./account-deletion.ts";
 
 const COMMUNITY_MIGRATION = readFileSync(new URL("../migrations/0015_community.sql", import.meta.url), "utf8");
 const SAVED_POSTS_MIGRATION = readFileSync(new URL("../migrations/0016_community_saved_posts.sql", import.meta.url), "utf8");
+const PRE_MODERATION_MIGRATION = readFileSync(new URL("../migrations/0020_community_pre_moderation.sql", import.meta.url), "utf8");
 
 const ACCOUNT_A = "550e8400-e29b-41d4-a716-446655440000";
 const ACCOUNT_B = "6ba7b810-9dad-41d1-80b4-00c04fd430c8";
@@ -37,6 +38,7 @@ test("eliminación autenticada borra todos los datos propios y vinculados, no lo
       CREATE TABLE publications (id TEXT PRIMARY KEY);`);
     db.exec(COMMUNITY_MIGRATION);
     db.exec(SAVED_POSTS_MIGRATION);
+    db.exec(PRE_MODERATION_MIGRATION);
     for (const [id, email] of [[ACCOUNT_A, "a@example.invalid"], [ACCOUNT_B, "b@example.invalid"]]) {
       db.prepare('INSERT INTO "user" VALUES (?,?)').run(id, email);
       db.prepare('INSERT INTO "account" VALUES (?,?)').run(`${id}:google`, id);

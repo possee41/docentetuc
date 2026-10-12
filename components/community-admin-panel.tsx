@@ -10,6 +10,9 @@ type Author = { displayName: string; avatarId: PublicAvatarId };
 type Report = { id: string; targetType: "post" | "comment"; targetId: string; reason: string; createdAt: string; text: string; author: Author };
 type Hidden = { targetType: "post" | "comment"; targetId: string; text: string; moderatedAt: string; reason: string; author: Author };
 type Overview = { reports: Report[]; hidden: Hidden[]; recent: { action: string; reason: string; createdAt: string }[] };
+type Pending = { targetType: "post" | "comment"; targetId: string; text: string; categories: string[];
+  confidence: number; reason: string; createdAt: string; author: Author; context: { postText: string } | null };
+type ReviewData = { pending: Pending[]; history: { targetType: string; action: string; reason: string; createdAt: string; reviewer: string }[] };
 type Context = { post: { text: string; createdAt: string; status: string; displayName: string; avatarId: PublicAvatarId } | null;
   comments: { text: string; createdAt: string; status: string; displayName: string; avatarId: PublicAvatarId }[] };
 
@@ -21,26 +24,32 @@ function PublicAvatar({ author }: { author: Author }) {
   </span>;
 }
 
-export function CommunityAdminPanel() {
+export function CommunityAdminPanel({ embedded = false }: { embedded?: boolean }) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [context, setContext] = useState<Context | null>(null);
   const [contextId, setContextId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [review, setReview] = useState<ReviewData | null>(null);
 
   const load = useCallback(async () => {
-    const response = await fetch("/api/admin/community", { cache: "no-store", credentials: "same-origin" });
-    if (!response.ok) throw new Error("No se pudo cargar la administración.");
-    setOverview(await response.json() as Overview);
+    const [response, pre] = await Promise.all([
+      fetch("/api/admin/community", { cache: "no-store", credentials: "same-origin" }),
+      fetch("/api/admin/community/pre-moderation", { cache: "no-store", credentials: "same-origin" }),
+    ]);
+    if (!response.ok || !pre.ok) throw new Error("No se pudo cargar la administración.");
+    setOverview(await response.json() as Overview); setReview(await pre.json() as ReviewData);
   }, []);
   useEffect(() => {
     let active = true;
-    void fetch("/api/admin/community", { cache: "no-store", credentials: "same-origin" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("No se pudo cargar la administración.");
-        return await response.json() as Overview;
-      })
-      .then((value) => { if (active) setOverview(value); })
+    void Promise.all([
+      fetch("/api/admin/community", { cache: "no-store", credentials: "same-origin" }),
+      fetch("/api/admin/community/pre-moderation", { cache: "no-store", credentials: "same-origin" }),
+    ]).then(async ([response, pre]) => {
+      if (!response.ok || !pre.ok) throw new Error("No se pudo cargar la administración.");
+      return [await response.json() as Overview, await pre.json() as ReviewData] as const;
+    })
+      .then(([value, queue]) => { if (active) { setOverview(value); setReview(queue); } })
       .catch(() => { if (active) setError("No se pudo cargar la administración."); });
     return () => { active = false; };
   }, []);
@@ -63,12 +72,35 @@ export function CommunityAdminPanel() {
     if (!response.ok) { setError("No se pudo cargar el contexto."); return; }
     setContext(await response.json() as Context); setContextId(reportId);
   };
+  const reviewAction = async (item: Pending, action: "approve" | "reject" | "block") => {
+    if (action === "block" && !window.confirm("¿Restringir la participación de esta cuenta en Comunidad?")) return;
+    setBusy(true); setError("");
+    try {
+      const response = await fetch("/api/admin/community/pre-moderation", { method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetType: item.targetType, targetId: item.targetId, action }) });
+      if (!response.ok) throw new Error("No se pudo completar la revisión.");
+      await load();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo completar la revisión."); }
+    finally { setBusy(false); }
+  };
 
-  return <main className="mx-auto min-h-dvh max-w-3xl space-y-6 bg-[#f4f9fe] px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))] text-[#102d55] sm:px-6">
-    <Link href="/?section=cuentas" className="inline-flex min-h-11 items-center text-sm font-bold text-sky-800">← Volver a Cuenta</Link>
-    <header><p className="text-xs font-black uppercase tracking-widest text-sky-700">Administración</p><h1 className="text-3xl font-black">Moderación de Comunidad Docente</h1></header>
+  return <div className={embedded ? "space-y-6" : "mx-auto min-h-dvh max-w-3xl space-y-6 bg-[#f4f9fe] px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))] text-[#102d55] sm:px-6"}>
+    {!embedded && <Link href="/?section=cuentas" className="inline-flex min-h-11 items-center text-sm font-bold text-sky-800">← Volver a Cuenta</Link>}
+    <header><h2 className="text-2xl font-black">Moderación de Comunidad Docente</h2></header>
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {!overview ? <p role="status">Cargando moderación…</p> : <>
+      <section className="space-y-3" aria-labelledby="pre-moderation-heading"><h2 id="pre-moderation-heading" className="text-xl font-black">Moderación pendiente</h2>
+        {!review && <p role="status">Cargando revisiones…</p>}
+        {review?.pending.length === 0 && <p className="text-sm">No hay contenido pendiente de revisión.</p>}
+        {review?.pending.map((item) => <article key={`${item.targetType}-${item.targetId}`} className="min-w-0 space-y-3 rounded-2xl bg-white p-4 shadow-sm">
+          <div className="flex min-w-0 items-center gap-3"><PublicAvatar author={item.author} /><div className="min-w-0"><p className="truncate font-bold">{item.author.displayName}</p><p className="text-xs text-slate-600">{item.targetType === "post" ? "Publicación" : "Comentario"} · {new Date(item.createdAt).toLocaleString("es-AR")} · pendiente</p></div></div>
+          {item.context && <p className="break-words rounded-xl bg-sky-50 p-3 text-xs">Contexto de publicación: {item.context.postText}</p>}
+          <p className="whitespace-pre-wrap break-words text-sm">{item.text}</p>
+          <p className="break-words text-xs text-slate-600">Categorías: {item.categories.join(", ") || "sin categoría"} · confianza: {Math.round(item.confidence * 100)} % · {item.reason}</p>
+          <div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => void reviewAction(item, "approve")} className="min-h-11 rounded-xl border border-sky-200 px-3 text-sm font-bold">Aprobar / descartar alerta</button><button type="button" disabled={busy} onClick={() => void reviewAction(item, "reject")} className="min-h-11 rounded-xl border border-rose-200 px-3 text-sm font-bold text-rose-800">Rechazar</button><button type="button" disabled={busy} onClick={() => void reviewAction(item, "block")} className="min-h-11 rounded-xl border border-rose-200 px-3 text-sm font-bold text-rose-800">Bloquear usuario</button></div>
+        </article>)}
+      </section>
       <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm">Reportes pendientes</p><p className="text-2xl font-black">{overview.reports.length}</p></div><div className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm">Contenido oculto</p><p className="text-2xl font-black">{overview.hidden.length}</p></div></div>
       <section className="space-y-3" aria-labelledby="reports-heading"><h2 id="reports-heading" className="text-xl font-black">Reportes pendientes</h2>
         {overview.reports.length === 0 && <p className="text-sm">No hay reportes pendientes.</p>}
@@ -89,6 +121,7 @@ export function CommunityAdminPanel() {
         {overview.hidden.map((item) => <article key={`${item.targetType}-${item.targetId}`} className="min-w-0 rounded-2xl bg-white p-4 shadow-sm"><div className="flex items-center gap-3"><PublicAvatar author={item.author} /><b className="truncate">{item.author.displayName}</b></div><p className="mt-3 whitespace-pre-wrap break-words text-sm">{item.text}</p><button type="button" disabled={busy} onClick={() => void act({ targetType: item.targetType, targetId: item.targetId, action: "restore", reason: item.reason || "other" })} className="mt-3 min-h-11 rounded-xl border border-sky-200 px-3 text-sm font-bold text-sky-900">Restaurar contenido</button></article>)}
       </section>
       <section className="space-y-2" aria-labelledby="actions-heading"><h2 id="actions-heading" className="text-xl font-black">Acciones recientes</h2><div className="rounded-2xl bg-white p-4 shadow-sm">{overview.recent.length ? overview.recent.map((item, index) => <p key={index} className="border-b py-2 text-sm last:border-0">{item.action} · {new Date(item.createdAt).toLocaleString("es-AR")}</p>) : <p className="text-sm">Todavía no hay acciones.</p>}</div></section>
+      <section className="space-y-2" aria-labelledby="pre-history-heading"><h2 id="pre-history-heading" className="text-xl font-black">Historial de revisión preventiva</h2><div className="rounded-2xl bg-white p-4 shadow-sm">{review?.history.length ? review.history.map((item, index) => <p key={index} className="break-words border-b py-2 text-sm last:border-0">{item.targetType} · {item.action} · {item.reviewer} · {new Date(item.createdAt).toLocaleString("es-AR")}</p>) : <p className="text-sm">Todavía no hay decisiones.</p>}</div></section>
     </>}
-  </main>;
+  </div>;
 }

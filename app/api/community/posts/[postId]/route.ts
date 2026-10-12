@@ -1,6 +1,8 @@
+import { env } from "cloudflare:workers";
 import { getAuthenticatedAccount } from "@/lib/auth-session";
 import { communityErrorResponse, deleteCommunityPost, editCommunityPost } from "@/lib/community";
-import { communityDatabase, jsonObject } from "@/lib/community-route";
+import { communityDatabase, communityWriteDatabase, jsonObject } from "@/lib/community-route";
+import { geminiDraftClassifier } from "@/lib/community-pre-moderation";
 import { isSameOriginMutation } from "@/lib/auth-identity";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +15,10 @@ export async function PATCH(request: Request, { params }: Context) {
     if (!account) return communityErrorResponse({ code: "AUTH_REQUIRED", status: 401 });
     const body = await jsonObject(request);
     const { postId } = await params;
-    const result = await editCommunityPost(await communityDatabase(), account.accountId, postId, body.text);
+    const settings = env as unknown as Record<string, string | undefined>;
+    const result = await editCommunityPost(await communityWriteDatabase(), account.accountId, postId, body.text, Date.now(), geminiDraftClassifier({
+      provider: settings.AI_PROVIDER, apiKey: settings.AI_API_KEY, model: settings.AI_MODEL,
+    }));
     return Response.json(result, { headers: { "Cache-Control": "no-store, private" } });
   } catch (error) { return communityErrorResponse(error); }
 }
