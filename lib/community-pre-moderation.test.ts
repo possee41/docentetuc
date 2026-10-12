@@ -119,8 +119,47 @@ test("pendiente y rechazado nunca llegan al feed, comentarios públicos ni Guard
     assert.equal((await listCommunitySavedPostsPage(db, USER)).posts.length, 0);
     await assert.rejects(listCommunityComments(db, pending.id, null), { code: "NOT_FOUND" });
     await assert.rejects(moderateCommunityContent(db, ADMIN, { targetType: "post", targetId: rejected.id, action: "restore", reason: "other" }), { code: "INVALID_TARGET" });
-    assert.equal((await listPreModerationQueue(db)).length, 2);
+    assert.equal((await listPreModerationQueue(db)).items.length, 2);
     assert.equal(pendingComment.moderationStatus, "pending_review");
+  } finally { raw.close(); }
+});
+
+test("cola admin pagina más de 100 pendientes, filtra tipo/prioridad y conserva orden estable", async () => {
+  const { raw, db } = fixture();
+  try {
+    const parent = "11111111-1111-4111-8111-111111111111";
+    raw.prepare("INSERT INTO community_posts(id,author_user_id,body) VALUES(?,?,?)").run(parent, USER, "Contexto sintético");
+    for (let index = 0; index < 125; index++) {
+      const id = `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+      const created = new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString();
+      const comment = index % 5 === 0;
+      const category = index % 10 === 0 ? '["threat"]' : '["uncertain"]';
+      if (comment) {
+        raw.prepare("INSERT INTO community_comments(id,post_id,author_user_id,body) VALUES(?,?,?,?)").run(id, parent, USER, `Comentario ${index}`);
+      } else {
+        raw.prepare("INSERT INTO community_posts(id,author_user_id,body) VALUES(?,?,?)").run(id, USER, `Publicación ${index}`);
+      }
+      raw.prepare(`INSERT INTO community_pre_moderation(target_type,post_id,comment_id,decision,categories,confidence,reason,decision_source,created_at)
+        VALUES(?,?,?,'pending_review',?,0.75,'Revisión sintética','automatic',?)`)
+        .run(comment ? "comment" : "post", comment ? null : id, comment ? id : null, category, created);
+    }
+    const first = await listPreModerationQueue(db);
+    assert.deepEqual([first.total, first.page, first.pageSize, first.totalPages, first.items.length], [125, 1, 20, 7, 20]);
+    assert.equal(first.items[0].text, "Comentario 0");
+    assert.doesNotMatch(JSON.stringify(first), /example\.invalid|auth\.session_token|refresh_token|550e8400-e29b-41d4-a716-446655440000/u);
+    const pages = await Promise.all(Array.from({ length: 7 }, (_, index) => listPreModerationQueue(db, { page: index + 1 })));
+    assert.equal(pages[6].items.length, 5);
+    assert.equal(new Set(pages.flatMap((result) => result.items.map((item) => item.targetId))).size, 125);
+    assert.equal((await listPreModerationQueue(db, { page: 99 })).page, 7);
+    assert.equal((await listPreModerationQueue(db, { order: "newest" })).items[0].text, "Publicación 124");
+    assert.equal((await listPreModerationQueue(db, { type: "comment" })).total, 25);
+    assert.equal((await listPreModerationQueue(db, { type: "comment" })).pendingTotal, 125);
+    assert.equal((await listPreModerationQueue(db, { type: "post" })).total, 100);
+    assert.equal((await listPreModerationQueue(db, { priority: "high" })).total, 13);
+    assert.equal((await listPreModerationQueue(db, { type: "comment", priority: "high" })).total, 13);
+    const empty = await listPreModerationQueue(db, { type: "post", priority: "high", page: 9 });
+    assert.deepEqual([empty.total, empty.pendingTotal, empty.page, empty.totalPages, empty.items.length], [0, 125, 1, 1, 0]);
+    assert.equal((await listPreModerationQueue(db, { page: -1 })).page, 1);
   } finally { raw.close(); }
 });
 
@@ -199,4 +238,11 @@ test("una denegación admin consume el cuerpo acotado antes de la siguiente revi
     .split("export async function POST")[1];
   assert.ok(route);
   assert.ok(route.indexOf("await jsonObject(request)") < route.indexOf("await authorizedAdmin(request)"));
+});
+
+test("el bloqueo pide confirmación accesible sin diálogo nativo del navegador", () => {
+  const source = readFileSync(new URL("../components/community-admin-panel.tsx", import.meta.url), "utf8");
+  assert.match(source, /<AlertDialog open=\{blockTarget !== null\}/u);
+  assert.match(source, /<AlertDialogDescription>/u);
+  assert.doesNotMatch(source, /window\.confirm\(/u);
 });

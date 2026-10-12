@@ -3,26 +3,46 @@ import { CommunityError, type CommunityDatabase } from "./community.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export async function listPreModerationQueue(database: CommunityDatabase) {
+export type ModerationQueueFilters = { page?: number; type?: "all" | "post" | "comment"; priority?: "all" | "high"; order?: "oldest" | "newest" };
+const PAGE_SIZE = 20;
+const HIGH_PRIORITY = "EXISTS (SELECT 1 FROM json_each(m.categories) WHERE value <> 'uncertain')";
+
+export async function listPreModerationQueue(database: CommunityDatabase, filters: ModerationQueueFilters = {}) {
+  const type = filters.type === "post" || filters.type === "comment" ? filters.type : "all";
+  const priority = filters.priority === "high" ? "high" : "all";
+  const order = filters.order === "newest" ? "DESC" : "ASC";
+  const where = `m.decision='pending_review'${type === "all" ? "" : " AND m.target_type=?"}${priority === "high" ? ` AND ${HIGH_PRIORITY}` : ""}`;
+  const values = type === "all" ? [] : [type];
+  const from = `FROM community_pre_moderation m
+    LEFT JOIN community_posts p ON p.id=m.post_id
+    LEFT JOIN community_comments c ON c.id=m.comment_id
+    LEFT JOIN community_posts parent ON parent.id=c.post_id
+    JOIN public_profiles pp ON pp.user_id=COALESCE(p.author_user_id,c.author_user_id)`;
+  const count = await database.prepare(`SELECT COUNT(*) AS total ${from} WHERE ${where}`)
+    .bind(...values).first<{ total: number }>();
+  const total = Number(count?.total || 0);
+  const allCount = type === "all" && priority === "all" ? count : await database.prepare(`SELECT COUNT(*) AS total ${from} WHERE m.decision='pending_review'`)
+    .bind().first<{ total: number }>();
+  const pendingTotal = Number(allCount?.total || 0);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const requestedPage = typeof filters.page === "number" && Number.isSafeInteger(filters.page) && filters.page > 0 ? filters.page : 1;
+  const page = Math.min(requestedPage, totalPages);
   const rows = await database.prepare(`
     SELECT m.target_type, COALESCE(m.post_id,m.comment_id) AS target_id, m.decision,
       m.categories, m.confidence, m.reason, m.created_at, m.decision_source,
       COALESCE(p.body,c.body) AS text, pp.display_name, pp.avatar_id,
       c.post_id AS context_post_id, parent.body AS context_post_text
-    FROM community_pre_moderation m
-    LEFT JOIN community_posts p ON p.id=m.post_id
-    LEFT JOIN community_comments c ON c.id=m.comment_id
-    LEFT JOIN community_posts parent ON parent.id=c.post_id
-    JOIN public_profiles pp ON pp.user_id=COALESCE(p.author_user_id,c.author_user_id)
-    WHERE m.decision='pending_review' ORDER BY m.created_at ASC LIMIT 100
-  `).bind().all<Record<string, unknown>>();
-  return (rows.results || []).map((row) => ({
+    ${from} WHERE ${where}
+    ORDER BY m.created_at ${order}, target_id ${order} LIMIT ? OFFSET ?
+  `).bind(...values, PAGE_SIZE, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>();
+  const items = (rows.results || []).map((row) => ({
     targetType: row.target_type, targetId: row.target_id, decision: row.decision,
     categories: JSON.parse(String(row.categories || "[]")) as string[], confidence: Number(row.confidence),
     reason: row.reason, createdAt: row.created_at, decisionSource: row.decision_source,
     text: row.text, author: { displayName: row.display_name, avatarId: row.avatar_id },
     context: row.context_post_id ? { postText: row.context_post_text } : null,
   }));
+  return { items, total, pendingTotal, page, pageSize: PAGE_SIZE, totalPages };
 }
 
 export async function listPreModerationHistory(database: CommunityDatabase) {

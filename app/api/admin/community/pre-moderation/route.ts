@@ -9,8 +9,21 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const { database } = await authorizedAdmin(request);
-    const [pending, history] = await Promise.all([listPreModerationQueue(database), listPreModerationHistory(database)]);
-    return Response.json({ pending, history }, { headers: adminResponseHeaders });
+    const params = new URL(request.url).searchParams;
+    const requestedPage = Number(params.get("page") || 1);
+    const type = params.get("type");
+    const priority = params.get("priority");
+    const order = params.get("order");
+    const [queue, history] = await Promise.all([
+      listPreModerationQueue(database, {
+        page: requestedPage,
+        type: type === "post" || type === "comment" ? type : "all",
+        priority: priority === "high" ? "high" : "all",
+        order: order === "newest" ? "newest" : "oldest",
+      }),
+      listPreModerationHistory(database),
+    ]);
+    return Response.json({ ...queue, history }, { headers: adminResponseHeaders });
   } catch (error) { return communityErrorResponse(error); }
 }
 
