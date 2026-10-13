@@ -1,13 +1,14 @@
-import { hasOfficialTopic } from "./official-publication.ts";
+import { hasOfficialTopic, officialMetadata } from "./official-publication.ts";
+import { boardItems, type BoardPublication } from "./board-view.ts";
 import type { CommunityDatabase } from "./community.ts";
 
 type Row = Record<string, unknown>;
 const SOURCES = ["SIME", "Comunicados", "Padrones", "Capacitación Docente", "INFoD / AulaS-TIC", "CeNET / INET"];
 
-export async function adminDashboard(database: CommunityDatabase) {
+export async function adminDashboard(database: CommunityDatabase, now = new Date()) {
   const [users, rows, sync] = await Promise.all([
     database.prepare('SELECT COUNT(*) AS count FROM "user"').bind().first<{ count: number }>(),
-    database.prepare("SELECT kind, source, category, metadata FROM publications WHERE removed_at IS NULL").bind().all<Row>(),
+    database.prepare("SELECT id, kind, source, category, metadata, starts_at, ends_at, updated_at, source_published_at, removed_at, normalized_status FROM publications WHERE removed_at IS NULL").bind().all<BoardPublication & { source: string }>(),
     adminSyncStatus(database),
   ]);
   const counts = { users: Number(users?.count || 0), sime: 0, acts: 0, calls: 0, communiques: 0, padrones: 0, fdci: 0, infod: 0, cenet: 0 };
@@ -25,7 +26,19 @@ export async function adminDashboard(database: CommunityDatabase) {
       else if (/cenet|inet/.test(source)) counts.cenet++;
     }
   }
-  return { counts, sync };
+  const publications = rows.results || [];
+  const classified = (topic: "ACTO_DESIGNACION" | "LLAMADO_ABIERTO", entity: "event" | "opportunity") => publications.filter(item => {
+    if (!hasOfficialTopic(item, topic)) return false;
+    const metadata = officialMetadata(item);
+    return metadata ? metadata.entity === entity : !item.id.startsWith("padrones:") && Number.isFinite(Date.parse(item.starts_at || ""));
+  }).length;
+  const boardCounts = {
+    acts: { indexed: counts.acts, classified: classified("ACTO_DESIGNACION", "event"), current: boardItems(publications, "actos", now).length },
+    calls: { indexed: counts.calls, classified: classified("LLAMADO_ABIERTO", "opportunity"), current: boardItems(publications, "llamados", now).length },
+  };
+  counts.acts = boardCounts.acts.current;
+  counts.calls = boardCounts.calls.current;
+  return { counts, boardCounts, sync };
 }
 
 export async function adminSyncStatus(database: CommunityDatabase) {

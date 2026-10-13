@@ -668,6 +668,8 @@ type DashboardProps = { data: AppData | null; profile?: Profile; savedMap: Map<s
 
 const homeShortcuts: { label: string; caption: string; icon: typeof Home; view: View; image: string; query?: string }[] = [
   { label: "Inscripciones SIME", caption: "Vacantes para anotarse online", icon: BriefcaseBusiness, view: "vacantes", image: "designaciones" },
+  { label: "Actos de designación", caption: "Vigentes y próximos verificados", icon: CalendarDays, view: "actos", image: "designaciones" },
+  { label: "Llamados abiertos", caption: "Vigentes y próximos verificados", icon: BriefcaseBusiness, view: "llamados", image: "designaciones" },
   { label: "Capacitaciones", caption: "Cursos y aperturas", icon: GraduationCap, view: "capacitaciones", image: "capacitaciones" },
   { label: "Padrones", caption: "Listados y puntajes", icon: BookOpen, view: "padrones", image: "padrones" },
   { label: "Agenda", caption: "Tus fechas", icon: CalendarDays, view: "agenda", image: "agenda" },
@@ -678,6 +680,8 @@ const homeShortcuts: { label: string; caption: string; icon: typeof Home; view: 
 function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult, isEligible, onOpen, onRemind, onView, loading, error }: DashboardProps) {
   const now = new Date();
   const publications = data?.publications || [];
+  const visibleHomeShortcuts = homeShortcuts.filter(({ view }) =>
+    view !== "actos" && view !== "llamados" || boardItems(publications, view, now).length > 0);
   const sync = data?.sync || [];
   const publicationMap = new Map(publications.map((item) => [item.id, item]));
   const currentForHome = (item: Publication) => canRecommendCurrentPublication({ lifecycle: publicationLifecycleForUI(item, now), health: healthForPublication(item, sync), now });
@@ -744,7 +748,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
       </>}
     </section>
 
-    <section className="home-shortcuts" aria-labelledby="home-shortcuts-title"><div className="home-section-title"><div><p>ACCESOS RÁPIDOS</p><h2 id="home-shortcuts-title">Todo lo que necesitás</h2></div></div><div className="home-shortcut-grid">{homeShortcuts.map(({ label, caption, icon: Icon, view, image, query }) => <button key={label} type="button" className={`home-shortcut home-shortcut-${image}`} onClick={() => onView(view, query)}><span className="home-shortcut-icon"><Icon className="size-6" aria-hidden="true" /></span><span className="home-shortcut-copy"><strong>{label}</strong><small>{caption}</small></span><ChevronRight className="home-shortcut-arrow size-4" aria-hidden="true" /></button>)}</div></section>
+    <section className="home-shortcuts" aria-labelledby="home-shortcuts-title"><div className="home-section-title"><div><p>ACCESOS RÁPIDOS</p><h2 id="home-shortcuts-title">Todo lo que necesitás</h2></div></div><div className="home-shortcut-grid">{visibleHomeShortcuts.map(({ label, caption, icon: Icon, view, image, query }) => <button key={label} type="button" className={`home-shortcut home-shortcut-${image}`} onClick={() => onView(view, query)}><span className="home-shortcut-icon"><Icon className="size-6" aria-hidden="true" /></span><span className="home-shortcut-copy"><strong>{label}</strong><small>{caption}</small></span><ChevronRight className="home-shortcut-arrow size-4" aria-hidden="true" /></button>)}</div></section>
 
     <button type="button" onClick={() => onView("comunidad")} className="home-section flex w-full items-center gap-4 rounded-2xl p-4 text-left transition hover:border-sky-200 hover:shadow-sm sm:p-5">
       <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-sky-100 text-sky-700"><MessagesSquare className="size-6" aria-hidden="true" /></span>

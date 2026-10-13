@@ -19,7 +19,7 @@ function fixture() {
     CREATE TABLE community_moderators(user_id TEXT PRIMARY KEY, role TEXT);
     CREATE TABLE publications(kind TEXT, source TEXT, category TEXT, metadata TEXT, title TEXT,
       source_published_at TEXT, official_url TEXT, normalized_status TEXT, updated_at TEXT,
-      removed_at TEXT, junta TEXT, level TEXT);
+      removed_at TEXT, junta TEXT, level TEXT, id TEXT, starts_at TEXT, ends_at TEXT);
     CREATE TABLE sync_state(source TEXT, synced_at TEXT, last_attempt_at TEXT,
       last_successful_sync_at TEXT, sync_status TEXT, item_count INTEGER, error_code TEXT, error_message TEXT);
     CREATE TABLE ai_rate_limits(user_bucket TEXT, request_count INTEGER, expires_at TEXT);
@@ -48,6 +48,18 @@ function fixture() {
 
 const notice = { title: "Aviso de prueba", body: "Texto público sintético.", priority: "importante", active: true,
   startsAt: "2026-10-10T00:00:00.000Z", endsAt: "2026-10-20T00:00:00.000Z", url: "https://example.invalid/info" };
+
+test("dashboard distingue documentos indexados de oportunidades vigentes", async () => {
+  const { raw, database } = fixture();
+  try {
+    raw.exec(`INSERT INTO publications(id,kind,category,metadata) VALUES('drive:old','junta','Llamados abiertos','{}');
+      INSERT INTO publications(id,kind,category,metadata,starts_at) VALUES('call:current','junta','Llamados abiertos','{}','2026-10-15T12:00:00Z');`);
+    const result = await adminDashboard(database, new Date("2026-10-13T12:00:00Z"));
+    assert.deepEqual(result.boardCounts.calls, { indexed: 2, classified: 1, current: 1 });
+    assert.equal(result.counts.calls, 1);
+    assert.equal(result.counts.acts, 0);
+  } finally { raw.close(); }
+});
 
 test("admin V1 conserva 401, 403 y acceso exclusivo al rol admin", async () => {
   const { raw, database } = fixture();
@@ -103,7 +115,7 @@ test("dashboard, usuarios, sync e IA solo exponen campos mínimos", async () => 
   const { raw, database } = fixture();
   try {
     raw.prepare("INSERT INTO sync_state VALUES(?,?,?,?,?,?,?,?)").run("SIME", "2026-10-12", "2026-10-12", null, "NETWORK_ERROR", 42, "NETWORK_ERROR", "PRIVATE_HEADER=value");
-    raw.prepare("INSERT INTO publications VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run("capacitacion", "Capacitación Docente", "Curso", "{}", "Curso sintético", "2026-10-12", "https://example.invalid", "ACTIVE", "2026-10-12", null, "", "");
+    raw.prepare("INSERT INTO publications VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,NULL)").run("capacitacion", "Capacitación Docente", "Curso", "{}", "Curso sintético", "2026-10-12", "https://example.invalid", "ACTIVE", "2026-10-12", null, "", "");
     const users = await adminUsers(database);
     assert.equal(users.length, 2);
     assert.equal(users[0].lastAccess, null);
@@ -122,7 +134,7 @@ test("dashboard, usuarios, sync e IA solo exponen campos mínimos", async () => 
 test("publicaciones administrativas son de solo lectura y filtrables", async () => {
   const { raw, database } = fixture();
   try {
-    raw.prepare("INSERT INTO publications VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run("capacitacion", "INFoD / AulaS-TIC", "Curso", "{}", "Curso sintético", "2026-10-12", "https://example.invalid", "ACTIVE", "2026-10-12", null, "", "");
+    raw.prepare("INSERT INTO publications VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,NULL)").run("capacitacion", "INFoD / AulaS-TIC", "Curso", "{}", "Curso sintético", "2026-10-12", "https://example.invalid", "ACTIVE", "2026-10-12", null, "", "");
     assert.equal((await adminPublications(database, new URLSearchParams("source=INFoD+%2F+AulaS-TIC"))).length, 1);
     assert.equal((await adminPublications(database, new URLSearchParams("source=SIME"))).length, 0);
   } finally { raw.close(); }
