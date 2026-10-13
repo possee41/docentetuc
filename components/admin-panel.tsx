@@ -1,7 +1,8 @@
 "use client";
 
+/* eslint-disable @next/next/no-html-link-for-pages -- Use native navigation across the Admin/DocenteApp boundary, as in Comunidad. */
+
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { CommunityAdminPanel } from "@/components/community-admin-panel";
 import type { AdminNotice } from "@/lib/admin-notices";
 
@@ -71,7 +72,7 @@ export function AdminPanel() {
   const notices = payload as AdminNotice[] | null, sync = payload as SyncRow[] | null, ai = payload as AIStatus | null;
 
   return <main className="mx-auto min-h-dvh max-w-6xl overflow-x-hidden bg-[#f4f9fe] px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))] text-[#102d55] sm:px-6">
-    <Link href="/?section=cuentas" className="inline-flex min-h-11 items-center text-sm font-bold text-sky-800">← Volver a Cuenta</Link>
+    <a href="/?section=cuentas" className="inline-flex min-h-11 items-center text-sm font-bold text-sky-800">← Volver a Cuenta</a>
     <header className="mb-5"><p className="text-xs font-black uppercase tracking-widest text-sky-700">DocenteTuc</p><h1 className="text-3xl font-black">Administración</h1><p className="mt-1 text-sm text-slate-600">Estado operativo y herramientas de revisión.</p></header>
     <label className="mb-4 block text-sm font-bold sm:hidden">Sección administrativa<select aria-label="Sección administrativa" value={section} onChange={(event) => changeSection(event.target.value as Section)} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3">{SECTIONS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
     <nav aria-label="Secciones de administración" className="mb-6 hidden max-w-full gap-2 overflow-x-auto pb-2 sm:flex">
