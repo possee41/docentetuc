@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { accountDataDeletionStatements } from "./account-deletion.ts";
+import { accountDataDeletionStatements, protectLastAdminDeletion } from "./account-deletion.ts";
 
 const COMMUNITY_MIGRATION = readFileSync(new URL("../migrations/0015_community.sql", import.meta.url), "utf8");
 const SAVED_POSTS_MIGRATION = readFileSync(new URL("../migrations/0016_community_saved_posts.sql", import.meta.url), "utf8");
@@ -13,7 +13,7 @@ const ACCOUNT_B = "6ba7b810-9dad-41d1-80b4-00c04fd430c8";
 const DEVICE_A = "device:550e8400-e29b-41d4-a716-446655440001";
 const DEVICE_B = "device:550e8400-e29b-41d4-a716-446655440002";
 
-test("eliminación autenticada borra todos los datos propios y vinculados, no los ajenos ni publicaciones", () => {
+for (const scenario of ["normal", "last-admin", "two-admins"] as const) test(`eliminación autenticada y datos propios: ${scenario}`, () => {
   const db = new DatabaseSync(":memory:");
   try {
     db.exec(`PRAGMA foreign_keys=ON;
@@ -37,6 +37,7 @@ test("eliminación autenticada borra todos los datos propios y vinculados, no lo
       CREATE TABLE profiles (user_id TEXT PRIMARY KEY);
       CREATE TABLE publications (id TEXT PRIMARY KEY);`);
     db.exec(COMMUNITY_MIGRATION);
+    db.exec(readFileSync(new URL("../migrations/0018_community_admin.sql", import.meta.url), "utf8"));
     db.exec(SAVED_POSTS_MIGRATION);
     db.exec(PRE_MODERATION_MIGRATION);
     for (const [id, email] of [[ACCOUNT_A, "a@example.invalid"], [ACCOUNT_B, "b@example.invalid"]]) {
@@ -61,6 +62,8 @@ test("eliminación autenticada borra todos los datos propios y vinculados, no lo
     db.prepare("INSERT INTO publications VALUES ('official:one')").run();
     db.prepare("INSERT INTO community_rules_acceptances(user_id, rules_version) VALUES (?, '1'), (?, '1')").run(ACCOUNT_A, ACCOUNT_B);
     db.prepare("INSERT INTO community_moderators(user_id) VALUES (?), (?)").run(ACCOUNT_A, ACCOUNT_B);
+    if (scenario !== "normal") db.prepare("UPDATE community_moderators SET role='admin' WHERE user_id=?").run(ACCOUNT_A);
+    if (scenario === "two-admins") db.prepare("UPDATE community_moderators SET role='admin' WHERE user_id=?").run(ACCOUNT_B);
     const postA = "650e8400-e29b-41d4-a716-446655440001", postB = "650e8400-e29b-41d4-a716-446655440002";
     const commentA = "650e8400-e29b-41d4-a716-446655440003", commentB = "650e8400-e29b-41d4-a716-446655440004";
     db.prepare("INSERT INTO community_posts(id, author_user_id, body) VALUES (?, ?, 'post A'), (?, ?, 'post B')").run(postA, ACCOUNT_A, postB, ACCOUNT_B);
@@ -70,7 +73,27 @@ test("eliminación autenticada borra todos los datos propios y vinculados, no lo
     db.prepare("INSERT INTO community_blocks(id, blocker_user_id, blocked_user_id) VALUES (?, ?, ?), (?, ?, ?)").run("650e8400-e29b-41d4-a716-446655440007", ACCOUNT_A, ACCOUNT_B, "650e8400-e29b-41d4-a716-446655440008", ACCOUNT_B, ACCOUNT_A);
     db.prepare("INSERT INTO community_moderation_events(id, actor_user_id, target_type, post_id, action, reason) VALUES (?, ?, 'post', ?, 'hide', 'spam'), (?, ?, 'post', ?, 'hide', 'other')").run("650e8400-e29b-41d4-a716-446655440009", ACCOUNT_A, postB, "650e8400-e29b-41d4-a716-446655440010", ACCOUNT_B, postA);
     db.prepare("INSERT INTO community_rate_limits(user_id, action, window_key, request_count) VALUES (?, 'post', 1, 1), (?, 'post', 1, 1)").run(ACCOUNT_A, ACCOUNT_B);
-    for (const { sql, values } of accountDataDeletionStatements(ACCOUNT_A)) db.prepare(sql).run(...values);
+    const snapshot = () => JSON.stringify((db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as { name: string }[])
+      .map(({ name }) => [name, db.prepare(`SELECT * FROM "${name}"`).all()]));
+    const execute = (id: string) => {
+      db.exec("BEGIN");
+      try {
+        let changes = 0;
+        for (const { sql, values } of protectLastAdminDeletion(id, accountDataDeletionStatements(id))) changes = Number(db.prepare(sql).run(...values).changes);
+        db.exec("COMMIT"); return changes;
+      } catch (error) { db.exec("ROLLBACK"); throw error; }
+    };
+    const before = snapshot();
+    assert.equal(execute(ACCOUNT_A), scenario === "last-admin" ? 0 : 1);
+    if (scenario === "last-admin") {
+      assert.equal(snapshot(), before, "no data, session or role is changed when deletion is denied");
+      return;
+    }
+    if (scenario === "two-admins") {
+      const afterFirst = snapshot();
+      assert.equal(execute(ACCOUNT_B), 0, "a second deletion is rechecked inside its batch, not authorized by an earlier count of two admins");
+      assert.equal(snapshot(), afterFirst);
+    }
 
     for (const table of ["push_preferences", "manual_event_push_queue", "notifications", "training_reminders", "designation_tracking", "saved_publications", "manual_events", "public_profiles", "profiles"]) {
       assert.equal((db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE user_id=?`).get(ACCOUNT_A) as { count: number }).count, 0, table);

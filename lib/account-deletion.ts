@@ -3,6 +3,25 @@ import type { IdentityStatement } from "./identity-link.ts";
 const USER_SCOPE = "(user_id=? OR user_id IN (SELECT source_user_id FROM account_installations WHERE account_id=?))";
 const SCOPE_VALUES = (accountId: string) => [accountId, accountId];
 
+export const LAST_ADMIN_MESSAGE = "Antes de eliminar esta cuenta tenés que asignar otro administrador.";
+
+/** Guard every write inside the SAME D1 batch, not a racy count-before-delete.
+ * Keep the moderator row until the final user deletion cascades it away.
+ * An active administrator means an existing account with role=admin, not an
+ * unexpired login session (logging out must not change this protection).
+ */
+export function protectLastAdminDeletion(accountId: string, statements: IdentityStatement[]): IdentityStatement[] {
+  if (statements.at(-1)?.sql !== 'DELETE FROM "user" WHERE id=?') throw new Error("Account deletion must finish with user deletion");
+  const lastAdmin = `EXISTS (SELECT 1 FROM community_moderators me WHERE me.user_id=? AND me.role='admin')
+    AND NOT EXISTS (SELECT 1 FROM community_moderators other JOIN "user" u ON u.id=other.user_id WHERE other.role='admin' AND other.user_id<>?)`;
+  return statements.filter(({ sql }) => sql !== "DELETE FROM community_moderators WHERE user_id=?").map(({ sql, values }) => {
+    // Only the fixed DELETE/UPDATE plans above and installation-ownership are accepted.
+    const where = sql.indexOf(" WHERE ");
+    if (where < 0 || !/^(DELETE FROM|UPDATE) /u.test(sql)) throw new Error("Unexpected deletion statement");
+    return { sql: `${sql.slice(0, where)} WHERE (${sql.slice(where + 7)}) AND NOT (${lastAdmin})`, values: [...values, accountId, accountId] };
+  });
+}
+
 /** Exact D1 deletion scope for one authenticated DocenteTuc account and its linked installations. */
 export function accountDataDeletionStatements(accountId: string): IdentityStatement[] {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(accountId)) throw new Error("Invalid account identity");
