@@ -1,5 +1,5 @@
-import { sql } from "drizzle-orm";
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { desc, sql } from "drizzle-orm";
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex, check, type AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 
 export const profiles = sqliteTable("profiles", {
   userId: text("user_id").primaryKey(), name: text("name").notNull().default("Docente"), email: text("email"),
@@ -99,3 +99,70 @@ export const installationCredentials = sqliteTable("installation_credentials", {
   deviceId: text("device_id").primaryKey(), secretHash: text("secret_hash").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+// Better Auth's "user" table is managed outside this Drizzle schema; its actor FKs live in 0021 SQL.
+export const newsItems = sqliteTable("news_items", {
+  id: text("id").primaryKey(),
+  originPublicationId: text("origin_publication_id").references(() => publications.id, { onDelete: "set null" }),
+  status: text("status", { enum: ["candidate", "approved", "published", "rejected", "archived"] }).notNull().default("candidate"),
+  editorialTitle: text("editorial_title").notNull().default(""),
+  editorialSummary: text("editorial_summary").notNull().default(""),
+  topic: text("topic"),
+  relevance: text("relevance", { enum: ["informativa", "importante", "urgente"] }).notNull().default("informativa"),
+  featured: integer("featured", { mode: "boolean" }).notNull().default(false),
+  validFrom: text("valid_from"), validUntil: text("valid_until"),
+  approvedAt: text("approved_at"), publishedAt: text("published_at"),
+  createdByUserId: text("created_by_user_id"), approvedByUserId: text("approved_by_user_id"),
+  replacedByNewsId: text("replaced_by_news_id").references((): AnySQLiteColumn => newsItems.id, { onDelete: "set null" }),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  uniqueIndex("idx_news_items_origin").on(table.originPublicationId).where(sql`${table.originPublicationId} IS NOT NULL`),
+  index("idx_news_items_status_updated").on(table.status, desc(table.updatedAt)),
+  index("idx_news_items_public_window").on(table.validFrom, table.validUntil, desc(table.publishedAt)).where(sql`${table.status} = 'published'`),
+  check("news_items_status_check", sql`${table.status} IN ('candidate', 'approved', 'published', 'rejected', 'archived')`),
+  check("news_items_relevance_check", sql`${table.relevance} IN ('informativa', 'importante', 'urgente')`),
+  check("news_items_featured_check", sql`${table.featured} IN (0, 1)`),
+  check("news_items_valid_from_check", sql`${table.validFrom} IS NULL OR (${table.validFrom} GLOB '????-??-??T??:??:??.???Z' AND strftime('%Y-%m-%dT%H:%M:%fZ', ${table.validFrom}) IS NOT NULL AND strftime('%Y-%m-%dT%H:%M:%fZ', ${table.validFrom}) = ${table.validFrom})`),
+  check("news_items_valid_until_check", sql`${table.validUntil} IS NULL OR (${table.validUntil} GLOB '????-??-??T??:??:??.???Z' AND strftime('%Y-%m-%dT%H:%M:%fZ', ${table.validUntil}) IS NOT NULL AND strftime('%Y-%m-%dT%H:%M:%fZ', ${table.validUntil}) = ${table.validUntil})`),
+  check("news_items_window_check", sql`${table.validFrom} IS NULL OR ${table.validUntil} IS NULL OR ${table.validUntil} > ${table.validFrom}`),
+  check("news_items_replacement_check", sql`${table.replacedByNewsId} IS NULL OR ${table.replacedByNewsId} <> ${table.id}`),
+]);
+
+export const newsSources = sqliteTable("news_sources", {
+  id: text("id").primaryKey(), newsItemId: text("news_item_id").notNull().references(() => newsItems.id, { onDelete: "restrict" }),
+  publicationId: text("publication_id").references(() => publications.id, { onDelete: "set null" }),
+  sourceName: text("source_name").notNull(), sourceTitle: text("source_title").notNull(),
+  url: text("url").notNull(), normalizedUrl: text("normalized_url").notNull(),
+  sourceType: text("source_type", { enum: ["official", "public", "union", "media"] }).notNull(),
+  isPrimary: integer("is_primary", { mode: "boolean" }).notNull().default(false),
+  position: integer("position").notNull().default(0), sourcePublishedAt: text("source_published_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  uniqueIndex("idx_news_sources_primary").on(table.newsItemId).where(sql`${table.isPrimary} = 1`),
+  uniqueIndex("idx_news_sources_publication").on(table.newsItemId, table.publicationId).where(sql`${table.publicationId} IS NOT NULL`),
+  uniqueIndex("idx_news_sources_url").on(table.newsItemId, table.normalizedUrl),
+  index("idx_news_sources_publication_lookup").on(table.publicationId).where(sql`${table.publicationId} IS NOT NULL`),
+  index("idx_news_sources_url_lookup").on(table.normalizedUrl),
+  check("news_sources_type_check", sql`${table.sourceType} IN ('official', 'public', 'union', 'media')`),
+  check("news_sources_url_check", sql`${table.url} LIKE 'https://%' AND length(${table.url}) <= 2048`),
+  check("news_sources_normalized_url_check", sql`${table.normalizedUrl} LIKE 'https://%' AND length(${table.normalizedUrl}) <= 2048`),
+  check("news_sources_primary_check", sql`${table.isPrimary} IN (0, 1)`),
+  check("news_sources_position_check", sql`${table.position} >= 0`),
+]);
+
+export const newsEvents = sqliteTable("news_events", {
+  id: text("id").primaryKey(), newsItemId: text("news_item_id").notNull().references(() => newsItems.id, { onDelete: "restrict" }),
+  actorUserId: text("actor_user_id"), actorKind: text("actor_kind", { enum: ["admin", "system"] }).notNull(),
+  action: text("action", { enum: ["create_candidate", "edit", "approve", "publish", "reject", "archive", "reopen", "feature", "unfeature", "source_add", "source_remove"] }).notNull(),
+  previousStatus: text("previous_status", { enum: ["candidate", "approved", "published", "rejected", "archived"] }),
+  nextStatus: text("next_status", { enum: ["candidate", "approved", "published", "rejected", "archived"] }),
+  details: text("details").notNull().default("{}"), createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_news_events_item_created").on(table.newsItemId, desc(table.createdAt)),
+  check("news_events_actor_kind_check", sql`${table.actorKind} IN ('admin', 'system')`),
+  check("news_events_action_check", sql`${table.action} IN ('create_candidate', 'edit', 'approve', 'publish', 'reject', 'archive', 'reopen', 'feature', 'unfeature', 'source_add', 'source_remove')`),
+  check("news_events_previous_status_check", sql`${table.previousStatus} IS NULL OR ${table.previousStatus} IN ('candidate', 'approved', 'published', 'rejected', 'archived')`),
+  check("news_events_next_status_check", sql`${table.nextStatus} IS NULL OR ${table.nextStatus} IN ('candidate', 'approved', 'published', 'rejected', 'archived')`),
+  check("news_events_details_check", sql`json_valid(${table.details}) AND length(${table.details}) <= 2048`),
+]);
