@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { aiAnswerDisclosure, aiResponseCacheKey, aiSourceIssuesFor, buildAIContext, createAIProvider, detectIntent, GeminiProvider, publicAISources, retrievePublications, safeAISourceUrl } from "./ai.ts";
+import { aiAnswerDisclosure, aiPublicationValidity, aiResponseCacheKey, aiSourceIssuesFor, aiSourceType, buildAIContext, createAIProvider, detectIntent, GeminiProvider, publicAISources, retrievePublications, safeAISourceUrl } from "./ai.ts";
 import { usefulInformation } from "./useful-information.ts";
 import type { Profile, Publication } from "./types.ts";
 
@@ -76,7 +76,7 @@ test("la clave de caché de IA queda aislada por cuenta o instalación", () => {
 });
 
 test("usa el matching real y conserva su porcentaje", () => {
-  const result = buildAIContext("¿Qué capacitaciones coinciden con mi perfil?", records, { profile });
+  const result = buildAIContext("¿Qué capacitaciones coinciden con mi perfil?", records, { profile, now: new Date("2026-10-01T09:00:00-03:00") });
   assert.match(result.context, /Compatibilidad calculada por DocenteTuc: \d+%; confianza: \d+%/);
 });
 
@@ -144,7 +144,7 @@ test("agenda personal recupera eventos manuales de la fecha consultada", () => {
   ] });
   assert.match(result.context, /Reunión de padres/);
   assert.doesNotMatch(result.context, /Entrega de planificaciones/);
-  assert.equal(result.sources[0]?.sourceType, "internal");
+  assert.equal(result.sources[0]?.sourceType, "personal");
   assert.equal(result.sources[0]?.source, "Tu agenda");
 });
 
@@ -177,7 +177,7 @@ test("expone como no informados los campos ausentes para evitar alucinaciones", 
 test("una publicación declarada inexistente no hereda el contexto de pantalla", () => {
   const result = buildAIContext("¿Cuándo abre una capacitación que no existe?", records, { context: { type: "capacitacion", id: "next" } });
   assert.equal(result.sources.length, 0);
-  assert.match(result.context, /No se recuperaron registros oficiales suficientes/);
+  assert.match(result.context, /No se recuperaron evidencias públicas suficientes/);
 });
 
 test("incluye el seguimiento personal de designaciones sin convertirlo en fuente oficial", () => {
@@ -221,9 +221,44 @@ test("la procedencia oficial conserva nombre y enlace HTTPS, pero no expone el I
   assert.equal(result.sources[0]?.sourceType, "official");
   assert.equal(result.sources[0]?.url, "https://sime.educaciontuc.gov.ar/Vacantes/Detalle/1");
   assert.doesNotMatch(result.context, /internal-publication-id-should-not-leak/);
-  assert.deepEqual(publicAISources(result.sources), [{ title: "Designaciones de Filosofía", source: "SIME", sourceType: "official", url: "https://sime.educaciontuc.gov.ar/Vacantes/Detalle/1" }]);
+  assert.deepEqual(publicAISources(result.sources), [{ title: "Designaciones de Filosofía", source: "SIME", sourceType: "official", url: "https://sime.educaciontuc.gov.ar/Vacantes/Detalle/1", publishedAt: null, relevantAt: null, registrationOpenAt: null, registrationCloseAt: null, validity: "UNKNOWN" }]);
   assert.deepEqual(safeAISourceUrl("javascript:alert(1)"), "");
   assert.deepEqual(safeAISourceUrl("http://sime.educaciontuc.gov.ar/"), "");
+  assert.deepEqual(safeAISourceUrl("https://usuario:clave@oficial.test/"), "");
+});
+
+test("citas conservan publicación, fechas y vigencia sin confundir sincronización con publicación", () => {
+  const record = { ...vacancy, source_published_at: "2026-09-20", updated_at: "2026-10-10", starts_at: "2026-09-21", ends_at: "2026-09-30", normalized_status: "ACTIVE" } as Publication;
+  const result = buildAIContext("¿Qué designaciones de Filosofía vencidas hubo?", [record], { now: new Date("2026-10-14T12:00:00Z") });
+  assert.equal(aiPublicationValidity(record, new Date("2026-10-14T12:00:00Z")), "EXPIRED");
+  assert.equal(result.sources[0]?.validity, "EXPIRED");
+  assert.equal(result.sources[0]?.publishedAt, "2026-09-20");
+  assert.equal(result.sources[0]?.relevantAt, "2026-09-21");
+  assert.match(result.context, /Vigencia calculada: EXPIRED/);
+  assert.match(result.context, /Fecha de sincronización no equivale a fecha de publicación/);
+});
+
+test("no recomienda como vigentes designaciones expiradas, pero admite una consulta histórica", () => {
+  const old = { ...vacancy, ends_at: "2026-09-30", normalized_status: "ACTIVE" } as Publication;
+  const now = new Date("2026-10-14T12:00:00Z");
+  assert.deepEqual(retrievePublications("¿Qué designaciones de Filosofía hay?", [old], 8, { now }), []);
+  assert.deepEqual(retrievePublications("¿Qué designaciones de Filosofía vencidas hubo?", [old], 8, { now }).map((item) => item.id), ["vacancy"]);
+});
+
+test("fuentes no conocidas nunca se atribuyen automáticamente a un organismo oficial", () => {
+  assert.equal(aiSourceType("SIME"), "official");
+  assert.equal(aiSourceType("Publicación pública futura"), "public");
+  const result = buildAIContext("¿Qué comunicado pide documentación?", [{ ...publicDocument, source: "Publicación pública futura" }]);
+  assert.equal(result.sources[0]?.sourceType, "public");
+  assert.equal(aiAnswerDisclosure(result.sources, [], result.intent).label, "Información pública en DocenteTuc");
+  assert.match(result.context, /inferencias de IA/);
+});
+
+test("contexto del proveedor limita un documento extenso y notas personales", () => {
+  const document = { ...publicDocument, summary: "X".repeat(8000) } as Publication;
+  const result = buildAIContext("¿Qué comunicado hay?", [document]);
+  assert.ok(result.context.length < 5000);
+  assert.doesNotMatch(result.context, /X{1300}/);
 });
 
 test("una fuente que falló no se confunde con una sincronización correcta sin resultados", () => {
@@ -271,9 +306,9 @@ test("la orientación general nunca se etiqueta como información oficial", () =
 });
 
 test("distingue una respuesta que mezcla fuentes oficiales con agenda personal", () => {
-  const disclosure = aiAnswerDisclosure([{ sourceType: "official" }, { sourceType: "internal" }], [], "agenda");
+  const disclosure = aiAnswerDisclosure([{ sourceType: "official" }, { sourceType: "personal" }], [], "agenda");
   assert.equal(disclosure.kind, "mixed");
-  assert.match(disclosure.label, /Registros oficiales \+ datos personales/);
+  assert.match(disclosure.label, /Fuentes públicas \+ datos personales/);
   assert.match(disclosure.detail, /no son información oficial/);
 });
 

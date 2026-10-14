@@ -13,8 +13,9 @@ const accentPairs = [["á", "a"], ["é", "e"], ["í", "i"], ["ó", "o"], ["ú", 
 const foldedText = `lower(${accentPairs.reduce((expression, [from, to]) => `replace(${expression}, '${from}', '${to}')`, searchableText)})`;
 const escapeLike = (term: string) => term.replace(/[\\%_]/g, "\\$&");
 
-export function publicationSearchQuery(query: string, cursor?: string) {
+export function publicationSearchQuery(query: string, cursor?: string, pageSize = PUBLICATION_SEARCH_PAGE_SIZE) {
   if (query.length > 120) throw new Error("Búsqueda demasiado larga.");
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 80) throw new Error("Límite de búsqueda inválido.");
   const terms = query.trim().split(/\s+/).filter(Boolean);
   if (!terms.length || terms.length > 8) throw new Error("Búsqueda inválida.");
   const params: (string | number)[] = terms.map((term) => {
@@ -32,6 +33,6 @@ export function publicationSearchQuery(query: string, cursor?: string) {
   const sql = `SELECT * FROM publications WHERE kind IN ('vacante','capacitacion','junta','informacion')
     AND (CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.official.canonicalId') IS NULL ELSE 1 END)
     AND ${terms.map(() => `${foldedText} LIKE ? ESCAPE '\\'`).join(" AND ")}${cursorCondition}
-    ORDER BY updated_at DESC, id DESC LIMIT ${PUBLICATION_SEARCH_PAGE_SIZE + 1}`;
+    ORDER BY updated_at DESC, id DESC LIMIT ${pageSize + 1}`;
   return { sql, params };
 }
