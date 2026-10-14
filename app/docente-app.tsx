@@ -43,7 +43,7 @@ import { GoogleAccountPhoto } from "@/components/google-account-photo";
 import { AppSidebar, AppSidebarEdge, AppSidebarTrigger, navigation, useAppSidebarState } from "@/components/app-sidebar";
 import type { AppView as View } from "@/components/app-sidebar";
 import { deviceRequestHeaders } from "@/lib/device-user";
-import { sectionUrl, viewFromSection } from "@/lib/app-navigation";
+import { sectionUrl, shouldRevalidateAccount, viewFromSection } from "@/lib/app-navigation";
 import { boardItems } from "@/lib/board-view";
 import type { BoardView } from "@/lib/board-view";
 import { groupPadrones, padronDocuments, padronSelection, padronTitleFacts, padronYear } from "@/lib/padron-documents";
@@ -169,6 +169,8 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const [manualEventDate, setManualEventDate] = useState("");
   const loadRef = useRef<(syncIfEmpty?: boolean, showLoading?: boolean) => Promise<void>>(async () => {});
   const syncSourcesRef = useRef<(notify?: boolean) => Promise<void>>(async () => {});
+  const previousAccountView = useRef<View | null>(null);
+  const accountRevalidationInFlight = useRef(false);
   const [navigationRestored, setNavigationRestored] = useState(false);
   const setView = useCallback((target: View) => {
     if (target === "comunidad") { router.push("/comunidad"); return; }
@@ -247,7 +249,6 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
 
   const load = useCallback(async (syncIfEmpty = true, showLoading = true) => {
     if (showLoading) setLoading(true);
-    setLoadError("");
     try {
       const response = await fetch("/api/app", { cache: "no-store", headers: apiHeaders(), signal: AbortSignal.timeout(15000) });
       if (response.status === 401) { privateDataVerified.current = false; setPrivateReady(false); setData(publicData.current); setLoadError("No se pudo verificar esta instalación o su cuenta. Sus datos privados se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."); return; }
@@ -259,6 +260,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
       privateDataVerified.current = true;
       setPrivateReady(true);
       setData(result);
+      setLoadError("");
       if (syncIfEmpty && result.publications.length === 0 && !autoSyncStarted.current) {
         autoSyncStarted.current = true;
         window.setTimeout(() => { void syncSourcesRef.current(false); }, 0);
@@ -284,6 +286,14 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   }, []);
 
   useEffect(() => { loadRef.current = load; syncSourcesRef.current = syncSources; }, [load, syncSources]);
+
+  useEffect(() => {
+    const previous = previousAccountView.current;
+    previousAccountView.current = view;
+    if (!shouldRevalidateAccount(previous, view, Boolean(loadError), accountRevalidationInFlight.current)) return;
+    accountRevalidationInFlight.current = true;
+    void load(false, false).finally(() => { accountRevalidationInFlight.current = false; });
+  }, [view, loadError, load]);
 
   useEffect(() => {
     document.querySelector(".app-background")?.scrollTo(0, 0);
