@@ -1,6 +1,6 @@
 # Moderación preventiva de Comunidad 1.1
 
-Esta capa se ejecuta en el servidor antes de crear o editar publicaciones y comentarios. Conserva la sesión Better Auth, el perfil público, las normas versionadas, los límites de frecuencia y la moderación posterior. No recibe `userId` como prueba de autoría. La sesión determina el autor. `migrations/0020_community_pre_moderation.sql` es aditiva, no altera contenido existente y se ensayó únicamente en una D1 local aislada; **no se aplicó en producción**. Las escrituras de Comunidad se cierran de forma segura si faltan las cuatro tablas nuevas.
+Esta capa se ejecuta en el servidor antes de crear o editar publicaciones y comentarios. Conserva la sesión Better Auth, el perfil público, las normas versionadas, los límites de frecuencia y la moderación posterior. No recibe `userId` como prueba de autoría. La sesión determina el autor. `migrations/0020_community_pre_moderation.sql` es aditiva, no altera contenido existente, se ensayó en una D1 local aislada y **ya se aplicó en producción**; no debe ejecutarse nuevamente allí. Las escrituras de Comunidad se cierran de forma segura si faltan las cuatro tablas nuevas.
 
 ## Decisión y visibilidad
 
@@ -20,4 +20,4 @@ Cada creación o edición con Gemini configurado puede producir una petición al
 
 `/api/admin/community/pre-moderation` comprueba sesión y rol `admin` en servidor; las mutaciones verifican mismo origen. La cola muestra identidad **pública**, texto, contexto mínimo, categorías, motivo y confianza. El administrador puede aprobar/descartar la alerta, rechazar o bloquear la participación del autor del contenido revisado. Cada revisión o restricción queda auditada. Bloquear participación no borra contenido ni cuenta, y no afecta otras funciones. El desbloqueo no tiene interfaz V1: requiere procedimiento administrativo controlado; no debe aplicarse un bloqueo sin revisión humana y una razón documentada. La página y APIs normales no exponen email Google, tokens, foto privada, perfil docente, agenda ni Guardadas.
 
-Antes de producción: autorizar y aplicar `0019` y `0020` por separado, repetir E2E con un Worker de prueba estable, revisar capacidad de la cola y el costo del clasificador, y verificar rollback del Worker sin restaurar D1 automáticamente. No publicar esta capa si la migración `0020` no está aplicada.
+`0019` y `0020` ya están aplicadas en producción; no volver a ejecutarlas. Para futuros despliegues, repetir E2E con un Worker de prueba estable, revisar capacidad de la cola y el costo del clasificador, y verificar rollback del Worker sin restaurar D1 automáticamente. No publicar esta capa en un entorno donde la migración `0020` no esté aplicada.
