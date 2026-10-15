@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { BookOpen, Bookmark, BriefcaseBusiness, Building2, CalendarDays, CircleUserRound, GraduationCap, Home, Menu, MessagesSquare, PanelLeftClose, Pin, Search, UserRound, X } from "lucide-react";
+import { BookOpen, Bookmark, BriefcaseBusiness, Building2, CalendarDays, CircleUserRound, GraduationCap, Home, Menu, MessagesSquare, Newspaper, PanelLeftClose, Pin, Search, UserRound, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 import { sidebarIsOpen, updateSidebarVisibility } from "@/lib/sidebar-visibility";
@@ -14,11 +14,11 @@ import type { AppView } from "@/lib/app-navigation";
 export type { AppView } from "@/lib/app-navigation";
 
 export const navigation: [AppView, string, LucideIcon][] = [
-  ["inicio", "Inicio", Home], ["busqueda", "Buscar", Search], ["vacantes", "Inscripciones SIME", BriefcaseBusiness], ["actos", "Actos de designación", CalendarDays], ["llamados", "Llamados abiertos", BriefcaseBusiness], ["comunidad", "Comunidad", MessagesSquare], ["capacitaciones", "Capacitaciones", GraduationCap],
+  ["inicio", "Inicio", Home], ["busqueda", "Buscar", Search], ["noticias", "Noticias", Newspaper], ["vacantes", "Inscripciones SIME", BriefcaseBusiness], ["actos", "Actos de designación", CalendarDays], ["llamados", "Llamados abiertos", BriefcaseBusiness], ["comunidad", "Comunidad", MessagesSquare], ["capacitaciones", "Capacitaciones", GraduationCap],
   ["junta", "Consultas oficiales", BookOpen], ["padrones", "Padrones", BookOpen], ["comunicados", "Comunicados", MessagesSquare], ["informacion", "Información útil", Building2], ["agenda", "Agenda", CalendarDays], ["guardados", "Mis guardados", Bookmark], ["perfil", "Perfil docente", UserRound], ["cuentas", "Cuentas y accesos", CircleUserRound],
 ];
 
-const groups: [string, AppView[]][] = [["Uso diario", ["inicio", "busqueda", "vacantes", "actos", "llamados", "comunidad", "capacitaciones", "agenda"]], ["Consultas", ["padrones", "comunicados", "informacion"]], ["Personal", ["perfil", "guardados", "cuentas"]]];
+const groups: [string, AppView[]][] = [["Uso diario", ["inicio", "busqueda", "noticias", "vacantes", "actos", "llamados", "comunidad", "capacitaciones", "agenda"]], ["Consultas", ["padrones", "comunicados", "informacion"]], ["Personal", ["perfil", "guardados", "cuentas"]]];
 
 export function useAppSidebarState(defaultPinned: boolean) {
   const [visibility, setVisibility] = useState<SidebarVisibility>({ pinned: defaultPinned, hovered: false });
