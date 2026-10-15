@@ -137,7 +137,7 @@ export function NewsAdminPanel() {
           <p>{entry.source_name} · {entry.source_type}{entry.is_primary ? " · principal" : ""}{entry.source_published_at ? ` · ${entry.source_published_at}` : ""}</p>
           {entry.source_removed_at && <p className="text-amber-800">Esta publicación de apoyo fue retirada; revisá o reemplazá la fuente antes de publicar.</p>}
           {detail.sharedSourceIds.includes(entry.id) && <p className="text-amber-800">Esta URL también aparece en otra noticia: revisá posibles duplicados.</p>}
-          <button type="button" disabled={busy || Boolean(detail.item.status === "published" && entry.is_primary)} onClick={() => act("source_remove", { sourceId: entry.id })}
+          <button type="button" disabled={busy || !["candidate", "approved", "published"].includes(detail.item.status) || Boolean(detail.item.status === "published" && entry.is_primary)} onClick={() => act("source_remove", { sourceId: entry.id })}
             className="mt-2 min-h-11 rounded-xl border border-sky-200 px-3 disabled:opacity-50">Quitar fuente</button></div>)}
         <form onSubmit={(e) => { e.preventDefault(); act("source_add", source); }} className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm">Nombre de fuente<input required maxLength={120} value={source.sourceName} onChange={(e) => setSource({ ...source, sourceName: e.target.value })} className="mt-1 min-h-11 w-full rounded-xl border px-3" /></label>

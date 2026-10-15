@@ -229,4 +229,5 @@ test("panel editorial mantiene cola, evidencia, auditoría y confirmaciones dent
   assert.match(admin, /section === "news" && <NewsAdminPanel \/>/);
   for (const marker of ["list.counts[value]", "Crear candidata desde publicación", "Ficha editorial", "Evidencia y fuentes",
     "Historial editorial", "window.confirm", "Recargar noticia"]) assert.ok(panel.includes(marker), marker);
+  assert.match(panel, /disabled=\{busy \|\| !\["candidate", "approved", "published"\]\.includes\(detail\.item\.status\) \|\| Boolean\(detail\.item\.status === "published" && entry\.is_primary\)\}/);
 });
