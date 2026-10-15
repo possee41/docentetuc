@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { isNewsRelevance, isNewsSourceType, isNewsStatus, isNewsWindow, normalizeNewsSourceUrl } from "./news-editorial.ts";
+import { isNewsRelevance, isNewsSourceType, isNewsStatus, isNewsWindow, normalizeNewsImage, normalizeNewsSourceUrl } from "./news-editorial.ts";
 
 const migration = readFileSync(new URL("../migrations/0021_news_editorial.sql", import.meta.url), "utf8");
+const mediaMigration = readFileSync(new URL("../migrations/0022_news_media_content.sql", import.meta.url), "utf8");
 
 function fixture() {
   const db = new DatabaseSync(":memory:");
@@ -40,6 +41,21 @@ test("0021 crea solo tablas vacías, índices y conserva publications", () => {
       "idx_news_sources_primary", "idx_news_sources_publication", "idx_news_sources_url", "idx_news_sources_publication_lookup",
       "idx_news_sources_url_lookup", "idx_news_events_item_created"]) assert.ok(names.has(name), name);
     assert.doesNotMatch(migration, /^\s*(?:UPDATE|DELETE|DROP|ALTER)\b/im);
+  } finally { db.close(); }
+});
+
+test("0022 agrega contenido e imagen opcionales sin alterar noticias de 0021", () => {
+  const { db } = fixture();
+  try {
+    item(db);
+    const before = db.prepare("SELECT id,status,editorial_title,editorial_summary FROM news_items").all();
+    db.exec(mediaMigration);
+    assert.deepEqual(db.prepare("SELECT id,status,editorial_title,editorial_summary FROM news_items").all(), before);
+    const row = db.prepare(`SELECT editorial_body,hero_image_url,hero_image_alt,hero_image_credit,
+      hero_image_source_url,hero_image_rights_note,hero_image_rights_url FROM news_items`).get();
+    assert.ok(row && Object.values(row).every((value) => value === null));
+    assert.doesNotMatch(mediaMigration, /^\s*(?:UPDATE|DELETE|DROP|CREATE TABLE)\b/im);
+    assert.throws(() => db.prepare("UPDATE news_items SET hero_image_alt=? WHERE id='news-a'").run("x".repeat(241)));
   } finally { db.close(); }
 });
 
@@ -113,4 +129,10 @@ test("validaciones puras preparan entradas sin publicar ni consultar datos", () 
   assert.ok(isNewsWindow(null, null));
   assert.ok(!isNewsWindow("2026-02-30T00:00:00.000Z", null));
   assert.ok(!isNewsWindow("2026-10-15T00:00:00.000Z", "2026-10-14T00:00:00.000Z"));
+  const image = { imageUrl: "https://ejemplo.org/foto.webp", imageAlt: "Aula vacía", imageCredit: "DocenteTuc",
+    imageSourceUrl: "https://ejemplo.org/origen", imageRightsNote: "Licencia expresa", imageRightsUrl: "https://ejemplo.org/licencia" };
+  assert.equal(normalizeNewsImage(image)?.url, image.imageUrl);
+  assert.equal(normalizeNewsImage({}), null);
+  assert.equal(normalizeNewsImage({ ...image, imageRightsUrl: "" }), undefined);
+  assert.equal(normalizeNewsImage({ ...image, imageUrl: "javascript:alert(1)" }), undefined);
 });

@@ -9,6 +9,7 @@ const ADMIN = "550e8400-e29b-41d4-a716-446655440000";
 const USER = "6ba7b810-9dad-41d1-80b4-00c04fd430c8";
 const ADMIN_B = "77c39c3b-a822-4b0f-b196-9f05209c4079";
 const migration = readFileSync(new URL("../migrations/0021_news_editorial.sql", import.meta.url), "utf8");
+const mediaMigration = readFileSync(new URL("../migrations/0022_news_media_content.sql", import.meta.url), "utf8");
 type SqlValue = null | number | bigint | string | Uint8Array;
 
 function fixture() {
@@ -25,6 +26,7 @@ function fixture() {
     INSERT INTO publications VALUES('JUNTA:2','Otra convocatoria','Otro resumen','Padrones y Comunicados',
       'https://educaciontuc.gov.ar/aviso/2','2026-10-11',NULL,'2026-10-14');`);
   raw.exec(migration);
+  raw.exec(mediaMigration);
   const database = {
     prepare(sql: string) { return { bind(...values: unknown[]) {
       const args = values as SqlValue[];
@@ -46,8 +48,11 @@ function fixture() {
 
 const create = (db: CommunityDatabase, publicationId = "SIME:vac-1", actor = ADMIN) =>
   mutateNewsAdmin(db, actor, { action: "create_candidate", publicationId });
-const change = (db: CommunityDatabase, id: string, updatedAt: string, action: string, extra: Record<string, unknown> = {}, actor = ADMIN) =>
-  mutateNewsAdmin(db, actor, { id, updatedAt, action, ...extra });
+const change = async (db: CommunityDatabase, id: string, updatedAt: string, action: string, extra: Record<string, unknown> = {}, actor = ADMIN) => {
+  const result = await mutateNewsAdmin(db, actor, { id, updatedAt, action, ...extra });
+  assert.ok(result.updatedAt);
+  return { ...result, updatedAt: result.updatedAt };
+};
 const details = (db: CommunityDatabase, id: string) => newsAdminDetail(db, id);
 const count = (raw: DatabaseSync, table: string) => (raw.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
 
@@ -81,6 +86,42 @@ test("edición usa updated_at y rechaza versiones viejas sin evento adicional", 
     await assert.rejects(change(database, id, old, "approve"), { status: 409 });
     assert.equal(count(raw, "news_events"), 2);
     await assert.rejects(change(database, id, edited.updatedAt, "edit", { ...input, validUntil: "2026-10-13T00:00:00.000Z" }), { status: 400 });
+  } finally { raw.close(); }
+});
+
+test("imagen exige procedencia y derechos; una edición aprobada o publicada requiere nueva revisión", async () => {
+  const { raw, database } = fixture();
+  try {
+    const { id } = await create(database);
+    const image = { imageUrl: "https://ejemplo.org/foto.webp", imageAlt: "Ilustración de prueba",
+      imageCredit: "Autor sintético", imageSourceUrl: "https://ejemplo.org/origen",
+      imageRightsNote: "Licencia de uso registrada", imageRightsUrl: "https://ejemplo.org/licencia" };
+    const fields = { title: "Noticia original", summary: "Síntesis original", body: "Texto propio\n\nSegunda parte.",
+      topic: "Educación", relevance: "informativa", validFrom: null, validUntil: null };
+    let current = (await details(database, id)).item;
+    await assert.rejects(change(database, id, current.updated_at, "edit", { ...fields, ...image, imageRightsUrl: "" }), { status: 400 });
+    assert.equal(count(raw, "news_events"), 1);
+    const edited = await change(database, id, current.updated_at, "edit", { ...fields, ...image });
+    current = (await details(database, id)).item;
+    assert.equal(current.editorial_body, fields.body);
+    assert.equal(current.hero_image_url, image.imageUrl);
+    await assert.rejects(change(database, id, edited.updatedAt, "edit", { ...fields, ...image }, USER), { status: 403 });
+    await assert.rejects(change(database, id, current.updated_at, "approve"), { status: 409 });
+    const approved = await change(database, id, current.updated_at, "approve", { confirmImageRights: true });
+    const revised = await change(database, id, approved.updatedAt, "edit", { ...fields, ...image, body: "Texto revisado" });
+    assert.equal((await details(database, id)).item.status, "candidate");
+    await assert.rejects(change(database, id, revised.updatedAt, "publish"), { status: 409 });
+    const reapproved = await change(database, id, revised.updatedAt, "approve", { confirmImageRights: true });
+    const published = await change(database, id, reapproved.updatedAt, "publish");
+    await assert.rejects(change(database, id, published.updatedAt, "edit", { ...fields, ...image, body: "Cambio oculto" }), { status: 409 });
+    assert.equal((await details(database, id)).item.editorial_body, "Texto revisado");
+    const archived = await change(database, id, published.updatedAt, "archive");
+    const reopened = await change(database, id, archived.updatedAt, "reopen");
+    await change(database, id, reopened.updatedAt, "edit", fields);
+    assert.equal((await details(database, id)).item.hero_image_url, null);
+    assert.equal((await details(database, id)).item.status, "candidate");
+    assert.ok((await details(database, id)).events.some((entry) => entry.action === "edit"));
+    assert.ok((await details(database, id)).events.some((entry) => entry.action === "approve" && String(entry.details).includes("imageRightsReviewed")));
   } finally { raw.close(); }
 });
 
@@ -142,10 +183,12 @@ test("publicación exige aprobación, contenido, fuente principal y caducidad ur
     const expiry = new Date(Date.now() + 86_400_000).toISOString();
     const edited = await change(database, id, item.updated_at, "edit", { title: "Urgente", summary: "Resumen", topic: "Juntas", relevance: "urgente", validFrom: null, validUntil: expiry });
     assert.ok(edited.updatedAt);
-    await change(database, id, edited.updatedAt, "publish");
+    assert.equal((await details(database, id)).item.status, "candidate");
+    const approved = await change(database, id, edited.updatedAt, "approve");
+    await change(database, id, approved.updatedAt, "publish");
     assert.equal((await details(database, id)).item.status, "published");
     assert.ok((await details(database, id)).item.published_at);
-    assert.equal(count(raw, "news_events"), 7);
+    assert.equal(count(raw, "news_events"), 8);
   } finally { raw.close(); }
 });
 

@@ -15,6 +15,7 @@ function fixture() {
     CREATE TABLE publications(id TEXT PRIMARY KEY,removed_at TEXT);
     INSERT INTO publications VALUES('training-a',NULL),('designation-a',NULL),('withdrawn-a','2026-10-14T00:00:00.000Z');`);
   raw.exec(readFileSync(new URL("../migrations/0021_news_editorial.sql", import.meta.url), "utf8"));
+  raw.exec(readFileSync(new URL("../migrations/0022_news_media_content.sql", import.meta.url), "utf8"));
   const database = { prepare(sql: string) { return { bind(...values: unknown[]) {
     const args = values as SqlValue[];
     return { first: async <T>() => raw.prepare(sql).get(...args) as T | null,
@@ -55,7 +56,7 @@ test("solo publica noticias vigentes con fuente principal activa; detalle no exp
     assert.equal(await publicNewsDetail(database, "withdrawn", now), null);
     const detail = await publicNewsDetail(database, "current", now);
     assert.equal(detail?.sources[0].url, "https://example.invalid/current");
-    assert.deepEqual(Object.keys(detail!).sort(), ["featured", "id", "primarySource", "publishedAt", "relevance", "sources", "summary", "title", "topic", "validFrom", "validUntil"].sort());
+    assert.deepEqual(Object.keys(detail!).sort(), ["body", "featured", "id", "image", "primarySource", "publishedAt", "relevance", "sources", "summary", "title", "topic", "validFrom", "validUntil"].sort());
     assert.ok(!JSON.stringify(detail).includes("actor_user_id"));
   } finally { raw.close(); }
 });
@@ -96,6 +97,41 @@ test("Inicio prioriza una urgente y hasta dos importantes/destacadas sin duplica
   } finally { raw.close(); }
 });
 
+test("el listado editorial presenta urgentes antes de destacadas y conserva la fuente", async () => {
+  const { raw, database } = fixture();
+  try {
+    add(raw, "featured", { featured: 1, sourceType: "media" });
+    add(raw, "urgent", { relevance: "urgente", sourceType: "union" });
+    const result = await listPublicNews(database, new URLSearchParams(), now);
+    assert.deepEqual(result.items.map((entry) => entry.id), ["urgent", "featured"]);
+    assert.deepEqual(result.items.map((entry) => entry.primarySource.type), ["union", "media"]);
+  } finally { raw.close(); }
+});
+
+test("contenido completo e imagen acreditada son públicos; derechos internos y medios incompletos no", async () => {
+  const { raw, database } = fixture();
+  try {
+    add(raw, "with-image");
+    add(raw, "old-news");
+    add(raw, "incomplete-image");
+    raw.prepare(`UPDATE news_items SET editorial_body=?,hero_image_url=?,hero_image_alt=?,hero_image_credit=?,
+      hero_image_source_url=?,hero_image_rights_note=?,hero_image_rights_url=? WHERE id='with-image'`)
+      .run("Cuerpo editorial original.", "https://ejemplo.org/foto.webp", "Aula ilustrada", "Autor sintético",
+        "https://ejemplo.org/origen", "Licencia acreditada", "https://ejemplo.org/licencia");
+    raw.prepare("UPDATE news_items SET hero_image_url=? WHERE id='incomplete-image'").run("https://ejemplo.org/no-acreditada.webp");
+    const detail = await publicNewsDetail(database, "with-image", now);
+    assert.equal(detail?.body, "Cuerpo editorial original.");
+    assert.deepEqual(detail?.image, { url: "https://ejemplo.org/foto.webp", alt: "Aula ilustrada",
+      credit: "Autor sintético", sourceUrl: "https://ejemplo.org/origen" });
+    assert.ok(!JSON.stringify(detail).includes("Licencia acreditada"));
+    assert.ok(!JSON.stringify(detail).includes("/licencia"));
+    assert.equal((await publicNewsDetail(database, "old-news", now))?.body, null);
+    assert.equal((await publicNewsDetail(database, "old-news", now))?.image, null);
+    assert.equal((await publicNewsDetail(database, "incomplete-image", now))?.image, null);
+    assert.equal((await listPublicNews(database, new URLSearchParams(), now)).items.find((entry) => entry.id === "incomplete-image")?.image, null);
+  } finally { raw.close(); }
+});
+
 test("API pública solo exporta GET y no consulta identidad, auditoría o borradores", () => {
   const route = readFileSync(new URL("../app/api/news/route.ts", import.meta.url), "utf8");
   assert.match(route, /export async function GET/);
@@ -114,4 +150,5 @@ test("Noticias usa URL propia, menú e Inicio sin ocupar la navegación inferior
   assert.doesNotMatch(app, /\["inicio", "comunidad", "agenda", "perfil", "cuentas", "noticias"\]/);
   assert.match(component, /newsDetail: true/);
   assert.match(component, /window\.addEventListener\("popstate", onPop\)/);
+  assert.doesNotMatch(component, /dangerouslySetInnerHTML/);
 });

@@ -1,12 +1,14 @@
 import { aiSourceType } from "./ai.ts";
 import { requireCommunityAdmin } from "./community-admin.ts";
 import { CommunityError, type CommunityDatabase } from "./community.ts";
-import { isNewsRelevance, isNewsSourceType, isNewsStatus, isNewsWindow, normalizeNewsSourceUrl } from "./news-editorial.ts";
+import { isNewsRelevance, isNewsSourceType, isNewsStatus, isNewsWindow, normalizeNewsImage, normalizeNewsSourceUrl } from "./news-editorial.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type Row = Record<string, unknown>;
 type NewsRow = Row & { id: string; status: string; updated_at: string; editorial_title: string; editorial_summary: string;
-  relevance: string; valid_from: string | null; valid_until: string | null; origin_publication_id: string | null };
+  relevance: string; valid_from: string | null; valid_until: string | null; origin_publication_id: string | null;
+  hero_image_url: string | null; hero_image_alt: string | null; hero_image_credit: string | null;
+  hero_image_source_url: string | null; hero_image_rights_note: string | null; hero_image_rights_url: string | null };
 type Action = "create_candidate" | "edit" | "approve" | "publish" | "reject" | "archive" | "reopen" | "feature" | "unfeature" | "source_add" | "source_remove";
 
 function fail(code = "INVALID_NEWS", status: CommunityError["status"] = 400): never { throw new CommunityError(code, status); }
@@ -51,7 +53,9 @@ export async function searchNewsOrigins(database: CommunityDatabase, query: stri
 
 export async function newsAdminDetail(database: CommunityDatabase, newsId: string) {
   const item = await database.prepare(`SELECT n.id,n.origin_publication_id,n.status,n.editorial_title,n.editorial_summary,
-    n.topic,n.relevance,n.featured,n.valid_from,n.valid_until,n.approved_at,n.published_at,n.created_at,n.updated_at,
+    n.editorial_body,n.hero_image_url,n.hero_image_alt,n.hero_image_credit,n.hero_image_source_url,
+    n.hero_image_rights_note,n.hero_image_rights_url,n.topic,n.relevance,n.featured,n.valid_from,n.valid_until,
+    n.approved_at,n.published_at,n.created_at,n.updated_at,
     p.title AS origin_title, p.official_url AS origin_url,
     p.removed_at AS origin_removed_at FROM news_items n LEFT JOIN publications p ON p.id=n.origin_publication_id WHERE n.id=?`)
     .bind(id(newsId)).first<NewsRow>();
@@ -74,7 +78,8 @@ export async function newsAdminDetail(database: CommunityDatabase, newsId: strin
 async function loadCurrent(database: CommunityDatabase, input: Record<string, unknown>) {
   const newsId = id(input.id), expected = bounded(input.updatedAt, 100, true);
   const current = await database.prepare(`SELECT id,status,updated_at,editorial_title,editorial_summary,relevance,
-    valid_from,valid_until,origin_publication_id FROM news_items WHERE id=?`).bind(newsId).first<NewsRow>();
+    valid_from,valid_until,origin_publication_id,hero_image_url,hero_image_alt,hero_image_credit,
+    hero_image_source_url,hero_image_rights_note,hero_image_rights_url FROM news_items WHERE id=?`).bind(newsId).first<NewsRow>();
   if (!current) fail("NOT_FOUND", 404);
   if (current.updated_at !== expected) fail("NEWS_STALE", 409);
   return current;
@@ -129,15 +134,21 @@ export async function mutateNewsAdmin(database: CommunityDatabase, actorId: stri
   let mutation: unknown[] = [], warning: string | null = null;
 
   if (kind === "edit") {
-    if (!["candidate", "approved", "published"].includes(item.status)) fail("NEWS_TRANSITION", 409);
+    if (!["candidate", "approved"].includes(item.status)) fail("NEWS_REVIEW_REQUIRED", 409);
     const title = bounded(input.title, 160), summary = bounded(input.summary, 1200), topic = bounded(input.topic ?? "", 80);
+    const body = bounded(input.body ?? "", 20_000), image = normalizeNewsImage(input);
+    if (image === undefined) fail("NEWS_IMAGE_RIGHTS_REQUIRED", 400);
     if (!isNewsRelevance(input.relevance) || typeof input.validFrom !== "string" && input.validFrom !== null ||
       typeof input.validUntil !== "string" && input.validUntil !== null || !isNewsWindow(input.validFrom, input.validUntil)) fail();
-    if (item.status === "published" && (!title || !summary || input.relevance === "urgente" && !input.validUntil)) fail();
-    mutation = [database.prepare(`UPDATE news_items SET editorial_title=?,editorial_summary=?,topic=?,relevance=?,valid_from=?,valid_until=?,updated_at=?
+    nextStatus = item.status === "approved" ? "candidate" : item.status;
+    mutation = [database.prepare(`UPDATE news_items SET editorial_title=?,editorial_summary=?,editorial_body=?,
+      hero_image_url=?,hero_image_alt=?,hero_image_credit=?,hero_image_source_url=?,hero_image_rights_note=?,hero_image_rights_url=?,
+      topic=?,relevance=?,valid_from=?,valid_until=?,status=?,approved_at=NULL,approved_by_user_id=NULL,updated_at=?
       WHERE id=? AND updated_at=? AND EXISTS(SELECT 1 FROM news_events WHERE id=?)`)
-      .bind(title, summary, topic || null, input.relevance, input.validFrom, input.validUntil, now, item.id, item.updated_at, eventId)];
-    details = { fields: ["editorial_title", "editorial_summary", "topic", "relevance", "valid_from", "valid_until"] };
+      .bind(title, summary, body || null, image?.url ?? null, image?.alt ?? null, image?.credit ?? null,
+        image?.sourceUrl ?? null, image?.rightsNote ?? null, image?.rightsUrl ?? null,
+        topic || null, input.relevance, input.validFrom, input.validUntil, nextStatus, now, item.id, item.updated_at, eventId)];
+    details = { fields: ["editorial_title", "editorial_summary", "editorial_body", "hero_image", "topic", "relevance", "valid_from", "valid_until"] };
   } else if (kind === "source_add") {
     if (!["candidate", "approved", "published"].includes(item.status)) fail("NEWS_TRANSITION", 409);
     const url = normalizeNewsSourceUrl(input.url), sourceName = bounded(input.sourceName, 120, true);
@@ -186,6 +197,13 @@ export async function mutateNewsAdmin(database: CommunityDatabase, actorId: stri
     nextStatus = transition?.[1] ?? item.status;
     if (kind === "approve" || kind === "publish") {
       if (!item.editorial_title.trim() || !item.editorial_summary.trim()) fail("NEWS_INCOMPLETE", 409);
+      if (item.hero_image_url && !normalizeNewsImage({ imageUrl: item.hero_image_url, imageAlt: item.hero_image_alt,
+        imageCredit: item.hero_image_credit, imageSourceUrl: item.hero_image_source_url,
+        imageRightsNote: item.hero_image_rights_note, imageRightsUrl: item.hero_image_rights_url })) fail("NEWS_IMAGE_RIGHTS_REQUIRED", 409);
+      if (kind === "approve" && item.hero_image_url) {
+        if (input.confirmImageRights !== true) fail("NEWS_IMAGE_RIGHTS_UNREVIEWED", 409);
+        details = { imageRightsReviewed: true };
+      }
     }
     if (kind === "publish") {
       if (!isNewsWindow(item.valid_from, item.valid_until) || item.relevance === "urgente" && !item.valid_until) fail("NEWS_INCOMPLETE", 409);

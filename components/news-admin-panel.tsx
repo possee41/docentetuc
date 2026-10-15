@@ -1,10 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { NEWS_RELEVANCE, NEWS_SOURCE_TYPES, NEWS_STATUSES } from "@/lib/news-editorial";
+import Image from "next/image";
+import { NEWS_RELEVANCE, NEWS_SOURCE_TYPES, NEWS_STATUSES, normalizeNewsImage } from "@/lib/news-editorial";
 
 type NewsItem = { id: string; status: string; editorial_title: string; editorial_summary: string; topic: string | null;
   relevance: string; featured: number; valid_from: string | null; valid_until: string | null; updated_at: string;
+  editorial_body: string | null; hero_image_url: string | null; hero_image_alt: string | null; hero_image_credit: string | null;
+  hero_image_source_url: string | null; hero_image_rights_note: string | null; hero_image_rights_url: string | null;
   origin_title?: string | null; origin_removed_at?: string | null; origin_url?: string | null };
 type NewsSource = { id: string; source_name: string; source_title: string; url: string; source_type: string; is_primary: number;
   publication_id: string | null; source_published_at: string | null; source_removed_at: string | null };
@@ -12,7 +15,8 @@ type NewsEvent = { action: string; actor_kind: string; previous_status: string |
   details: string; created_at: string; actor_name: string };
 type Detail = { item: NewsItem; sources: NewsSource[]; events: NewsEvent[]; sharedSourceIds: string[] };
 type Origin = { id: string; title: string; source: string; official_url: string; removed_at: string | null; existing_news_id: string | null };
-type Draft = { title: string; summary: string; topic: string; relevance: string; validFrom: string; validUntil: string };
+type Draft = { title: string; summary: string; body: string; topic: string; relevance: string; validFrom: string; validUntil: string;
+  imageUrl: string; imageAlt: string; imageCredit: string; imageSourceUrl: string; imageRightsNote: string; imageRightsUrl: string };
 const localDate = (value: string | null) => value ? new Date(new Date(value).getTime() - new Date(value).getTimezoneOffset() * 60_000).toISOString().slice(0, 16) : "";
 const iso = (value: string) => value ? new Date(value).toISOString() : null;
 const rejectionReason = (details: string) => { try { return String((JSON.parse(details) as { reason?: string }).reason || ""); } catch { return ""; } };
@@ -52,7 +56,10 @@ export function NewsAdminPanel() {
       const value = await api(`?id=${encodeURIComponent(newsId)}`) as unknown as Detail;
       setDetail(value);
       setDraft({ title: value.item.editorial_title, summary: value.item.editorial_summary, topic: value.item.topic || "",
-        relevance: value.item.relevance, validFrom: localDate(value.item.valid_from), validUntil: localDate(value.item.valid_until) });
+        body: value.item.editorial_body || "", relevance: value.item.relevance, validFrom: localDate(value.item.valid_from), validUntil: localDate(value.item.valid_until),
+        imageUrl: value.item.hero_image_url || "", imageAlt: value.item.hero_image_alt || "", imageCredit: value.item.hero_image_credit || "",
+        imageSourceUrl: value.item.hero_image_source_url || "", imageRightsNote: value.item.hero_image_rights_note || "",
+        imageRightsUrl: value.item.hero_image_rights_url || "" });
     } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo cargar la noticia."); }
   };
   const submit = async (body: Record<string, unknown>) => {
@@ -68,6 +75,10 @@ export function NewsAdminPanel() {
   };
   const act = (action: string, extra: Record<string, unknown> = {}) => {
     if (!detail || busy) return;
+    if (action === "approve" && detail.item.hero_image_url) {
+      if (!window.confirm("¿Verificaste la procedencia, la autorización o licencia y el contenido de la imagen? Esta confirmación quedará auditada.")) return;
+      extra.confirmImageRights = true;
+    }
     if (["publish", "reject", "archive"].includes(action) && !window.confirm(`¿Confirmás ${action === "publish" ? "publicar" : action === "reject" ? "rechazar" : "archivar"} esta noticia?`)) return;
     if (action === "reject") {
       const reason = window.prompt("Motivo breve del rechazo (obligatorio):");
@@ -113,17 +124,44 @@ export function NewsAdminPanel() {
         <button type="button" onClick={() => void open(detail.item.id)} className="min-h-11 rounded-xl border border-sky-200 px-3">Recargar noticia</button></div>
       {detail.item.origin_removed_at && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">La publicación de origen fue retirada. Revisá la evidencia antes de publicar.</p>}
       {detail.item.origin_url?.startsWith("https://") && <a href={detail.item.origin_url} target="_blank" rel="noreferrer" className="text-sm font-bold text-sky-700 underline">Ver publicación de origen ↗</a>}
+      {detail.item.hero_image_url && <div className="space-y-1 rounded-xl border border-sky-200 p-3 text-sm"><p className="font-bold">Procedencia y derechos de la imagen</p>
+        <p>{detail.item.hero_image_credit} · {detail.item.hero_image_rights_note}</p>
+        {detail.item.hero_image_source_url && <a href={detail.item.hero_image_source_url} target="_blank" rel="noopener noreferrer" className="mr-4 font-bold text-sky-700 underline">Ver procedencia ↗</a>}
+        {detail.item.hero_image_rights_url && <a href={detail.item.hero_image_rights_url} target="_blank" rel="noopener noreferrer" className="font-bold text-sky-700 underline">Ver constancia de derechos ↗</a>}
+      </div>}
+      {detail.item.status === "published" && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Para corregir contenido o imagen de una noticia publicada, archivala y reabrila como candidata. Deberá aprobarse nuevamente antes de publicarse.</p>}
       <form onSubmit={(e) => { e.preventDefault(); try { act("edit", { title: draft.title, summary: draft.summary, topic: draft.topic,
-        relevance: draft.relevance, validFrom: iso(draft.validFrom), validUntil: iso(draft.validUntil) }); } catch { setError("Revisá las fechas ingresadas."); } }}
+        body: draft.body, relevance: draft.relevance, validFrom: iso(draft.validFrom), validUntil: iso(draft.validUntil),
+        imageUrl: draft.imageUrl, imageAlt: draft.imageAlt, imageCredit: draft.imageCredit,
+        imageSourceUrl: draft.imageSourceUrl, imageRightsNote: draft.imageRightsNote, imageRightsUrl: draft.imageRightsUrl }); } catch { setError("Revisá las fechas ingresadas."); } }}
         className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-bold">Título editorial<input value={draft.title} maxLength={160} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 px-3" /></label>
         <label className="text-sm font-bold">Tema<input value={draft.topic} maxLength={80} onChange={(e) => setDraft({ ...draft, topic: e.target.value })} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 px-3" /></label>
         <label className="text-sm font-bold sm:col-span-2">Resumen editorial<textarea value={draft.summary} maxLength={1200} rows={4} onChange={(e) => setDraft({ ...draft, summary: e.target.value })} className="mt-1 w-full rounded-xl border border-sky-200 p-3" /></label>
+        <label className="text-sm font-bold sm:col-span-2">Contenido editorial original<textarea value={draft.body} maxLength={20000} rows={10} onChange={(e) => setDraft({ ...draft, body: e.target.value })} className="mt-1 w-full rounded-xl border border-sky-200 p-3" /><span className="block text-xs font-normal text-slate-600">Solo texto propio o autorizado; no pegues artículos completos de terceros.</span></label>
+        <fieldset className="grid gap-3 rounded-xl border border-sky-200 p-3 sm:col-span-2 sm:grid-cols-2"><legend className="px-1 text-sm font-bold">Imagen destacada · opcional</legend>
+          <p className="text-xs text-slate-600 sm:col-span-2">Para mostrarla al público completá todos los datos de procedencia y derechos. No se descarga ni aloja desde aquí.</p>
+          <label className="text-sm">URL HTTPS de imagen<input type="url" maxLength={2048} value={draft.imageUrl} onChange={(e) => setDraft({ ...draft, imageUrl: e.target.value })} className="mt-1 min-h-11 w-full rounded-xl border px-3" /></label>
+          <label className="text-sm">Texto alternativo<input maxLength={240} value={draft.imageAlt} onChange={(e) => setDraft({ ...draft, imageAlt: e.target.value })} className="mt-1 min-h-11 w-full rounded-xl border px-3" /></label>
+          <label className="text-sm">Crédito o autor<input maxLength={160} value={draft.imageCredit} onChange={(e) => setDraft({ ...draft, imageCredit: e.target.value })} className="mt-1 min-h-11 w-full rounded-xl border px-3" /></label>
+          <label className="text-sm">URL HTTPS de procedencia<input type="url" maxLength={2048} value={draft.imageSourceUrl} onChange={(e) => setDraft({ ...draft, imageSourceUrl: e.target.value })} className="mt-1 min-h-11 w-full rounded-xl border px-3" /></label>
+          <label className="text-sm">Autorización o licencia<textarea maxLength={500} rows={2} value={draft.imageRightsNote} onChange={(e) => setDraft({ ...draft, imageRightsNote: e.target.value })} className="mt-1 w-full rounded-xl border p-3" /></label>
+          <label className="text-sm">URL HTTPS de constancia de derechos<input type="url" maxLength={2048} value={draft.imageRightsUrl} onChange={(e) => setDraft({ ...draft, imageRightsUrl: e.target.value })} className="mt-1 min-h-11 w-full rounded-xl border px-3" /></label>
+          <button type="button" disabled={busy || detail.item.status === "published"} onClick={() => setDraft({ ...draft, imageUrl: "", imageAlt: "", imageCredit: "", imageSourceUrl: "", imageRightsNote: "", imageRightsUrl: "" })} className="min-h-11 rounded-xl border border-sky-200 px-3 text-sm font-bold disabled:opacity-50 sm:col-span-2">Retirar imagen del borrador</button>
+        </fieldset>
         <label className="text-sm font-bold">Relevancia<select value={draft.relevance} onChange={(e) => setDraft({ ...draft, relevance: e.target.value })} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 px-3">
           {NEWS_RELEVANCE.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
         <label className="text-sm font-bold">Visible desde<input type="datetime-local" value={draft.validFrom} onChange={(e) => setDraft({ ...draft, validFrom: e.target.value })} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 px-3" /></label>
         <label className="text-sm font-bold">Caduca<input type="datetime-local" value={draft.validUntil} onChange={(e) => setDraft({ ...draft, validUntil: e.target.value })} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 px-3" /></label>
-        <button disabled={busy || !["candidate", "approved", "published"].includes(detail.item.status)} className="min-h-11 rounded-xl bg-[#0878be] px-4 font-bold text-white disabled:opacity-50">Guardar edición</button>
+        <button disabled={busy || !["candidate", "approved"].includes(detail.item.status)} className="min-h-11 rounded-xl bg-[#0878be] px-4 font-bold text-white disabled:opacity-50">Guardar edición</button>
       </form>
+      <details className="border-t border-sky-100 pt-4"><summary className="cursor-pointer font-bold">Previsualizar noticia sin publicar</summary>
+        <article className="mt-4 max-w-2xl overflow-hidden rounded-xl border border-sky-200">
+          {normalizeNewsImage(draft)?.url && <figure><Image src={normalizeNewsImage(draft)!.url} alt={draft.imageAlt} width={1200} height={675} unoptimized referrerPolicy="no-referrer" className="aspect-video w-full object-cover" /><figcaption className="px-4 pt-2 text-xs text-slate-600">Imagen: {draft.imageCredit}</figcaption></figure>}
+          <div className="space-y-3 p-4"><p className="text-xs font-bold uppercase text-sky-700">{draft.topic || "Actualidad docente"} · Vista previa</p>
+            <h4 className="text-2xl font-black">{draft.title || "Sin título"}</h4><p className="line-clamp-4 text-sm">{draft.summary || "Sin síntesis"}</p>
+            {draft.body && <p className="whitespace-pre-wrap text-sm leading-relaxed">{draft.body}</p>}</div>
+        </article>
+      </details>
       <div className="flex flex-wrap gap-2 border-t border-sky-100 pt-4">{([
         ["approve", "Aprobar", detail.item.status === "candidate"], ["publish", "Publicar", detail.item.status === "approved"],
         ["reject", "Rechazar", ["candidate", "approved"].includes(detail.item.status)],
