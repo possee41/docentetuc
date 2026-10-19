@@ -64,7 +64,7 @@ test("actos: próximos con evidencia, no provisionales, vencidos ni fechas en co
 test("Inicio filtra accesos con el mismo criterio y el menú conserva Actos y Llamados", () => {
   const home = readFileSync(new URL("../app/docente-app.tsx", import.meta.url), "utf8");
   const sidebar = readFileSync(new URL("../components/app-sidebar.tsx", import.meta.url), "utf8");
-  assert.match(home, /visibleHomeShortcuts = homeShortcuts\.filter[\s\S]*?boardItems\(publications, view, now\)\.length > 0/u);
+  assert.match(home, /visibleHomeShortcuts = homeShortcuts\.filter[\s\S]*?boardItems\(publications, view, now\)\.some\(\(item\) => sourceHealth\(healthForPublication\(item, sync\), now\) === "current"\)/u);
   assert.match(home, /visibleHomeShortcuts\.map/u);
   assert.match(sidebar, /\["actos", "Actos de designación"/u);
   assert.match(sidebar, /\["llamados", "Llamados abiertos"/u);

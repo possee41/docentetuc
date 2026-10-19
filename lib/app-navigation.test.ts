@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { appViews, sectionUrl, shouldRevalidateAccount, viewFromSection } from "./app-navigation.ts";
+import { appViews, filterForNavigation, sectionUrl, shouldRevalidateAccount, viewFromSection } from "./app-navigation.ts";
+
+test("Capacitaciones conserva el filtro elegido sin cambiar otras secciones", () => {
+  for (const selected of ["todas", "para-mi", "abiertas", "proximamente"]) {
+    assert.equal(filterForNavigation("capacitaciones", selected), selected);
+  }
+  assert.equal(filterForNavigation("vacantes", "todas"), "para-mi");
+  assert.equal(filterForNavigation("llamados", "para-mi"), "todas");
+  const source = readFileSync(new URL("../app/docente-app.tsx", import.meta.url), "utf8");
+  assert.match(source, /trainingFilterRef\.current = filter/u);
+  assert.match(source, /setFilter\(filterForNavigation\(target, trainingFilterRef\.current\)\)/u);
+});
 
 test("cada sección tiene una URL directa que se puede reconstruir tras F5", () => {
   for (const view of appViews.filter((item) => item !== "comunidad")) {

@@ -10,7 +10,7 @@ export async function GET() {
     const db = getD1();
     const [publications, sync] = await Promise.all([
       db.prepare(APP_PUBLICATIONS_QUERY).all(),
-      db.prepare("SELECT source, synced_at, last_successful_sync_at, sync_status FROM sync_state ORDER BY source").all(),
+      db.prepare("SELECT source, synced_at, last_attempt_at, last_successful_sync_at, sync_status FROM sync_state ORDER BY source").all(),
     ]);
     return Response.json({ profile: null, publicProfile: null, publications: publications.results, saved: [], notifications: [], reminders: [], designations: [], manualEvents: [], sync: sync.results });
   } catch (error) {

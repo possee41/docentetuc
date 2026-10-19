@@ -33,7 +33,7 @@ export async function GET(request: Request) {
       db.prepare("SELECT id, title, notes, category, starts_at, all_day, recurrence, reminder_minutes, reminder_at, reminder_notified, created_at, updated_at FROM manual_events WHERE user_id=? ORDER BY starts_at").bind(user.userId).all(),
       db.prepare(process.env.NODE_ENV === "development"
         ? "SELECT * FROM sync_state ORDER BY source"
-        : "SELECT source, synced_at, last_successful_sync_at, sync_status FROM sync_state ORDER BY source").all(),
+        : "SELECT source, synced_at, last_attempt_at, last_successful_sync_at, sync_status FROM sync_state ORDER BY source").all(),
     ]);
     return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publicProfile: publicProfileForClient(publicProfile as Record<string, unknown> | null), publications: publications.results, saved: saved.results, notifications: notifications.results, reminders: reminders.results, designations: designations.results, manualEvents: manualEvents.results, sync: sync.results });
   } catch (error) {
