@@ -53,8 +53,8 @@ test("el loader existente limpia el aviso solo tras JSON válido y lo conserva s
   const source = readFileSync(new URL("../app/docente-app.tsx", import.meta.url), "utf8");
   const loader = source.split("const load = useCallback")[1]?.split("const syncSources = useCallback")[0];
   assert.ok(loader);
-  assert.match(loader, /const result = await response\.json\(\) as AppData;[\s\S]*setData\(result\);\s*setLoadError\(""\);/u);
-  assert.match(loader, /catch \{[^}]*setLoadError\("No pudimos cargar los datos privados en este momento\./u);
+  assert.match(loader, /const result = await response\.json\(\) as PrivateAppData;[\s\S]*setData\(combineAppData\(publicData\.current, result\)\);\s*refreshLoadError\(\);/u);
+  assert.match(loader, /catch \{[\s\S]*privateLoadProblem\.current = "No pudimos cargar los datos privados en este momento\./u);
   const revalidation = source.split("const previous = previousAccountView.current;")[1]?.split("document.querySelector(\".app-background\")")[0];
   assert.ok(revalidation);
   assert.match(revalidation, /shouldRevalidateAccount\([^)]+\)/u);

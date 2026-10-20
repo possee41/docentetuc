@@ -32,6 +32,8 @@ import { circuitMatches, inferCircuit, TUCUMAN_CIRCUITS } from "@/lib/circuits";
 import { OFFICIAL_CHARACTERS, OFFICIAL_JUNTAS, matchesCharacter, matchesJunta, normalizeJunta, normalizeSearchText } from "@/lib/juntas";
 import type { DesignationTracking } from "@/lib/types";
 import type { AppData, ManualEvent, Notice, Profile, Publication, Saved, SyncStatus, TrainingReminder } from "@/lib/types";
+import { combineAppData } from "@/lib/app-data";
+import type { PrivateAppData } from "@/lib/app-data";
 import { usefulMetadata } from "@/lib/useful-information";
 import { canRecommendCurrentPublication, publicationLifecycle } from "@/lib/publication-lifecycle";
 import { designationEmptyState, hasDesignationProfilePreferences } from "@/lib/designation-state";
@@ -128,6 +130,12 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const sidebar = useAppSidebarState(true);
   const [data, setData] = useState<AppData | null>(null);
   const publicData = useRef<AppData | null>(null);
+  const privateData = useRef<PrivateAppData | null>(null);
+  const publicLoadSequence = useRef(0);
+  const privateLoadSequence = useRef(0);
+  const publicLoadProblem = useRef("");
+  const privateLoadProblem = useRef("");
+  const shouldAutoSync = useRef(false);
   const privateDataVerified = useRef(false);
   const [privateReady, setPrivateReady] = useState(false);
   const [accountPhoto, setAccountPhoto] = useState<{ authenticated: boolean; image: string | null }>({ authenticated: false, image: null });
@@ -225,51 +233,87 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const openPublication = (publication: Publication) => { const canonical = resolveOfficialAlias(publication, data?.publications || []); setSelected(canonical); history.pushState({ ...history.state, publicationId: canonical.id }, "", `#publicacion-${encodeURIComponent(canonical.id)}`); };
   const closePublication = () => { if (history.state?.publicationId) history.back(); else setSelected(null); };
 
+  const resolveDeepLink = useCallback((publications: Publication[]) => {
+    const deepLinkId = new URLSearchParams(location.search).get("publication");
+    const deepLink = deepLinkId ? publications.find((item) => item.id === deepLinkId) : null;
+    if (!deepLink) return;
+    const canonical = resolveOfficialAlias(deepLink, publications);
+    const destination = canonical.kind === "capacitacion" ? "capacitaciones" : canonical.kind === "informacion" ? "informacion" : officialDestination(canonical);
+    setSelected(canonical);
+    setViewState(destination);
+    history.replaceState({ ...history.state, docentetuc: undefined }, "", sectionUrl(destination));
+  }, []);
+
+  const syncIfPublicEmpty = useCallback(() => {
+    if (!shouldAutoSync.current || !privateDataVerified.current || !publicData.current || publicData.current.publications.length || autoSyncStarted.current) return;
+    autoSyncStarted.current = true;
+    shouldAutoSync.current = false;
+    window.setTimeout(() => { void syncSourcesRef.current(false); }, 0);
+  }, []);
+
+  const refreshLoadError = useCallback(() => setLoadError(privateLoadProblem.current || publicLoadProblem.current), []);
+
   const loadPublic = useCallback(async () => {
+    const requestId = ++publicLoadSequence.current;
     try {
       const response = await fetch("/api/public-app", { cache: "no-store", signal: AbortSignal.timeout(15_000) });
       if (!response.ok) throw new Error("Public source unavailable");
       const result = await response.json() as AppData;
+      if (requestId !== publicLoadSequence.current) return;
       publicData.current = result;
-      if (!privateDataVerified.current) setData(result);
+      publicLoadProblem.current = "";
+      setData(combineAppData(result, privateData.current));
+      refreshLoadError();
+      resolveDeepLink(result.publications);
+      syncIfPublicEmpty();
       try { localStorage.setItem("docentetuc-public-data-v1", JSON.stringify(result)); } catch { /* The live public response remains usable without offline storage. */ }
     } catch {
+      if (requestId !== publicLoadSequence.current) return;
+      if (publicData.current) {
+        publicLoadProblem.current = "No pudimos actualizar las fuentes. Mostramos la última copia pública disponible.";
+        refreshLoadError();
+        return;
+      }
       const cached = localStorage.getItem("docentetuc-public-data-v1");
       if (cached) {
         try {
           const stored = JSON.parse(cached) as AppData;
           publicData.current = stored;
-          if (!privateDataVerified.current) setData(stored);
-          if (!privateDataVerified.current) setLoadError("No pudimos actualizar las fuentes. Mostramos la última copia pública disponible.");
+          publicLoadProblem.current = "No pudimos actualizar las fuentes. Mostramos la última copia pública disponible.";
+          setData(combineAppData(stored, privateData.current));
+          resolveDeepLink(stored.publications);
+          refreshLoadError();
           return;
         } catch { /* Ignore an invalid public cache. */ }
       }
-      if (!privateDataVerified.current) setLoadError("No pudimos cargar la información pública. Intentá nuevamente.");
-    } finally { setLoading(false); }
-  }, []);
+      publicLoadProblem.current = "No pudimos cargar la información pública. Intentá nuevamente.";
+      refreshLoadError();
+    } finally { if (requestId === publicLoadSequence.current) setLoading(false); }
+  }, [refreshLoadError, resolveDeepLink, syncIfPublicEmpty]);
   useEffect(() => { queueMicrotask(() => { void loadPublic(); }); }, [loadPublic]);
 
   const load = useCallback(async (syncIfEmpty = true, showLoading = true) => {
+    const requestId = ++privateLoadSequence.current;
+    if (syncIfEmpty) shouldAutoSync.current = true;
     if (showLoading) setLoading(true);
     try {
       const response = await fetch("/api/app", { cache: "no-store", headers: apiHeaders(), signal: AbortSignal.timeout(15000) });
-      if (response.status === 401) { privateDataVerified.current = false; setPrivateReady(false); setData(publicData.current); setLoadError("No se pudo verificar esta instalación o su cuenta. Sus datos privados se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."); return; }
+      if (requestId !== privateLoadSequence.current) return;
+      if (response.status === 401) { privateData.current = null; privateDataVerified.current = false; shouldAutoSync.current = false; privateLoadProblem.current = "No se pudo verificar esta instalación o su cuenta. Sus datos privados se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."; setPrivateReady(false); setData(publicData.current); refreshLoadError(); return; }
       if (!response.ok) throw new Error("No se pudo cargar la información");
-      const result = await response.json() as AppData;
+      const result = await response.json() as PrivateAppData;
+      if (requestId !== privateLoadSequence.current) return;
       result.designations ||= []; result.manualEvents ||= []; if (result.profile) result.profile.roles ||= [];
-      const deepLinkId = new URLSearchParams(location.search).get("publication"), deepLink = deepLinkId ? result.publications.find((item) => item.id === deepLinkId) : null;
-      if (deepLink) { const canonical = resolveOfficialAlias(deepLink, data?.publications || []); const destination = canonical.kind === "capacitacion" ? "capacitaciones" : canonical.kind === "informacion" ? "informacion" : officialDestination(canonical); setSelected(canonical); setViewState(destination); history.replaceState({ ...history.state, docentetuc: undefined }, "", sectionUrl(destination)); }
+      privateData.current = result;
       privateDataVerified.current = true;
+      privateLoadProblem.current = "";
       setPrivateReady(true);
-      setData(result);
-      setLoadError("");
-      if (syncIfEmpty && result.publications.length === 0 && !autoSyncStarted.current) {
-        autoSyncStarted.current = true;
-        window.setTimeout(() => { void syncSourcesRef.current(false); }, 0);
-      }
-    } catch { privateDataVerified.current = false; setPrivateReady(false); setData(publicData.current); setLoadError("No pudimos cargar los datos privados en este momento. La información pública sigue disponible; intentá nuevamente."); }
-    finally { setLoading(false); }
-  }, []);
+      setData(combineAppData(publicData.current, result));
+      refreshLoadError();
+      syncIfPublicEmpty();
+    } catch { if (requestId === privateLoadSequence.current) { privateData.current = null; privateDataVerified.current = false; shouldAutoSync.current = false; privateLoadProblem.current = "No pudimos cargar los datos privados en este momento. La información pública sigue disponible; intentá nuevamente."; setPrivateReady(false); setData(publicData.current); refreshLoadError(); } }
+    finally { if (requestId === privateLoadSequence.current) setLoading(false); }
+  }, [refreshLoadError, syncIfPublicEmpty]);
 
   const syncSources = useCallback(async (notify = true) => {
     setSyncing(true);
@@ -282,17 +326,18 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         else if (result.failures) toast.warning(`${result.verifiedSources ?? 0} fuentes verificadas; ${result.failures} pendientes o no disponibles.`);
         else toast.success(`${result.verifiedSources ?? 0} fuentes verificadas · ${result.count ?? 0} publicaciones revisadas.`);
       }
+      await loadPublic();
       await loadRef.current(false, false);
     } catch (error) { const message = error instanceof DOMException && error.name === "TimeoutError" ? "La actualización tardó demasiado. Podría seguir en curso; consultá nuevamente más tarde." : error instanceof Error ? error.message : "No se pudo actualizar"; if (notify) toast.error(message); }
     finally { setSyncing(false); }
-  }, []);
+  }, [loadPublic]);
 
   useEffect(() => { loadRef.current = load; syncSourcesRef.current = syncSources; }, [load, syncSources]);
 
   useEffect(() => {
     const previous = previousAccountView.current;
     previousAccountView.current = view;
-    if (!shouldRevalidateAccount(previous, view, Boolean(loadError), accountRevalidationInFlight.current)) return;
+    if (!shouldRevalidateAccount(previous, view, Boolean(privateLoadProblem.current), accountRevalidationInFlight.current)) return;
     accountRevalidationInFlight.current = true;
     void load(false, false).finally(() => { accountRevalidationInFlight.current = false; });
   }, [view, loadError, load]);
@@ -530,7 +575,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
               <h2 id="accounts-access-title" className="text-xl font-black text-[var(--text-primary)]">Mis cuentas y accesos</h2>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">Google autentica tu cuenta de DocenteTuc. Los accesos externos usan sus propias credenciales y no se comparten con DocenteTuc.</p>
             </div>
-            <AccountSignInSection headers={apiHeaders} installationSecurity={installationSecurity} onLinked={() => void load(false)} onSignedOut={() => { privateDataVerified.current = false; setPrivateReady(false); setData(publicData.current); }} />
+            <AccountSignInSection headers={apiHeaders} installationSecurity={installationSecurity} onLinked={() => void load(false)} onSignedOut={() => { ++privateLoadSequence.current; privateData.current = null; privateDataVerified.current = false; shouldAutoSync.current = false; privateLoadProblem.current = ""; setPrivateReady(false); setData(publicData.current); refreshLoadError(); }} />
           </section>
           <PlatformAccessSection />
           <DataDeletionSection profile={profile ?? null} />
