@@ -9,5 +9,6 @@ declare namespace Cloudflare {
     VAPID_PRIVATE_KEY?: string;
     VAPID_SUBJECT?: string;
     CRON_SECRET?: string;
+    FDCI_SYNC_MODE?: string;
   }
 }

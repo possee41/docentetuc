@@ -1,0 +1,60 @@
+name: FDCI external import
+on:
+  workflow_dispatch:
+    inputs:
+      course_token:
+        description: 'Token público del curso FDCI'
+        required: true
+        type: string
+      course_slug:
+        description: 'Slug público del curso FDCI'
+        required: true
+        type: string
+      commission_id:
+        description: 'ID público de una comisión a importar'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: fdci-import
+  cancel-in-progress: false
+jobs:
+  import:
+    if: github.repository == 'possee41/docentetuc'
+    runs-on: ubuntu-latest
+    environment: fdci-import
+    timeout-minutes: 10
+    steps:
+      - name: Verify approved import revision
+        env:
+          IMPORT_REF: ${{ vars.FDCI_IMPORT_REF }}
+        run: |
+          [[ "$IMPORT_REF" =~ ^[a-f0-9]{40}$ ]] || { echo 'FDCI_IMPORT_REF must be an approved commit SHA'; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.FDCI_IMPORT_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify production ancestry
+        env:
+          IMPORT_REF: ${{ vars.FDCI_IMPORT_REF }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$IMPORT_REF"
+          git merge-base --is-ancestor a1cdd56bdc59a487aa026ee49ec1cff62c675edb HEAD
+      - name: Verify dedicated receiver URL
+        env:
+          IMPORT_URL: ${{ vars.FDCI_IMPORT_URL }}
+        run: |
+          [[ "$IMPORT_URL" =~ ^https://docentetuc-fdci-receiver-1-1\.[a-z0-9-]+\.workers\.dev/api/internal/fdci-import$ ]] || { echo 'FDCI_IMPORT_URL must point to the dedicated receiver'; exit 1; }
+      - name: Import public FDCI data
+        env:
+          FDCI_IMPORT_URL: ${{ vars.FDCI_IMPORT_URL }}
+          FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
+          FDCI_COURSE_TOKEN: ${{ inputs.course_token }}
+          FDCI_COURSE_SLUG: ${{ inputs.course_slug }}
+          FDCI_COMMISSION_ID: ${{ inputs.commission_id }}
+        run: node --experimental-strip-types scripts/import-fdci.mjs

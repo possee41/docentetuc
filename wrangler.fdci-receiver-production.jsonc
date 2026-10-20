@@ -1,0 +1,13 @@
+{
+  "name": "docentetuc-fdci-receiver-1-1",
+  "main": "workers/fdci-receiver.mjs",
+  "compatibility_date": "2026-05-15",
+  "workers_dev": true,
+  "triggers": { "crons": [] },
+  "observability": { "enabled": true },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "docentetuc-db",
+    "database_id": "baaf5886-0123-4948-96da-aa7106424549"
+  }]
+}
