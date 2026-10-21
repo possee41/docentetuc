@@ -1,4 +1,4 @@
-import { FDCI_BATCH_SIZE, prepareFdciImports } from "../lib/fdci-import.ts";
+import { prepareFdciImports } from "../lib/fdci-import.ts";
 import { appendFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
@@ -17,7 +17,7 @@ export async function requestJson(url, options = {}, fetcher = fetch) {
   throw new Error("REQUEST_FAILED");
 }
 
-export async function collectFdci(fetcher = fetch, selection) {
+export async function collectFdci(fetcher = fetch, selection, scope = "full") {
   const active = await requestJson(`${FDCI}/gestionCapas/getCapaActivas`, {}, fetcher);
   const courses = await requestJson(`${FDCI}/gestionCapas/getRestoCapas`, {}, fetcher);
   if (!Array.isArray(active) || !Array.isArray(courses)) throw new Error("FDCI_SCHEMA_CHANGED");
@@ -25,24 +25,25 @@ export async function collectFdci(fetcher = fetch, selection) {
       !/^[a-z0-9-]{1,160}$/.test(selection.slug) ||
       !/^[0-9]{1,12}$/.test(selection.commissionId))) throw new Error("FDCI_SELECTION_INVALID");
   const activeIds = new Set(active.map((item) => String(item.capacitacion_id)));
+  const activeCommissionIds = new Set(active.map((item) => String(item.id)));
   const candidates = selection
     ? courses.filter((item) => item.token === selection.token && item.slug === selection.slug)
-    : courses.filter((item) => item.proxima_fecha_preinscripcion || activeIds.has(String(item.capacitacion_id)));
+    : scope === "active" ? courses.filter((item) => activeIds.has(String(item.capacitacion_id))) : courses;
   if (selection && candidates.length !== 1) throw new Error("FDCI_COURSE_NOT_FOUND");
   const commissions = selection ? active.filter((item) => String(item.id) === selection.commissionId && String(item.capacitacion_id) === String(candidates[0].capacitacion_id)) : [...active];
-  let failures = 0;
+  let failures = (selection ? commissions : active).filter((item) => !courses.some((course) => String(course.capacitacion_id) === String(item.capacitacion_id))).length;
   for (const course of candidates) {
     if (!course.token || !course.slug) { failures++; continue; }
     try {
       const detail = await requestJson(`${FDCI}/capa/getCupo`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ token: course.token, slug: course.slug }) }, fetcher);
       if (!Array.isArray(detail?.comisiones)) throw new Error("FDCI_DETAIL_SCHEMA_CHANGED");
-      commissions.push(...detail.comisiones.filter((commission) => String(commission.capacitacion_id) === String(course.capacitacion_id) && (!selection || String(commission.id) === selection.commissionId)));
+      commissions.push(...detail.comisiones.filter((commission) => String(commission.capacitacion_id) === String(course.capacitacion_id) && (selection ? String(commission.id) === selection.commissionId : scope !== "active" || activeCommissionIds.has(String(commission.id)))));
     } catch { failures++; }
   }
   // The same commission can occur in active and detail responses.
-  const items = await prepareFdciImports(selection ? candidates : courses, commissions);
+  const items = await prepareFdciImports(candidates, commissions);
   if (selection && !items.some((item) => item.id === `fdci:commission:${selection.commissionId}`)) throw new Error("FDCI_COMMISSION_NOT_FOUND");
-  return { items: selection ? items.filter((item) => item.id === `fdci:commission:${selection.commissionId}`) : items, failures, coursesFetched: candidates.length };
+  return { items: selection ? items.filter((item) => item.id === `fdci:commission:${selection.commissionId}`) : scope === "active" ? items.filter((item) => activeCommissionIds.has(item.externalId)) : items, failures, coursesFetched: candidates.length };
 }
 
 export async function sendFdci(url, token, payload, fetcher = fetch) {
@@ -51,19 +52,23 @@ export async function sendFdci(url, token, payload, fetcher = fetch) {
   return result;
 }
 
-export async function runFdciImport({ endpoint, token, fetcher = fetch, collect = collectFdci, selection = /** @type {{token: string, slug: string, commissionId: string} | undefined} */ (undefined) }) {
-  if (!/^https:\/\//.test(endpoint) || !/^[A-Za-z0-9_-]{32,}$/.test(token)) throw new Error("IMPORT_CONFIGURATION_INVALID");
-  if (!selection || !/^[A-Za-z0-9_-]{1,80}$/.test(selection.token) || !/^[a-z0-9-]{1,160}$/.test(selection.slug) || !/^[0-9]{1,12}$/.test(selection.commissionId)) throw new Error("FDCI_SELECTION_INVALID");
+export async function runFdciImport({ endpoint, token, fetcher = fetch, collect = collectFdci, selection = /** @type {{token: string, slug: string, commissionId: string} | undefined} */ (undefined), scope = "single" }) {
+  let target;
+  try { target = new URL(endpoint); } catch { throw new Error("IMPORT_CONFIGURATION_INVALID"); }
+  if ((target.protocol !== "https:" && !(target.protocol === "http:" && target.hostname === "127.0.0.1")) || !/^[A-Za-z0-9_-]{32,}$/.test(token)) throw new Error("IMPORT_CONFIGURATION_INVALID");
+  if (!["single", "active", "full"].includes(scope) || (scope === "single") !== Boolean(selection)) throw new Error("FDCI_SELECTION_INVALID");
+  if (selection && (!/^[A-Za-z0-9_-]{1,80}$/.test(selection.token) || !/^[a-z0-9-]{1,160}$/.test(selection.slug) || !/^[0-9]{1,12}$/.test(selection.commissionId))) throw new Error("FDCI_SELECTION_INVALID");
   let created = 0, updated = 0, unchanged = 0, batches = 0;
-  const { items, failures, coursesFetched } = await collect(fetcher, selection);
-  if (!Array.isArray(items) || !items.length) throw new Error("FDCI_EMPTY_RESPONSE");
-  if (failures || items.length !== 1 || items[0].id !== `fdci:commission:${selection.commissionId}`) throw new Error("FDCI_SELECTION_INCOMPLETE");
-  for (let offset = 0; offset < items.length; offset += FDCI_BATCH_SIZE) {
-    const result = await sendFdci(endpoint, token, { mode: "batch", items: items.slice(offset, offset + FDCI_BATCH_SIZE) }, fetcher);
-    if (!result.ok || result.received !== Math.min(FDCI_BATCH_SIZE, items.length - offset)) throw new Error("IMPORT_ACK_INVALID");
+  const { items, failures, coursesFetched } = await collect(fetcher, selection, scope);
+  if (!Array.isArray(items) || (scope === "single" && !items.length)) throw new Error("FDCI_EMPTY_RESPONSE");
+  if (failures || (scope === "single" && (items.length !== 1 || items[0].id !== `fdci:commission:${selection.commissionId}`))) throw new Error("FDCI_SELECTION_INCOMPLETE");
+  // One row per invocation keeps the receiver well below its five-row hard limit.
+  for (const item of items) {
+    const result = await sendFdci(endpoint, token, { mode: "batch", items: [item] }, fetcher);
+    if (!result.ok || result.received !== 1) throw new Error("IMPORT_ACK_INVALID");
     created += result.created; updated += result.updated; unchanged += result.unchanged; batches++;
   }
-  return { coursesFetched, discovered: items.length, created, updated, unchanged, batches, completed: false };
+  return { coursesFetched, discovered: items.length, created, updated, unchanged, batches, completed: scope === "full" };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -73,9 +78,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       `### FDCI: ${status}\n\n- Último intento: ${startedAt}\n- ${details}\n\n`);
   };
   try {
-    const selection = { token: process.env.FDCI_COURSE_TOKEN || "", slug: process.env.FDCI_COURSE_SLUG || "", commissionId: process.env.FDCI_COMMISSION_ID || "" };
-    if (!selection.token || !selection.slug || !selection.commissionId) throw new Error("FDCI_SELECTION_REQUIRED");
-    const result = await runFdciImport({ endpoint: process.env.FDCI_IMPORT_URL || "", token: process.env.FDCI_IMPORT_SECRET || "", selection });
+    const scope = process.env.FDCI_SCOPE || "single";
+    const selection = scope === "single" ? { token: process.env.FDCI_COURSE_TOKEN || "", slug: process.env.FDCI_COURSE_SLUG || "", commissionId: process.env.FDCI_COMMISSION_ID || "" } : undefined;
+    const result = await runFdciImport({ endpoint: process.env.FDCI_IMPORT_URL || "", token: process.env.FDCI_IMPORT_SECRET || "", selection, scope });
     console.log(JSON.stringify({ ...result, startedAt, finishedAt: new Date().toISOString() }));
     await summarize("éxito", `Último éxito: ${new Date().toISOString()}; nuevas: ${result.created}; actualizadas: ${result.updated}; sin cambios: ${result.unchanged}`);
   } catch (error) {

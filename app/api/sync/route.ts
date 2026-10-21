@@ -18,6 +18,7 @@ import { applySimeDetail, normalizeSimeVacancy, selectSimeDetails, validSimeDeta
 import { classifyDriveReference, documentReference, extractJuntaNotices } from "@/lib/junta-notices";
 import { BOARD_PORTAL, parseBoardPlacements } from "@/lib/board-sources";
 import { officialChange, reconcileOfficialPublications } from "@/lib/official-reconciliation";
+import { fdciLegacyEnabled } from "@/lib/fdci-sync-mode";
 
 export const dynamic = "force-dynamic";
 
@@ -294,13 +295,14 @@ async function usefulPublications(): Promise<Publication[]> {
 
 async function runSync() {
   const db = getD1();
+  const legacyFdci = fdciLegacyEnabled((env as { FDCI_SYNC_MODE?: string }).FDCI_SYNC_MODE);
   const previous = await db.prepare("SELECT id, external_id, official_url, source_published_at, source, category, kind, status, source_status, registration_open_at, registration_close_at, expires_at, content_hash, starts_at, ends_at, metadata, normalized_status, title, summary, level, area, junta, location, shift, character, source_updated_at FROM publications").all<{ id: string; external_id: string; official_url: string; source_published_at: string | null; source: string; category: string; kind: string; status: string; source_status: string; registration_open_at: string | null; registration_close_at: string | null; expires_at: string | null; content_hash: string; starts_at: string | null; ends_at: string | null; metadata: string; normalized_status: string; title: string; summary: string; level: string; area: string; junta: string; location: string; shift: string; character: string; source_updated_at: string | null }>();
   let rowsRead = Number(previous.meta?.rows_read || previous.results.length);
   const old = new Map(previous.results.map((row) => [row.id, row]));
-  const sourceHealthNames = ["SIME", "Capacitación Docente", "Padrones", "Llamados abiertos", "Comunicados", "Resoluciones", "Información oficial Tucumán", "CeNET / INET", "INFoD / AulaS-TIC"];
+  const sourceHealthNames = ["SIME", ...(legacyFdci ? ["Capacitación Docente"] : []), "Padrones", "Llamados abiertos", "Comunicados", "Resoluciones", "Información oficial Tucumán", "CeNET / INET", "INFoD / AulaS-TIC"];
   const collectors: { source: string; run: () => Promise<Publication[] | { items: Publication[]; complete: boolean; incompleteCategories?: string[]; warnings?: Record<string, string>; categoryErrors?: Record<string, unknown> }> }[] = [
     { source: "SIME", run: () => simePublications(old) },
-    { source: "Capacitación Docente", run: trainingPublications },
+    ...(legacyFdci ? [{ source: "Capacitación Docente", run: trainingPublications }] : []),
     { source: "Padrones y Comunicados", run: boardPublications },
     { source: "Información oficial Tucumán", run: usefulPublications },
     { source: "CeNET / INET", run: cenetPublications },
@@ -394,7 +396,7 @@ async function runSync() {
   for (let offset = 0; offset < lifecycleUpdates.length; offset += 40) {
     countWrites(await db.batch(lifecycleUpdates.slice(offset, offset + 40).map((item) => db.prepare("UPDATE publications SET normalized_status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(lifecycleById.get(item.id), item.id))));
   }
-  if (!collected.find((result) => result.source === "Capacitación Docente")?.error) {
+  if (legacyFdci && !collected.find((result) => result.source === "Capacitación Docente")?.error) {
     countWrites(await db.prepare("INSERT OR IGNORE INTO saved_publications (user_id, publication_id, in_agenda, followed, saved_at) SELECT s.user_id, 'fdci:course:' || p.external_id, s.in_agenda, s.followed, s.saved_at FROM saved_publications s JOIN publications p ON p.id=s.publication_id JOIN publications replacement ON replacement.id='fdci:course:' || p.external_id WHERE p.id LIKE 'fdci:%' AND p.id NOT LIKE 'fdci:course:%' AND p.id NOT LIKE 'fdci:commission:%'").run());
   }
 
@@ -447,7 +449,7 @@ async function runSync() {
       countWrites(await statement.run());
     }
   }
-  if (!collected.find((result) => result.source === "Capacitación Docente")?.error) {
+  if (legacyFdci && !collected.find((result) => result.source === "Capacitación Docente")?.error) {
     countWrites(await db.prepare(`UPDATE publications SET registration_open_at=NULL, registration_close_at=NULL,
       metadata=json_set(json_remove(metadata,'$.registrationOpensAt','$.registrationHasTime'), '$.preinscripcionFechaConfirmada', json('false'), '$.dateStatus', 'unknown'), updated_at=CURRENT_TIMESTAMP
       WHERE id LIKE 'fdci:course:%' AND normalized_status='REMOVED_FROM_SOURCE' AND registration_open_at IS NOT NULL AND json_valid(metadata)`).run());

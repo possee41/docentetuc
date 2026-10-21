@@ -53,3 +53,63 @@ test("fuente incompleta, comisión inexistente y selección inválida fallan sin
   await assert.rejects(runFdciImport({ endpoint, token, fetcher: receiver }), /FDCI_SELECTION_INVALID/);
   assert.equal(writes, 0);
 });
+
+test("modo activo consulta solo el curso activo y no incorpora otras comisiones ni cursos sin fecha próxima", async () => {
+  const active = { ...commission, id: 6386, capacitacion_id: 3099, cupo_disponible_pre: 99 };
+  const parent = { ...course, capacitacion_id: 3099, token: "WjvM7pmw", slug: "curso-activo", proxima_fecha_preinscripcion: null };
+  const other = { ...course, capacitacion_id: 3096, token: "other", slug: "curso-no-activo", proxima_fecha_preinscripcion: null };
+  const calls: string[] = [];
+  const sent: string[] = [];
+  const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.endsWith("getCapaActivas")) return Response.json([active]);
+    if (url.endsWith("getRestoCapas")) return Response.json([parent, other]);
+    if (url.endsWith("getCupo")) return Response.json({ comisiones: [active, { ...active, id: 6387 }] });
+    if (url === endpoint) {
+      const items = JSON.parse(String(init?.body)).items;
+      sent.push(...items.map((item: { id: string }) => item.id));
+      return Response.json({ ok: true, received: items.length, created: items.length, updated: 0, unchanged: 0 });
+    }
+    throw new Error("unexpected URL");
+  };
+  const result = await runFdciImport({ endpoint, token, scope: "active", fetcher });
+  assert.equal(calls.filter((url) => url.endsWith("getCupo")).length, 1);
+  assert.deepEqual(sent, ["fdci:commission:6386"]);
+  assert.equal(result.completed, false);
+});
+
+test("barrido completo recupera cursos sin fecha próxima y envía como máximo un registro por solicitud", async () => {
+  const courses = Array.from({ length: 7 }, (_, index) => ({ ...course, capacitacion_id: index + 40, token: `token${index}`, slug: `curso-${index}`, proxima_fecha_preinscripcion: null }));
+  let details = 0;
+  const sent: number[] = [];
+  const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("getCapaActivas")) return Response.json([]);
+    if (url.endsWith("getRestoCapas")) return Response.json(courses);
+    if (url.endsWith("getCupo")) { details++; return Response.json({ comisiones: [] }); }
+    if (url === endpoint) {
+      const items = JSON.parse(String(init?.body)).items;
+      sent.push(items.length);
+      return Response.json({ ok: true, received: items.length, created: items.length, updated: 0, unchanged: 0 });
+    }
+    throw new Error("unexpected URL");
+  };
+  const result = await runFdciImport({ endpoint, token, scope: "full", fetcher });
+  assert.equal(details, 7);
+  assert.deepEqual(sent, Array(7).fill(1));
+  assert.equal(result.completed, true);
+});
+
+test("una respuesta activa incompleta no escribe ni declara éxito", async () => {
+  let writes = 0;
+  const fetcher = async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("getCapaActivas")) return Response.json([{ ...commission, capacitacion_id: 999 }]);
+    if (url.endsWith("getRestoCapas")) return Response.json([course]);
+    if (url === endpoint) { writes++; return Response.json({ ok: true }); }
+    throw new Error("unexpected URL");
+  };
+  await assert.rejects(runFdciImport({ endpoint, token, scope: "active", fetcher }), /FDCI_SELECTION_INCOMPLETE/);
+  assert.equal(writes, 0);
+});

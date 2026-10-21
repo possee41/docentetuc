@@ -2,17 +2,23 @@ name: FDCI external import
 on:
   workflow_dispatch:
     inputs:
+      scope:
+        description: 'Una comisión, comisiones activas o barrido completo'
+        required: true
+        type: choice
+        default: single
+        options: [single, active, full]
       course_token:
         description: 'Token público del curso FDCI'
-        required: true
+        required: false
         type: string
       course_slug:
         description: 'Slug público del curso FDCI'
-        required: true
+        required: false
         type: string
       commission_id:
         description: 'ID público de una comisión a importar'
-        required: true
+        required: false
         type: string
 permissions:
   contents: read
@@ -57,4 +63,5 @@ jobs:
           FDCI_COURSE_TOKEN: ${{ inputs.course_token }}
           FDCI_COURSE_SLUG: ${{ inputs.course_slug }}
           FDCI_COMMISSION_ID: ${{ inputs.commission_id }}
+          FDCI_SCOPE: ${{ inputs.scope }}
         run: node --experimental-strip-types scripts/import-fdci.mjs
