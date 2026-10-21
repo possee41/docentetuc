@@ -121,7 +121,7 @@ const enrollmentLabel = (item: Publication, now = new Date()) => {
   const state = enrollmentForUI(item, now), tentative = parseTrainingMetadata(item.metadata)?.dateStatus === "tentative";
   return state === "PROXIMAMENTE" ? tentative ? "Preinscripción prevista · fecha tentativa" : "Próximamente"
     : state === "ABRE_HOY" ? tentative ? "Apertura prevista hoy · confirmar en fuente" : "Abre hoy"
-    : state === "ABIERTA" ? "Inscripción abierta" : state === "CERRADA" ? item.status === "en curso" ? "En cursado — inscripción cerrada" : item.status === "finalizada" ? "Finalizado — inscripción cerrada" : "Inscripción cerrada" : "Fecha de inscripción no confirmada";
+    : state === "ABIERTA" ? "Inscripción abierta" : state === "SIN_CUPO" ? "Sin cupos disponibles" : state === "CERRADA" ? item.status === "en curso" ? "En cursado — inscripción cerrada" : item.status === "finalizada" ? "Finalizado — inscripción cerrada" : "Inscripción cerrada" : "Fecha de inscripción no confirmada";
 };
 const lifecycleLabel = (status: ReturnType<typeof publicationLifecycle>) => ({ ACTIVE: "Vigente", UPCOMING: "Próxima apertura", CLOSED: "Cerrada", EXPIRED: "Vencida", REMOVED_FROM_SOURCE: "Ya no aparece en la fuente", UNKNOWN: "Estado sin confirmar" })[status];
 
@@ -471,7 +471,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     if (activeSearch.trim()) { const term = normalizeSearchText(activeSearch); items = items.filter((item) => normalizeSearchText(publicationSearchText(item)).includes(term)); }
     if (view === "capacitaciones") items = [...items].sort((a, b) => {
       const opening = (item: Publication) => Date.parse(parseTrainingMetadata(item.metadata)?.registrationOpensAt || "") || Number.MAX_SAFE_INTEGER;
-      const rank = (item: Publication) => ({ ABRE_HOY: 0, PROXIMAMENTE: 1, ABIERTA: 2, SIN_FECHA_CONFIRMADA: 3, CERRADA: 4 })[enrollmentForUI(item)];
+      const rank = (item: Publication) => ({ ABRE_HOY: 0, PROXIMAMENTE: 1, ABIERTA: 2, SIN_CUPO: 3, SIN_FECHA_CONFIRMADA: 4, CERRADA: 5 })[enrollmentForUI(item)];
       if (trainingSort === "opening") return opening(a) - opening(b);
       if (trainingSort === "open") return Number(enrollmentForUI(b) === "ABIERTA") - Number(enrollmentForUI(a) === "ABIERTA") || opening(a) - opening(b);
       if (trainingSort === "recent") return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
@@ -769,7 +769,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const upcoming = publications.filter((item) => {
     const metadata = parseTrainingMetadata(item.metadata);
     return item.kind === "capacitacion" && (["confirmed", "course_confirmed"].includes(String(metadata?.dateStatus || "").toLowerCase()) || (metadata?.dateStatus === "tentative" && item.status === "inscripción abierta"))
-      && currentForHome(item) && ["today", "tomorrow", "two-three", "four-seven", "eight-fourteen", "open"].includes(registrationState(metadata?.registrationOpensAt, metadata?.registrationClosesAt, now));
+      && currentForHome(item) && enrollmentForUI(item, now) !== "SIN_CUPO" && ["today", "tomorrow", "two-three", "four-seven", "eight-fourteen", "open"].includes(registrationState(metadata?.registrationOpensAt, metadata?.registrationClosesAt, now));
   }).sort((a, b) => {
     const aDates = parseTrainingMetadata(a.metadata), bDates = parseTrainingMetadata(b.metadata);
     const aRank = homeTrainingEnrollmentRank(aDates?.registrationOpensAt, aDates?.registrationClosesAt, now);
@@ -782,7 +782,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   });
   const eligibleUpcoming = upcoming.filter((item) => relevant(item));
   const nextTraining = profileReady ? eligibleUpcoming[0] : undefined, nextMetadata = nextTraining ? parseTrainingMetadata(nextTraining.metadata) : null, nextMatch = nextTraining ? matchResult(nextTraining) : null;
-  const forYou = publications.filter((item) => currentForHome(item) && (item.kind !== "vacante" || publicationLifecycleForUI(item, now) === "ACTIVE") && relevant(item) && !isGeneralNotice(item) && item.id !== nextTraining?.id && item.id !== vacancies[0]?.id).sort(compare).slice(0, 2);
+  const forYou = publications.filter((item) => currentForHome(item) && (item.kind !== "capacitacion" || enrollmentForUI(item, now) !== "SIN_CUPO") && (item.kind !== "vacante" || publicationLifecycleForUI(item, now) === "ACTIVE") && relevant(item) && !isGeneralNotice(item) && item.id !== nextTraining?.id && item.id !== vacancies[0]?.id).sort(compare).slice(0, 2);
   const unreadByPublication = new Map<string, Notice>();
   for (const notice of data?.notifications || []) {
     if (Boolean(notice.read) || unreadByPublication.has(notice.publication_id)) continue;
@@ -793,7 +793,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const alreadySurfaced = new Set([nextTraining?.id, ...forYou.map((item) => item.id), vacancies[0]?.id].filter(Boolean));
   const importantNotice = unread.map((notice) => ({ notice, publication: publicationMap.get(notice.publication_id) })).find(({ publication }) => publication && (isGeneralNotice(publication) || (relevant(publication) && !alreadySurfaced.has(publication.id))));
   const primaryHomeIds = new Set([nextTraining?.id, ...forYou.map((item) => item.id), vacancies[0]?.id, importantNotice?.publication?.id].filter(Boolean));
-  const latest = [...publications].filter((item) => currentForHome(item) && !primaryHomeIds.has(item.id) && (relevant(item) || isGeneralNotice(item))).sort((a, b) => new Date(b.last_changed_at || b.updated_at).getTime() - new Date(a.last_changed_at || a.updated_at).getTime()).slice(0, 3);
+  const latest = [...publications].filter((item) => currentForHome(item) && (item.kind !== "capacitacion" || enrollmentForUI(item, now) !== "SIN_CUPO") && !primaryHomeIds.has(item.id) && (relevant(item) || isGeneralNotice(item))).sort((a, b) => new Date(b.last_changed_at || b.updated_at).getTime() - new Date(a.last_changed_at || a.updated_at).getTime()).slice(0, 3);
   const profileNeedsDetail = !profileReady || !publications.some((item) => matchResult(item).confidence >= 70);
   const priorityLabel = (item: Publication) => {
     const itemCandidate = candidate(item), rank = homePriority(itemCandidate, now), days = calendarDayDistance(itemCandidate.registrationOpensAt, now);
@@ -1389,7 +1389,7 @@ function PublicationSheet({ publication, sync, saved, tracking, match, onClose, 
     ["Estado de inscripción", unverified ? "Vigencia por verificar" : enrollmentLabel(publication)], ["Fuente", training?.source || publication.source], ["Propuesta / categoría", training?.category], ["Cohorte", training?.cohort], ["Duración", training?.duration], ["Fecha publicada por la fuente", publication.source_published_at || null], ["Estado de fechas", unverified ? "Fechas publicadas · vigencia por verificar" : training?.dateStatus === "tentative" ? "Tentativas según la fuente" : training?.generalWindowOpensAt && training.registrationOpensAt === training.generalWindowOpensAt && training.registrationClosesAt === training.generalWindowClosesAt ? "Inscripción común de la convocatoria" : training?.dateStatus === "general_window" ? "Ventana general, no específica del curso" : training?.dateStatus === "course_confirmed" ? "Confirmadas para este curso" : training?.dateStatus === "confirmed" ? "Confirmadas por la fuente" : "Fecha no confirmada"], ["Comisión", training?.commissionId], ["Nivel", publication.level], ["Área", publication.area], ["Modalidad", publication.character],
     ["Inicio", publication.starts_at ? dateLabel(publication.starts_at) : null], ["Finalización", training?.courseEndsAt ? dateLabel(training.courseEndsAt) : null],
     ["Apertura de inscripción", training?.registrationOpensAt ? dateLabel(training.registrationOpensAt, true) : null], ["Cierre de inscripción", training?.registrationClosesAt ? dateLabel(training.registrationClosesAt, true) : null],
-    ["Lugar", publication.location], ["Dirección", training?.address], ["Cupo", training?.capacity], ["Cupo de preinscripción", training?.preCapacity],
+    ["Lugar", publication.location], ["Dirección", training?.address], ["Cupo", training?.capacity], ["Cupo de preinscripción", training?.preCapacity], ["Cupos disponibles según la fuente", training?.availablePreCapacity],
     ["Carga horaria", training?.certifiedHours || (training?.hours != null ? `${training.hours} horas cátedra` : null)], ["Encuentros", training?.meetings], ["Institución", training?.organization],
   ] : [["Estado en DocenteTuc", unverified ? "Vigencia por verificar" : lifecycleLabel(lifecycle)], ["Estado informado por la fuente", publication.status], ["Publicada / actualizada por origen", publication.source_published_at || null], ["Circuito inferido", publication.circuit && publication.circuit !== "UNKNOWN" ? `${publication.circuit}${publication.circuit_confidence != null ? ` · confianza ${publication.circuit_confidence}%` : ""}` : "Desconocido"], ["Nivel / Junta", publication.level || publication.junta], ["Carácter / modalidad", publication.character], ["Turno", publication.shift], ["Lugar", publication.location], ["Cierre", publication.ends_at ? dateLabel(publication.ends_at, true) : null]] : [];
   const insufficient = Boolean(match && (match.confidence < 70 || (match.criteria.length > 0 && match.criteria.every((criterion) => !criterion.available))));

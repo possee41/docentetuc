@@ -1,7 +1,7 @@
 import { calendarDayDistance } from "./home-dashboard.ts";
 
 export type TrainingStatus = "inscripción abierta" | "próximamente" | "inscripción cerrada" | "en curso" | "finalizada" | "consultar";
-export type EnrollmentState = "PROXIMAMENTE" | "ABRE_HOY" | "ABIERTA" | "CERRADA" | "SIN_FECHA_CONFIRMADA";
+export type EnrollmentState = "PROXIMAMENTE" | "ABRE_HOY" | "ABIERTA" | "SIN_CUPO" | "CERRADA" | "SIN_FECHA_CONFIRMADA";
 
 export type TrainingMetadata = {
   entity: "course" | "commission";
@@ -27,6 +27,7 @@ export type TrainingMetadata = {
   address?: string;
   capacity?: number;
   preCapacity?: number;
+  availablePreCapacity?: number;
   hours?: number;
   meetings?: number;
   recipients?: string;
@@ -68,6 +69,7 @@ export function enrollmentState(metadata: TrainingMetadata | null, sourceStatus 
     const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
     return day.format(now) === day.format(new Date(opens)) ? "ABRE_HOY" : "PROXIMAMENTE";
   }
+  if (metadata.availablePreCapacity != null && metadata.availablePreCapacity <= 0) return "SIN_CUPO";
   if (Number.isFinite(opens) && metadata.registrationHasTime === false && !/abiert/i.test(sourceStatus)) {
     const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
     if (day.format(now) === day.format(new Date(opens))) return "ABRE_HOY";
@@ -145,6 +147,7 @@ function opportunity(course: OfficialCourse, commission?: OfficialCommission, no
       ...(commission?.direccion ? { address: text(commission.direccion) } : {}),
       ...(number(commission?.cupo) != null ? { capacity: number(commission?.cupo) } : {}),
       ...(number(commission?.cupo_preinscripcion) != null ? { preCapacity: number(commission?.cupo_preinscripcion) } : {}),
+      ...(number(commission?.cupo_disponible_pre) != null ? { availablePreCapacity: number(commission?.cupo_disponible_pre) } : {}),
       ...(number(course.horas_catedra) != null ? { hours: number(course.horas_catedra) } : {}),
       ...(number(commission?.cantidad_encuentros) != null ? { meetings: number(commission?.cantidad_encuentros) } : {}),
       ...(statedRecipients || [course.cargos, course.niveles, course.areas].filter(Boolean).length ? { recipients: statedRecipients || [course.cargos, course.niveles, course.areas].filter(Boolean).map(text).join(" · ") } : {}),

@@ -83,6 +83,17 @@ test("FDCI respeta un cierre oficial aunque la ventana todavía no terminó", ()
   assert.equal(trainingStatus({ ...commission, fecha_cierre_preinscripcion: undefined }, now), "consultar", "sin cierre ni estado abierto oficial no se presume abierta indefinidamente");
 });
 
+test("FDCI conserva cupo cero sin anunciar inscripción disponible", () => {
+  const observedAt = new Date("2026-10-20T13:00:00-03:00");
+  const [item] = mergeTrainingData([course], [{ ...commission, id: 6397, fecha_apertura_preinscripcion: "2026-10-19 22:00:00", fecha_cierre_preinscripcion: "2026-10-21 08:00:00", cupo: 300, cupo_preinscripcion: 450, cupo_disponible_pre: 0 }], observedAt);
+  assert.equal(item.metadata.capacity, 300);
+  assert.equal(item.metadata.preCapacity, 450);
+  assert.equal(item.metadata.availablePreCapacity, 0);
+  assert.equal(item.metadata.registrationOpensAt, "2026-10-19T22:00:00-03:00");
+  assert.equal(item.metadata.registrationClosesAt, "2026-10-21T08:00:00-03:00");
+  assert.equal(enrollmentState(item.metadata, item.status, "ACTIVE", observedAt), "SIN_CUPO");
+});
+
 test("calcula la cuenta regresiva sin inventar hora", () => {
   assert.equal(openingCountdown("2026-09-26T14:35:00-03:00", new Date("2026-09-26T12:00:00-03:00")), "Abre en 2 h 35 min");
   assert.equal(openingCountdown("2026-09-27T00:00:00-03:00", now, false), "Abre mañana");
