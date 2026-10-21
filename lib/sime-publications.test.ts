@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { applySimeDetail, designationFromOpportunity, normalizeSimeVacancy, selectSimeDetails, validSimeDetail } from "./sime-publications.ts";
-import { officialMetadata } from "./official-publication.ts";
+import { officialLifecycle, officialMetadata } from "./official-publication.ts";
 const raw = { id: 1, codigo: "PDVC-20261009-142784", caracter: "SUPLENTE", fechaPublicacionInicio: "09/10/2026 18:00", fechaPublicacionFin: "14/10/2026 18:00", cargos: "[9000306/00] ESC. 172 - MAESTRO DE JARDIN - 116 [TURNO TARDE]", abierto: true };
 test("detalle SIME produce acto sin Comunicado y conserva ID de inscripción", () => {
   let item = normalizeSimeVacancy(raw, "Primaria", 1);
@@ -48,4 +48,18 @@ test("SIME espera evidencia, reclasifica sin cambiar ID y mantiene el acto separ
   item = normalizeSimeVacancy({ ...closed, abierto: true }, "Primaria", 1, item.metadata);
   assert.equal(item.id, "sime:1");
   assert.deepEqual(officialMetadata(item)?.topics, ["LLAMADO_ABIERTO"]);
+});
+test("SIME no anuncia una inscripción cerrada como activa solo por sus fechas", () => {
+  const now = new Date("2026-10-21T16:00:00Z");
+  const vacancy = { ...raw, fechaPublicacionInicio: "21/10/2026 08:00", fechaPublicacionFin: "23/10/2026 08:00", abierto: false };
+  let item = normalizeSimeVacancy(vacancy, "Primaria", 1, undefined, now);
+  applySimeDetail(item, { descripcion: "Inscripción online por SIME" }, now.toISOString());
+  item = normalizeSimeVacancy(vacancy, "Primaria", 1, item.metadata, now);
+  assert.deepEqual(officialMetadata(item)?.topics, ["INSCRIPCION_SIME"]);
+  assert.equal(officialLifecycle(item, now), "CLOSED");
+  const open = normalizeSimeVacancy({ ...vacancy, abierto: true }, "Primaria", 1, item.metadata, now);
+  assert.equal(officialLifecycle(open, now), "ACTIVE");
+  const upcoming = normalizeSimeVacancy({ ...vacancy, fechaPublicacionInicio: "22/10/2026 08:00" }, "Primaria", 1, item.metadata, now);
+  assert.equal(officialLifecycle(upcoming, now), "UPCOMING");
+  assert.equal(officialLifecycle(open, new Date("2026-10-24T00:00:00Z")), "CLOSED");
 });
