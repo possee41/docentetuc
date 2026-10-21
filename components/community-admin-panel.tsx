@@ -94,7 +94,7 @@ export function CommunityAdminPanel({ embedded = false }: { embedded?: boolean }
     finally { setBusy(false); }
   };
 
-  return <div className={embedded ? "space-y-6" : "mx-auto min-h-dvh max-w-3xl space-y-6 bg-[#f4f9fe] px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))] text-[#102d55] sm:px-6"}>
+  return <div className={`community-theme ${embedded ? "space-y-6" : "mx-auto min-h-dvh max-w-3xl space-y-6 bg-[#f4f9fe] px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))] text-[#102d55] sm:px-6"}`}>
     {!embedded && <a href="/?section=cuentas" className="inline-flex min-h-11 items-center text-sm font-bold text-sky-800">← Volver a Cuenta</a>}
     <header><h2 className="text-2xl font-black">Moderación de Comunidad Docente</h2></header>
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}

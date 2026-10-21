@@ -330,6 +330,37 @@ button:disabled { opacity: .68; }
 [data-theme="dark"] [data-slot="select-content"], [data-theme="dark"] [data-slot="dialog-content"] { background: rgb(8 41 74 / .96); color: var(--text-primary); border-color: var(--border); }
 [data-theme="dark"] input:disabled, [data-theme="dark"] textarea:disabled { color: var(--text-muted); opacity: .72; }
 
+/* Comunidad conserva su diseño claro; en modo noche usa los mismos tokens que el resto de la app. */
+[data-theme="dark"] .community-theme { color: var(--text-primary); background: var(--background); }
+[data-theme="dark"] .community-theme [class*="bg-white/"],
+[data-theme="dark"] .community-theme [class~="bg-sky-50"],
+[data-theme="dark"] .community-theme [class~="bg-sky-50/50"],
+[data-theme="dark"] .community-theme [class~="bg-slate-50"],
+[data-theme="dark"] .community-theme [class~="bg-[#f4f9fd]"],
+[data-theme="dark"] .community-theme [class~="bg-[#f4f9fe]"] { background-color: var(--surface-primary); }
+[data-theme="dark"] .community-theme [class~="bg-sky-100"],
+[data-theme="dark"] .community-theme [class~="bg-slate-100"],
+[data-theme="dark"] .community-theme [class~="bg-[#d7efff]"],
+[data-theme="dark"] .community-theme [class~="bg-[#e8f5ff]"] { background-color: var(--accent-soft); }
+[data-theme="dark"] .community-theme [class*="text-[#"] { color: var(--text-primary); }
+[data-theme="dark"] .community-theme :is(.text-slate-400, .text-slate-500, .text-slate-600, .text-slate-700) { color: var(--text-secondary); }
+[data-theme="dark"] .community-theme :is(.text-sky-600, .text-sky-700, .text-sky-800, .text-sky-900) { color: var(--accent-text); }
+[data-theme="dark"] .community-theme [class*="border-sky-"],
+[data-theme="dark"] .community-theme [class*="border-slate-"] { border-color: var(--border); }
+[data-theme="dark"] .community-theme :is(textarea, select, input:not([type="checkbox"])) { color: var(--text-primary); background-color: var(--input-background); }
+[data-theme="dark"] .community-theme :is(textarea, input)::placeholder { color: var(--text-muted); opacity: 1; }
+[data-theme="dark"] .community-theme [class*="hover:bg-sky-50"]:hover,
+[data-theme="dark"] .community-theme [class*="hover:bg-slate-50"]:hover,
+[data-theme="dark"] .community-theme [class*="hover:bg-white"]:hover { background-color: var(--accent-soft); }
+[data-theme="dark"] .community-theme :is(.bg-rose-50, .bg-red-50) { background-color: var(--danger-bg); color: var(--danger-text); }
+[data-theme="dark"] .community-theme [class*="text-rose-"],
+[data-theme="dark"] .community-theme [class*="text-red-"] { color: var(--danger-text); }
+[data-theme="dark"] .community-theme [class~="bg-emerald-50"] { background-color: var(--success-bg); color: var(--success-text); }
+[data-theme="dark"] .community-theme [class~="text-emerald-900"] { color: var(--success-text); }
+[data-theme="dark"] .community-theme .community-hero { background-color: var(--surface-secondary); }
+[data-theme="dark"] .community-theme .community-hero [class*="bg-gradient-to-r"] { background: linear-gradient(90deg, rgb(3 23 45 / .94), rgb(3 23 45 / .78), rgb(3 23 45 / .36)); }
+[data-theme="dark"] .community-theme nav[aria-label="Navegación principal"] a[aria-current="page"] { color: var(--accent-text); background-color: var(--accent-soft); }
+
 /* Estados heredados enlazados a tokens para conservar los componentes actuales. */
 .bg-\[\#edf4ef\], .bg-\[\#eef2f5\] { background-color: var(--badge-bg); }
 .text-\[\#356053\], .text-\[\#607384\], .text-\[\#7e7462\] { color: var(--badge-text); }

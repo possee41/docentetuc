@@ -242,6 +242,11 @@ export function CommunityPhase3A() {
   }, []);
 
   useEffect(() => {
+    const saved = localStorage.getItem("docentetuc-theme");
+    document.documentElement.dataset.theme = saved === "dark" || saved === "light" ? saved : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }, []);
+
+  useEffect(() => {
     let active = true;
     const loadInitial = async () => {
       try {
@@ -341,7 +346,7 @@ export function CommunityPhase3A() {
     <AppSidebarEdge pinned={sidebar.pinned} onEnter={sidebar.enter} onLeave={sidebar.leave} />
     <AppSidebar view="comunidad" pinned={sidebar.pinned} onTogglePin={sidebar.togglePin} onHoverEnter={sidebar.enter} onHoverLeave={sidebar.leave} />
     <SidebarInset className="min-w-0">
-    <div className="min-h-dvh w-full bg-[radial-gradient(ellipse_at_top,_#dff2ff_0%,_#f3f9fd_38%,_#f7fafc_100%)] pb-[calc(7rem+env(safe-area-inset-bottom))] text-[#0c2d5b] md:pb-8">
+    <div className="community-theme min-h-dvh w-full bg-[radial-gradient(ellipse_at_top,_#dff2ff_0%,_#f3f9fd_38%,_#f7fafc_100%)] pb-[calc(7rem+env(safe-area-inset-bottom))] text-[#0c2d5b] md:pb-8">
     <div className="mx-auto max-w-6xl px-3 pt-3 sm:px-6 sm:pt-5">
       <nav aria-label="Cabecera de DocenteTuc" className="mb-3 flex items-center justify-between gap-3 rounded-full border border-white/80 bg-white/75 px-3 py-2 shadow-sm backdrop-blur sm:mb-4 sm:px-5">
         <div className="flex min-w-0 items-center gap-2">

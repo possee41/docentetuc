@@ -5,6 +5,8 @@ import { test } from "node:test";
 const source = readFileSync(new URL("../components/community-phase-3a.tsx", import.meta.url), "utf8");
 const rulesCard = readFileSync(new URL("../components/community-rules-card.tsx", import.meta.url), "utf8");
 const sidebar = readFileSync(new URL("../components/app-sidebar.tsx", import.meta.url), "utf8");
+const admin = readFileSync(new URL("../components/community-admin-panel.tsx", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 
 test("las normas completas permanecen en una región desplazable accesible", () => {
   assert.match(source, /<CommunityRulesCard version=\{status\.rulesVersion\} text=\{status\.rulesText\} checked=\{normsChecked\}/);
@@ -32,4 +34,14 @@ test("la barra inferior de Comunidad queda limitada a móvil", () => {
 test("la navegación inferior de Comunidad utiliza enlaces nativos operativos", () => {
   assert.doesNotMatch(source, /from "next\/link"/);
   assert.match(source, /aria-label="Navegación principal"[\s\S]*?\.map\(\(\{ label, href, icon: Icon \}\) => <a key=\{label\} href=\{href\}/);
+});
+
+test("Comunidad recupera el tema al entrar directamente y mantiene contraste en vistas y controles", () => {
+  assert.match(source, /localStorage\.getItem\("docentetuc-theme"\)/);
+  assert.match(source, /document\.documentElement\.dataset\.theme =/);
+  assert.match(source, /className="community-theme min-h-dvh/);
+  assert.match(admin, /className=\{`community-theme /);
+  assert.match(styles, /\[data-theme="dark"\] \.community-theme \[class\*="bg-white\/"\]/);
+  assert.match(styles, /\[data-theme="dark"\] \.community-theme :is\(textarea, select, input:not\(\[type="checkbox"\]\)\)/);
+  assert.match(styles, /\[data-theme="dark"\] \.community-theme nav\[aria-label="Navegación principal"\]/);
 });
