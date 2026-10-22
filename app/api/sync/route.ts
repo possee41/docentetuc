@@ -19,6 +19,7 @@ import { classifyDriveReference, documentReference, extractJuntaNotices } from "
 import { BOARD_PORTAL, parseBoardPlacements } from "@/lib/board-sources";
 import { officialChange, reconcileOfficialPublications } from "@/lib/official-reconciliation";
 import { fdciLegacyEnabled } from "@/lib/fdci-sync-mode";
+import { externalSyncSources } from "@/lib/external-sync-sources";
 
 export const dynamic = "force-dynamic";
 
@@ -235,11 +236,17 @@ async function usefulPublications(): Promise<Publication[]> {
 
 async function runSync() {
   const db = getD1();
-  const legacyFdci = fdciLegacyEnabled((env as { FDCI_SYNC_MODE?: string }).FDCI_SYNC_MODE);
-  const previous = await db.prepare("SELECT id, external_id, official_url, source_published_at, source, category, kind, status, source_status, registration_open_at, registration_close_at, expires_at, content_hash, starts_at, ends_at, metadata, normalized_status, title, summary, level, area, junta, location, shift, character, source_updated_at FROM publications").all<{ id: string; external_id: string; official_url: string; source_published_at: string | null; source: string; category: string; kind: string; status: string; source_status: string; registration_open_at: string | null; registration_close_at: string | null; expires_at: string | null; content_hash: string; starts_at: string | null; ends_at: string | null; metadata: string; normalized_status: string; title: string; summary: string; level: string; area: string; junta: string; location: string; shift: string; character: string; source_updated_at: string | null }>();
+  const fdciMode = (env as { FDCI_SYNC_MODE?: string }).FDCI_SYNC_MODE;
+  const external = externalSyncSources((env as { EXTERNAL_SYNC_SOURCES?: string }).EXTERNAL_SYNC_SOURCES, fdciMode);
+  const legacyFdci = fdciLegacyEnabled(fdciMode) && !external.has("Capacitación Docente");
+  const externalNames = [...external];
+  const legacyWhere = externalNames.length ? ` WHERE source NOT IN (${externalNames.map(() => "?").join(",")})` : "";
+  const legacyCondition = externalNames.length ? ` AND source NOT IN (${externalNames.map(() => "?").join(",")})` : "";
+  const previous = await db.prepare(`SELECT id, external_id, official_url, source_published_at, source, category, kind, status, source_status, registration_open_at, registration_close_at, expires_at, content_hash, starts_at, ends_at, metadata, normalized_status, title, summary, level, area, junta, location, shift, character, source_updated_at FROM publications${legacyWhere}`).bind(...externalNames).all<{ id: string; external_id: string; official_url: string; source_published_at: string | null; source: string; category: string; kind: string; status: string; source_status: string; registration_open_at: string | null; registration_close_at: string | null; expires_at: string | null; content_hash: string; starts_at: string | null; ends_at: string | null; metadata: string; normalized_status: string; title: string; summary: string; level: string; area: string; junta: string; location: string; shift: string; character: string; source_updated_at: string | null }>();
   let rowsRead = Number(previous.meta?.rows_read || previous.results.length);
   const old = new Map(previous.results.map((row) => [row.id, row]));
-  const sourceHealthNames = ["SIME", ...(legacyFdci ? ["Capacitación Docente"] : []), "Padrones", "Llamados abiertos", "Comunicados", "Resoluciones", "Información oficial Tucumán", "CeNET / INET", "INFoD / AulaS-TIC"];
+  const sourceHealthNames = ["SIME", ...(legacyFdci ? ["Capacitación Docente"] : []), "Padrones", "Llamados abiertos", "Comunicados", "Resoluciones", "Información oficial Tucumán", "CeNET / INET", "INFoD / AulaS-TIC"]
+    .filter((source) => !external.has(["Padrones", "Llamados abiertos", "Comunicados", "Resoluciones"].includes(source) ? "Padrones y Comunicados" : source));
   const collectors: { source: string; run: () => Promise<Publication[] | { items: Publication[]; complete: boolean; incompleteCategories?: string[]; warnings?: Record<string, string>; categoryErrors?: Record<string, unknown> }> }[] = [
     { source: "SIME", run: () => collectSimePublications(old) },
     ...(legacyFdci ? [{ source: "Capacitación Docente", run: trainingPublications }] : []),
@@ -247,7 +254,7 @@ async function runSync() {
     { source: "Información oficial Tucumán", run: usefulPublications },
     { source: "CeNET / INET", run: cenetPublications },
     { source: "INFoD / AulaS-TIC", run: infdPublications },
-  ];
+  ].filter((collector) => !external.has(collector.source));
   const syncStartedAt = new Date().toISOString();
   let rowsWritten = 0;
   const countWrites = (result: unknown) => { for (const item of Array.isArray(result) ? result : [result]) { const meta = (item as { meta?: { rows_written?: number; rows_read?: number } })?.meta; rowsWritten += Number(meta?.rows_written || 0); rowsRead += Number(meta?.rows_read || 0); } };
@@ -419,10 +426,10 @@ async function runSync() {
     const reliableCourseDate = "(kind<>'capacitacion' OR (json_valid(metadata) AND lower(COALESCE(json_extract(metadata,'$.dateStatus'),'')) IN ('confirmed','course_confirmed')))";
     const condition = lifecycle === "EXPIRED" ? `expires_at IS NOT NULL AND datetime(expires_at)<datetime(?) AND ${reliableCourseDate}` : `registration_close_at IS NOT NULL AND datetime(registration_close_at)<datetime(?) AND (expires_at IS NULL OR datetime(expires_at)>=datetime(?)) AND ${reliableCourseDate}`;
     const binds = lifecycle === "EXPIRED" ? [syncStartedAt] : [syncStartedAt, syncStartedAt];
-    countWrites(await db.prepare(`UPDATE publications SET normalized_status='${lifecycle}', updated_at=CURRENT_TIMESTAMP WHERE normalized_status IN ('ACTIVE','UPCOMING','UNKNOWN') AND normalized_status<>'REMOVED_FROM_SOURCE' AND ${condition}`).bind(...binds).run());
+    countWrites(await db.prepare(`UPDATE publications SET normalized_status='${lifecycle}', updated_at=CURRENT_TIMESTAMP WHERE normalized_status IN ('ACTIVE','UPCOMING','UNKNOWN') AND normalized_status<>'REMOVED_FROM_SOURCE' AND ${condition}${legacyCondition}`).bind(...binds, ...externalNames).run());
   }
-  countWrites(await db.prepare("UPDATE publications SET status='Documento público · vigencia no informada', source_status='Documento público · vigencia no informada', normalized_status='UNKNOWN' WHERE source='Padrones y Comunicados' AND status='vigente' AND normalized_status IN ('ACTIVE','UPCOMING') AND starts_at IS NULL AND ends_at IS NULL").run());
-  const expiredRows = await db.prepare("SELECT id, source, category FROM publications WHERE normalized_status IN ('CLOSED','EXPIRED')").all<{ id: string; source: string; category: string }>();
+  if (!external.has("Padrones y Comunicados")) countWrites(await db.prepare("UPDATE publications SET status='Documento público · vigencia no informada', source_status='Documento público · vigencia no informada', normalized_status='UNKNOWN' WHERE source='Padrones y Comunicados' AND status='vigente' AND normalized_status IN ('ACTIVE','UPCOMING') AND starts_at IS NULL AND ends_at IS NULL").run());
+  const expiredRows = await db.prepare(`SELECT id, source, category FROM publications WHERE normalized_status IN ('CLOSED','EXPIRED')${legacyCondition}`).bind(...externalNames).all<{ id: string; source: string; category: string }>();
   rowsRead += Number(expiredRows.meta?.rows_read || expiredRows.results.length);
   const expiredBySource = new Map<string, number>(), expiredTotalBySource = new Map<string, number>();
   for (const row of expiredRows.results) {
