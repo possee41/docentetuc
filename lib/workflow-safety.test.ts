@@ -14,8 +14,9 @@ test("los cinco importadores siguen manuales y sin calendario activo", () => {
   }
 });
 
-test("el build Linux es manual, sin secretos ni despliegue", () => {
+test("el build Linux se dispara solo en la rama aislada, sin secretos ni despliegue", () => {
   const yaml = readFileSync(new URL("../.github/workflows/build-1.2-linux.yml", import.meta.url), "utf8");
+  assert.match(yaml, /^  push:\r?\n    branches: \[feat\/1\.2-sync-integration\]/m);
   assert.match(yaml, /^  workflow_dispatch:/m);
   assert.doesNotMatch(yaml, /^\s+schedule:/m);
   assert.match(yaml, /pnpm install --frozen-lockfile/);

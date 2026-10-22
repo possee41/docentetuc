@@ -1,5 +1,7 @@
-name: DocenteTuc 1.2 Linux build (manual)
+name: DocenteTuc 1.2 Linux build (isolated branch)
 on:
+  push:
+    branches: [feat/1.2-sync-integration]
   workflow_dispatch:
 permissions:
   contents: read
