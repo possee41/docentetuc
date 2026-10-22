@@ -74,6 +74,13 @@ export function communityErrorResponse(error: unknown) {
       SCHEMA_UNAVAILABLE: "Comunidad todavía no está habilitada en esta base local.",
       REQUEST_TOO_LARGE: "El pedido supera el tamaño permitido.",
       PARTICIPATION_RESTRICTED: "Tu participación en Comunidad está restringida. Contactá a soporte si necesitás revisar esta decisión.",
+      INVALID_NEWS: "Revisá los datos editoriales e intentá nuevamente.",
+      NEWS_STALE: "Otra persona modificó esta noticia. Recargala antes de continuar.",
+      NEWS_CONFLICT: "Esta noticia o fuente ya existe, o sus datos entran en conflicto. Recargá e intentá nuevamente.",
+      NEWS_TRANSITION: "Esta acción no corresponde al estado actual de la noticia.",
+      NEWS_INCOMPLETE: "Completá título, resumen y vigencia antes de publicar.",
+      NEWS_PRIMARY_REQUIRED: "Se necesita una fuente principal HTTPS verificable.",
+      NEWS_ORIGIN_WITHDRAWN: "La publicación de origen fue retirada. Revisá la evidencia y confirmá expresamente antes de publicar.",
     };
     return Response.json({ error: messages[detail.code] || "No se pudo completar la solicitud." }, {
       status,

@@ -4,7 +4,7 @@ Esta ampliación conserva la autorización existente: sesión Better Auth válid
 
 ## Datos y migración
 
-`migrations/0019_admin_notices.sql` es aditiva: crea `admin_notices` y `admin_notice_events`, con índices para vigencia/auditoría. No toca perfiles, agendas, publicaciones sincronizadas ni datos de Comunidad. **No se aplicó a producción**. Se ensayó, incluso una segunda ejecución accidental, sobre una D1 local aislada con el esquema previo completo. Debe aplicarse al entorno de destino antes de publicar código que permita crear avisos. El endpoint público devuelve `[]` si la tabla aún no existe, para no interrumpir Inicio durante un despliegue escalonado.
+`migrations/0019_admin_notices.sql` es aditiva: crea `admin_notices` y `admin_notice_events`, con índices para vigencia/auditoría. No toca perfiles, agendas, publicaciones sincronizadas ni datos de Comunidad. **Ya se aplicó en producción**; no debe ejecutarse nuevamente allí. Se ensayó, incluso una segunda ejecución accidental, sobre una D1 local aislada con el esquema previo completo. El endpoint público devuelve `[]` si la tabla aún no existe, para no interrumpir Inicio durante un despliegue escalonado.
 
 Cada aviso puede activarse, desactivarse o programarse; no hay borrado físico en V1. La auditoría conserva acción y fecha, y las referencias al administrador se vuelven `NULL` si se elimina esa cuenta. `/api/notices` publica únicamente avisos activos dentro de su ventana temporal, sin IDs de administradores ni auditoría. Los enlaces aceptan solo HTTPS.
 
@@ -18,4 +18,4 @@ Las mutaciones leen un JSON acotado a 12 KiB antes de responder 401/403: en el W
 - IA: proveedor/modelo configurados, disponibilidad **de configuración** (no prueba de conectividad), intentos agregados de la ventana activa de rate limit y estado declarado del respaldo web. No hay historial persistente de errores de IA; el panel no inventa uno.
 - Comunidad: conserva reportes y moderación posterior. La revisión preventiva adicional se documenta por separado en `COMUNIDAD-PREMODERACION-1.1.md` y requiere `0020`.
 
-Antes de desplegar: repetir tests/TypeScript/lint/build y comprobar 401/403 con cuentas de prueba y un aviso futuro, vigente, vencido e inactivo. Esos escenarios pasaron en D1 local aislada; no equivalen a validación de producción. Para producción, solicitar autorización independiente antes de migrar D1 o activar una versión de Worker.
+Antes de desplegar: repetir tests/TypeScript/lint/build y comprobar 401/403 con cuentas de prueba y un aviso futuro, vigente, vencido e inactivo. Esos escenarios pasaron en D1 local aislada; no equivalen a validación de producción. `0019` ya está aplicada en producción; cualquier activación futura de una versión de Worker requiere autorización independiente.

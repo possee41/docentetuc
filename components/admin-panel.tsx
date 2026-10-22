@@ -4,15 +4,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CommunityAdminPanel } from "@/components/community-admin-panel";
+import { NewsAdminPanel } from "@/components/news-admin-panel";
 import type { AdminNotice } from "@/lib/admin-notices";
 
-type Section = "dashboard" | "users" | "publications" | "notices" | "sync" | "ai" | "community";
+type Section = "dashboard" | "users" | "publications" | "notices" | "sync" | "ai" | "community" | "news";
 type SyncRow = { source: string; lastAttemptAt: string | null; lastSuccessfulSyncAt: string | null; status: string; itemCount: number; errorCode: string | null };
 type Dashboard = { counts: Record<string, number>; boardCounts: Record<"acts" | "calls", { indexed: number; classified: number; current: number }>; sync: SyncRow[] };
 type User = { name: string; email: string; createdAt: string | number; lastAccess: null; status: string; role: string };
 type Publication = { title: string; type: string; source: string; publishedAt: string | null; url: string | null; status: string; updatedAt: string };
 type AIStatus = { provider: string; model: string; available: boolean; recentRequests: number; requestWindow: string; recentErrors: string; webFallback: string };
-const SECTIONS: [Section, string][] = [["dashboard", "Resumen"], ["users", "Usuarios"], ["publications", "Publicaciones"], ["notices", "Avisos"], ["sync", "Sincronizaciones"], ["ai", "IA"], ["community", "Comunidad"]];
+const SECTIONS: [Section, string][] = [["dashboard", "Resumen"], ["users", "Usuarios"], ["publications", "Publicaciones"], ["notices", "Avisos"], ["sync", "Sincronizaciones"], ["ai", "IA"], ["community", "Comunidad"], ["news", "Noticias"]];
 const COUNT_LABELS: Record<string, string> = { users: "Usuarios", sime: "Inscripciones SIME", acts: "Actos de designación", calls: "Llamados abiertos", communiques: "Comunicados", padrones: "Padrones", fdci: "FDCI", infod: "INFoD", cenet: "CeNET" };
 const fmt = (value: string | number | null | undefined) => value == null || value === "" ? "No disponible" : new Date(value).toLocaleString("es-AR");
 const localDate = (value: string | null) => {
@@ -35,7 +36,7 @@ export function AdminPanel() {
   const loadId = useRef(0);
 
   const load = useCallback(async () => {
-    if (section === "community") return;
+    if (section === "community" || section === "news") return;
     const requestId = ++loadId.current;
     setLoading(true); setError("");
     const params = new URLSearchParams({ section });
@@ -79,7 +80,7 @@ export function AdminPanel() {
       {SECTIONS.map(([key, label]) => <button key={key} type="button" aria-current={section === key ? "page" : undefined} onClick={() => changeSection(key)} className={`min-h-11 shrink-0 rounded-xl px-3 text-sm font-bold ${section === key ? "bg-[#0878be] text-white" : "border border-sky-200 bg-white text-[#102d55]"}`}>{label}</button>)}
     </nav>
     {error && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-    {section !== "community" && loading && <p role="status" className="mb-4 text-sm">Cargando…</p>}
+    {section !== "community" && section !== "news" && loading && <p role="status" className="mb-4 text-sm">Cargando…</p>}
     {section === "dashboard" && dashboard && <div className="space-y-6"><div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{Object.entries(dashboard.counts).map(([key, value]) => <div key={key} className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm text-slate-600">{COUNT_LABELS[key] || key}{(key === "acts" || key === "calls") && " · vigentes/próximos verificados"}</p><p className="text-2xl font-black">{value}</p>{(key === "acts" || key === "calls") && dashboard.boardCounts?.[key] && <p className="mt-2 text-xs text-slate-600">Indexados: {dashboard.boardCounts[key].indexed} (incluye históricos y referencias sin retirar).<br />Individuales clasificados: {dashboard.boardCounts[key].classified} (cualquier fecha).</p>}</div>)}</div><SyncTable rows={dashboard.sync} /></div>}
     {section === "users" && <section className="space-y-4"><h2 className="text-xl font-black">Usuarios · consulta</h2><label className="block max-w-md text-sm font-bold">Buscar por nombre o email<input value={search} onChange={(event) => setSearch(event.target.value)} maxLength={120} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3" /></label><div className="grid gap-3">{users?.map((user, index) => <article key={`${user.email}-${index}`} className="min-w-0 rounded-2xl bg-white p-4 shadow-sm"><p className="break-all font-bold">{user.name || "Sin nombre"} · {user.email}</p><p className="mt-1 text-sm text-slate-600">Registro: {fmt(user.createdAt)} · Último acceso: no disponible</p><p className="mt-1 text-sm">{user.status} · Rol: {user.role}</p></article>)}</div>{users?.length === 0 && <p>No se encontraron usuarios.</p>}</section>}
     {section === "publications" && <section className="space-y-4"><h2 className="text-xl font-black">Publicaciones oficiales · consulta</h2><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{(["source", "kind", "status", "board", "level", "since"] as const).map((key) => <label key={key} className="text-sm font-bold">{{ source: "Fuente / plataforma", kind: "Tipo", status: "Estado", board: "Junta", level: "Nivel", since: "Desde" }[key]}<input type={key === "since" ? "date" : "text"} value={filters[key]} onChange={(event) => setFilters((current) => ({ ...current, [key]: event.target.value, page: 0 }))} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3" /></label>)}</div><div className="grid gap-3">{publications?.map((item, index) => <article key={`${item.title}-${index}`} className="min-w-0 rounded-2xl bg-white p-4 shadow-sm"><h3 className="break-words font-bold">{item.title}</h3><p className="mt-1 text-sm text-slate-600">{item.type} · {item.source} · {item.status}</p><p className="text-xs text-slate-600">Publicado: {fmt(item.publishedAt)} · Actualizado: {fmt(item.updatedAt)}</p>{item.url && <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 inline-flex min-h-10 items-center text-sm font-bold text-sky-700 underline">Fuente original ↗</a>}</article>)}</div>{publications?.length === 0 && <p>No se encontraron publicaciones.</p>}<div className="flex gap-3"><button type="button" disabled={filters.page === 0} onClick={() => setFilters((current) => ({ ...current, page: current.page - 1 }))} className="min-h-11 rounded-xl border border-sky-200 bg-white px-4 disabled:opacity-50">Anterior</button><button type="button" disabled={!publications || publications.length < 50} onClick={() => setFilters((current) => ({ ...current, page: current.page + 1 }))} className="min-h-11 rounded-xl border border-sky-200 bg-white px-4 disabled:opacity-50">Siguiente</button></div></section>}
@@ -87,6 +88,7 @@ export function AdminPanel() {
     {section === "sync" && <SyncTable rows={sync || []} />}
     {section === "ai" && ai && <section className="space-y-3"><h2 className="text-xl font-black">IA · estado operativo</h2><div className="grid gap-3 sm:grid-cols-2">{[["Proveedor", ai.provider], ["Modelo", ai.model], ["Disponibilidad configurada", ai.available ? "Sí" : "No"], ["Consultas agregadas", `${ai.recentRequests} · ${ai.requestWindow}`], ["Búsqueda web", ai.webFallback], ["Errores recientes", ai.recentErrors]].map(([label, value]) => <div key={label} className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs font-bold text-slate-600">{label}</p><p className="mt-1 break-words font-semibold">{value}</p></div>)}</div><p className="text-sm text-slate-600">Este panel no muestra claves, prompts ni conversaciones.</p></section>}
     {section === "community" && <CommunityAdminPanel embedded />}
+    {section === "news" && <NewsAdminPanel />}
   </main>;
 }
 

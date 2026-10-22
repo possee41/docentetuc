@@ -1,11 +1,13 @@
 import { isEligibleForPersonalizedHome, profileMatch } from "./matching.ts";
 import { enrollmentState, parseTrainingMetadata } from "./training.ts";
 import { usefulMetadata } from "./useful-information.ts";
+import { publicationLifecycle } from "./publication-lifecycle.ts";
 import type { DesignationTracking, Profile, Publication } from "./types.ts";
 
 export type AIConfig = { provider: string; apiKey: string; model: string };
-export type AISource = { id: string; title: string; source: string; sourceType: "official" | "internal" | "complementary"; url: string; updatedAt: string; status: string };
-export type PublicAISource = Pick<AISource, "title" | "source" | "sourceType" | "url">;
+export type AISourceType = "official" | "public" | "union" | "media" | "personal" | "inference";
+export type AISource = { id: string; title: string; source: string; sourceType: AISourceType; url: string; publishedAt: string | null; relevantAt: string | null; registrationOpenAt: string | null; registrationCloseAt: string | null; validity: string; updatedAt: string; status: string };
+export type PublicAISource = Pick<AISource, "title" | "source" | "sourceType" | "url" | "publishedAt" | "relevantAt" | "registrationOpenAt" | "registrationCloseAt" | "validity">;
 export type AIIntent = "capacitaciones" | "inscripcion" | "vacantes" | "designaciones" | "llamados" | "agenda" | "perfil" | "novedades" | "documentos" | "junta" | "licencias" | "inasistencia" | "titulos" | "informacion" | "app" | "busqueda_general" | "conversacion_general";
 export type AIContextInput = { type: string; id?: string; title?: string };
 export type AIAgendaEntry = { id: string; title: string; startsAt: string; category?: string; recurrence?: string; updatedAt?: string; kind: "publication" | "manual" };
@@ -49,21 +51,42 @@ export function aiAnswerDisclosure(sources: Pick<AISource, "sourceType">[], issu
   const unverified = issues.filter((item) => item.state === "unverified").map((item) => item.source);
   if (unavailable.length) return { kind: "unavailable" as const, label: "Fuente temporalmente no disponible", detail: `Falló la última actualización de ${unavailable.join(", ")}. La IA puede apoyarse en información sincronizada anteriormente, que quizá no refleje novedades; verificá su vigencia en la fuente oficial.` };
   if (unverified.length) return { kind: "unverified" as const, label: "Fuente sin verificación reciente", detail: `No se pudo confirmar el estado de ${unverified.join(", ")}; esto no significa que no existan resultados.` };
-  const hasOfficial = sources.some((source) => source.sourceType === "official"), hasInternal = sources.some((source) => source.sourceType === "internal");
-  if (hasOfficial && hasInternal) return { kind: "mixed" as const, label: "Registros oficiales + datos personales", detail: "Se combinaron los registros oficiales listados abajo con tu agenda o seguimiento de DocenteTuc; esos datos personales no son información oficial." };
-  if (hasOfficial) return { kind: "official" as const, label: "Registros oficiales sincronizados", detail: "Se recuperaron los registros oficiales listados abajo desde las fuentes integradas; confirmá cambios directamente en el sitio de origen." };
-  if (sources.some((source) => source.sourceType === "internal")) return { kind: "internal" as const, label: "Información personal de DocenteTuc", detail: "La agenda o el seguimiento son datos tuyos, no fuentes oficiales." };
+  const hasOfficial = sources.some((source) => source.sourceType === "official"), hasPersonal = sources.some((source) => source.sourceType === "personal"), hasPublic = sources.some((source) => ["public", "union", "media"].includes(source.sourceType));
+  if ((hasOfficial || hasPublic) && hasPersonal) return { kind: "mixed" as const, label: "Fuentes públicas + datos personales", detail: "Se combinaron fuentes listadas abajo con datos propios de tu agenda o seguimiento; esos datos personales no son información oficial." };
+  if (hasOfficial) return { kind: "official" as const, label: "Registros oficiales sincronizados", detail: "Los hechos citados proceden de las fuentes listadas. Una explicación o conclusión derivada es una inferencia de IA, no una cita literal; confirmá cambios en el sitio original." };
+  if (hasPublic) return { kind: "public" as const, label: "Información pública en DocenteTuc", detail: "Estos registros integrados no se presentan como documentos de un organismo oficial; comprobá su fuente original." };
+  if (hasPersonal) return { kind: "internal" as const, label: "Información personal de DocenteTuc", detail: "La agenda o el seguimiento son datos tuyos, no fuentes oficiales." };
   if (["agenda", "designaciones", "perfil"].includes(intent)) return { kind: "internal" as const, label: "Consulta personal de DocenteTuc", detail: "No se recuperaron registros personales coincidentes en esta consulta." };
   if (intent === "conversacion_general") return { kind: "general" as const, label: "Orientación general de IA", detail: "Esta respuesta no se basa en registros oficiales de DocenteTuc." };
   return { kind: "general" as const, label: "Orientación general de IA", detail: "No se recuperaron registros oficiales de DocenteTuc; esta orientación no confirma datos actuales." };
 }
 
 export function safeAISourceUrl(value: string | null | undefined): string {
-  try { const url = new URL(value || ""); return url.protocol === "https:" ? url.href : ""; } catch { return ""; }
+  try { const url = new URL(value || ""); return url.protocol === "https:" && !url.username && !url.password ? url.href : ""; } catch { return ""; }
 }
 
 export function publicAISources(sources: AISource[]): PublicAISource[] {
-  return sources.map(({ title, source, sourceType, url }) => ({ title, source, sourceType, url }));
+  return sources.map(({ title, source, sourceType, url, publishedAt, relevantAt, registrationOpenAt, registrationCloseAt, validity }) => ({ title, source, sourceType, url, publishedAt, relevantAt, registrationOpenAt, registrationCloseAt, validity }));
+}
+
+const officialSources = new Set(["SIME", "Capacitación Docente", "INFoD / AulaS-TIC", "CeNET / INET", "Padrones y Comunicados", "Información oficial Tucumán"]);
+export function aiSourceType(source: string): AISourceType {
+  // Only known connectors are official; future gremial/media connectors need an explicit mapping.
+  return officialSources.has(source) ? "official" : "public";
+}
+
+export function aiPublicationValidity(item: Publication, now = new Date()) {
+  if (item.removed_at) return "REMOVED_FROM_SOURCE";
+  const training = item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata) : null;
+  if (training) {
+    const enrollment = enrollmentState(training, item.source_status || item.status, item.normalized_status, now);
+    if (enrollment === "CERRADA") return "CLOSED";
+    if (enrollment === "ABIERTA") return "ACTIVE";
+    if (["ABRE_HOY", "PROXIMAMENTE"].includes(enrollment)) return "UPCOMING";
+  }
+  return publicationLifecycle({ sourceStatus: item.source_status || item.status, normalizedStatus: item.normalized_status,
+    registrationOpenAt: item.registration_open_at, registrationCloseAt: item.registration_close_at,
+    expiresAt: item.expires_at || (item.kind !== "capacitacion" ? item.ends_at : null), now });
 }
 
 export class AIProviderError extends Error {
@@ -197,6 +220,7 @@ export function retrievePublications(question: string, publications: Publication
   const asksUpcomingTraining = wantsTraining && /\b(proxim\w*|abre\w*|esta semana)\b/.test(query);
   const wantsAgenda = intent === "agenda", now = options.now || new Date(), requested = wantsAgenda ? requestedDay(question, now) : null;
   const wantsMatches = wantsPersonalizedQuestion(query);
+  const asksHistory = /\b(historic\w*|anterior\w*|pasad\w*|vencid\w*|cerrad\w*|finalizad\w*|reemplazad\w*)\b/.test(query);
   const configuredProfile = options.profile ? matchProfile(options.profile) : null;
   return publications.map((item) => {
     // An explicitly opened detail is authoritative for context selection. Keep
@@ -211,7 +235,8 @@ export function retrievePublications(question: string, publications: Publication
     const trainingState = wantsTraining ? enrollmentState(training, item.source_status || item.status, item.normalized_status, now) : null;
     const opening = training?.registrationOpensAt ? Date.parse(training.registrationOpensAt) : Number.NaN;
     const preserveForContext = isFocusedContext || wantsMatches;
-    if (!preserveForContext && wantsTraining && trainingState === "CERRADA") return { item, score: -1 };
+    if (!isFocusedContext && !asksHistory && wantsTraining && trainingState === "CERRADA") return { item, score: -1 };
+    if (!isFocusedContext && !asksHistory && wantsVacancy && ["CLOSED", "EXPIRED", "REMOVED_FROM_SOURCE"].includes(aiPublicationValidity(item, now))) return { item, score: -1 };
     if (!preserveForContext && asksOpenTraining && trainingState !== "ABIERTA") return { item, score: -1 };
     if (!preserveForContext && asksUpcomingTraining && !Number.isFinite(opening)) return { item, score: -1 };
     if (!preserveForContext && asksUpcomingTraining && !["PROXIMAMENTE", "ABRE_HOY"].includes(trainingState || "")) return { item, score: -1 };
@@ -250,9 +275,16 @@ export function buildAIContext(question: string, publications: Publication[], op
   const selected = retrievePublications(question, publications, 8, { ...options, now });
   const agendaEntries = intent === "agenda" ? relevantAgendaEntries(question, options.agendaEntries || [], now) : [];
   const sourceName = (item: Publication) => item.source === "Padrones y Comunicados" && ["Padrones", "Llamados abiertos", "Comunicados", "Resoluciones"].includes(item.category) ? item.category : item.source;
-  const sources: AISource[] = selected.map((item) => ({ id: item.id, title: item.title, source: sourceName(item), sourceType: "official", url: safeAISourceUrl(item.official_url), updatedAt: item.updated_at, status: item.status }));
-  sources.push(...agendaEntries.filter((entry) => entry.kind === "manual").map((entry) => ({ id: entry.id, title: entry.title, source: "Tu agenda", sourceType: "internal" as const, url: "", updatedAt: entry.updatedAt || "", status: "personal" })));
-  if (options.designations?.length) sources.push({ id: "personal:designation-tracking", title: "Seguimiento de designaciones", source: "Tu seguimiento", sourceType: "internal", url: "", updatedAt: "", status: "personal" });
+  const sources: AISource[] = selected.map((item) => {
+    const training = item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata) : null;
+    return { id: item.id, title: item.title, source: sourceName(item), sourceType: aiSourceType(item.source), url: safeAISourceUrl(item.official_url),
+      publishedAt: item.source_published_at || null, relevantAt: item.starts_at || item.ends_at || null,
+      registrationOpenAt: training?.registrationOpensAt || item.registration_open_at || null,
+      registrationCloseAt: training?.registrationClosesAt || item.registration_close_at || null,
+      validity: aiPublicationValidity(item, now), updatedAt: item.updated_at, status: item.status };
+  });
+  sources.push(...agendaEntries.filter((entry) => entry.kind === "manual").map((entry) => ({ id: entry.id, title: entry.title, source: "Tu agenda", sourceType: "personal" as const, url: "", publishedAt: null, relevantAt: entry.startsAt, registrationOpenAt: null, registrationCloseAt: null, validity: "PERSONAL", updatedAt: entry.updatedAt || "", status: "personal" })));
+  if (options.designations?.length) sources.push({ id: "personal:designation-tracking", title: "Seguimiento de designaciones", source: "Tu seguimiento", sourceType: "personal", url: "", publishedAt: null, relevantAt: null, registrationOpenAt: null, registrationCloseAt: null, validity: "PERSONAL", updatedAt: "", status: "personal" });
   const configuredProfile = options.profile ? matchProfile(options.profile) : null;
   const records = selected.map((item, index) => {
     const training = item.kind === "capacitacion" ? parseTrainingMetadata(item.metadata) : null;
@@ -261,10 +293,10 @@ export function buildAIContext(question: string, publications: Publication[], op
     const useful = item.kind === "informacion" ? usefulMetadata(item.metadata) : null;
     const match = configuredProfile ? profileMatch(forMatch(item), configuredProfile) : null;
     const usefulFacts = useful ? `\nDatos oficiales publicados: tipo ${useful.recordType}; domicilio ${useful.address || "no publicado"}; horario ${useful.openingHours || "no publicado"}; teléfonos ${(useful.phones || []).join("; ") || "no publicados"}; correos ${(useful.emails || []).join("; ") || "no publicados"}; servicios ${(useful.services || []).join("; ") || "no publicados"}; requisitos/documentación ${[...(useful.requirements || []), ...(useful.documents || [])].join("; ") || "no publicados"}; organismo ${useful.parentOrganization || "no publicado"}; acceso ${useful.access || "no informado"}; verificado ${useful.lastVerified}. ${useful.notes || ""} ${useful.discrepancy || ""}` : "";
-    return `[${index + 1}] ${item.title}\nTipo: ${item.category || item.kind}. Estado de la publicación: ${item.status}. Estado de inscripción calculado con los datos sincronizados: ${trainingState || "no aplica"}. Nivel: ${item.level || "No informado"}. Área: ${item.area || "No informada"}. Lugar: ${item.location || "No informado"}. Circuito: ${item.circuit || "UNKNOWN"} (${item.circuit_inference_source || "unknown"}). Inicio del curso: ${training?.courseStartsAt || item.starts_at || "No informado"}. Fin del curso: ${training?.courseEndsAt || "No informado"}. Apertura de preinscripción: ${training?.registrationOpensAt || "No informada por la fuente"}${training?.registrationHasTime ? " (fecha y hora informadas por la fuente)" : training?.registrationOpensAt ? " (la fuente no informa hora exacta)" : ""}. Cierre de preinscripción: ${training?.registrationClosesAt || "No informado por la fuente"}. Calidad de fechas: ${trainingDateStatus}. Confirmación específica de apertura FDCI: ${training?.preinscripcionFechaConfirmada ? "sí, según la comisión oficial" : "no"}. Cupo: ${training?.capacity ?? training?.preCapacity ?? "No informado"}. Requisitos: ${useful ? "ver datos oficiales publicados" : "No informados"}. Puntaje: No informado.${match ? ` Compatibilidad calculada por DocenteTuc: ${match.score}%; confianza: ${match.confidence}%; resultado: ${match.status}.` : ""} Detalle: ${(item.summary || "No informado").slice(0, item.kind === "junta" ? 6000 : item.kind === "informacion" ? 3000 : 900)}${usefulFacts}\nFuente: ${sourceName(item)}. URL: ${safeAISourceUrl(item.official_url) || "No publicada"}`;
+    return `[${index + 1}] ${item.title}\nTipo: ${item.category || item.kind}. Procedencia: ${aiSourceType(item.source)}. Estado informado: ${item.status}. Vigencia calculada: ${aiPublicationValidity(item, now)}. Publicado por la fuente: ${item.source_published_at || "fecha no informada"}. Fecha relevante: ${item.starts_at || item.ends_at || "no informada"}. Estado de inscripción calculado: ${trainingState || "no aplica"}. Nivel: ${item.level || "No informado"}. Área: ${item.area || "No informada"}. Lugar: ${item.location || "No informado"}. Junta/organismo: ${item.junta || item.source}. Circuito: ${item.circuit || "UNKNOWN"} (${item.circuit_inference_source || "unknown"}). Inicio del curso: ${training?.courseStartsAt || item.starts_at || "No informado"}. Fin del curso: ${training?.courseEndsAt || "No informado"}. Apertura de preinscripción: ${training?.registrationOpensAt || "No informada por la fuente"}${training?.registrationHasTime ? " (fecha y hora informadas por la fuente)" : training?.registrationOpensAt ? " (la fuente no informa hora exacta)" : ""}. Cierre de preinscripción: ${training?.registrationClosesAt || "No informado por la fuente"}. Calidad de fechas: ${trainingDateStatus}. Confirmación específica de apertura FDCI: ${training?.preinscripcionFechaConfirmada ? "sí, según la comisión oficial" : "no"}. Cupo: ${training?.capacity ?? training?.preCapacity ?? "No informado"}. Requisitos: ${useful ? "ver datos publicados" : "No informados"}. Puntaje: No informado.${match ? ` Compatibilidad calculada por DocenteTuc: ${match.score}%; confianza: ${match.confidence}%; resultado: ${match.status}.` : ""} Detalle: ${(item.summary || "No informado").slice(0, item.kind === "junta" ? 1200 : 800)}${usefulFacts.slice(0, 800)}\nFuente: ${sourceName(item)}. URL: ${safeAISourceUrl(item.official_url) || "No publicada"}`;
   }).join("\n\n");
   const profileText = options.profile ? `Perfil autorizado: niveles ${options.profile.levels.join(", ") || "no informados"}; áreas ${options.profile.areas.join(", ") || "no informadas"}; materias ${options.profile.subjects.join(", ") || "no informadas"}; cargos ${options.profile.roles?.join(", ") || "no informados"}; localidad ${options.profile.locality || "no informada"}; circuitos ${options.profile.circuits?.join(", ") || "no seleccionados"}; intereses ${options.profile.training_interests.join(", ") || "no informados"}.` : "El usuario no autorizó usar su perfil.";
-  const trackingText = options.designations?.length ? `\n\nSEGUIMIENTO PERSONAL DE DESIGNACIONES (datos ingresados por el usuario):\n${options.designations.map((item) => `${item.role || "Cargo no informado"} · ${item.school || "Establecimiento no informado"} · estado ${item.status} · inscripción ${item.applied_at || "no informada"} · designación ${item.appointment_at || "no informada"} · notas ${item.notes || "sin notas"}`).join("\n")}` : "";
+  const trackingText = options.designations?.length ? `\n\nSEGUIMIENTO PERSONAL DE DESIGNACIONES (datos ingresados por el usuario):\n${options.designations.slice(0, 8).map((item) => `${item.role || "Cargo no informado"} · ${item.school || "Establecimiento no informado"} · estado ${item.status} · inscripción ${item.applied_at || "no informada"} · designación ${item.appointment_at || "no informada"} · notas ${(item.notes || "sin notas").slice(0, 250)}`).join("\n")}` : "";
   const panelContext = options.context ? `Contexto del panel: tipo ${options.context.type}; título ${options.context.title || "sin título"}.` : "Contexto del panel no informado.";
   const agendaText = agendaEntries.length ? `\n\nAGENDA PERSONAL DEL DOCENTE (contenido interno, no oficial):\n${agendaEntries.map((entry) => `${entry.title} · ${entry.category || "Agenda"} · ${entry.startsAt}${entry.recurrence && entry.recurrence !== "none" ? ` · repetición ${entry.recurrence}` : ""}`).join("\n")}` : intent === "agenda" ? "\n\nAGENDA PERSONAL DEL DOCENTE: No hay eventos coincidentes con la fecha consultada en los datos cargados." : "";
   const relevantSources = new Set([...relevantSourcesForQuestion(intent, question), ...sources.map((source) => source.source)]);
@@ -273,8 +305,8 @@ export function buildAIContext(question: string, publications: Publication[], op
   const failureText = sourceFailures?.length ? `\n\nESTADO INTERNO DE ACTUALIZACIÓN: falló la última actualización de ${sourceFailures.join(", ")}. Si la consulta depende de esos datos, respondé igualmente usando el último contenido disponible y la orientación general; aclarale con precisión qué dato no se pudo verificar. No afirmes que esa fuente fue consultada o verificada hoy ni que no existen novedades posteriores. No uses esta falla como respuesta completa ni como preámbulo genérico.` : "";
   const unverifiedText = sourceNotVerified?.length ? `\n\nESTADO DE VERIFICACIÓN: no hay una verificación reciente registrada para ${sourceNotVerified.join(", ")}. No interpretes registros ausentes como prueba de que no existen resultados y no confirmes datos actuales sin evidencia.` : "";
   const appHelp = intent === "app" ? "\n\nCONTEXTO INTERNO DE LA APLICACIÓN: DocenteTuc organiza información docente pública y personaliza oportunidades con el perfil sólo cuando el usuario lo autoriza. Incluye Designaciones, Capacitaciones, Padrones y comunicados, Información útil, Agenda, Alertas y Guardados. Las inscripciones y trámites se finalizan en la fuente oficial. La agenda permite eventos manuales y recordatorios." : "";
-  const evidenceGuidance = "\n\nCLASIFICACIÓN DE EVIDENCIA: Las fuentes oficiales son únicamente los registros enumerados y citados. No atribuyas a esas fuentes conocimiento general del modelo. Si no se recuperó evidencia oficial suficiente sobre un dato actual o cambiante, decí: ‘No encontré información oficial suficiente para confirmar ese dato.’ Si brindás una explicación general, identificala expresamente como ‘Orientación general’; no la presentes como normativa, fecha, requisito ni respuesta oficial. Si hay falla o falta de verificación de una fuente, no concluyas que no existen resultados.";
+  const evidenceGuidance = "\n\nCLASIFICACIÓN DE EVIDENCIA: Sólo los registros marcados official pertenecen a fuentes oficiales conocidas. public es información pública integrada, no acreditación oficial; personal son datos del usuario; las explicaciones y deducciones propias son inferencias de IA. Citá [n] únicamente para el hecho que la fuente realmente respalda. Si una conclusión combina hechos e inferencia, explicá esa relación sin atribuir la inferencia literal a la fuente. No llames actual a una oportunidad CLOSED, EXPIRED o REMOVED_FROM_SOURCE; podés explicarla como antecedente histórico. Fecha de sincronización no equivale a fecha de publicación ni prueba vigencia. Si no se recuperó evidencia suficiente sobre un dato actual o cambiante, decí: ‘No encontré información suficiente para confirmar ese dato.’ Si brindás una explicación general, identificala expresamente como ‘Orientación o inferencia de IA’; no la presentes como normativa, fecha, requisito ni respuesta oficial. Si hay falla o falta de verificación de una fuente, no concluyas que no existen resultados.";
   const trainingGuidance = ["capacitaciones", "inscripcion"].includes(intent) ? "\n\nREGLAS PARA CAPACITACIONES: Usá estos registros recuperados de publications, los mismos que alimentan el módulo Capacitaciones. No inventes ni reutilices fechas históricas. En FDCI, la apertura sólo es la fecha y hora de inicio de preinscripción de una comisión; el inicio del curso no es apertura. Conservá literalmente la diferencia entre fecha tentativa/prevista, apertura confirmada, ventana general y fecha desconocida. Indicá la fuente, estado de inscripción y fecha/hora exactas disponibles. Si no aparece ninguna apertura confirmada en los registros recuperados, decilo explícitamente; podés mencionar por separado registros tentativos. Si la consulta es personalizada y el perfil no fue autorizado, no calcules ni afirmes compatibilidad." : "";
   const matchingGuidance = wantsPersonalizedQuestion(question) && !options.profile ? "\n\nPERSONALIZACIÓN NO AUTORIZADA: El usuario preguntó qué capacitación es para él/ella, pero no autorizó usar su perfil en esta consulta. Explicá que necesitás activar 'Usar mi perfil docente' para calcular compatibilidad. No concluyas que no hay capacitaciones y no calcules coincidencias." : "";
-  return { intent, sources, context: `INTENCIÓN DETECTADA: ${intent}.\n${panelContext}\n${profileText}\n\nREGISTROS OFICIALES RECUPERADOS:\n${records || "No se recuperaron registros oficiales suficientes."}${agendaText}${trackingText}${failureText}${unverifiedText}${evidenceGuidance}${trainingGuidance}${matchingGuidance}${appHelp}` };
+  return { intent, sources, context: `INTENCIÓN DETECTADA: ${intent}.\n${panelContext}\n${profileText}\n\nEVIDENCIAS PÚBLICAS RECUPERADAS:\n${records || "No se recuperaron evidencias públicas suficientes."}${agendaText}${trackingText}${failureText}${unverifiedText}${evidenceGuidance}${trainingGuidance}${matchingGuidance}${appHelp}` };
 }

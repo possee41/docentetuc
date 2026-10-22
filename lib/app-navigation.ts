@@ -1,4 +1,4 @@
-export const appViews = ["inicio", "vacantes", "actos", "llamados", "comunidad", "capacitaciones", "junta", "padrones", "comunicados", "informacion", "agenda", "alertas", "guardados", "perfil", "cuentas"] as const;
+export const appViews = ["inicio", "busqueda", "noticias", "vacantes", "actos", "llamados", "comunidad", "capacitaciones", "junta", "padrones", "comunicados", "informacion", "agenda", "alertas", "guardados", "perfil", "cuentas"] as const;
 export type AppView = typeof appViews[number];
 
 export const viewFromSection = (section?: string | null): AppView => appViews.includes(section as AppView) ? section as AppView : "inicio";

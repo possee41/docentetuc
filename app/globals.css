@@ -253,6 +253,7 @@ button:disabled { opacity: .68; }
 }
 .ai-fab:hover { transform: translateY(-2px) scale(1.03); }
 .ai-fab:active { transform: scale(.96); }
+.dt-app-shell:has(.public-news-section) .ai-fab { top: calc(.5rem + env(safe-area-inset-top)); bottom: auto; right: auto; left: calc(50% - 1.375rem); width: 2.75rem; height: 2.75rem; }
 
 .badge-neutral, .badge-success, .badge-warning, .badge-info, .badge-danger { border: 1px solid; }
 .badge-neutral { background: var(--badge-bg); color: var(--badge-text); border-color: var(--badge-border); }
@@ -415,6 +416,7 @@ button:disabled { opacity: .68; }
   .mobile-content { min-width: 0; padding: .75rem .75rem calc(5.25rem + env(safe-area-inset-bottom)); }
   .app-watermark { inset: 3.75rem 0 4rem; background-position: center 40%; background-size: min(55vw, 210px) auto; }
   .ai-fab { right: max(.8rem, env(safe-area-inset-right)); bottom: calc(4.75rem + env(safe-area-inset-bottom)); width: 3.25rem; height: 3.25rem; }
+  .dt-app-shell:has(.public-news-section) .ai-fab { left: calc(50% - 3.75rem); }
   .dt-page-heading { align-items: center; gap: .65rem; }
   .dt-page-heading .dt-section-action { width: 100%; }
   .dt-page-heading .dt-section-action > div { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
