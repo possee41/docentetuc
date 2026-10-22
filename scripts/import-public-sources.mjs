@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { collectJuntaExternal } from "../lib/junta-external.ts";
+import { JUNTA_EXTERNAL_SOURCES } from "../lib/junta-external-sources.ts";
 import { isCenetMarkupRecognized, parseCenetTrainings, parseInfdCatalog, parseInfdTrainings, parseInfdWebinars } from "../lib/external-trainings.ts";
 import { prepareJuntaImport, prepareTrainingImport } from "../lib/public-source-import.ts";
 import { sourceErrorCode } from "../lib/publication-lifecycle.ts";
@@ -25,7 +26,9 @@ export async function runPublicSourceImport({ source, endpoint, token, driveKey,
   if (!["juntas", "cenet", "infd"].includes(source) || target.pathname !== `/api/internal/public-source-import/${source}` ||
       (target.protocol !== "https:" && !(target.protocol === "http:" && target.hostname === "127.0.0.1")) ||
       !/^[A-Za-z0-9_-]{32,}$/.test(token)) throw new Error("IMPORT_CONFIGURATION_INVALID");
-  await send(endpoint, token, { mode: "start" }, receiverFetch);
+  const health = source === "juntas" ? [...new Set((juntaSources || JUNTA_EXTERNAL_SOURCES).map((root) => root[1]))] :
+    [source === "cenet" ? "CeNET / INET" : "INFoD / AulaS-TIC"];
+  await send(endpoint, token, { mode: "start", health }, receiverFetch);
   const result = { discovered: 0, created: 0, updated: 0, unchanged: 0, queries: 0, rowsRead: 0, rowsWritten: 0 };
   const apply = async (items) => {
     for (const item of items) {
@@ -59,14 +62,14 @@ export async function runPublicSourceImport({ source, endpoint, token, driveKey,
       }
       if (failed || !result.discovered) throw new Error(failed ? "INFD_PARTIAL_SOURCE" : "INFD_EMPTY_SUSPECT");
     }
-    await send(endpoint, token, { mode: "finish", complete: true, count: result.discovered }, receiverFetch);
+    await send(endpoint, token, { mode: "finish", health, complete: true, count: result.discovered }, receiverFetch);
     return { ...result, completed: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     const code = /PARTIAL_SOURCE|JUNTAS_DOCUMENT_UNAVAILABLE/.test(message) ? "PARTIAL" :
       /FORMAT_CHANGED|NOTICE_FORMAT_UNRECOGNIZED/.test(message) ? "FORMAT_CHANGED" :
       /EMPTY_SUSPECT/.test(message) ? "EMPTY_SUSPECT" : sourceErrorCode(error);
-    try { await send(endpoint, token, { mode: "error", code }, receiverFetch); } catch { /* Keep original failure. */ }
+    try { await send(endpoint, token, { mode: "error", health, code }, receiverFetch); } catch { /* Keep original failure. */ }
     throw error;
   }
 }

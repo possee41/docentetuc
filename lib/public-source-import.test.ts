@@ -92,6 +92,7 @@ test("Juntas: comunicado, acto y llamado via Node → D1 aislada → consulta p�
   assert.ok(visible.some((row) => officialMetadata({ metadata: row.metadata })?.entity === "padron"));
   assert.equal(h.sqlite.prepare("SELECT count(*) AS n FROM publications WHERE id='historic:1'").get()?.n, 1);
   assert.equal(h.sqlite.prepare("SELECT sync_status FROM sync_state WHERE source='Comunicados'").get()?.sync_status, "OK");
+  assert.equal(h.sqlite.prepare("SELECT count(*) AS n FROM sync_state WHERE source='Llamados abiertos'").get()?.n, 0);
 });
 
 test("Juntas: página interrumpida conserva lo aplicado y el último éxito, sin inferir ausencias", async () => {

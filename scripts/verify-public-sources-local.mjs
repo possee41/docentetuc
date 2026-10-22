@@ -9,6 +9,7 @@ import { APP_PUBLICATIONS_QUERY } from "../lib/app-publications-query.ts";
 
 const require = createRequire(import.meta.url);
 const { Miniflare } = require("../node_modules/.pnpm/miniflare@4.20260515.0/node_modules/miniflare");
+const official = process.argv.includes("--official");
 const mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('local'); } }", d1Databases: ["DB"] });
 try {
   const db = await mf.getD1Database("DB");
@@ -38,15 +39,28 @@ try {
   const summaries = {};
   for (const source of ["juntas", "cenet", "infd"]) {
     const options = { source, endpoint: `https://local.test/api/internal/public-source-import/${source}`, token: secret,
-      sourceFetch, receiverFetch, now: new Date("2026-10-22T15:00:00Z"),
-      ...(source === "juntas" ? { juntaSources: [["com-test", "Comunicados", "Inicial y Primaria", "https://docs.google.com/document/d/123456789012345678901234567890/edit"]] } : {}) };
-    const first = await runPublicSourceImport(options), repeat = await runPublicSourceImport(options);
-    assert.ok(first.created > 0);
-    assert.equal(repeat.rowsWritten, 0);
-    summaries[source] = { first, repeat };
+      sourceFetch: official ? fetch : sourceFetch, receiverFetch, now: official ? new Date() : new Date("2026-10-22T15:00:00Z"),
+      ...(source === "juntas" ? { juntaSources: official
+        ? [["com-primaria", "Comunicados", "Inicial y Primaria", "https://docs.google.com/document/d/1Oo-LmX9DyPBfhZNHPRYYiRf6MJiN837VoSXK2F-LIZE/edit"]]
+        : [["com-test", "Comunicados", "Inicial y Primaria", "https://docs.google.com/document/d/123456789012345678901234567890/edit"]] } : {}) };
+    try {
+      const first = await runPublicSourceImport(options);
+      assert.ok(first.created > 0);
+      if (official) summaries[source] = { first };
+      else {
+        const repeat = await runPublicSourceImport(options);
+        assert.equal(repeat.rowsWritten, 0);
+        summaries[source] = { first, repeat };
+      }
+    } catch (error) {
+      if (!official) throw error;
+      summaries[source] = { error: error instanceof Error ? error.message.replace(/https?:\/\/\S+/g, "[url]") : "unknown" };
+      process.exitCode = 1;
+    }
   }
   const publicRows = await db.prepare(APP_PUBLICATIONS_QUERY).all();
-  for (const prefix of ["notice:", "cenet:", "infd:"]) assert.ok(publicRows.results.some((row) => row.id.startsWith(prefix)));
-  console.log(JSON.stringify({ database: "D1 efímera de Miniflare", sourceData: "sintéticos", ...summaries,
-    visiblePublicIds: publicRows.results.map((row) => row.id), health: (await db.prepare("SELECT source,sync_status,last_successful_sync_at FROM sync_state ORDER BY source").all()).results }, null, 2));
+  if (!official) for (const prefix of ["notice:", "cenet:", "infd:"]) assert.ok(publicRows.results.some((row) => row.id.startsWith(prefix)));
+  console.log(JSON.stringify({ database: "D1 efímera de Miniflare", sourceData: official ? "fuentes oficiales públicas" : "sintéticos", ...summaries,
+    visibleCount: publicRows.results.length, visibleSampleIds: publicRows.results.slice(0, 8).map((row) => row.id),
+    health: (await db.prepare("SELECT source,sync_status,last_successful_sync_at,error_code FROM sync_state ORDER BY source").all()).results }, null, 2));
 } finally { await mf.dispose(); }

@@ -96,9 +96,13 @@ const worker = { async fetch(request, env) {
       return result.conflict ? reply({ error: "Conflicto de fuente." }, 409) : reply({ ok: true, ...result });
     }
     if (payload.mode === "start" || payload.mode === "finish" || payload.mode === "error") {
+      const health = payload.health;
+      if (!Array.isArray(health) || !health.length || health.length > source.health.length ||
+          new Set(health).size !== health.length || health.some((name) => !source.health.includes(name)))
+        return reply({ error: "Fuentes inválidas." }, 400);
       if (payload.mode === "finish" && (payload.complete !== true || !Number.isInteger(payload.count) || payload.count < 0)) return reply({ error: "Operación inválida." }, 400);
       if (payload.mode === "error" && !/^[A-Z_]{2,40}$/.test(payload.code)) return reply({ error: "Operación inválida." }, 400);
-      const statements = source.health.map((name) => payload.mode === "start"
+      const statements = health.map((name) => payload.mode === "start"
         ? env.DB.prepare("INSERT INTO sync_state(source,synced_at,item_count,last_attempt_at,sync_status) VALUES(?,'',0,?,'PARTIAL') ON CONFLICT(source) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,sync_status='PARTIAL'").bind(name,now)
         : payload.mode === "finish"
           ? env.DB.prepare("UPDATE sync_state SET synced_at=?,last_successful_sync_at=?,sync_status='OK',error=NULL,error_code=NULL,error_message=NULL,item_count=? WHERE source=?").bind(now,now,payload.count,name)
