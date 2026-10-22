@@ -1,0 +1,43 @@
+name: Juntas external import pilot
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: juntas-import-pilot
+  cancel-in-progress: false
+jobs:
+  import:
+    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/feat/1.2-sync-integration'
+    runs-on: ubuntu-latest
+    environment: juntas-pilot
+    timeout-minutes: 30
+    steps:
+      - name: Verify approved revision
+        env:
+          IMPORT_REF: ${{ vars.JUNTAS_IMPORT_REF }}
+        run: |
+          [[ "$IMPORT_REF" =~ ^[a-f0-9]{40}$ ]] || { echo 'JUNTAS_IMPORT_REF must be an approved commit SHA'; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.JUNTAS_IMPORT_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify isolated pilot configuration
+        env:
+          IMPORT_REF: ${{ vars.JUNTAS_IMPORT_REF }}
+          IMPORT_URL: ${{ vars.JUNTAS_IMPORT_URL }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$IMPORT_REF"
+          git merge-base --is-ancestor d321e7225e7dc75ff76a0e612525386855e05e08 HEAD
+          [[ "$IMPORT_URL" =~ ^https://docentetuc-juntas-canary-1-2\.[a-z0-9-]+\.workers\.dev/api/internal/public-source-import/juntas$ ]] || { echo 'JUNTAS_IMPORT_URL must point to the isolated pilot'; exit 1; }
+      - name: Import public Junta notices and references
+        env:
+          PUBLIC_SOURCE: juntas
+          PUBLIC_IMPORT_URL: ${{ vars.JUNTAS_IMPORT_URL }}
+          PUBLIC_IMPORT_SECRET: ${{ secrets.JUNTAS_IMPORT_SECRET }}
+          GOOGLE_DRIVE_API_KEY: ${{ secrets.GOOGLE_DRIVE_API_KEY }}
+        run: node --experimental-strip-types scripts/import-public-sources.mjs
