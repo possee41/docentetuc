@@ -195,9 +195,9 @@ export async function materializeScheduledNotifications(db: D1Database, now = ne
 
 type DeliveryRow = { notification_id: number; endpoint: string; user_id: string; p256dh: string; auth: string; expiration_time: number | null; type: string; title: string; publication_id: string; queued_at: string; scheduled_at: string | null; quiet_start: string; quiet_end: string; timezone: string; enabled: number; vacancies: number; trainings: number; commissions: number; reminders: number; date_changes: number; closing_soon: number; boards: number; designation_exact: number; designation_partial: number; designation_roles: number; attempts: number | null };
 
-export async function dispatchPushNotifications(db: D1Database, environment: PushEnvironment, now = new Date()) {
+export async function dispatchPushNotifications(db: D1Database, environment: PushEnvironment, now = new Date(), simulatedProvider?: NotificationProvider) {
   if (!environment.VAPID_PUBLIC_KEY || !environment.VAPID_PRIVATE_KEY || !environment.VAPID_SUBJECT) throw new Error("VAPID_NOT_CONFIGURED");
-  const provider = new WebPushProvider({ publicKey: environment.VAPID_PUBLIC_KEY, privateKey: environment.VAPID_PRIVATE_KEY, subject: environment.VAPID_SUBJECT });
+  const provider = simulatedProvider ?? new WebPushProvider({ publicKey: environment.VAPID_PUBLIC_KEY!, privateKey: environment.VAPID_PRIVATE_KEY!, subject: environment.VAPID_SUBJECT! });
   const rows = await db.prepare(`SELECT n.id notification_id, n.user_id, n.publication_id, n.type, n.scheduled_at, COALESCE(n.scheduled_at,n.created_at) queued_at, p.title, s.endpoint, s.p256dh, s.auth, s.expiration_time,
     COALESCE(pref.enabled,1) enabled, COALESCE(pref.vacancies,1) vacancies, COALESCE(pref.trainings,1) trainings, COALESCE(pref.commissions,1) commissions,
     COALESCE(pref.reminders,1) reminders, COALESCE(pref.date_changes,1) date_changes, COALESCE(pref.closing_soon,1) closing_soon, COALESCE(pref.boards,0) boards,
@@ -230,22 +230,24 @@ export async function dispatchPushNotifications(db: D1Database, environment: Pus
     if (isQuietTime(now, row.quiet_start, row.quiet_end, row.timezone)) { deferred++; continue; }
     message.url = manualEvent ? "/" : `/?publication=${encodeURIComponent(row.publication_id)}`;
     message.tag = eventKey;
-    await db.prepare("UPDATE notifications SET attempted_at=?, failure_reason=NULL WHERE id=?").bind(now.toISOString(), row.notification_id).run();
+    if (!manualEvent) await db.prepare("UPDATE notifications SET attempted_at=?, failure_reason=NULL WHERE id=?").bind(now.toISOString(), row.notification_id).run();
     await db.prepare("INSERT OR IGNORE INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, scheduled_at, attempted_at) VALUES (?, ?, ?, 'pending', 0, ?, ?)").bind(row.endpoint, row.notification_id, eventKey, row.queued_at, now.toISOString()).run();
     try {
       const response = await provider.send({ endpoint: row.endpoint, expirationTime: row.expiration_time, keys: { p256dh: row.p256dh, auth: row.auth } }, message);
       if (response.ok) {
         await db.prepare("INSERT INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, sent_at, scheduled_at, attempted_at, accepted_at) VALUES (?, ?, ?, 'sent', 1, CURRENT_TIMESTAMP, ?, ?, ?) ON CONFLICT(endpoint,event_key) DO UPDATE SET status='sent', attempts=push_deliveries.attempts+1, sent_at=CURRENT_TIMESTAMP, attempted_at=excluded.attempted_at, accepted_at=excluded.accepted_at, failure_reason=NULL, last_error=NULL, next_attempt_at=NULL").bind(row.endpoint, row.notification_id, eventKey, row.queued_at, now.toISOString(), now.toISOString()).run();
-        await db.prepare("UPDATE notifications SET accepted_at=?, failure_reason=NULL WHERE id=?").bind(now.toISOString(), row.notification_id).run(); sent++;
+        if (!manualEvent) await db.prepare("UPDATE notifications SET accepted_at=?, failure_reason=NULL WHERE id=?").bind(now.toISOString(), row.notification_id).run();
+        sent++;
       } else if (response.status === 404 || response.status === 410) {
         await db.prepare("UPDATE push_subscriptions SET active=0, updated_at=CURRENT_TIMESTAMP WHERE endpoint=?").bind(row.endpoint).run(); removed++;
         await db.prepare("INSERT INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, last_error, scheduled_at, attempted_at, failure_reason) VALUES (?, ?, ?, 'removed', 1, ?, ?, ?, ?) ON CONFLICT(endpoint,event_key) DO UPDATE SET status='removed', attempts=push_deliveries.attempts+1, last_error=excluded.last_error, attempted_at=excluded.attempted_at, failure_reason=excluded.failure_reason").bind(row.endpoint, row.notification_id, eventKey, `PUSH_${response.status}`, row.queued_at, now.toISOString(), `PUSH_${response.status}`).run();
-        await db.prepare("UPDATE notifications SET failure_reason=? WHERE id=?").bind(`PUSH_${response.status}`, row.notification_id).run();
+        if (!manualEvent) await db.prepare("UPDATE notifications SET failure_reason=? WHERE id=?").bind(`PUSH_${response.status}`, row.notification_id).run();
       } else throw new Error(`PUSH_${response.status}`);
     } catch (error) {
       const reason = error instanceof Error ? error.message.slice(0, 180) : "PUSH_FAILED";
       await db.prepare("INSERT INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, last_error, next_attempt_at, scheduled_at, attempted_at, failure_reason) VALUES (?, ?, ?, 'failed', 1, ?, datetime('now','+10 minutes'), ?, ?, ?) ON CONFLICT(endpoint,event_key) DO UPDATE SET status='failed', attempts=push_deliveries.attempts+1, last_error=excluded.last_error, next_attempt_at=excluded.next_attempt_at, attempted_at=excluded.attempted_at, failure_reason=excluded.failure_reason").bind(row.endpoint, row.notification_id, eventKey, reason, row.queued_at, now.toISOString(), reason).run();
-      await db.prepare("UPDATE notifications SET failure_reason=? WHERE id=?").bind(reason, row.notification_id).run(); failed++;
+      if (!manualEvent) await db.prepare("UPDATE notifications SET failure_reason=? WHERE id=?").bind(reason, row.notification_id).run();
+      failed++;
     }
   }
   return { considered: deliveries.length, sent, failed, removed, deferred };

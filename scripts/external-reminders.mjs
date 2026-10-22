@@ -23,6 +23,19 @@ const sources = [
   },
 ];
 
+function nextOccurrence(value, recurrence) {
+  const date = new Date(value);
+  if (recurrence === "daily") date.setTime(date.getTime() + 86_400_000);
+  else if (recurrence === "weekly") date.setTime(date.getTime() + 7 * 86_400_000);
+  else if (recurrence === "monthly") {
+    const day = date.getUTCDate();
+    date.setUTCDate(1); date.setUTCMonth(date.getUTCMonth() + 1);
+    const last = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+    date.setUTCDate(Math.min(day, last));
+  }
+  return date.toISOString();
+}
+
 export async function materializeExternalReminderBatch(db, { limit = 10, now = new Date() } = {}) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 10 || !(now instanceof Date) || !Number.isFinite(now.getTime()))
     throw new Error("EXTERNAL_REMINDERS_INVALID");
@@ -42,6 +55,32 @@ export async function materializeExternalReminderBatch(db, { limit = 10, now = n
         .bind(...args, row.user_id, key).run();
       inserted += Number(notice.meta?.rows_written || 0);
       processed += Number(done.meta?.rows_written || 0);
+    }
+    remaining -= (due.results || []).length;
+  }
+  if (remaining) {
+    const due = await db.prepare("SELECT id,user_id,title,starts_at,reminder_at,recurrence,reminder_minutes FROM manual_events WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?) ORDER BY reminder_at,id LIMIT ?")
+      .bind(now.toISOString(), remaining).all();
+    for (const row of due.results || []) {
+      const queued = await db.prepare(`INSERT OR IGNORE INTO manual_event_push_queue (user_id,event_id,title,occurrence_at)
+        SELECT user_id,id,title,starts_at FROM manual_events WHERE id=? AND starts_at=? AND reminder_at=? AND reminder_notified=0`)
+        .bind(row.id, row.starts_at, row.reminder_at).run();
+      inserted += Number(queued.meta?.rows_written || 0);
+      let completed;
+      if (["daily", "weekly", "monthly"].includes(row.recurrence) && row.reminder_minutes != null) {
+        const starts = nextOccurrence(row.starts_at, row.recurrence);
+        const remind = new Date(new Date(starts).getTime() - Number(row.reminder_minutes) * 60_000).toISOString();
+        completed = await db.prepare(`UPDATE manual_events SET starts_at=?,reminder_at=?,reminder_notified=0,updated_at=CURRENT_TIMESTAMP
+          WHERE id=? AND starts_at=? AND reminder_at=? AND reminder_notified=0
+          AND EXISTS (SELECT 1 FROM manual_event_push_queue WHERE event_id=? AND occurrence_at=?)`)
+          .bind(starts, remind, row.id, row.starts_at, row.reminder_at, row.id, row.starts_at).run();
+      } else {
+        completed = await db.prepare(`UPDATE manual_events SET reminder_notified=1,updated_at=CURRENT_TIMESTAMP
+          WHERE id=? AND starts_at=? AND reminder_at=? AND reminder_notified=0
+          AND EXISTS (SELECT 1 FROM manual_event_push_queue WHERE event_id=? AND occurrence_at=?)`)
+          .bind(row.id, row.starts_at, row.reminder_at, row.id, row.starts_at).run();
+      }
+      processed += Number(completed.meta?.rows_written || 0);
     }
     remaining -= (due.results || []).length;
   }
