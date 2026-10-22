@@ -1,5 +1,6 @@
 // D1 REST transport for an external Node runner. No Worker executes the SQL.
-// The caller must provide a token scoped to exactly one D1 database.
+// The caller supplies an account-scoped D1 Write token. The database ID here
+// selects the target; it is not an authorization boundary for that token.
 export function createD1Rest({ accountId, databaseId, token, fetcher = fetch }) {
   if (!/^[a-f0-9]{32}$/i.test(accountId || "") ||
       !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(databaseId || "") ||
