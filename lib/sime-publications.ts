@@ -48,7 +48,7 @@ export function normalizeSimeVacancy(v: SimeVacancy, junta: string, juntaId: num
   const startsAt = start?.precision === "datetime" ? start.value : null, endsAt = end?.precision === "datetime" ? end.value : null;
   return { id, source: "SIME", externalId: String(v.id), kind: "vacante", category: m.procedure === "unknown" ? "Procedimiento pendiente de verificar" : m.procedure === "direct" ? "Llamado abierto" : "Vacante", title,
     summary: [v.cargos, description].filter(Boolean).join("\n\n"), level: junta, area: title, junta, location: "", shift: m.scope.shift || "", character: v.caracter,
-    startsAt, endsAt, status: endsAt && Date.parse(endsAt) < now.getTime() ? "cerrada" : "vigente", officialUrl: url,
+    startsAt, endsAt, status: startsAt && Date.parse(startsAt) > now.getTime() ? "próximamente" : !v.abierto || endsAt && Date.parse(endsAt) < now.getTime() ? "cerrada" : "vigente", officialUrl: url,
     metadata: withOfficial(JSON.stringify({ ...cached, simeCode: v.codigo, simeRecordId: String(v.id), simeVacancy: v }), m), contentHash: "", sourceUpdatedAt: startsAt, sourcePublishedAt: startsAt };
 }
 

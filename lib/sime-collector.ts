@@ -8,10 +8,11 @@ const juntas = [
 ] as const;
 
 // Shared by the legacy route and the external runner; this only reads the public SIME API.
-export async function collectSimePublications(previous: Map<string, { metadata: string }>, fetcher: typeof fetch = fetch, now = new Date()) {
+export async function collectSimePublications(previous: Map<string, { metadata: string }>, fetcher: typeof fetch = fetch, now = new Date(), juntaIds?: readonly number[]) {
   const items: CollectedPublication[] = [];
   const records = new Map<string, { vacancy: SimeVacancy; junta: string; juntaId: number }>();
-  for (const [juntaId, junta] of juntas) {
+  const selected = juntas.filter(([id]) => !juntaIds || juntaIds.includes(id));
+  for (const [juntaId, junta] of selected) {
     const options = { source: "SIME", signal: AbortSignal.timeout(15_000), headers: { Accept: "application/json", "User-Agent": "DocenteTuc/1.0 (+agregador de fuentes publicas)" }, fetcher };
     const periodData = await fetchSourceJson<{ periodos: { text: string }[] }>(`https://sime.educaciontuc.gov.ar/Vacantes/ObtenerPeriodos/${juntaId}?caracter=-1&tab=1`, options);
     if (!Array.isArray(periodData?.periodos)) throw new SourceSyncError("SCHEMA_ERROR", "SIME periodos shape changed");
@@ -33,7 +34,7 @@ export async function collectSimePublications(previous: Map<string, { metadata: 
     if (!id.startsWith("sime:") || records.has(id)) continue;
     const m = officialMetadata(row), raw = readMetadata(row.metadata).simeVacancy as SimeVacancy | undefined;
     const board = juntas.find(([, label]) => label === m?.junta);
-    if (!raw || !board || !m?.facts.designation || m.facts.designation.value.slice(0, 10) < today) continue;
+    if (!raw || !board || !selected.some(([juntaId]) => juntaId === board[0]) || !m?.facts.designation || m.facts.designation.value.slice(0, 10) < today) continue;
     records.set(id, { vacancy: raw, junta: board[1], juntaId: board[0] });
     const item = normalizeSimeVacancy(raw, board[1], board[0], row.metadata, now);
     const normalized = officialMetadata(item)!;
@@ -42,7 +43,7 @@ export async function collectSimePublications(previous: Map<string, { metadata: 
     items.push(item);
   }
   const warnings: string[] = [];
-  for (const item of selectSimeDetails(items)) {
+  for (const item of selectSimeDetails(items, juntaIds ? 3 : 12)) {
     try {
       const response = await fetchSourceJson<{ vacante: SimeDetail }>(`https://sime.educaciontuc.gov.ar/Vacantes/ObtenerVacante/${item.externalId}?origen=&postulante=`, {
         source: "SIME", signal: AbortSignal.timeout(15_000), headers: { Accept: "application/json" }, fetcher,
