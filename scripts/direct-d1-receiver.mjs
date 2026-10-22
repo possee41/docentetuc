@@ -20,3 +20,27 @@ export function createDirectD1ReceiverFetch(db) {
   };
   return { endpoint, token: secret, receiverFetch };
 }
+
+export async function sourceHashCache(db, source) {
+  const rows = new Map();
+  let cursor = "";
+  while (true) {
+    const page = await db.prepare("SELECT id,source,content_hash,removed_at FROM publications WHERE source=? AND id>? ORDER BY id LIMIT 200")
+      .bind(source, cursor).all();
+    if (!Array.isArray(page.results) || page.results.length > 200) throw new Error("D1_HASH_PAGE_INVALID");
+    for (const row of page.results) {
+      if (typeof row.id !== "string" || row.id <= cursor || row.source !== source) throw new Error("D1_HASH_PAGE_INVALID");
+      rows.set(row.id, row);
+    }
+    if (page.results.length < 200) break;
+    cursor = page.results.at(-1).id;
+  }
+  return rows;
+}
+
+export function withSourceHashCache(db, rows) {
+  const lookup = /^\s*SELECT\s+id\s*,\s*source\s*,\s*content_hash\s*,\s*removed_at\s+FROM\s+publications\s+WHERE\s+id\s+IN\s*\(/i;
+  return { ...db, prepare: (sql) => lookup.test(sql) ? { bind: (...ids) => ({
+    all: async () => ({ results: ids.flatMap((id) => rows.has(id) ? [rows.get(id)] : []), meta: { rows_read: 0 } }),
+  }) } : db.prepare(sql) };
+}

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { createD1Rest } from "../scripts/d1-rest.mjs";
-import { createDirectD1ReceiverFetch } from "../scripts/direct-d1-receiver.mjs";
+import { createDirectD1ReceiverFetch, sourceHashCache, withSourceHashCache } from "../scripts/direct-d1-receiver.mjs";
 import { runDirectD1Import } from "../scripts/import-direct-d1.mjs";
 import { runFdciImport } from "../scripts/import-fdci.mjs";
 import { prepareFdciImports } from "./fdci-import.ts";
@@ -89,5 +89,20 @@ test("el ejecutor FDCI completo usa la fuente sintética y D1 REST sin Worker HT
   assert.equal((await runDirectD1Import(options)).created, 1);
   assert.equal((await runDirectD1Import(options)).unchanged, 1);
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM publications WHERE id='fdci:commission:6397'").get()?.n, 1);
+  sqlite.close();
+});
+
+test("el caché de hashes pagina 205 filas públicas y evita lecturas individuales", async () => {
+  const { sqlite, db } = isolatedRest();
+  const insert = sqlite.prepare(`INSERT INTO publications(id,source,external_id,kind,category,title,status,official_url,metadata,content_hash,source_status,normalized_status)
+    VALUES(?,'SIME',?,'vacante','Vacante','Sintética','cerrada','https://sime.educaciontuc.gov.ar/','{}',?,'cerrada','CLOSED')`);
+  for (let index = 0; index < 205; index++) insert.run(`sime:${String(index).padStart(3, "0")}`, String(index), `hash-${index}`);
+  const rows = await sourceHashCache(db, "SIME");
+  assert.equal(rows.size, 205);
+  assert.equal(db.metrics().requests, 2);
+  const cached = withSourceHashCache(db, rows);
+  const result = await cached.prepare("SELECT id,source,content_hash,removed_at FROM publications WHERE id IN (?)").bind("sime:204").all();
+  assert.equal(result.results[0].content_hash, "hash-204");
+  assert.equal(db.metrics().requests, 2);
   sqlite.close();
 });

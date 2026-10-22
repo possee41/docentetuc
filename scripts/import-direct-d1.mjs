@@ -2,14 +2,18 @@
 // D1 REST path and source cutover are explicitly approved.
 import { pathToFileURL } from "node:url";
 import { createD1Rest } from "./d1-rest.mjs";
-import { createDirectD1ReceiverFetch } from "./direct-d1-receiver.mjs";
+import { createDirectD1ReceiverFetch, sourceHashCache, withSourceHashCache } from "./direct-d1-receiver.mjs";
 import { runFdciImport } from "./import-fdci.mjs";
 import { runSimeImport } from "./import-sime.mjs";
 import { runPublicSourceImport } from "./import-public-sources.mjs";
 
 /** @param {{source: string, db: any, sourceFetch?: typeof fetch, driveKey?: string, selection?: {token: string, slug: string, commissionId: string}}} options */
 export async function runDirectD1Import({ source, db, sourceFetch = fetch, driveKey, selection }) {
-  const receiver = createDirectD1ReceiverFetch(db);
+  const storageSource = { sime: "SIME", juntas: "Padrones y Comunicados", cenet: "CeNET / INET", infd: "INFoD / AulaS-TIC" }[source];
+  // A paginated, public-only hash snapshot avoids one D1 read per unchanged row.
+  // FDCI's single-commission pilot is cheaper with its normal one-row lookup.
+  const receiverDb = storageSource ? withSourceHashCache(db, await sourceHashCache(db, storageSource)) : db;
+  const receiver = createDirectD1ReceiverFetch(receiverDb);
   const path = source === "fdci" ? "/api/internal/fdci-import" : source === "sime" ? "/api/internal/sime-import" :
     `/api/internal/public-source-import/${source}`;
   const endpoint = receiver.endpoint(path);
