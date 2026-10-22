@@ -1,0 +1,42 @@
+name: CeNET external import pilot
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cenet-import-pilot
+  cancel-in-progress: false
+jobs:
+  import:
+    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/feat/1.2-sync-integration'
+    runs-on: ubuntu-latest
+    environment: cenet-pilot
+    timeout-minutes: 15
+    steps:
+      - name: Verify approved revision
+        env:
+          IMPORT_REF: ${{ vars.CENET_IMPORT_REF }}
+        run: |
+          [[ "$IMPORT_REF" =~ ^[a-f0-9]{40}$ ]] || { echo 'CENET_IMPORT_REF must be an approved commit SHA'; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.CENET_IMPORT_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify isolated pilot configuration
+        env:
+          IMPORT_REF: ${{ vars.CENET_IMPORT_REF }}
+          IMPORT_URL: ${{ vars.CENET_IMPORT_URL }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$IMPORT_REF"
+          git merge-base --is-ancestor d321e7225e7dc75ff76a0e612525386855e05e08 HEAD
+          [[ "$IMPORT_URL" =~ ^https://docentetuc-cenet-canary-1-2\.[a-z0-9-]+\.workers\.dev/api/internal/public-source-import/cenet$ ]] || { echo 'CENET_IMPORT_URL must point to the isolated pilot'; exit 1; }
+      - name: Import public CeNET courses
+        env:
+          PUBLIC_SOURCE: cenet
+          PUBLIC_IMPORT_URL: ${{ vars.CENET_IMPORT_URL }}
+          PUBLIC_IMPORT_SECRET: ${{ secrets.CENET_IMPORT_SECRET }}
+        run: node --experimental-strip-types scripts/import-public-sources.mjs
