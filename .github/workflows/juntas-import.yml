@@ -1,5 +1,7 @@
 name: Juntas external import pilot
 on:
+  # Programación propuesta, DESACTIVADA hasta validar REST, corte legacy y cuotas:
+  # schedule: [{ cron: '23 */2 * * *' }]
   workflow_dispatch:
 permissions:
   contents: read

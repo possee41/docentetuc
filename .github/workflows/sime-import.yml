@@ -1,5 +1,7 @@
 name: SIME external import pilot
 on:
+  # Programación propuesta, DESACTIVADA hasta validar REST, corte legacy y cuotas:
+  # schedule: [{ cron: '12 * * * *' }]
   workflow_dispatch:
 permissions:
   contents: read
