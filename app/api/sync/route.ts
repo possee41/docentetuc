@@ -12,9 +12,9 @@ import { diffByHash, hashSourceSnapshot, hasMeaningfulPublicationChange, isDocum
 import { notificationDedupeKey } from "@/lib/notification-events";
 import { circuitMatches, inferCircuit } from "@/lib/circuits";
 import { assessSourceSync, missingAfterValidatedSync, publicationLifecycle, SourceSyncError, sourceErrorCode, type SourceSyncStatus } from "@/lib/publication-lifecycle";
-import { collectSourcePages, fetchSourceJson } from "@/lib/source-fetch";
-import { fromStoredPublication, officialMetadata, officialLifecycle, readMetadata, withOfficial } from "@/lib/official-publication";
-import { applySimeDetail, normalizeSimeVacancy, selectSimeDetails, validSimeDetail, type SimeVacancy, type SimeDetail } from "@/lib/sime-publications";
+import { collectSourcePages } from "@/lib/source-fetch";
+import { fromStoredPublication, officialMetadata, officialLifecycle, readMetadata } from "@/lib/official-publication";
+import { collectSimePublications } from "@/lib/sime-collector";
 import { classifyDriveReference, documentReference, extractJuntaNotices } from "@/lib/junta-notices";
 import { BOARD_PORTAL, parseBoardPlacements } from "@/lib/board-sources";
 import { officialChange, reconcileOfficialPublications } from "@/lib/official-reconciliation";
@@ -29,10 +29,6 @@ type Publication = {
   startsAt: string | null; endsAt: string | null; status: string; officialUrl: string; metadata?: string; contentHash: string; sourceUpdatedAt: string | null;
   sourcePublishedAt?: string | null;
 };
-
-const juntas = [
-  [1, "Inicial y Primaria"], [2, "Secundaria"], [3, "Técnica, Agrotécnica y No Formal"], [4, "Superior, Especial y Artística"],
-] as const;
 
 type DocumentSource = readonly [externalId: string, title: string, category: string, junta: string, officialUrl: string];
 const documents: readonly DocumentSource[] = [
@@ -78,62 +74,6 @@ const publicTrainingPublications = (items: PublicTraining[], source: string) => 
   startsAt: item.startsAt, endsAt: item.endsAt, status: item.status, officialUrl: item.officialUrl, metadata: JSON.stringify(item.metadata),
   contentHash: await hash(JSON.stringify({ raw: item.raw, metadata: item.metadata, title: item.title, summary: item.summary, startsAt: item.startsAt, endsAt: item.endsAt, status: item.status })), sourceUpdatedAt: null,
 })));
-
-async function simePublications(previous: Map<string, { metadata: string }>) {
-  const items: Publication[] = [];
-  const records = new Map<string, { vacancy: SimeVacancy; junta: string; juntaId: number }>();
-  for (const [juntaId, junta] of juntas) {
-    const periodData = await fetchSourceJson<{ periodos: { text: string }[] }>(`https://sime.educaciontuc.gov.ar/Vacantes/ObtenerPeriodos/${juntaId}?caracter=-1&tab=1`, {
-      source: "SIME", signal: AbortSignal.timeout(15_000), headers: { Accept: "application/json", "User-Agent": "DocenteTuc/1.0 (+agregador de fuentes publicas)" },
-    });
-    if (!Array.isArray(periodData?.periodos)) throw new SourceSyncError("SCHEMA_ERROR", "SIME periodos shape changed");
-    if (!periodData.periodos.length) continue;
-    const periodText = periodData.periodos[0]?.text;
-    if (typeof periodText !== "string" || !periodText.trim()) throw new SourceSyncError("SCHEMA_ERROR", "SIME period text is missing");
-    const [month = "", year = ""] = periodText.split("/");
-    const data = await fetchSourceJson<{ vacantes: { id: number; codigo: string; caracter: string; fechaPublicacionInicio: string; fechaPublicacionFin: string; cargos: string; abierto: boolean }[] }>(`https://sime.educaciontuc.gov.ar/Vacantes/ObtenerVacantes/${juntaId}?caracter=-1&tab=1&mesBuscar=${month}&anioBuscar=${year}`, {
-      source: "SIME", signal: AbortSignal.timeout(15_000), headers: { Accept: "application/json", "User-Agent": "DocenteTuc/1.0 (+agregador de fuentes publicas)" },
-    });
-    if (!Array.isArray(data?.vacantes)) throw new SourceSyncError("SCHEMA_ERROR", "SIME vacantes shape changed");
-    if (data.vacantes.some((vacancy) => !vacancy || !Number.isFinite(vacancy.id) || typeof vacancy.cargos !== "string")) throw new SourceSyncError("SCHEMA_ERROR", "SIME vacancy record shape changed");
-    for (const vacancy of data.vacantes || []) {
-      records.set(`sime:${vacancy.id}`, { vacancy, junta, juntaId });
-      items.push(normalizeSimeVacancy(vacancy, junta, juntaId, previous.get(`sime:${vacancy.id}`)?.metadata));
-    }
-  }
-  // Continue refreshing known upcoming Actos even after the enrollment closes
-  // and the vacancy leaves the current listing. Do not crawl historic archives.
-  const today = new Date().toISOString().slice(0, 10);
-  for (const [id, row] of previous) {
-    if (!id.startsWith("sime:") || records.has(id)) continue;
-    const m = officialMetadata(row), raw = readMetadata(row.metadata).simeVacancy as SimeVacancy | undefined;
-    const board = juntas.find(([, label]) => label === m?.junta);
-    if (!raw || !board || !m?.facts.designation || m.facts.designation.value.slice(0, 10) < today) continue;
-    records.set(id, { vacancy: raw, junta: board[1], juntaId: board[0] });
-    const item = normalizeSimeVacancy(raw, board[1], board[0], row.metadata);
-    const normalized = officialMetadata(item)!;
-    normalized.issues.push("No visible en listado vigente; el Acto se verifica por el detalle público.");
-    item.metadata = withOfficial(item.metadata, normalized);
-    items.push(item);
-  }
-  const warnings: string[] = [];
-  for (const item of selectSimeDetails(items)) {
-    try {
-      const response = await fetchSourceJson<{ vacante: SimeDetail }>(`https://sime.educaciontuc.gov.ar/Vacantes/ObtenerVacante/${item.externalId}?origen=&postulante=`, {
-        source: "SIME", signal: AbortSignal.timeout(15_000), headers: { Accept: "application/json" },
-      });
-      if (!validSimeDetail(response)) throw new SourceSyncError("SCHEMA_ERROR", "SIME detail shape changed");
-      applySimeDetail(item, response.vacante, new Date().toISOString());
-    } catch (error) {
-      applySimeDetail(item, null, new Date().toISOString());
-      warnings.push(`${item.id}: ${sourceErrorCode(error)}`);
-    }
-    const r = records.get(item.id)!;
-    const refreshed = normalizeSimeVacancy(r.vacancy, r.junta, r.juntaId, item.metadata);
-    items[items.findIndex(x => x.id === item.id)] = refreshed;
-  }
-  return { items, complete: warnings.length === 0, warnings: warnings.length ? { SIME: `Detalles parciales: ${warnings.join("; ")}` } : {} };
-}
 
 async function trainingPublications() {
   const base = "https://apicapacitaciones.educaciontuc.edu.ar/api";
@@ -301,7 +241,7 @@ async function runSync() {
   const old = new Map(previous.results.map((row) => [row.id, row]));
   const sourceHealthNames = ["SIME", ...(legacyFdci ? ["Capacitación Docente"] : []), "Padrones", "Llamados abiertos", "Comunicados", "Resoluciones", "Información oficial Tucumán", "CeNET / INET", "INFoD / AulaS-TIC"];
   const collectors: { source: string; run: () => Promise<Publication[] | { items: Publication[]; complete: boolean; incompleteCategories?: string[]; warnings?: Record<string, string>; categoryErrors?: Record<string, unknown> }> }[] = [
-    { source: "SIME", run: () => simePublications(old) },
+    { source: "SIME", run: () => collectSimePublications(old) },
     ...(legacyFdci ? [{ source: "Capacitación Docente", run: trainingPublications }] : []),
     { source: "Padrones y Comunicados", run: boardPublications },
     { source: "Información oficial Tucumán", run: usefulPublications },
