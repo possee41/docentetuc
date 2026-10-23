@@ -1,0 +1,33 @@
+name: DocenteTuc 1.2 official source check (isolated)
+on:
+  push:
+    branches: [feat/1.2-sync-integration]
+    paths:
+      - scripts/verify-official-source-local.mjs
+      - .github/workflows/official-source-check-1.2.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: official-source-check-1-2-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/feat/1.2-sync-integration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [sime, juntas, cenet, infd]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --global pnpm@11.19.0
+      - run: pnpm install --frozen-lockfile
+      - name: Read one public official item and verify isolated D1 plus app query
+        run: node --experimental-strip-types scripts/verify-official-source-local.mjs ${{ matrix.source }}
