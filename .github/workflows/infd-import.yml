@@ -28,17 +28,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Verify isolated pilot configuration
+      - name: Verify approved revision
         env:
           IMPORT_REF: ${{ vars.INFD_IMPORT_REF }}
-          IMPORT_URL: ${{ vars.INFD_IMPORT_URL }}
         run: |
           test "$(git rev-parse HEAD)" = "$IMPORT_REF"
           git merge-base --is-ancestor d321e7225e7dc75ff76a0e612525386855e05e08 HEAD
-          [[ "$IMPORT_URL" =~ ^https://docentetuc-infd-canary-1-2\.[a-z0-9-]+\.workers\.dev/api/internal/public-source-import/infd$ ]] || { echo 'INFD_IMPORT_URL must point to the isolated pilot'; exit 1; }
-      - name: Import public INFoD courses
+      - name: Import public INFoD courses into isolated D1 by REST
         env:
-          PUBLIC_SOURCE: infd
-          PUBLIC_IMPORT_URL: ${{ vars.INFD_IMPORT_URL }}
-          PUBLIC_IMPORT_SECRET: ${{ secrets.INFD_IMPORT_SECRET }}
-        run: node --experimental-strip-types scripts/import-public-sources.mjs
+          DIRECT_D1_WRITE_ENABLED: 'true'
+          SYNC_SOURCE: infd
+          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          D1_IMPORT_TOKEN: ${{ secrets.D1_IMPORT_TOKEN }}
+        run: node --experimental-strip-types scripts/import-direct-d1.mjs

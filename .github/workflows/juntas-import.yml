@@ -28,18 +28,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Verify isolated pilot configuration
+      - name: Verify approved revision
         env:
           IMPORT_REF: ${{ vars.JUNTAS_IMPORT_REF }}
-          IMPORT_URL: ${{ vars.JUNTAS_IMPORT_URL }}
         run: |
           test "$(git rev-parse HEAD)" = "$IMPORT_REF"
           git merge-base --is-ancestor d321e7225e7dc75ff76a0e612525386855e05e08 HEAD
-          [[ "$IMPORT_URL" =~ ^https://docentetuc-juntas-canary-1-2\.[a-z0-9-]+\.workers\.dev/api/internal/public-source-import/juntas$ ]] || { echo 'JUNTAS_IMPORT_URL must point to the isolated pilot'; exit 1; }
-      - name: Import public Junta notices and references
+      - name: Import public Junta notices and references into isolated D1 by REST
         env:
-          PUBLIC_SOURCE: juntas
-          PUBLIC_IMPORT_URL: ${{ vars.JUNTAS_IMPORT_URL }}
-          PUBLIC_IMPORT_SECRET: ${{ secrets.JUNTAS_IMPORT_SECRET }}
+          DIRECT_D1_WRITE_ENABLED: 'true'
+          SYNC_SOURCE: juntas
+          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          D1_IMPORT_TOKEN: ${{ secrets.D1_IMPORT_TOKEN }}
           GOOGLE_DRIVE_API_KEY: ${{ secrets.GOOGLE_DRIVE_API_KEY }}
-        run: node --experimental-strip-types scripts/import-public-sources.mjs
+        run: node --experimental-strip-types scripts/import-direct-d1.mjs

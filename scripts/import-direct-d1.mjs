@@ -2,13 +2,14 @@
 // D1 REST path and source cutover are explicitly approved.
 import { pathToFileURL } from "node:url";
 import { createD1Rest } from "./d1-rest.mjs";
+import { CANARY_DATABASE_ID, CANARY_DATABASE_NAME } from "./probe-d1-rest-canary.mjs";
 import { createDirectD1ReceiverFetch, sourceHashCache, withSourceHashCache } from "./direct-d1-receiver.mjs";
 import { runFdciImport } from "./import-fdci.mjs";
 import { runSimeImport } from "./import-sime.mjs";
 import { runPublicSourceImport } from "./import-public-sources.mjs";
 
-/** @param {{source: string, db: any, sourceFetch?: typeof fetch, driveKey?: string, selection?: {token: string, slug: string, commissionId: string}}} options */
-export async function runDirectD1Import({ source, db, sourceFetch = fetch, driveKey, selection }) {
+/** @param {{source: string, db: any, sourceFetch?: typeof fetch, driveKey?: string, selection?: {token: string, slug: string, commissionId: string}, scope?: string}} options */
+export async function runDirectD1Import({ source, db, sourceFetch = fetch, driveKey, selection, scope = "single" }) {
   const storageSource = { sime: "SIME", juntas: "Padrones y Comunicados", cenet: "CeNET / INET", infd: "INFoD / AulaS-TIC" }[source];
   // A paginated, public-only hash snapshot avoids one D1 read per unchanged row.
   // FDCI's single-commission pilot is cheaper with its normal one-row lookup.
@@ -19,10 +20,22 @@ export async function runDirectD1Import({ source, db, sourceFetch = fetch, drive
   const endpoint = receiver.endpoint(path);
   let result;
   if (source === "fdci") {
-    if (!selection) throw new Error("FDCI_SELECTION_REQUIRED");
+    if (scope === "single" && !selection) throw new Error("FDCI_SELECTION_REQUIRED");
     const fetcher = (input, init) => String(input).startsWith("https://direct-d1.invalid/") ?
       receiver.receiverFetch(input, init) : sourceFetch(input, init);
-    result = await runFdciImport({ endpoint, token: receiver.token, fetcher, scope: "single", selection });
+    if (scope === "full") await db.prepare("INSERT INTO sync_state(source,synced_at,item_count,last_attempt_at,sync_status) VALUES('Capacitación Docente','',0,?,'PARTIAL') ON CONFLICT(source) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,sync_status='PARTIAL'").bind(new Date().toISOString()).run();
+    try {
+      result = await runFdciImport({ endpoint, token: receiver.token, fetcher, scope, selection });
+      if (scope === "full") {
+        const finishedAt = new Date().toISOString();
+        await db.prepare("UPDATE sync_state SET synced_at=?,last_successful_sync_at=?,sync_status='OK',error=NULL,error_code=NULL,error_message=NULL,item_count=? WHERE source='Capacitación Docente'").bind(finishedAt, finishedAt, result.discovered).run();
+      }
+    } catch (error) {
+      if (scope === "full") {
+        try { await db.prepare("UPDATE sync_state SET sync_status='ERROR',error_code='EXTERNAL_IMPORT_FAILED',error_message='Importación externa interrumpida' WHERE source='Capacitación Docente'").bind().run(); } catch { /* Preserve the import failure. */ }
+      }
+      throw error;
+    }
   } else if (source === "sime") {
     result = await runSimeImport({ endpoint, token: receiver.token, sourceFetch, receiverFetch: receiver.receiverFetch });
   } else if (["juntas", "cenet", "infd"].includes(source)) {
@@ -35,12 +48,20 @@ export async function runDirectD1Import({ source, db, sourceFetch = fetch, drive
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     if (process.env.DIRECT_D1_WRITE_ENABLED !== "true") throw new Error("DIRECT_D1_WRITE_DISABLED");
-    const db = createD1Rest({ accountId: process.env.CF_ACCOUNT_ID, databaseId: process.env.D1_DATABASE_ID,
-      token: process.env.D1_IMPORT_TOKEN });
+    if (process.env.D1_DATABASE_ID) throw new Error("CANARY_DATABASE_OVERRIDE_FORBIDDEN");
+    const accountId = process.env.CF_ACCOUNT_ID, token = process.env.D1_IMPORT_TOKEN;
+    const db = createD1Rest({ accountId, databaseId: CANARY_DATABASE_ID, token });
+    const identity = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${CANARY_DATABASE_ID}`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
+    if (!identity.ok) throw new Error(`CANARY_IDENTITY_HTTP_${identity.status}`);
+    const body = await identity.json();
+    if (body?.success !== true || body.result?.uuid !== CANARY_DATABASE_ID || body.result?.name !== CANARY_DATABASE_NAME)
+      throw new Error("CANARY_IDENTITY_MISMATCH");
     const source = process.env.SYNC_SOURCE || "";
-    const selection = source === "fdci" ? { token: process.env.FDCI_COURSE_TOKEN || "",
+    const scope = process.env.FDCI_SCOPE || "single";
+    const selection = source === "fdci" && scope === "single" ? { token: process.env.FDCI_COURSE_TOKEN || "",
       slug: process.env.FDCI_COURSE_SLUG || "", commissionId: process.env.FDCI_COMMISSION_ID || "" } : undefined;
-    const result = await runDirectD1Import({ source, db, driveKey: process.env.GOOGLE_DRIVE_API_KEY, selection });
+    const result = await runDirectD1Import({ source, db, driveKey: process.env.GOOGLE_DRIVE_API_KEY, selection, scope });
     console.log(JSON.stringify(result));
   } catch (error) {
     // Never include remote response bodies, URLs with tokens, or credentials.

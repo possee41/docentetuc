@@ -20,6 +20,8 @@ function isolatedRest() {
     expires_at TEXT, source_status TEXT NOT NULL, normalized_status TEXT NOT NULL, removed_at TEXT,
     last_seen_at TEXT NOT NULL DEFAULT '', last_changed_at TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE sync_state (source TEXT PRIMARY KEY,synced_at TEXT,item_count INTEGER,last_attempt_at TEXT,
+      last_successful_sync_at TEXT,sync_status TEXT,error TEXT,error_code TEXT,error_message TEXT);
   `);
   let failed = false;
   const fetcher = async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -89,6 +91,32 @@ test("el ejecutor FDCI completo usa la fuente sintética y D1 REST sin Worker HT
   assert.equal((await runDirectD1Import(options)).created, 1);
   assert.equal((await runDirectD1Import(options)).unchanged, 1);
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM publications WHERE id='fdci:commission:6397'").get()?.n, 1);
+  sqlite.close();
+});
+
+test("el barrido FDCI por REST registra éxito solo al completar y conserva filas ante fallo", async () => {
+  const { sqlite, db } = isolatedRest();
+  const course = { capacitacion_id: 42, nombre: "Curso sintético", token: "synthetic", slug: "curso", niveles: "Primaria" };
+  const commission = { id: 6397, capacitacion_id: 42, fecha_apertura_preinscripcion: "2026-10-24 23:00:00",
+    fecha_cierre_preinscripcion: "2026-10-26 08:00:00", cupo: 0 };
+  const sourceFetch = async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/getCapaActivas")) return Response.json([commission]);
+    if (url.endsWith("/getRestoCapas")) return Response.json([course]);
+    if (url.endsWith("/getCupo")) return Response.json({ comisiones: [commission] });
+    throw new Error("UNEXPECTED_SOURCE_URL");
+  };
+  const first = await runDirectD1Import({ source: "fdci", db, sourceFetch, scope: "full" });
+  assert.equal(first.completed, true);
+  assert.equal(first.created, 1);
+  assert.equal(sqlite.prepare("SELECT sync_status FROM sync_state WHERE source='Capacitación Docente'").get()?.sync_status, "OK");
+  const success = sqlite.prepare("SELECT last_successful_sync_at FROM sync_state WHERE source='Capacitación Docente'").get()?.last_successful_sync_at;
+  await assert.rejects(runDirectD1Import({ source: "fdci", db, scope: "full", sourceFetch: async (input) =>
+    String(input).endsWith("/getCapaActivas") ? Response.json([commission]) : new Response(null, { status: 400 }) }), /HTTP_400/);
+  const state = sqlite.prepare("SELECT sync_status,last_successful_sync_at FROM sync_state WHERE source='Capacitación Docente'").get();
+  assert.equal(state?.sync_status, "ERROR");
+  assert.equal(state?.last_successful_sync_at, success);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM publications").get()?.n, 1);
   sqlite.close();
 });
 
