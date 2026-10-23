@@ -36,3 +36,5 @@ jobs:
         run: node scripts/verify-external-events-d1.mjs
       - name: Verify notification event recovery
         run: node --experimental-strip-types --test lib/external-publication-events.test.ts lib/external-reminder-push.test.ts
+      - name: Measure D1 rows for bounded notification pages
+        run: node --experimental-strip-types scripts/bench-external-events-d1.mjs

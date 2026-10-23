@@ -77,6 +77,7 @@ export async function materializeExternalNoticePage(db, { events, cursor = "", l
           official.candidateIds?.length || official.topics.includes("CLASIFICACION_PENDIENTE")))) continue;
     rows.push({ row, event });
   }
+  if (!rows.length) return { profiles: 0, considered: 0, inserted: 0, nextCursor: null };
   const page = await db.prepare("SELECT * FROM profiles WHERE user_id>? ORDER BY user_id LIMIT ?").bind(cursor, limit).all();
   const profiles = page.results || [];
   let considered = 0, inserted = 0;

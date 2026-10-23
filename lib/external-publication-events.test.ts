@@ -89,3 +89,17 @@ test("reanudación, concurrencia, cambio posterior y deduplicación por perfil",
   assert.equal(sqlite.prepare("SELECT status FROM external_publication_events WHERE id=3").get()?.status, "superseded");
   sqlite.close();
 });
+
+test("una publicación cerrada no recorre perfiles ni genera avisos", async () => {
+  const { sqlite, db } = fixture();
+  sqlite.prepare(insert).run(id, metadata, hash);
+  sqlite.prepare("UPDATE publications SET normalized_status='CLOSED' WHERE id=?").run(id);
+  const profile = sqlite.prepare("INSERT INTO profiles(user_id,notify_new_trainings,training_notify_scope) VALUES(?,1,'all')");
+  for (let index = 0; index < 500; index++) profile.run(`user-${index}`);
+  const result = await materializeNextPersistedNoticePage(db, { now });
+  assert.equal(result.profiles, 0);
+  assert.equal(result.inserted, 0);
+  assert.equal(sqlite.prepare("SELECT status FROM external_publication_events WHERE id=1").get()?.status, "done");
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM notifications").get()?.n, 0);
+  sqlite.close();
+});
