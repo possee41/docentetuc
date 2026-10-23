@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { createD1Rest } from "../scripts/d1-rest.mjs";
@@ -23,6 +24,7 @@ function isolatedRest() {
     CREATE TABLE sync_state (source TEXT PRIMARY KEY,synced_at TEXT,item_count INTEGER,last_attempt_at TEXT,
       last_successful_sync_at TEXT,sync_status TEXT,error TEXT,error_code TEXT,error_message TEXT);
   `);
+  sqlite.exec(readFileSync(new URL("../migrations/0025_external_publication_events.sql", import.meta.url), "utf8"));
   let failed = false;
   const fetcher = async (_input: RequestInfo | URL, init?: RequestInit) => {
     const header = new Headers(init?.headers).get("authorization");
@@ -63,6 +65,8 @@ test("Node → D1 REST aislada conserva históricos, actualiza y no duplica FDCI
   assert.equal(sqlite.prepare("SELECT registration_close_at FROM publications WHERE id='fdci:commission:6397'").get()?.registration_close_at,
     "2026-10-27T08:00:00-03:00");
   assert.equal(db.metrics().rowsWritten, 2);
+  assert.deepEqual(sqlite.prepare("SELECT change,content_hash FROM external_publication_events WHERE publication_id=? ORDER BY id").all("fdci:commission:6397")
+    .map((row) => row.change), ["created", "updated"]);
   sqlite.close();
 });
 

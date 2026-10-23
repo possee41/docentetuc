@@ -32,6 +32,18 @@ export const publications = sqliteTable("publications", {
   sourceStatus: text("source_status").notNull().default("UNKNOWN"), normalizedStatus: text("normalized_status").notNull().default("UNKNOWN"), removedAt: text("removed_at"), circuitConfidence: integer("circuit_confidence").notNull().default(0),
 }, (table) => [index("idx_publications_kind_ends").on(table.kind, table.endsAt), index("idx_publications_source_external").on(table.source, table.externalId), index("idx_publications_lifecycle").on(table.normalizedStatus, table.kind, table.source)]);
 
+export const externalPublicationEvents = sqliteTable("external_publication_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  publicationId: text("publication_id").notNull().references(() => publications.id, { onDelete: "cascade" }),
+  contentHash: text("content_hash").notNull(),
+  change: text("change", { enum: ["created", "updated"] }).notNull(),
+  profileCursor: text("profile_cursor").notNull().default(""),
+  status: text("status", { enum: ["pending", "done", "superseded"] }).notNull().default("pending"),
+  leaseOwner: text("lease_owner"), leaseUntil: text("lease_until"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [index("idx_external_publication_events_pending").on(table.status, table.leaseUntil, table.id)]);
+
 export const savedPublications = sqliteTable("saved_publications", {
   userId: text("user_id").notNull(), publicationId: text("publication_id").notNull().references(() => publications.id, { onDelete: "cascade" }),
   inAgenda: integer("in_agenda", { mode: "boolean" }).notNull().default(false), followed: integer("followed", { mode: "boolean" }).notNull().default(false),

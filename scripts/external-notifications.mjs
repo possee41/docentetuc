@@ -1,5 +1,6 @@
 // Opt-in, replay-safe materialization of publication notices outside Workers.
 // One page of profiles and at most five already-persisted publications per step.
+import { randomUUID } from "node:crypto";
 import { circuitMatches, inferCircuit } from "../lib/circuits.ts";
 import { designationRoleFromTitle, isEligibleForPersonalizedHome, matchesProfile, profileMatch } from "../lib/matching.ts";
 import { notificationDedupeKey } from "../lib/notification-events.ts";
@@ -94,6 +95,41 @@ export async function materializeExternalNoticePage(db, { events, cursor = "", l
   return { profiles: profiles.length, considered, inserted, nextCursor: profiles.length === limit ? profiles.at(-1).user_id : null };
 }
 
+// The SQLite triggers enqueue events atomically with publication writes. Claim
+// one event, materialize one profile page, then advance its cursor. A crash
+// before the cursor write replays harmlessly through notifications.dedupe_key.
+export async function materializeNextPersistedNoticePage(db, { now = new Date(), limit = 25 } = {}) {
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime()) || !Number.isInteger(limit) || limit < 1 || limit > 25)
+    throw new Error("EXTERNAL_NOTICES_INVALID");
+  const instant = now.toISOString();
+  const event = await db.prepare(`SELECT id,publication_id,content_hash,change,profile_cursor
+    FROM external_publication_events WHERE status='pending' AND (lease_until IS NULL OR lease_until<=?)
+    ORDER BY id LIMIT 1`).bind(instant).first();
+  if (!event) return { eventId: null, profiles: 0, considered: 0, inserted: 0, nextCursor: null };
+  const owner = randomUUID(), leaseUntil = new Date(now.getTime() + 120_000).toISOString();
+  const claimed = await db.prepare(`UPDATE external_publication_events SET lease_owner=?,lease_until=?,updated_at=?
+    WHERE id=? AND status='pending' AND (lease_until IS NULL OR lease_until<=?)`)
+    .bind(owner, leaseUntil, instant, event.id, instant).run();
+  if (!Number(claimed.meta?.rows_written)) return { eventId: null, profiles: 0, considered: 0, inserted: 0, nextCursor: null };
+
+  const publication = await db.prepare("SELECT content_hash FROM publications WHERE id=?").bind(event.publication_id).first();
+  if (!publication || publication.content_hash !== event.content_hash) {
+    await db.prepare(`UPDATE external_publication_events SET status='superseded',lease_owner=NULL,lease_until=NULL,updated_at=?
+      WHERE id=? AND lease_owner=?`).bind(instant, event.id, owner).run();
+    return { eventId: event.id, superseded: true, profiles: 0, considered: 0, inserted: 0, nextCursor: null };
+  }
+
+  const page = await materializeExternalNoticePage(db, { events: [{ id: event.publication_id,
+    contentHash: event.content_hash, change: event.change }], cursor: event.profile_cursor, limit, now });
+  const advanced = await db.prepare(`UPDATE external_publication_events
+    SET profile_cursor=?,status=?,lease_owner=NULL,lease_until=NULL,updated_at=?
+    WHERE id=? AND lease_owner=? AND profile_cursor=? AND status='pending'`)
+    .bind(page.nextCursor || event.profile_cursor, page.nextCursor ? "pending" : "done",
+      instant, event.id, owner, event.profile_cursor).run();
+  if (!Number(advanced.meta?.rows_written)) throw new Error("EXTERNAL_NOTICE_LEASE_LOST");
+  return { eventId: event.id, ...page };
+}
+
 // One bounded, replay-safe step; the caller supplies the provider explicitly.
 /** @param {D1Database} db
  * @param {{events?: {id: string, contentHash: string, change: string}[], cursor?: string, now?: Date,
@@ -101,7 +137,7 @@ export async function materializeExternalNoticePage(db, { events, cursor = "", l
 export async function runExternalNotificationStep(db, { events = [], cursor = "", now = new Date(), provider, environment } = {}) {
   if (!provider || typeof provider.send !== "function") throw new Error("PUSH_PROVIDER_REQUIRED");
   const notices = events.length ? await materializeExternalNoticePage(db, { events, cursor, now }) :
-    { profiles: 0, considered: 0, inserted: 0, nextCursor: null };
+    await materializeNextPersistedNoticePage(db, { now });
   const reminders = await materializeExternalReminderBatch(db, { now });
   const delivery = await dispatchPushNotifications(db, environment || {}, now, provider);
   return { notices, reminders, delivery };
