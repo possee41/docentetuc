@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { materializeExternalReminderBatch } from "../scripts/external-reminders.mjs";
-import { materializeExternalNoticePage } from "../scripts/external-notifications.mjs";
+import { runExternalNotificationStep } from "../scripts/external-notifications.mjs";
 import { dispatchPushNotifications, type NotificationProvider, type PushMessage } from "./push.ts";
 
 test("recordatorios externos respetan preferencias, envían una vez y no mezclan eventos manuales con avisos", async () => {
@@ -45,24 +44,28 @@ test("recordatorios externos respetan preferencias, envían una vez y no mezclan
     return new Response(null, { status: 201 });
   } };
   const now = new Date("2026-10-22T12:00:00Z");
-  assert.deepEqual(await materializeExternalReminderBatch(db, { now }), { considered: 5, inserted: 5, processed: 5 });
   const hash = "a".repeat(64);
   sqlite.prepare(`INSERT INTO publications(id,title,content_hash,normalized_status,kind,metadata,circuit)
     VALUES ('fdci:commission:synthetic','Curso sintético',?,'ACTIVE','capacitacion',?,'UNKNOWN')`)
     .run(hash, JSON.stringify({ entity: "commission", availablePreCapacity: 5, registrationOpensAt: "2026-10-23T12:00:00Z" }));
-  assert.equal((await materializeExternalNoticePage(db, { events: [{ id: "fdci:commission:synthetic", contentHash: hash, change: "created" }], now })).inserted, 1);
+  const events = [{ id: "fdci:commission:synthetic", contentHash: hash, change: "created" }];
+  await assert.rejects(runExternalNotificationStep(db, { events, now }), /PUSH_PROVIDER_REQUIRED/);
   await assert.rejects(dispatchPushNotifications(db, {}, now, provider), /VAPID_NOT_CONFIGURED/);
   const syntheticEnvironment = { VAPID_PUBLIC_KEY: "synthetic", VAPID_PRIVATE_KEY: "synthetic", VAPID_SUBJECT: "mailto:test@example.invalid" };
-  assert.deepEqual(await dispatchPushNotifications(db, syntheticEnvironment, now, provider), { considered: 6, sent: 5, failed: 0, removed: 0, deferred: 0 });
+  const first = await runExternalNotificationStep(db, { events, now, provider, environment: syntheticEnvironment });
+  assert.equal(first.notices.inserted, 1);
+  assert.deepEqual(first.reminders, { considered: 5, inserted: 5, processed: 5 });
+  assert.deepEqual(first.delivery, { considered: 6, sent: 5, failed: 0, removed: 0, deferred: 0 });
   assert.equal(sent.length, 5);
   assert.ok(sent.every(({ endpoint }) => endpoint.endsWith("/a")));
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM push_deliveries WHERE status='skipped'").get()?.n, 1);
   const manual = sqlite.prepare("SELECT id FROM manual_event_push_queue").get() as { id: number };
   const notice = sqlite.prepare("SELECT accepted_at FROM notifications WHERE id=?").get(manual.id) as { accepted_at: string | null };
   assert.equal(notice.accepted_at, null, "un evento manual no debe modificar un aviso con el mismo ID numérico");
-  assert.deepEqual(await materializeExternalReminderBatch(db, { now }), { considered: 0, inserted: 0, processed: 0 });
-  assert.deepEqual(await dispatchPushNotifications(db, syntheticEnvironment, now, provider), { considered: 0, sent: 0, failed: 0, removed: 0, deferred: 0 });
-  assert.equal((await materializeExternalNoticePage(db, { events: [{ id: "fdci:commission:synthetic", contentHash: hash, change: "created" }], now })).inserted, 0);
+  const repeated = await runExternalNotificationStep(db, { events, now, provider, environment: syntheticEnvironment });
+  assert.equal(repeated.notices.inserted, 0);
+  assert.deepEqual(repeated.reminders, { considered: 0, inserted: 0, processed: 0 });
+  assert.deepEqual(repeated.delivery, { considered: 0, sent: 0, failed: 0, removed: 0, deferred: 0 });
   assert.equal(sent.length, 5);
   sqlite.close();
 });

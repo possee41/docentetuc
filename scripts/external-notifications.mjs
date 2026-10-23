@@ -6,6 +6,8 @@ import { notificationDedupeKey } from "../lib/notification-events.ts";
 import { officialMetadata } from "../lib/official-publication.ts";
 import { parseTrainingMetadata } from "../lib/training.ts";
 import { registrationState } from "../lib/home-dashboard.ts";
+import { dispatchPushNotifications } from "../lib/push.ts";
+import { materializeExternalReminderBatch } from "./external-reminders.mjs";
 
 const profileOf = (row) => ({
   level: String(row.level || ""), area: String(row.area || ""), subjects: String(row.subjects || ""),
@@ -90,4 +92,17 @@ export async function materializeExternalNoticePage(db, { events, cursor = "", l
     inserted += Number(result.meta?.rows_written || 0) > 0 ? 1 : 0;
   }
   return { profiles: profiles.length, considered, inserted, nextCursor: profiles.length === limit ? profiles.at(-1).user_id : null };
+}
+
+// One bounded, replay-safe step; the caller supplies the provider explicitly.
+/** @param {D1Database} db
+ * @param {{events?: {id: string, contentHash: string, change: string}[], cursor?: string, now?: Date,
+ *   provider?: import("../lib/push.ts").NotificationProvider, environment?: import("../lib/push.ts").PushEnvironment}} options */
+export async function runExternalNotificationStep(db, { events = [], cursor = "", now = new Date(), provider, environment } = {}) {
+  if (!provider || typeof provider.send !== "function") throw new Error("PUSH_PROVIDER_REQUIRED");
+  const notices = events.length ? await materializeExternalNoticePage(db, { events, cursor, now }) :
+    { profiles: 0, considered: 0, inserted: 0, nextCursor: null };
+  const reminders = await materializeExternalReminderBatch(db, { now });
+  const delivery = await dispatchPushNotifications(db, environment || {}, now, provider);
+  return { notices, reminders, delivery };
 }
