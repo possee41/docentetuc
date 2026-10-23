@@ -9,9 +9,10 @@ const mf = new Miniflare({ modules: true, script: "export default { fetch() { re
 try {
   const db = await mf.getD1Database("DB");
   await db.exec("CREATE TABLE publications(id TEXT PRIMARY KEY,source TEXT NOT NULL,content_hash TEXT NOT NULL,removed_at TEXT)");
-  const migration = readFileSync(new URL("../migrations/0025_external_publication_events.sql", import.meta.url), "utf8")
-    .split("\n").filter((line) => !line.trimStart().startsWith("--")).join("\n");
-  await db.exec(migration);
+  const blocks = readFileSync(new URL("../migrations/0025_external_publication_events.sql", import.meta.url), "utf8")
+    .split("\n").filter((line) => !line.trimStart().startsWith("--")).join("\n")
+    .trim().split(/\n\s*\n/);
+  for (const block of blocks) await db.prepare(block).run();
   await db.prepare("INSERT INTO publications(id,source,content_hash) VALUES(?,?,?)")
     .bind("sime:1", "SIME", "a".repeat(64)).run();
   await db.prepare("UPDATE publications SET content_hash=? WHERE id=?").bind("a".repeat(64), "sime:1").run();
