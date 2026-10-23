@@ -27,8 +27,11 @@ try {
   for (const count of [25, 100, 500]) {
     const existing = count === 25 ? 0 : count === 100 ? 25 : 100;
     const ids = Array.from({ length: count - existing }, (_, index) => `user-${String(existing + index).padStart(3, "0")}`);
-    await db.prepare(`INSERT INTO profiles(user_id,notify_new_trainings,training_notify_scope) VALUES ${ids.map(() => "(?,1,'all')").join(",")}`)
-      .bind(...ids).run();
+    for (let offset = 0; offset < ids.length; offset += 50) {
+      const page = ids.slice(offset, offset + 50);
+      await db.prepare(`INSERT INTO profiles(user_id,notify_new_trainings,training_notify_scope) VALUES ${page.map(() => "(?,1,'all')").join(",")}`)
+        .bind(...page).run();
+    }
     const publicationId = `fdci:commission:synthetic-${count}`;
     await db.prepare(`INSERT INTO publications(id,source,content_hash,normalized_status,kind,category,title,metadata,circuit)
       VALUES(?,'Capacitación Docente',?,'ACTIVE','capacitacion','Capacitación','Curso sintético',?,'UNKNOWN')`)
