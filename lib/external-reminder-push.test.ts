@@ -67,5 +67,28 @@ test("recordatorios externos respetan preferencias, envían una vez y no mezclan
   assert.deepEqual(repeated.reminders, { considered: 0, inserted: 0, processed: 0 });
   assert.deepEqual(repeated.delivery, { considered: 0, sent: 0, failed: 0, removed: 0, deferred: 0 });
   assert.equal(sent.length, 5);
+  sqlite.prepare(`INSERT INTO notifications(user_id,publication_id,type,dedupe_key,scheduled_at,created_at)
+    VALUES('user-a','p1','CAPACITACION_NUEVA','recover-pending','2026-10-22T11:00:00Z','2026-10-22T11:00:00Z')`).run();
+  const retryId = (sqlite.prepare("SELECT id FROM notifications WHERE dedupe_key='recover-pending'").get() as { id: number }).id;
+  sqlite.prepare(`INSERT INTO push_deliveries(endpoint,notification_id,event_key,status,attempts,scheduled_at,attempted_at)
+    VALUES(?,? ,?,'pending',1,'2026-10-22T11:00:00Z','2026-10-22T11:00:00Z')`)
+    .run("https://fcm.googleapis.com/a", retryId, `notice:${retryId}`);
+  const concurrent = await Promise.all([
+    dispatchPushNotifications(db, syntheticEnvironment, now, provider),
+    dispatchPushNotifications(db, syntheticEnvironment, now, provider),
+  ]);
+  assert.equal(concurrent.reduce((sum, result) => sum + result.sent, 0), 1);
+  assert.equal(sent.length, 6);
+  const recovered = sqlite.prepare("SELECT status,attempts FROM push_deliveries WHERE event_key=?").get(`notice:${retryId}`);
+  assert.equal(recovered?.status, "sent");
+  assert.equal(recovered?.attempts, 2);
+  sqlite.prepare(`INSERT INTO notifications(user_id,publication_id,type,dedupe_key,scheduled_at,created_at)
+    VALUES('user-a','p1','CAPACITACION_NUEVA','fresh-pending','2026-10-22T11:00:00Z','2026-10-22T11:00:00Z')`).run();
+  const freshId = (sqlite.prepare("SELECT id FROM notifications WHERE dedupe_key='fresh-pending'").get() as { id: number }).id;
+  sqlite.prepare(`INSERT INTO push_deliveries(endpoint,notification_id,event_key,status,attempts,scheduled_at,attempted_at)
+    VALUES(?,? ,?,'pending',1,'2026-10-22T11:00:00Z','2026-10-22T11:59:00Z')`)
+    .run("https://fcm.googleapis.com/a", freshId, `notice:${freshId}`);
+  assert.equal((await dispatchPushNotifications(db, syntheticEnvironment, now, provider)).sent, 0);
+  assert.equal(sent.length, 6);
   sqlite.close();
 });

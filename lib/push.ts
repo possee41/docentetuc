@@ -206,8 +206,9 @@ export async function dispatchPushNotifications(db: D1Database, environment: Pus
     FROM notifications n JOIN publications p ON p.id=n.publication_id JOIN push_subscriptions s ON s.user_id=n.user_id AND s.active=1
     LEFT JOIN push_preferences pref ON pref.user_id=n.user_id LEFT JOIN push_deliveries d ON d.endpoint=s.endpoint AND d.event_key='notice:' || n.id
     WHERE n.scheduled_at IS NOT NULL AND datetime(n.scheduled_at)<=datetime(?) AND datetime(n.created_at)>=datetime(s.created_at)
-      AND (d.id IS NULL OR (d.status='failed' AND d.attempts<3 AND (d.next_attempt_at IS NULL OR datetime(d.next_attempt_at)<=datetime(?))))
-    ORDER BY n.scheduled_at LIMIT ${PUSH_DELIVERY_BATCH_SIZE}`).bind(now.toISOString(), now.toISOString()).all<DeliveryRow>();
+      AND (d.id IS NULL OR (d.status='failed' AND d.attempts<3 AND (d.next_attempt_at IS NULL OR datetime(d.next_attempt_at)<=datetime(?)))
+        OR (d.status='pending' AND d.attempts<3 AND datetime(d.attempted_at)<=datetime(?,'-10 minutes')))
+    ORDER BY n.scheduled_at LIMIT ${PUSH_DELIVERY_BATCH_SIZE}`).bind(now.toISOString(), now.toISOString(), now.toISOString()).all<DeliveryRow>();
   const eventRows = await db.prepare(`SELECT q.id notification_id, q.user_id, 'manual:' || q.event_id publication_id, 'AGENDA_RECORDATORIO' type, q.created_at queued_at, q.title,
     s.endpoint, s.p256dh, s.auth, s.expiration_time, COALESCE(pref.enabled,1) enabled, COALESCE(pref.vacancies,1) vacancies, COALESCE(pref.trainings,1) trainings,
     COALESCE(pref.commissions,1) commissions, COALESCE(pref.reminders,1) reminders, COALESCE(pref.date_changes,1) date_changes, COALESCE(pref.closing_soon,1) closing_soon,
@@ -215,8 +216,9 @@ export async function dispatchPushNotifications(db: D1Database, environment: Pus
     COALESCE(pref.quiet_start,'22:00') quiet_start, COALESCE(pref.quiet_end,'07:00') quiet_end, COALESCE(pref.timezone,'America/Argentina/Buenos_Aires') timezone, d.attempts
     FROM manual_event_push_queue q JOIN push_subscriptions s ON s.user_id=q.user_id AND s.active=1 LEFT JOIN push_preferences pref ON pref.user_id=q.user_id
     LEFT JOIN push_deliveries d ON d.endpoint=s.endpoint AND d.event_key='manual:' || q.id
-    WHERE datetime(q.created_at)>=datetime(s.created_at) AND (d.id IS NULL OR (d.status='failed' AND d.attempts<3 AND (d.next_attempt_at IS NULL OR datetime(d.next_attempt_at)<=datetime(?))))
-    ORDER BY q.created_at LIMIT ${PUSH_DELIVERY_BATCH_SIZE}`).bind(now.toISOString()).all<DeliveryRow>();
+    WHERE datetime(q.created_at)>=datetime(s.created_at) AND (d.id IS NULL OR (d.status='failed' AND d.attempts<3 AND (d.next_attempt_at IS NULL OR datetime(d.next_attempt_at)<=datetime(?)))
+      OR (d.status='pending' AND d.attempts<3 AND datetime(d.attempted_at)<=datetime(?,'-10 minutes')))
+    ORDER BY q.created_at LIMIT ${PUSH_DELIVERY_BATCH_SIZE}`).bind(now.toISOString(), now.toISOString()).all<DeliveryRow>();
   let sent = 0, failed = 0, removed = 0, deferred = 0;
   const deliveries = [...rows.results, ...eventRows.results].filter((row) => isPushNotificationDue(row.scheduled_at, now) || row.publication_id.startsWith("manual:")).sort((a, b) => new Date(a.queued_at).getTime() - new Date(b.queued_at).getTime()).slice(0, PUSH_DELIVERY_BATCH_SIZE);
   for (const row of deliveries) {
@@ -230,22 +232,30 @@ export async function dispatchPushNotifications(db: D1Database, environment: Pus
     if (isQuietTime(now, row.quiet_start, row.quiet_end, row.timezone)) { deferred++; continue; }
     message.url = manualEvent ? "/" : `/?publication=${encodeURIComponent(row.publication_id)}`;
     message.tag = eventKey;
+    const claim = await db.prepare(`INSERT INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, scheduled_at, attempted_at)
+      VALUES (?, ?, ?, 'pending', 1, ?, ?)
+      ON CONFLICT(endpoint,event_key) DO UPDATE SET status='pending',attempts=push_deliveries.attempts+1,
+        attempted_at=excluded.attempted_at
+      WHERE push_deliveries.attempts<3 AND ((push_deliveries.status='failed' AND
+        (push_deliveries.next_attempt_at IS NULL OR datetime(push_deliveries.next_attempt_at)<=datetime(?))) OR
+        (push_deliveries.status='pending' AND datetime(push_deliveries.attempted_at)<=datetime(?,'-10 minutes')))`)
+      .bind(row.endpoint, row.notification_id, eventKey, row.queued_at, now.toISOString(), now.toISOString(), now.toISOString()).run();
+    if (!Number(claim.meta?.rows_written)) continue;
     if (!manualEvent) await db.prepare("UPDATE notifications SET attempted_at=?, failure_reason=NULL WHERE id=?").bind(now.toISOString(), row.notification_id).run();
-    await db.prepare("INSERT OR IGNORE INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, scheduled_at, attempted_at) VALUES (?, ?, ?, 'pending', 0, ?, ?)").bind(row.endpoint, row.notification_id, eventKey, row.queued_at, now.toISOString()).run();
     try {
       const response = await provider.send({ endpoint: row.endpoint, expirationTime: row.expiration_time, keys: { p256dh: row.p256dh, auth: row.auth } }, message);
       if (response.ok) {
-        await db.prepare("INSERT INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, sent_at, scheduled_at, attempted_at, accepted_at) VALUES (?, ?, ?, 'sent', 1, CURRENT_TIMESTAMP, ?, ?, ?) ON CONFLICT(endpoint,event_key) DO UPDATE SET status='sent', attempts=push_deliveries.attempts+1, sent_at=CURRENT_TIMESTAMP, attempted_at=excluded.attempted_at, accepted_at=excluded.accepted_at, failure_reason=NULL, last_error=NULL, next_attempt_at=NULL").bind(row.endpoint, row.notification_id, eventKey, row.queued_at, now.toISOString(), now.toISOString()).run();
+        await db.prepare("INSERT INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, sent_at, scheduled_at, attempted_at, accepted_at) VALUES (?, ?, ?, 'sent', 1, CURRENT_TIMESTAMP, ?, ?, ?) ON CONFLICT(endpoint,event_key) DO UPDATE SET status='sent', sent_at=CURRENT_TIMESTAMP, attempted_at=excluded.attempted_at, accepted_at=excluded.accepted_at, failure_reason=NULL, last_error=NULL, next_attempt_at=NULL").bind(row.endpoint, row.notification_id, eventKey, row.queued_at, now.toISOString(), now.toISOString()).run();
         if (!manualEvent) await db.prepare("UPDATE notifications SET accepted_at=?, failure_reason=NULL WHERE id=?").bind(now.toISOString(), row.notification_id).run();
         sent++;
       } else if (response.status === 404 || response.status === 410) {
         await db.prepare("UPDATE push_subscriptions SET active=0, updated_at=CURRENT_TIMESTAMP WHERE endpoint=?").bind(row.endpoint).run(); removed++;
-        await db.prepare("INSERT INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, last_error, scheduled_at, attempted_at, failure_reason) VALUES (?, ?, ?, 'removed', 1, ?, ?, ?, ?) ON CONFLICT(endpoint,event_key) DO UPDATE SET status='removed', attempts=push_deliveries.attempts+1, last_error=excluded.last_error, attempted_at=excluded.attempted_at, failure_reason=excluded.failure_reason").bind(row.endpoint, row.notification_id, eventKey, `PUSH_${response.status}`, row.queued_at, now.toISOString(), `PUSH_${response.status}`).run();
+        await db.prepare("INSERT INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, last_error, scheduled_at, attempted_at, failure_reason) VALUES (?, ?, ?, 'removed', 1, ?, ?, ?, ?) ON CONFLICT(endpoint,event_key) DO UPDATE SET status='removed', last_error=excluded.last_error, attempted_at=excluded.attempted_at, failure_reason=excluded.failure_reason").bind(row.endpoint, row.notification_id, eventKey, `PUSH_${response.status}`, row.queued_at, now.toISOString(), `PUSH_${response.status}`).run();
         if (!manualEvent) await db.prepare("UPDATE notifications SET failure_reason=? WHERE id=?").bind(`PUSH_${response.status}`, row.notification_id).run();
       } else throw new Error(`PUSH_${response.status}`);
     } catch (error) {
       const reason = error instanceof Error ? error.message.slice(0, 180) : "PUSH_FAILED";
-      await db.prepare("INSERT INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, last_error, next_attempt_at, scheduled_at, attempted_at, failure_reason) VALUES (?, ?, ?, 'failed', 1, ?, datetime('now','+10 minutes'), ?, ?, ?) ON CONFLICT(endpoint,event_key) DO UPDATE SET status='failed', attempts=push_deliveries.attempts+1, last_error=excluded.last_error, next_attempt_at=excluded.next_attempt_at, attempted_at=excluded.attempted_at, failure_reason=excluded.failure_reason").bind(row.endpoint, row.notification_id, eventKey, reason, row.queued_at, now.toISOString(), reason).run();
+      await db.prepare("INSERT INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, last_error, next_attempt_at, scheduled_at, attempted_at, failure_reason) VALUES (?, ?, ?, 'failed', 1, ?, datetime('now','+10 minutes'), ?, ?, ?) ON CONFLICT(endpoint,event_key) DO UPDATE SET status='failed', last_error=excluded.last_error, next_attempt_at=excluded.next_attempt_at, attempted_at=excluded.attempted_at, failure_reason=excluded.failure_reason").bind(row.endpoint, row.notification_id, eventKey, reason, row.queued_at, now.toISOString(), reason).run();
       if (!manualEvent) await db.prepare("UPDATE notifications SET failure_reason=? WHERE id=?").bind(reason, row.notification_id).run();
       failed++;
     }
