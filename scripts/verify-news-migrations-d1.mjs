@@ -13,7 +13,8 @@ try {
   await db.prepare("INSERT INTO publications(id,title) VALUES(?,?)").bind("source-a", "Fuente sintética").run();
   for (const file of ["0021_news_editorial.sql", "0022_news_media_content.sql"]) {
     const sql = readFileSync(new URL(`../migrations/${file}`, import.meta.url), "utf8")
-      .split("\n").filter((line) => !line.trimStart().startsWith("--")).join("\n");
+      .split("\n").filter((line) => !line.trimStart().startsWith("--")).join(" ")
+      .split(";").map((statement) => statement.trim()).filter(Boolean).join(";\n") + ";";
     if (file.startsWith("0022")) await db.prepare("INSERT INTO news_items(id,editorial_title) VALUES(?,?)").bind("old", "Titular previo").run();
     await db.exec(sql);
   }
