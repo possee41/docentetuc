@@ -26,6 +26,7 @@ type SourceRow = { name: string; title: string; url: string; type: PublicNewsSou
   publishedAt: string | null; removedAt: string | null };
 
 export const NEWS_PAGE_SIZE = 12;
+const HOME_NEWS_MAX_AGE_DAYS = 30;
 const publicFrom = `FROM news_items n
   JOIN news_sources main ON main.news_item_id=n.id AND main.is_primary=1
   LEFT JOIN publications main_publication ON main_publication.id=main.publication_id`;
@@ -63,7 +64,8 @@ export async function listPublicNews(database: CommunityDatabase, params: URLSea
   if (home) {
     const excluded = (params.get("exclude") || "").split(",").filter(Boolean);
     if (excluded.length > 8 || excluded.some((id) => id.length > 240)) throw new RangeError("Filtro inválido.");
-    where += " AND (n.featured=1 OR n.relevance IN ('importante','urgente'))";
+    where += " AND (n.featured=1 OR n.relevance IN ('importante','urgente')) AND n.published_at>=?";
+    values.push(new Date(now.getTime() - HOME_NEWS_MAX_AGE_DAYS * 86_400_000).toISOString());
     if (excluded.length) { where += ` AND (n.origin_publication_id IS NULL OR n.origin_publication_id NOT IN (${excluded.map(() => "?").join(",")}))`; values.push(...excluded); }
     const rows = await database.prepare(`SELECT ${columns} ${publicFrom} WHERE ${where}
       ORDER BY CASE n.relevance WHEN 'urgente' THEN 0 WHEN 'importante' THEN 1 ELSE 2 END,

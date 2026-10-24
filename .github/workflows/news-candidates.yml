@@ -1,0 +1,42 @@
+name: News editorial candidates
+on:
+  # Habilitar una frecuencia solo tras aprobar acceso REST, corte legacy y cuotas.
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: news-candidates
+  cancel-in-progress: false
+jobs:
+  discover:
+    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/feat/1.2-sync-integration'
+    runs-on: ubuntu-latest
+    environment: news-pilot
+    timeout-minutes: 10
+    steps:
+      - name: Verify approved revision
+        env:
+          IMPORT_REF: ${{ vars.NEWS_IMPORT_REF }}
+        run: |
+          [[ "$IMPORT_REF" =~ ^[a-f0-9]{40}$ ]] || exit 1
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.NEWS_IMPORT_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify branch ancestry
+        env:
+          IMPORT_REF: ${{ vars.NEWS_IMPORT_REF }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$IMPORT_REF"
+          git merge-base --is-ancestor "$IMPORT_REF" origin/feat/1.2-sync-integration
+      - name: Discover candidates in isolated D1 only
+        env:
+          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          NEWS_DATABASE_ID: '713a8c37-d123-43ce-9f9e-7789e60e3d21'
+          NEWS_ALLOWED_DATABASE_ID: '713a8c37-d123-43ce-9f9e-7789e60e3d21'
+          D1_IMPORT_TOKEN: ${{ secrets.D1_IMPORT_TOKEN }}
+        run: node --experimental-strip-types scripts/discover-news.mjs --rest

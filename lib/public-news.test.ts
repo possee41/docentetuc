@@ -108,6 +108,15 @@ test("Inicio sin noticias editoriales conserva solo el banner original", async (
   } finally { raw.close(); }
 });
 
+test("una destacada antigua permanece en Noticias pero sale del carrusel", async () => {
+  const { raw, database } = fixture();
+  try {
+    add(raw, "old-featured", { featured: 1, publishedAt: "2026-09-01T12:00:00.000Z" });
+    assert.equal((await listPublicNews(database, new URLSearchParams(), now)).items.length, 1);
+    assert.deepEqual((await listPublicNews(database, new URLSearchParams("home=1"), now)).items, []);
+  } finally { raw.close(); }
+});
+
 test("el listado editorial presenta urgentes antes de destacadas y conserva la fuente", async () => {
   const { raw, database } = fixture();
   try {
