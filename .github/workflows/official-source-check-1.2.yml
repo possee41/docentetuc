@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        source: [sime, juntas, cenet, infd]
+        source: [fdci, sime, juntas, cenet, infd]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,5 +29,5 @@ jobs:
           node-version: '24'
       - run: npm install --global pnpm@11.19.0
       - run: pnpm install --frozen-lockfile
-      - name: Read one public official item and verify isolated D1 plus app query
-        run: node --experimental-strip-types scripts/verify-official-source-local.mjs ${{ matrix.source }}
+      - name: Read one public official item and verify isolated repeated D1 cycles
+        run: node --experimental-strip-types scripts/verify-official-source-local.mjs ${{ matrix.source }} --cycles

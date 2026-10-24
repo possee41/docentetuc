@@ -56,5 +56,50 @@ try {
     assert.equal(notices.n, count);
     results.push({ profiles: count, pages, ...metrics, notices: Number(notices.n) });
   }
-  console.log(JSON.stringify({ database: "D1 efímera Workerd", unit: "un evento y perfiles sintéticos", results }));
+  const sources = ["Capacitación Docente", "SIME", "Padrones y Comunicados", "CeNET / INET", "INFoD / AulaS-TIC"];
+  const importMetrics = { requests: 0, rowsRead: 0, rowsWritten: 0 };
+  const upsert = db.prepare(`INSERT INTO publications(id,source,content_hash,normalized_status,kind,category,title,metadata,circuit)
+    VALUES(?,?,?,'ACTIVE',?,?,?,?,'UNKNOWN')
+    ON CONFLICT(id) DO UPDATE SET content_hash=excluded.content_hash
+    WHERE publications.content_hash<>excluded.content_hash`);
+  const apply = async (index, version = 1) => {
+    const source = sources[index], kind = index === 1 ? "vacante" : index === 2 ? "junta" : "capacitacion";
+    const metadata = kind === "capacitacion" ? JSON.stringify({ entity: "commission", availablePreCapacity: 5,
+      registrationOpensAt: "2026-10-23T12:00:00Z" }) : "{}";
+    const result = await upsert.bind(`synthetic:cycle:${index}`, source, `${index}${version}`.padStart(64, "a"), kind,
+      kind === "junta" ? "Comunicados" : kind === "vacante" ? "Vacante" : "Capacitación",
+      `Publicación sintética ${index}`, metadata).run();
+    importMetrics.requests++;
+    importMetrics.rowsRead += Number(result.meta?.rows_read || 0);
+    importMetrics.rowsWritten += Number(result.meta?.rows_written || 0);
+  };
+  const started = performance.now();
+  for (let index = 0; index < sources.length; index++) await apply(index);
+  const firstWrites = importMetrics.rowsWritten;
+  for (let index = 0; index < sources.length; index++) await apply(index);
+  assert.equal(importMetrics.rowsWritten, firstWrites, "repetir un ciclo sin cambios no escribe");
+  await apply(0, 2);
+  const eventMetrics = { requests: 0, rowsRead: 0, rowsWritten: 0 };
+  const measured = { prepare: (sql) => ({ bind: (...params) => {
+    const statement = db.prepare(sql).bind(...params);
+    const record = (result) => { eventMetrics.requests++; eventMetrics.rowsRead += Number(result.meta?.rows_read || 0);
+      eventMetrics.rowsWritten += Number(result.meta?.rows_written || 0); return result; };
+    return { all: async () => record(await statement.all()), run: async () => record(await statement.run()),
+      first: async () => (await record(await statement.all())).results[0] || null };
+  } }) };
+  let steps = 0;
+  while (true) {
+    const step = await materializeNextPersistedNoticePage(measured, { now: new Date("2026-10-22T12:00:00Z") });
+    if (step.eventId === null) break;
+    steps++;
+    if (steps > 120) throw new Error("MIXED_CYCLE_NOT_BOUNDED");
+  }
+  const total = await db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE publication_id LIKE 'synthetic:cycle:%'").first();
+  const pending = await db.prepare("SELECT COUNT(*) AS n FROM external_publication_events WHERE status='pending'").first();
+  assert.equal(pending.n, 0);
+  const mixed = { sources: sources.length, profiles: 500, cycles: 3, firstWrites,
+    repeatWrites: 0, updateWrites: importMetrics.rowsWritten - firstWrites, importMetrics,
+    eventMetrics, eventSteps: steps, notifications: Number(total.n), wallMs: Math.round(performance.now() - started) };
+  console.log(JSON.stringify({ database: "D1 efímera Workerd", unit: "un evento y perfiles sintéticos", results,
+    mixedSyntheticCycle: mixed }));
 } finally { await mf.dispose(); }
