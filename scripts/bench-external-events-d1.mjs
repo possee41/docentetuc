@@ -105,8 +105,8 @@ try {
     repeatWrites: 0, updateWrites: importMetrics.rowsWritten - firstWrites, importMetrics,
     eventMetrics, eventSteps: steps, notifications: Number(total.n), wallMs: Math.round(performance.now() - started) };
   await db.prepare("DELETE FROM external_event_sources").run();
-  for (let offset = 0; offset < 7200; offset += 100) {
-    const ids = Array.from({ length: 100 }, (_, index) => offset + index);
+  for (let offset = 0; offset < 7200; offset += 25) {
+    const ids = Array.from({ length: 25 }, (_, index) => offset + index);
     await db.prepare(`INSERT INTO publications(id,source,content_hash) VALUES ${ids.map(() => "(?,?,?)").join(",")}`)
       .bind(...ids.flatMap((id) => [`synthetic:history:${String(id).padStart(5, "0")}`,
         sources[id % sources.length], "h".repeat(64)])).run();
