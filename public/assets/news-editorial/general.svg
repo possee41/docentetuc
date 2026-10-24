@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-label="Ilustración institucional de noticias educativas">
+  <defs><linearGradient id="g"><stop stop-color="#10253d"/><stop offset="1" stop-color="#456f95"/></linearGradient></defs>
+  <rect width="1200" height="675" fill="url(#g)"/><circle cx="938" cy="340" r="260" fill="#fff" opacity=".05"/>
+  <g fill="none" stroke="#f1d7a5" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M687 226c101-45 187-42 248 0v288c-61-42-147-45-248 0zM935 226c101-45 187-42 248 0v288c-61-42-147-45-248 0z"/>
+    <path d="M935 226v288M743 306c49-18 94-17 139-2M743 380c49-18 94-17 139-2M990 306c49-18 94-17 139-2M990 380c49-18 94-17 139-2"/>
+  </g><path d="M0 585c253-96 449-85 660 57H0" fill="#061929" opacity=".24"/>
+</svg>

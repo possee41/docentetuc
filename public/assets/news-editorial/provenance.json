@@ -1,0 +1,15 @@
+{
+  "purpose": "Fondos vectoriales conceptuales y reutilizables por categoría; no son fotografías ni representan acontecimientos particulares.",
+  "creator": "DocenteTuc",
+  "rightsBasis": "Gráficos SVG originales creados para esta aplicación, sin fotografías, marcas ni imágenes de terceros.",
+  "categories": {
+    "training": "training.svg",
+    "designation": "designation.svg",
+    "boards": "boards.svg",
+    "regulations": "regulations.svg",
+    "education": "education.svg",
+    "union": "union.svg",
+    "technology": "technology.svg",
+    "general": "general.svg"
+  }
+}

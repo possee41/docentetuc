@@ -27,6 +27,7 @@ function NewsImage({ image, eager = false }: { image: NonNullable<PublicNewsItem
   return <figure className="mb-4 overflow-hidden rounded-xl bg-[var(--surface-primary)]">
     <Image src={image.url} alt={image.alt} width={1200} height={675} unoptimized loading={eager ? "eager" : "lazy"} referrerPolicy="no-referrer"
       onError={() => setFailed(true)} className="aspect-video max-h-64 w-full object-cover" />
+    {image.kind === "illustration" && <figcaption className="px-2 py-1 text-xs text-[var(--text-muted)]">Ilustración de categoría; no es una fotografía del hecho.</figcaption>}
   </figure>;
 }
 

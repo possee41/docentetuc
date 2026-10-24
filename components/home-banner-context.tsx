@@ -125,7 +125,7 @@ export function HomeNewsCarousel({ name, excludedOriginIds }: { name?: string; e
         onClick={(event) => { if (Date.now() - lastSwipe.current < 500) event.preventDefault(); }}
         className="home-carousel-news-link" aria-label={`Leer noticia: ${item.title}`}>
         <span className="home-carousel-news-content">
-          <span className="home-carousel-kicker">{item.relevance === "urgente" ? "Urgente" : item.featured ? "Noticia destacada" : "Actualidad educativa"}</span>
+          <span className="home-carousel-kicker">{item.relevance === "urgente" ? "Urgente" : item.featured ? "Noticia destacada" : "Actualidad educativa"}{item.image.kind === "illustration" ? " · Ilustración" : ""}</span>
           <strong>{item.title}</strong>
           <span>Fuente {item.primarySource.type === "official" ? "oficial" : "verificable"} · {item.primarySource.name} · {newsDate(item.primarySource.publishedAt || item.publishedAt)}</span>
         </span>

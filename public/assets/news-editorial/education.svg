@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-label="Ilustración de educación general">
+  <defs><linearGradient id="g"><stop stop-color="#14273c"/><stop offset="1" stop-color="#39789a"/></linearGradient></defs>
+  <rect width="1200" height="675" fill="url(#g)"/><circle cx="927" cy="338" r="260" fill="#fff" opacity=".05"/>
+  <g fill="none" stroke="#f0dba9" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m676 282 260-135 260 135-260 135zM758 333v143c113 58 241 58 356 0V333M1186 288v180"/>
+    <path d="M819 525h234"/>
+  </g><path d="M0 590c253-98 452-83 664 54H0" fill="#061929" opacity=".23"/>
+</svg>

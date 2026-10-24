@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import type { CommunityDatabase } from "./community.ts";
@@ -133,13 +133,39 @@ test("contenido completo e imagen acreditada son públicos; derechos internos y 
     const detail = await publicNewsDetail(database, "with-image", now);
     assert.equal(detail?.body, "Cuerpo editorial original.");
     assert.deepEqual(detail?.image, { url: "https://ejemplo.org/foto.webp", alt: "Aula ilustrada",
-      credit: "Autor sintético", sourceUrl: "https://ejemplo.org/origen" });
+      credit: "Autor sintético", sourceUrl: "https://ejemplo.org/origen", kind: "credited" });
     assert.ok(!JSON.stringify(detail).includes("Licencia acreditada"));
     assert.ok(!JSON.stringify(detail).includes("/licencia"));
     assert.equal((await publicNewsDetail(database, "old-news", now))?.body, null);
-    assert.equal((await publicNewsDetail(database, "old-news", now))?.image, null);
-    assert.equal((await publicNewsDetail(database, "incomplete-image", now))?.image, null);
-    assert.equal((await listPublicNews(database, new URLSearchParams(), now)).items.find((entry) => entry.id === "incomplete-image")?.image, null);
+    assert.equal((await publicNewsDetail(database, "old-news", now))?.image.kind, "illustration");
+    assert.equal((await publicNewsDetail(database, "incomplete-image", now))?.image.kind, "illustration");
+    assert.equal((await listPublicNews(database, new URLSearchParams(), now)).items.find((entry) => entry.id === "incomplete-image")?.image.kind, "illustration");
+  } finally { raw.close(); }
+});
+
+test("noticias nuevas sin imagen usan una única biblioteca por tema en listado, detalle e Inicio", async () => {
+  const { raw, database } = fixture();
+  try {
+    const topics = ["Capacitaciones", "Designaciones SIME", "Comunicados de Juntas", "Resoluciones",
+      "Educación secundaria", "Actualidad gremial", "Tecnología educativa", "Actualidad"];
+    const files = ["training", "designation", "boards", "regulations", "education", "union", "technology", "general"];
+    topics.forEach((topic, index) => add(raw, `category-${index}`, { topic, featured: index < 5 ? 1 : 0 }));
+    const list = await listPublicNews(database, new URLSearchParams(), now);
+    assert.equal(list.items.length, 8);
+    for (let index = 0; index < topics.length; index++) {
+      const expected = `/assets/news-editorial/${files[index]}.svg`;
+      const entry = list.items.find((news) => news.id === `category-${index}`)!;
+      assert.equal(entry.image.url, expected);
+      assert.equal(entry.image.kind, "illustration");
+      assert.match(entry.image.alt, /no representa el hecho/);
+      assert.equal((await publicNewsDetail(database, entry.id, now))?.image.url, expected);
+      assert.ok(existsSync(new URL(`../public${expected}`, import.meta.url)));
+      assert.equal(raw.prepare("SELECT hero_image_url FROM news_items WHERE id=?").get(entry.id)?.hero_image_url, null);
+    }
+    const home = await listPublicNews(database, new URLSearchParams("home=1"), now);
+    assert.equal(home.items.length, 5);
+    assert.ok(home.items.every((entry) => entry.image.url === list.items.find((news) => news.id === entry.id)?.image.url));
+    assert.equal(new Set(list.items.map((entry) => entry.image.url)).size, 8);
   } finally { raw.close(); }
 });
 

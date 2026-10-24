@@ -18,7 +18,7 @@ let previewAuth;
 const editorialSamples = [
   { id: "9b30db2e-aea2-4317-bc0f-6881c0110001", title: "Alumnos y docentes se capacitaron en el uso educativo de drones",
     summary: "Estudiantes y docentes de escuelas técnicas y agrotécnicas participaron de una capacitación sobre el uso educativo de drones, organizada por la Dirección de Educación Técnica y Formación Profesional.",
-    url: "https://www.educaciontuc.gov.ar/2026/10/23/alumnos-y-docentes-se-capacitaron-en-el-uso-educativo-de-drones/", date: "2026-10-23", topic: "Educación técnica", featured: true },
+    url: "https://www.educaciontuc.gov.ar/2026/10/23/alumnos-y-docentes-se-capacitaron-en-el-uso-educativo-de-drones/", date: "2026-10-23", topic: "Tecnología educativa", featured: true },
   { id: "9b30db2e-aea2-4317-bc0f-6881c0110002", title: "Educación formó a 300 docentes sobre RCP y primeros auxilios en la escuela",
     summary: "La Dirección de Educación Física impulsó una formación sobre RCP, uso de DEA y primeros auxilios destinada a 300 docentes de distintos niveles y modalidades.",
     url: "https://www.educaciontuc.gov.ar/2026/10/21/educacion-formo-a-300-docentes-en-rcp-y-primeros-auxilios-en-la-escuela/", date: "2026-10-21", topic: "Formación docente", featured: true },
@@ -112,12 +112,21 @@ for (const article of editorialSamples) {
   const response = await fetch(`http://localhost:8793/api/admin/news?id=${article.id}`, { headers });
   assert.equal(response.status, 200, "Local Admin access is required for editorial review");
   let { item } = await response.json();
-  if (item.status === "candidate") {
+  if (item.status === "published" && item.hero_image_url) {
+    await admin({ action: "archive", id: article.id, updatedAt: item.updated_at });
+    ({ item } = await (await fetch(`http://localhost:8793/api/admin/news?id=${article.id}`, { headers })).json());
+    await admin({ action: "reopen", id: article.id, updatedAt: item.updated_at });
+    ({ item } = await (await fetch(`http://localhost:8793/api/admin/news?id=${article.id}`, { headers })).json());
+  }
+  if (item.status === "candidate" || item.status === "approved") {
     await admin({ action: "edit", id: article.id, updatedAt: item.updated_at, title: article.title,
       summary: article.summary, body: "", topic: article.topic, relevance: "importante",
-      validFrom: null, validUntil: null });
+      validFrom: null, validUntil: null, imageUrl: "", imageAlt: "", imageCredit: "",
+      imageSourceUrl: "", imageRightsNote: "", imageRightsUrl: "" });
     ({ item } = await (await fetch(`http://localhost:8793/api/admin/news?id=${article.id}`, { headers })).json());
-    await admin({ action: "approve", id: article.id, updatedAt: item.updated_at });
+  }
+  if (item.status === "candidate") {
+    await admin({ action: "approve", id: article.id, updatedAt: item.updated_at, confirmImageRights: true });
     ({ item } = await (await fetch(`http://localhost:8793/api/admin/news?id=${article.id}`, { headers })).json());
   }
   if (item.status === "approved") {
@@ -126,4 +135,5 @@ for (const article of editorialSamples) {
   }
   if (article.featured && !item.featured) await admin({ action: "feature", id: article.id, updatedAt: item.updated_at });
 }
-console.log(JSON.stringify({ locallyReviewedAndPublished: editorialSamples.length, images: "none; rights not documented" }));
+console.log(JSON.stringify({ locallyReviewedAndPublished: editorialSamples.length,
+  images: "category illustrations selected at read time, not stored per article" }));

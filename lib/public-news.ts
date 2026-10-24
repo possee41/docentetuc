@@ -1,5 +1,6 @@
 import type { CommunityDatabase } from "./community.ts";
 import { isNewsRelevance, normalizeNewsImage, normalizeNewsSourceUrl } from "./news-editorial.ts";
+import { publicNewsImage, type PublicNewsImage } from "./news-image.ts";
 
 export type PublicNewsSource = {
   name: string; title: string; url: string; type: "official" | "public" | "union" | "media";
@@ -9,7 +10,7 @@ export type PublicNewsItem = {
   id: string; title: string; summary: string; topic: string | null;
   relevance: "informativa" | "importante" | "urgente"; featured: boolean;
   publishedAt: string; validFrom: string | null; validUntil: string | null;
-  image: { url: string; alt: string; credit: string; sourceUrl: string } | null;
+  image: PublicNewsImage;
   primarySource: PublicNewsSource;
 };
 
@@ -46,7 +47,7 @@ const item = (row: NewsRow): PublicNewsItem => {
   const image = normalizeNewsImage(row);
   return { id: row.id, title: row.title, summary: row.summary, topic: row.topic,
     relevance: row.relevance, featured: Boolean(row.featured), publishedAt: row.publishedAt, validFrom: row.validFrom,
-    validUntil: row.validUntil, image: image ? { url: image.url, alt: image.alt, credit: image.credit, sourceUrl: image.sourceUrl } : null,
+    validUntil: row.validUntil, image: publicNewsImage(image ?? null, row.topic, row.sourceType),
     primarySource: source({ name: row.sourceName, title: row.sourceTitle,
       url: row.sourceUrl, type: row.sourceType, publishedAt: row.sourcePublishedAt, removedAt: null }) };
 };

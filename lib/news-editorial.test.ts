@@ -135,4 +135,20 @@ test("validaciones puras preparan entradas sin publicar ni consultar datos", () 
   assert.equal(normalizeNewsImage({}), null);
   assert.equal(normalizeNewsImage({ ...image, imageRightsUrl: "" }), undefined);
   assert.equal(normalizeNewsImage({ ...image, imageUrl: "javascript:alert(1)" }), undefined);
+  assert.equal(normalizeNewsImage({ ...image, imageUrl: "/assets/news-editorial/training.svg" }), undefined);
+});
+
+test("fondos de categoría propios tienen procedencia y no se asocian a artículos concretos", () => {
+  const manifest = JSON.parse(readFileSync(new URL("../public/assets/news-editorial/provenance.json", import.meta.url), "utf8")) as {
+    categories: Record<string, string>; creator: string; rightsBasis: string;
+  };
+  assert.equal(Object.keys(manifest.categories).length, 8);
+  assert.equal(new Set(Object.values(manifest.categories)).size, 8);
+  assert.equal(manifest.creator, "DocenteTuc");
+  assert.match(manifest.rightsBasis, /originales/);
+  for (const file of Object.values(manifest.categories)) {
+    const svg = readFileSync(new URL(`../public/assets/news-editorial/${file}`, import.meta.url), "utf8");
+    assert.match(svg, /^<svg /);
+    assert.doesNotMatch(svg, /<script|<image|foreignObject|href=|onload=/i);
+  }
 });
