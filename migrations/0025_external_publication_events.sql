@@ -17,9 +17,16 @@ CREATE TABLE external_publication_events (
 CREATE INDEX idx_external_publication_events_pending
   ON external_publication_events(status, lease_until, id);
 
+-- Empty after migration. Enable each source only after its legacy writer is
+-- drained, so legacy changes cannot create an external notification backlog.
+CREATE TABLE external_event_sources (
+  source TEXT PRIMARY KEY CHECK(source IN ('Capacitación Docente', 'SIME', 'Padrones y Comunicados', 'CeNET / INET', 'INFoD / AulaS-TIC')),
+  enabled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TRIGGER trg_external_publication_created
 AFTER INSERT ON publications
-WHEN NEW.source IN ('Capacitación Docente', 'SIME', 'Padrones y Comunicados', 'CeNET / INET', 'INFoD / AulaS-TIC')
+WHEN EXISTS(SELECT 1 FROM external_event_sources WHERE source=NEW.source)
 BEGIN
   INSERT INTO external_publication_events(publication_id, content_hash, change)
   VALUES(NEW.id, NEW.content_hash, 'created');
@@ -27,7 +34,7 @@ END;
 
 CREATE TRIGGER trg_external_publication_updated
 AFTER UPDATE OF content_hash, removed_at ON publications
-WHEN NEW.source IN ('Capacitación Docente', 'SIME', 'Padrones y Comunicados', 'CeNET / INET', 'INFoD / AulaS-TIC')
+WHEN EXISTS(SELECT 1 FROM external_event_sources WHERE source=NEW.source)
   AND (OLD.content_hash <> NEW.content_hash OR (OLD.removed_at IS NOT NULL AND NEW.removed_at IS NULL))
 BEGIN
   INSERT INTO external_publication_events(publication_id, content_hash, change)

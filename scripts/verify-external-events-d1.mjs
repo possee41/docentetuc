@@ -14,6 +14,10 @@ try {
     .trim().split(/\n\s*\n/);
   for (const block of blocks) await db.prepare(block).run();
   await db.prepare("INSERT INTO publications(id,source,content_hash) VALUES(?,?,?)")
+    .bind("sime:legacy", "SIME", "a".repeat(64)).run();
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM external_publication_events").first()).n, 0);
+  await db.prepare("INSERT INTO external_event_sources(source) VALUES('SIME')").run();
+  await db.prepare("INSERT INTO publications(id,source,content_hash) VALUES(?,?,?)")
     .bind("sime:1", "SIME", "a".repeat(64)).run();
   await db.prepare("UPDATE publications SET content_hash=? WHERE id=?").bind("a".repeat(64), "sime:1").run();
   await db.prepare("UPDATE publications SET content_hash=? WHERE id=?").bind("b".repeat(64), "sime:1").run();

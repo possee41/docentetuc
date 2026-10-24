@@ -18,6 +18,7 @@ function fixture() {
     CREATE TABLE notifications (id INTEGER PRIMARY KEY,user_id TEXT,publication_id TEXT,type TEXT,
       dedupe_key TEXT,scheduled_at TEXT,UNIQUE(user_id,dedupe_key));`);
   sqlite.exec(readFileSync(new URL("../migrations/0025_external_publication_events.sql", import.meta.url), "utf8"));
+  sqlite.prepare("INSERT INTO external_event_sources(source) VALUES('Capacitación Docente')").run();
   const db = { prepare: (sql: string) => ({ bind: (...params: unknown[]) => ({
     first: async () => sqlite.prepare(sql).get(...params as []) ?? null,
     all: async () => ({ results: sqlite.prepare(sql).all(...params as []) }),
@@ -47,6 +48,16 @@ test("el evento se guarda con la publicación, sin duplicar al repetir y sin toc
     .run(id, metadata, hash);
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM external_publication_events").get()?.n, 1);
   assert.equal(sqlite.prepare("SELECT title FROM publications WHERE id='historic:1'").get()?.title, "Histórica");
+  sqlite.close();
+});
+
+test("una fuente legacy no encola eventos hasta completar su corte", () => {
+  const { sqlite } = fixture();
+  sqlite.prepare("INSERT INTO publications(id,source,title,content_hash) VALUES('sime:1','SIME','Legacy','a')").run();
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM external_publication_events").get()?.n, 0);
+  sqlite.prepare("INSERT INTO external_event_sources(source) VALUES('SIME')").run();
+  sqlite.prepare("UPDATE publications SET content_hash='b' WHERE id='sime:1'").run();
+  assert.equal(sqlite.prepare("SELECT change FROM external_publication_events").get()?.change, "updated");
   sqlite.close();
 });
 

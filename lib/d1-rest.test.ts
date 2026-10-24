@@ -25,6 +25,7 @@ function isolatedRest() {
       last_successful_sync_at TEXT,sync_status TEXT,error TEXT,error_code TEXT,error_message TEXT);
   `);
   sqlite.exec(readFileSync(new URL("../migrations/0025_external_publication_events.sql", import.meta.url), "utf8"));
+  sqlite.prepare("INSERT INTO external_event_sources(source) VALUES('Capacitación Docente')").run();
   let failed = false;
   const fetcher = async (_input: RequestInfo | URL, init?: RequestInit) => {
     const header = new Headers(init?.headers).get("authorization");

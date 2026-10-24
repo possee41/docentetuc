@@ -63,6 +63,9 @@ try {
     const statements = readFileSync(new URL("../migrations/0025_external_publication_events.sql", import.meta.url), "utf8")
       .split("\n").filter((line) => !line.trimStart().startsWith("--")).join("\n").trim().split(/\n\s*\n/);
     for (const statement of statements) await db.prepare(statement).run();
+    const storageSource = { fdci: "Capacitación Docente", sime: "SIME", juntas: "Padrones y Comunicados",
+      cenet: "CeNET / INET", infd: "INFoD / AulaS-TIC" }[source];
+    await db.prepare("INSERT INTO external_event_sources(source) VALUES(?)").bind(storageSource).run();
     await db.prepare("INSERT INTO profiles(user_id,notify_new_trainings,training_notify_scope) VALUES('test-teacher',1,'all')").run();
   }
   const now = new Date();

@@ -44,6 +44,11 @@ export const externalPublicationEvents = sqliteTable("external_publication_event
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [index("idx_external_publication_events_pending").on(table.status, table.leaseUntil, table.id)]);
 
+export const externalEventSources = sqliteTable("external_event_sources", {
+  source: text("source", { enum: ["Capacitación Docente", "SIME", "Padrones y Comunicados", "CeNET / INET", "INFoD / AulaS-TIC"] }).primaryKey(),
+  enabledAt: text("enabled_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const savedPublications = sqliteTable("saved_publications", {
   userId: text("user_id").notNull(), publicationId: text("publication_id").notNull().references(() => publications.id, { onDelete: "cascade" }),
   inAgenda: integer("in_agenda", { mode: "boolean" }).notNull().default(false), followed: integer("followed", { mode: "boolean" }).notNull().default(false),

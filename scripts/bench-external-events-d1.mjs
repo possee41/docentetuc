@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { sourceHashCache } from "./direct-d1-receiver.mjs";
 import { materializeNextPersistedNoticePage } from "./external-notifications.mjs";
 
 const require = createRequire(import.meta.url);
@@ -22,6 +23,7 @@ try {
   const blocks = readFileSync(new URL("../migrations/0025_external_publication_events.sql", import.meta.url), "utf8")
     .split("\n").filter((line) => !line.trimStart().startsWith("--")).join("\n").trim().split(/\n\s*\n/);
   for (const block of blocks) await db.prepare(block).run();
+  await db.prepare("INSERT INTO external_event_sources(source) VALUES('Capacitación Docente')").run();
 
   const results = [];
   for (const count of [25, 100, 500]) {
@@ -57,9 +59,11 @@ try {
     results.push({ profiles: count, pages, ...metrics, notices: Number(notices.n) });
   }
   const sources = ["Capacitación Docente", "SIME", "Padrones y Comunicados", "CeNET / INET", "INFoD / AulaS-TIC"];
+  for (const source of sources.slice(1)) await db.prepare("INSERT INTO external_event_sources(source) VALUES(?)").bind(source).run();
   const importMetrics = { requests: 0, rowsRead: 0, rowsWritten: 0 };
-  const upsert = db.prepare(`INSERT INTO publications(id,source,content_hash,normalized_status,kind,category,title,metadata,circuit)
-    VALUES(?,?,?,'ACTIVE',?,?,?,?,'UNKNOWN')
+  const upsert = db.prepare(`INSERT INTO publications(id,source,content_hash,normalized_status,kind,category,title,metadata,circuit,
+    summary,level,area,junta,location,shift,character,source_circuit_raw)
+    VALUES(?,?,?,'ACTIVE',?,?,?,?,'UNKNOWN','','','','','','','','')
     ON CONFLICT(id) DO UPDATE SET content_hash=excluded.content_hash
     WHERE publications.content_hash<>excluded.content_hash`);
   const apply = async (index, version = 1) => {
@@ -100,6 +104,22 @@ try {
   const mixed = { sources: sources.length, profiles: 500, cycles: 3, firstWrites,
     repeatWrites: 0, updateWrites: importMetrics.rowsWritten - firstWrites, importMetrics,
     eventMetrics, eventSteps: steps, notifications: Number(total.n), wallMs: Math.round(performance.now() - started) };
+  await db.prepare("DELETE FROM external_event_sources").run();
+  for (let offset = 0; offset < 7200; offset += 100) {
+    const ids = Array.from({ length: 100 }, (_, index) => offset + index);
+    await db.prepare(`INSERT INTO publications(id,source,content_hash) VALUES ${ids.map(() => "(?,?,?)").join(",")}`)
+      .bind(...ids.flatMap((id) => [`synthetic:history:${String(id).padStart(5, "0")}`,
+        sources[id % sources.length], "h".repeat(64)])).run();
+  }
+  const snapshotMetrics = { requests: 0, rowsRead: 0, rowsWritten: 0 };
+  const snapshotDb = { prepare: (sql) => ({ bind: (...params) => ({ all: async () => {
+    const result = await db.prepare(sql).bind(...params).all();
+    snapshotMetrics.requests++;
+    snapshotMetrics.rowsRead += Number(result.meta?.rows_read || 0);
+    snapshotMetrics.rowsWritten += Number(result.meta?.rows_written || 0);
+    return result;
+  } }) }) };
+  for (const source of sources) assert.ok((await sourceHashCache(snapshotDb, source)).size >= 1440);
   console.log(JSON.stringify({ database: "D1 efímera Workerd", unit: "un evento y perfiles sintéticos", results,
-    mixedSyntheticCycle: mixed }));
+    mixedSyntheticCycle: mixed, sourceSnapshot: { existingPublications: 7200, ...snapshotMetrics } }));
 } finally { await mf.dispose(); }
