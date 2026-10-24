@@ -59,6 +59,10 @@ test("una fuente legacy no encola eventos hasta completar su corte", () => {
   sqlite.prepare("INSERT INTO external_event_sources(source) VALUES('SIME')").run();
   sqlite.prepare("UPDATE publications SET content_hash='b' WHERE id='sime:1'").run();
   assert.equal(sqlite.prepare("SELECT change FROM external_publication_events").get()?.change, "updated");
+  sqlite.prepare("DELETE FROM external_event_sources WHERE source='SIME'").run();
+  sqlite.prepare("UPDATE publications SET content_hash='c' WHERE id='sime:1'").run();
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM external_publication_events").get()?.n, 1);
+  assert.equal(sqlite.prepare("SELECT content_hash FROM publications WHERE id='sime:1'").get()?.content_hash, "c");
   sqlite.close();
 });
 

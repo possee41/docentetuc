@@ -6,6 +6,7 @@ import { createD1Rest } from "../scripts/d1-rest.mjs";
 import { createDirectD1ReceiverFetch, sourceHashCache, withSourceHashCache } from "../scripts/direct-d1-receiver.mjs";
 import { runDirectD1Import } from "../scripts/import-direct-d1.mjs";
 import { runFdciImport } from "../scripts/import-fdci.mjs";
+import { materializeExternalNoticePage } from "../scripts/external-notifications.mjs";
 import { prepareFdciImports } from "./fdci-import.ts";
 
 function isolatedRest() {
@@ -36,7 +37,7 @@ function isolatedRest() {
     const statement = sqlite.prepare(sql);
     const isRead = /^\s*SELECT\b/i.test(sql);
     const result = isRead ? { results: statement.all(...params), meta: { rows_read: 1, rows_written: 0 } } :
-      (() => { const changes = statement.run(...params).changes; return { results: [], meta: { rows_read: 0, rows_written: Number(changes) } }; })();
+      (() => { const changes = statement.run(...params).changes; return { results: [], meta: { rows_read: 0, rows_written: Number(changes), changes: Number(changes) } }; })();
     return Response.json({ success: true, result: [{ ...result, success: true }] });
   };
   const db = createD1Rest({ accountId: "a".repeat(32), databaseId: "b".repeat(8) + "-bbbb-bbbb-bbbb-" + "b".repeat(12),
@@ -137,5 +138,27 @@ test("el caché de hashes pagina 205 filas públicas y evita lecturas individual
   const result = await cached.prepare("SELECT id,source,content_hash,removed_at FROM publications WHERE id IN (?)").bind("sime:204").all();
   assert.equal(result.results[0].content_hash, "hash-204");
   assert.equal(db.metrics().requests, 2);
+  sqlite.close();
+});
+
+test("materialización por REST agrupa 25 avisos e idempotencia en cuatro consultas por página", async () => {
+  const { sqlite, db } = isolatedRest();
+  sqlite.exec(`CREATE TABLE profiles(user_id TEXT PRIMARY KEY,notify_new_trainings INTEGER,training_notify_scope TEXT);
+    CREATE TABLE notifications(id INTEGER PRIMARY KEY,user_id TEXT,publication_id TEXT,type TEXT,
+      dedupe_key TEXT,scheduled_at TEXT,UNIQUE(user_id,dedupe_key));`);
+  const id = "fdci:commission:rest-test", hash = "c".repeat(64);
+  sqlite.prepare(`INSERT INTO publications(id,source,external_id,kind,category,title,status,official_url,metadata,
+    content_hash,source_status,normalized_status) VALUES(?,'Capacitación Docente','rest-test','capacitacion',
+    'Capacitación','Ensayo aislado','vigente','https://capacitaciondocente.educaciontuc.gov.ar/',?,?,'vigente','ACTIVE')`)
+    .run(id, JSON.stringify({ entity: "commission", availablePreCapacity: 5,
+      registrationOpensAt: "2026-10-25T12:00:00Z" }), hash);
+  for (let index = 0; index < 25; index++) sqlite.prepare("INSERT INTO profiles VALUES(?,1,'all')").run(`user-${index}`);
+  const options = { events: [{ id, contentHash: hash, change: "created" }],
+    now: new Date("2026-10-24T12:00:00Z") };
+  const before = db.metrics().requests;
+  assert.equal((await materializeExternalNoticePage(db, options)).inserted, 25);
+  assert.equal(db.metrics().requests - before, 4);
+  assert.equal((await materializeExternalNoticePage(db, options)).inserted, 0);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM notifications").get()?.n, 25);
   sqlite.close();
 });
