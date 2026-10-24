@@ -27,7 +27,7 @@ function isolated(count: number) {
   const db = { prepare: (sql: string) => ({ bind: (...params: unknown[]) => ({
     first: async () => { metrics.queries++; metrics.rowsRead++; return sqlite.prepare(sql).get(...params as []) || null; },
     all: async () => { metrics.queries++; const results = sqlite.prepare(sql).all(...params as []); metrics.rowsRead += results.length; return { results }; },
-    run: async () => { metrics.queries++; const result = sqlite.prepare(sql).run(...params as []); metrics.rowsWritten += Number(result.changes); return { meta: { rows_written: Number(result.changes) } }; },
+    run: async () => { metrics.queries++; const result = sqlite.prepare(sql).run(...params as []); metrics.rowsWritten += Number(result.changes); return { meta: { rows_written: Number(result.changes), changes: Number(result.changes) } }; },
   }) }) };
   return { sqlite, put, db, metrics };
 }
@@ -69,16 +69,17 @@ test("cupo cero, retirada y registro cambiado no producen avisos engañosos", as
 
 test("fallo a mitad de página se recupera sin duplicar avisos", async () => {
   const fixture = isolated(25);
+  fixture.sqlite.prepare("UPDATE profiles SET notify_new_trainings=1").run();
   fixture.put("fdci:commission:2", { entity: "commission", availablePreCapacity: 3 });
   const input = { events: [{ id: "fdci:commission:2", contentHash: HASH, change: "created" }], now: new Date("2026-10-22T11:00:00Z") };
   let writes = 0;
   const db = { prepare: (sql: string) => ({ bind: (...params: unknown[]) => {
     const statement = fixture.db.prepare(sql).bind(...params);
-    return { ...statement, run: async () => { if (++writes === 4) throw new Error("D1_INTERRUPTED"); return statement.run(); } };
+    return { ...statement, run: async () => { if (++writes === 2) throw new Error("D1_INTERRUPTED"); return statement.run(); } };
   } }) };
   await assert.rejects(materializeExternalNoticePage(db, input), /D1_INTERRUPTED/);
   const retried = await materializeExternalNoticePage(fixture.db, input);
-  assert.equal(retried.inserted, 10);
-  assert.equal((fixture.sqlite.prepare("SELECT COUNT(*) AS n FROM notifications").get() as { n: number }).n, 13);
+  assert.equal(retried.inserted, 5);
+  assert.equal((fixture.sqlite.prepare("SELECT COUNT(*) AS n FROM notifications").get() as { n: number }).n, 25);
   fixture.sqlite.close();
 });

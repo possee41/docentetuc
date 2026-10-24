@@ -80,7 +80,7 @@ export async function materializeExternalNoticePage(db, { events, cursor = "", l
   if (!rows.length) return { profiles: 0, considered: 0, inserted: 0, nextCursor: null };
   const page = await db.prepare("SELECT * FROM profiles WHERE user_id>? ORDER BY user_id LIMIT ?").bind(cursor, limit).all();
   const profiles = page.results || [];
-  let considered = 0, inserted = 0;
+  const pending = [];
   for (const profile of profiles) for (const { row, event } of rows) {
     if (!matches(row, profile, now)) continue;
     const type = noticeType(row, profile, event.change);
@@ -88,12 +88,18 @@ export async function materializeExternalNoticePage(db, { events, cursor = "", l
     const date = metadata?.registrationOpensAt || metadata?.registrationClosesAt || row.ends_at || row.starts_at || row.source_updated_at || row.content_hash;
     const identity = event.change === "updated" ? `change:${row.content_hash}` : `date:${date}`;
     const key = notificationDedupeKey(row.id, type, identity);
-    const result = await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type, dedupe_key, scheduled_at) VALUES (?, ?, ?, ?, ?)")
-      .bind(profile.user_id, row.id, type, key, now.toISOString()).run();
-    considered++;
-    inserted += Number(result.meta?.rows_written || 0) > 0 ? 1 : 0;
+    pending.push([profile.user_id, row.id, type, key, now.toISOString()]);
   }
-  return { profiles: profiles.length, considered, inserted, nextCursor: profiles.length === limit ? profiles.at(-1).user_id : null };
+  let inserted = 0;
+  for (let offset = 0; offset < pending.length; offset += 20) {
+    const batch = pending.slice(offset, offset + 20);
+    const result = await db.prepare(`INSERT OR IGNORE INTO notifications (user_id, publication_id, type, dedupe_key, scheduled_at)
+      VALUES ${batch.map(() => "(?,?,?,?,?)").join(",")}`).bind(...batch.flat()).run();
+    if (!Number.isInteger(result.meta?.changes)) throw new Error("EXTERNAL_NOTICE_WRITE_UNCONFIRMED");
+    inserted += Number(result.meta.changes);
+  }
+  return { profiles: profiles.length, considered: pending.length, inserted,
+    nextCursor: profiles.length === limit ? profiles.at(-1).user_id : null };
 }
 
 // The SQLite triggers enqueue events atomically with publication writes. Claim

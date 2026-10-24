@@ -22,7 +22,8 @@ function fixture() {
   const db = { prepare: (sql: string) => ({ bind: (...params: unknown[]) => ({
     first: async () => sqlite.prepare(sql).get(...params as []) ?? null,
     all: async () => ({ results: sqlite.prepare(sql).all(...params as []) }),
-    run: async () => ({ meta: { rows_written: Number(sqlite.prepare(sql).run(...params as []).changes) } }),
+    run: async () => { const changes = Number(sqlite.prepare(sql).run(...params as []).changes);
+      return { meta: { rows_written: changes, changes } }; },
   }) }) } as unknown as D1Database;
   return { sqlite, db };
 }
