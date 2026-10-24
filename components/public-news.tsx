@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { ArrowLeft, ArrowRight, ExternalLink, ListFilter, RefreshCw } from "lucide-react";
-import { sectionUrl } from "@/lib/app-navigation";
 import type { PublicNewsItem, PublicNewsSource } from "@/lib/public-news";
 
 type NewsPage = { items: PublicNewsItem[]; nextPage: number | null; topics: string[] };
@@ -13,7 +12,6 @@ const sourceLabels: Record<PublicNewsSource["type"], string> = {
 };
 const date = (value: string) => new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Tucuman", day: "numeric", month: "long", year: "numeric" }).format(new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00-03:00` : value));
 const dateTime = (value: string) => new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Tucuman", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
-const initialParams = () => typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(location.search);
 const pageFromParams = (params: URLSearchParams) => Math.min(100, Math.max(0, Number.parseInt(params.get("page") || "0", 10) || 0));
 
 async function getNews<T>(url: string, signal: AbortSignal): Promise<T> {
@@ -32,9 +30,9 @@ function NewsImage({ image, eager = false }: { image: NonNullable<PublicNewsItem
   </figure>;
 }
 
-function NewsCard({ item, onOpen, href, compact = false, wide = false }: { item: PublicNewsItem; onOpen?: () => void; href?: string; compact?: boolean; wide?: boolean }) {
+function NewsCard({ item, onOpen, wide = false }: { item: PublicNewsItem; onOpen: () => void; wide?: boolean }) {
   const urgent = item.relevance === "urgente";
-  const prominent = !compact && (urgent || item.featured);
+  const prominent = urgent || item.featured;
   const linkClass = "text-left decoration-[var(--accent-text)] decoration-2 underline-offset-4 transition group-hover:underline focus-visible:underline";
   return <article className={`group flex min-w-0 flex-col border-b border-[var(--border)] py-5 ${wide ? "lg:col-span-2" : ""} ${urgent ? "border-l-4 border-l-red-600 bg-[var(--surface-primary)] pl-4 pr-3" : item.featured ? "border-t-2 border-t-[var(--accent-text)]" : ""}`}>
     {item.image && <div className="order-3 mt-4 lg:order-1 lg:mt-0"><NewsImage key={item.image.url} image={item.image} /></div>}
@@ -43,45 +41,50 @@ function NewsCard({ item, onOpen, href, compact = false, wide = false }: { item:
       {item.featured && <span className="text-[var(--text-muted)]">Destacada</span>}
       <span className="text-[var(--text-muted)]">{date(item.publishedAt)}</span>
     </div>
-    <h3 className={`order-2 mt-3 break-words font-black leading-tight tracking-tight text-[var(--text-primary)] lg:order-3 ${prominent ? "text-2xl sm:text-3xl" : compact ? "text-lg sm:text-xl" : "text-xl sm:text-2xl"}`}>
-      {href ? <a href={href} className={linkClass}>{item.title}</a> : <button type="button" onClick={onOpen} className={linkClass}>{item.title}</button>}
+    <h3 className={`order-2 mt-3 break-words font-black leading-tight tracking-tight text-[var(--text-primary)] lg:order-3 ${prominent ? "text-2xl sm:text-3xl" : "text-xl sm:text-2xl"}`}>
+      <button type="button" onClick={onOpen} className={linkClass}>{item.title}</button>
     </h3>
     <p className="order-4 mt-3 line-clamp-4 whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--text-secondary)] sm:text-base">{item.summary}</p>
     <div className="order-5 mt-4 flex flex-wrap items-end justify-between gap-x-4 gap-y-2 border-t border-[var(--border)] pt-3 text-xs text-[var(--text-muted)]">
       <div><span className="font-bold text-[var(--text-secondary)]">{item.topic || "Actualidad docente"}</span><span className="block mt-1">{sourceLabels[item.primarySource.type]} · {item.primarySource.name}</span>{item.validUntil && <span className="block mt-1">Vigente hasta {dateTime(item.validUntil)}</span>}</div>
-      {href ? <a href={href} className="inline-flex min-h-10 items-center gap-1 font-bold text-[var(--accent-text)]">Leer noticia <ArrowRight className="size-4" /></a> : <button type="button" onClick={onOpen} className="inline-flex min-h-10 items-center gap-1 font-bold text-[var(--accent-text)]">Leer noticia <ArrowRight className="size-4" /></button>}
+      <button type="button" onClick={onOpen} className="inline-flex min-h-10 items-center gap-1 font-bold text-[var(--accent-text)]">Leer noticia <ArrowRight className="size-4" /></button>
     </div>
   </article>;
 }
 
 export function PublicNewsSection() {
-  const [detailId, setDetailId] = useState(() => initialParams().get("news"));
-  const [query, setQuery] = useState(() => initialParams().get("q") || "");
-  const [topic, setTopic] = useState(() => initialParams().get("topic") || "");
-  const [relevance, setRelevance] = useState(() => initialParams().get("relevance") || "");
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [topic, setTopic] = useState("");
+  const [relevance, setRelevance] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [page, setPage] = useState(() => pageFromParams(initialParams()));
+  const [page, setPage] = useState(0);
+  const [ready, setReady] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   const [list, setList] = useState<NewsPage>({ items: [], nextPage: null, topics: [] });
   const [detail, setDetail] = useState<NewsDetail | null>(null);
   const [loading, setLoading] = useState(true), [error, setError] = useState(""), [retry, setRetry] = useState(0);
 
   useEffect(() => {
+    let active = true;
     const onPop = () => { const params = new URLSearchParams(location.search);
-      setDetailId(params.get("news")); setQuery(params.get("q") || ""); setTopic(params.get("topic") || "");
+      setDetailId(params.get("news")); setQuery(params.get("q") || ""); setDebouncedQuery(params.get("q") || ""); setTopic(params.get("topic") || "");
       setRelevance(params.get("relevance") || ""); setPage(pageFromParams(params)); };
+    queueMicrotask(() => { if (active) { onPop(); setReady(true); } });
     window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
+    return () => { active = false; window.removeEventListener("popstate", onPop); };
   }, []);
   useEffect(() => { const timer = setTimeout(() => setDebouncedQuery(query), 250); return () => clearTimeout(timer); }, [query]);
   useEffect(() => {
+    if (!ready) return;
     const params = new URLSearchParams(location.search);
     for (const [key, value] of [["q", debouncedQuery], ["topic", topic], ["relevance", relevance], ["page", page ? String(page) : ""]]) {
       if (value) params.set(key, value); else params.delete(key);
     }
     history.replaceState(history.state, "", `${location.pathname}?${params}`);
-  }, [debouncedQuery, topic, relevance, page]);
+  }, [ready, debouncedQuery, topic, relevance, page]);
   useEffect(() => {
+    if (!ready) return;
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000);
     let active = true;
     queueMicrotask(() => { if (active) { setLoading(true); setError(""); } });
@@ -93,7 +96,7 @@ export function PublicNewsSection() {
     }).catch(() => { if (active) { setError("No pudimos cargar las noticias. Intentá nuevamente."); if (detailId) setDetail(null); else setList((old) => ({ ...old, items: [] })); } })
       .finally(() => { clearTimeout(timer); if (active) setLoading(false); });
     return () => { active = false; clearTimeout(timer); controller.abort(); };
-  }, [detailId, debouncedQuery, topic, relevance, page, retry]);
+  }, [ready, detailId, debouncedQuery, topic, relevance, page, retry]);
 
   const filter = (key: string, value: string) => {
     if (key === "q") setQuery(value);
@@ -161,25 +164,5 @@ export function PublicNewsSection() {
           : <p className="rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-5 text-[var(--text-secondary)]">No hay noticias publicadas para estos filtros.</p>}
       {!loading && !error && <div className="flex items-center justify-between gap-3"><button type="button" disabled={page === 0} onClick={() => setPage(page - 1)} className="min-h-11 rounded-xl border border-[var(--border)] bg-[var(--surface-primary)] px-4 font-bold disabled:opacity-50">Anterior</button><span className="text-sm text-[var(--text-muted)]">Página {page + 1}</span><button type="button" disabled={list.nextPage === null} onClick={() => setPage(page + 1)} className="min-h-11 rounded-xl border border-[var(--border)] bg-[var(--surface-primary)] px-4 font-bold disabled:opacity-50">Siguiente</button></div>}
     </>}
-  </section>;
-}
-
-export function HomeNews({ excludedOriginIds }: { excludedOriginIds: string[] }) {
-  const [items, setItems] = useState<PublicNewsItem[]>([]);
-  const excluded = excludedOriginIds.join(",");
-  useEffect(() => {
-    const controller = new AbortController();
-    let active = true;
-    void getNews<{ items: PublicNewsItem[] }>(`/api/news?home=1&exclude=${encodeURIComponent(excluded)}`, controller.signal)
-      .then((result) => { if (active) setItems(result.items); }).catch(() => { if (active) setItems([]); });
-    return () => { active = false; controller.abort(); };
-  }, [excluded]);
-  if (!items.length) return null;
-  const urgent = items.find((entry) => entry.relevance === "urgente");
-  const otherItems = items.filter((entry) => entry.id !== urgent?.id);
-  return <section className="home-section space-y-3" aria-label="Noticias destacadas">
-    <div className="flex flex-wrap items-end justify-between gap-2"><div><p className="text-xs font-black uppercase tracking-widest text-[var(--accent-text)]">NOTICIAS</p><h2 className="text-xl font-black text-[var(--text-primary)]">Actualidad docente</h2></div><a href={sectionUrl("noticias")} className="inline-flex min-h-10 items-center gap-1 text-sm font-bold text-[var(--accent-text)]">Ver todas las noticias <ArrowRight className="size-4" /></a></div>
-    {urgent && <NewsCard item={urgent} href={`${sectionUrl("noticias")}&news=${encodeURIComponent(urgent.id)}`} compact />}
-    <div className="grid gap-x-6 lg:grid-cols-2">{otherItems.map((entry) => <NewsCard key={entry.id} item={entry} href={`${sectionUrl("noticias")}&news=${encodeURIComponent(entry.id)}`} compact />)}</div>
   </section>;
 }

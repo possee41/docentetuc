@@ -81,19 +81,30 @@ test("filtra tema, relevancia, texto editorial y pagina sin duplicar", async () 
   } finally { raw.close(); }
 });
 
-test("Inicio prioriza una urgente y hasta dos importantes/destacadas sin duplicar oportunidades", async () => {
+test("Inicio entrega hasta cinco noticias vigentes, urgentes primero y sin duplicar oportunidades", async () => {
   const { raw, database } = fixture();
   try {
     add(raw, "urgent", { relevance: "urgente" });
     add(raw, "important-training", { relevance: "importante", origin: "training-a" });
     add(raw, "important", { relevance: "importante" });
     add(raw, "featured", { featured: 1 });
+    add(raw, "more-featured", { featured: 1 });
+    add(raw, "more-important", { relevance: "importante" });
     add(raw, "ordinary");
     const result = await listPublicNews(database, new URLSearchParams("home=1&exclude=training-a,designation-a"), now);
     assert.equal(result.items[0].id, "urgent");
-    assert.equal(result.items.length, 3);
+    assert.equal(result.items.length, 5);
     assert.ok(result.items.every((entry) => entry.id !== "important-training" && entry.id !== "ordinary"));
-    assert.equal(result.items.filter((entry) => entry.relevance !== "urgente").length, 2);
+    assert.equal(result.items.filter((entry) => entry.relevance !== "urgente").length, 4);
+  } finally { raw.close(); }
+});
+
+test("Inicio sin noticias editoriales conserva solo el banner original", async () => {
+  const { raw, database } = fixture();
+  try {
+    assert.deepEqual((await listPublicNews(database, new URLSearchParams("home=1"), now)).items, []);
+    add(raw, "candidate", { status: "candidate", featured: 1 });
+    assert.deepEqual((await listPublicNews(database, new URLSearchParams("home=1"), now)).items, []);
   } finally { raw.close(); }
 });
 
@@ -146,7 +157,7 @@ test("Noticias usa URL propia, menú e Inicio sin ocupar la navegación inferior
   const component = readFileSync(new URL("../components/public-news.tsx", import.meta.url), "utf8");
   assert.match(sidebar, /\["noticias", "Noticias"/);
   assert.match(app, /view === "noticias" \? <PublicNewsSection \/>/);
-  assert.match(app, /<HomeNews excludedOriginIds=/);
+  assert.match(app, /<HomeNewsCarousel name=/);
   assert.doesNotMatch(app, /\["inicio", "comunidad", "agenda", "perfil", "cuentas", "noticias"\]/);
   assert.match(component, /newsDetail: true/);
   assert.match(component, /window\.addEventListener\("popstate", onPop\)/);

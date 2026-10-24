@@ -38,12 +38,12 @@ import { usefulMetadata } from "@/lib/useful-information";
 import { canRecommendCurrentPublication, publicationLifecycle } from "@/lib/publication-lifecycle";
 import { designationEmptyState, hasDesignationProfilePreferences } from "@/lib/designation-state";
 import { AppHeader, BottomNavigation, Card, CompatibilityBadge, EmptyState, FilterChip, StatusBadge } from "@/components/docentetuc-ui";
-import { HomeBannerContext } from "@/components/home-banner-context";
+import { HomeNewsCarousel } from "@/components/home-banner-context";
 import { PublicProfileSection } from "@/components/public-profile-section";
 import { AccountSignInSection } from "@/components/account-sign-in-section";
 import { GoogleAccountPhoto } from "@/components/google-account-photo";
 import { GlobalPublicationSearch } from "@/components/global-publication-search";
-import { HomeNews, PublicNewsSection } from "@/components/public-news";
+import { PublicNewsSection } from "@/components/public-news";
 import { AppSidebar, AppSidebarEdge, AppSidebarTrigger, navigation, useAppSidebarState } from "@/components/app-sidebar";
 import type { AppView as View } from "@/components/app-sidebar";
 import { deviceRequestHeaders } from "@/lib/device-user";
@@ -52,7 +52,7 @@ import { boardItems } from "@/lib/board-view";
 import { sourceHealth, sourceNotices } from "@/lib/source-health";
 import type { BoardView } from "@/lib/board-view";
 import { groupPadrones, padronDocuments, padronSelection, padronTitleFacts, padronYear } from "@/lib/padron-documents";
-import { eventDate as officialEventDate, hasOfficialTopic, officialDateLabel, officialDestination, officialLifecycle, officialMetadata, readMetadata } from "@/lib/official-publication";
+import { eventDate as officialEventDate, hasOfficialTopic, officialDestination, officialLifecycle, officialMetadata, readMetadata } from "@/lib/official-publication";
 import { officialSavedLookup, resolveOfficialAlias } from "@/lib/official-reconciliation";
 import { OfficialPublicationDetails, OfficialPublicationSummary } from "@/components/official-publication-details";
 import type { AdminNotice } from "@/lib/admin-notices";
@@ -810,7 +810,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   return <div className="daily-home">
     <header className="home-hero">
       <div className="home-hero-top"><h1 className="sr-only">DocenteTuc · Tu información educativa en un solo lugar</h1></div>
-      <div className="home-hero-copy"><HomeBannerContext name={profile?.name} /></div>
+      <HomeNewsCarousel name={profile?.name} excludedOriginIds={[...primaryHomeIds].filter((id): id is string => typeof id === "string")} />
     </header>
     <section className="home-section home-for-you"><div className="home-section-title"><div><p>IMPORTANTE PARA VOS</p><h2>Oportunidades a tu medida</h2></div><button onClick={() => onView("capacitaciones")}>Ver oportunidades <ChevronRight className="size-4" /></button></div>
       {loading ? <HomeSkeleton /> : <>
@@ -821,7 +821,6 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
     </section>
 
     <section className="home-shortcuts" aria-labelledby="home-shortcuts-title"><div className="home-section-title"><div><p>ACCESOS RÁPIDOS</p><h2 id="home-shortcuts-title">Todo lo que necesitás</h2></div></div><div className="home-shortcut-grid">{visibleHomeShortcuts.map(({ label, caption, icon: Icon, view, image, query }) => <button key={label} type="button" className={`home-shortcut home-shortcut-${image}`} onClick={() => onView(view, query)}><span className="home-shortcut-icon"><Icon className="size-6" aria-hidden="true" /></span><span className="home-shortcut-copy"><strong>{label}</strong><small>{caption}</small></span><ChevronRight className="home-shortcut-arrow size-4" aria-hidden="true" /></button>)}</div></section>
-    <HomeNews excludedOriginIds={[...primaryHomeIds].filter((id): id is string => typeof id === "string")} />
 
     <button type="button" onClick={() => onView("comunidad")} className="home-section flex w-full items-center gap-4 rounded-2xl p-4 text-left transition hover:border-sky-200 hover:shadow-sm sm:p-5">
       <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-sky-100 text-sky-700"><MessagesSquare className="size-6" aria-hidden="true" /></span>

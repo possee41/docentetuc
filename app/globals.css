@@ -554,6 +554,27 @@ button:disabled { opacity: .68; }
 .home-hero-location { color: #fff; font-size: .68rem; font-weight: 650; line-height: 1.3; }
 .home-hero-location a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .home-hero-location a:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.home-carousel { position: absolute; inset: 0; z-index: 1; }
+.home-carousel-slide { position: absolute; inset: 0; overflow: hidden; opacity: 0; pointer-events: none; transition: opacity .55s ease; }
+.home-carousel-slide.is-active { opacity: 1; pointer-events: auto; }
+.home-carousel-original { display: flex; align-items: flex-end; padding: .85rem 1rem 2.5rem; }
+.home-carousel-news { background: linear-gradient(125deg, #07355e, #0a6a86); }
+.home-carousel-image { object-fit: cover; }
+.home-carousel-news-link { position: relative; display: flex; width: 100%; height: 100%; align-items: flex-end; padding: 3.4rem 1rem 2.5rem; color: #fff; background: linear-gradient(0deg, rgb(0 20 39 / .94), rgb(0 30 54 / .68) 57%, rgb(0 33 59 / .34)); text-decoration: none; }
+.home-carousel-news-link:focus-visible { outline: 3px solid #fff; outline-offset: -5px; }
+.home-carousel-news-content { display: grid; max-width: 42rem; gap: .22rem; text-shadow: 0 2px 8px rgb(0 0 0 / .65); }
+.home-carousel-kicker { font-size: .7rem; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.home-carousel-news-content strong { display: -webkit-box; overflow: hidden; font-size: clamp(1.1rem, 4.8vw, 1.9rem); font-weight: 900; line-height: 1.14; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.home-carousel-news-content > span:last-child { font-size: .75rem; font-weight: 700; }
+.home-carousel-dots, .home-carousel-arrows { position: absolute; z-index: 3; top: .5rem; display: flex; align-items: center; }
+.home-carousel-dots { left: .55rem; }
+.home-carousel-dots button { display: grid; width: 1.5rem; height: 2.25rem; place-items: center; }
+.home-carousel-dots span { width: .5rem; height: .5rem; border-radius: 50%; background: rgb(255 255 255 / .55); box-shadow: 0 1px 5px rgb(0 0 0 / .5); }
+.home-carousel-dots [aria-current="true"] span { width: .7rem; height: .7rem; background: #fff; }
+.home-carousel-arrows { right: .7rem; gap: .3rem; }
+.home-carousel-arrows button { display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border: 1px solid rgb(255 255 255 / .7); border-radius: 50%; color: #fff; background: rgb(0 29 53 / .55); }
+.home-carousel-dots button:focus-visible, .home-carousel-arrows button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .home-carousel-slide { transition: none; } }
 .home-shortcuts { overflow: hidden; border: 1px solid var(--border); border-radius: 1.15rem; background: var(--surface-primary); box-shadow: 0 7px 22px rgb(6 57 103 / .06); backdrop-filter: blur(10px); }
 .home-shortcut-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; padding: 0 .65rem .65rem; }
 .home-shortcut { position: relative; isolation: isolate; display: flex; min-width: 0; min-height: 6.35rem; flex-direction: column; align-items: flex-start; justify-content: space-between; overflow: hidden; border: 1px solid rgb(255 255 255 / .2); border-radius: .95rem; padding: .65rem .7rem; color: #fff; background-color: #0878be; background-image: linear-gradient(180deg, rgb(4 34 63 / .1), rgb(3 28 54 / .82)), var(--shortcut-image, none); background-position: center, center; background-size: cover; text-align: left; box-shadow: inset 0 0 0 1px rgb(6 43 85 / .08); }
@@ -607,6 +628,8 @@ button:disabled { opacity: .68; }
   .daily-home { gap: 1rem; }
   .home-hero { min-height: 20rem; padding: 1.1rem 1.35rem 1.25rem; background-position: center, center 51%; }
   .home-hero-copy { padding-top: 2.1rem; }
+  .home-carousel-original { padding: 1.25rem 1.35rem 2.75rem; }
+  .home-carousel-news-link { padding: 3.5rem 1.35rem 2.75rem; }
   .home-shortcut-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; padding: 0 .8rem .8rem; }
   .home-shortcut { min-height: 8.6rem; padding: .8rem; }
   .home-shortcut-copy strong { font-size: .95rem; }

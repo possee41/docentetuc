@@ -66,10 +66,8 @@ export async function listPublicNews(database: CommunityDatabase, params: URLSea
     if (excluded.length) { where += ` AND (n.origin_publication_id IS NULL OR n.origin_publication_id NOT IN (${excluded.map(() => "?").join(",")}))`; values.push(...excluded); }
     const rows = await database.prepare(`SELECT ${columns} ${publicFrom} WHERE ${where}
       ORDER BY CASE n.relevance WHEN 'urgente' THEN 0 WHEN 'importante' THEN 1 ELSE 2 END,
-      n.featured DESC,n.published_at DESC,n.id DESC LIMIT 12`).bind(...values).all<NewsRow>();
-    const ranked = rows.results || [];
-    return { items: [...ranked.filter((row) => row.relevance === "urgente").slice(0, 1),
-      ...ranked.filter((row) => row.relevance !== "urgente").slice(0, 2)].map(item) };
+      n.featured DESC,n.published_at DESC,n.id DESC LIMIT 5`).bind(...values).all<NewsRow>();
+    return { items: (rows.results || []).map(item) };
   }
   if (topic) { where += " AND n.topic=?"; values.push(topic); }
   if (relevance) { where += " AND n.relevance=?"; values.push(relevance); }
