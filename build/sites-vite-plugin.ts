@@ -1,6 +1,7 @@
 // Vendored from @openai/sites-vite-plugin 0.2.0 (openai/sites#9).
 // See sites-vite-plugin.LICENSE for the upstream MIT license.
 import { access, cp, mkdir, rm } from "node:fs/promises";
+import { createHmac } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import type { Plugin } from "vite";
@@ -29,7 +30,7 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-export function sites({ mockAuth = true } = {}): Plugin {
+export function sites({ mockAuth = true, previewAuth }: { mockAuth?: boolean; previewAuth?: { secret: string; token: string } | null } = {}): Plugin {
   let root = process.cwd();
   let command: "build" | "serve" = "build";
 
@@ -161,12 +162,17 @@ export function sites({ mockAuth = true } = {}): Plugin {
           "Location",
           safeReturn(url.searchParams.get("return_to")),
         );
-        response.setHeader(
-          "Set-Cookie",
-          `${localCookieName}=${signIn ? "1" : ""}; Path=/; ${
+        const setCookies = [`${localCookieName}=${signIn ? "1" : ""}; Path=/; ${
+          signOut ? "Max-Age=0; " : ""
+        }HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`];
+        // Only the loopback Vite server can issue this synthetic Better Auth session.
+        if (previewAuth) {
+          const signed = `${previewAuth.token}.${createHmac("sha256", previewAuth.secret).update(previewAuth.token).digest("base64")}`;
+          setCookies.push(`docentetuc-auth.session_token=${signIn ? signed : ""}; Path=/; ${
             signOut ? "Max-Age=0; " : ""
-          }HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`,
-        );
+          }HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`);
+        }
+        response.setHeader("Set-Cookie", setCookies);
         response.end();
       });
     },

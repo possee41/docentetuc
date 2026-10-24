@@ -1,5 +1,7 @@
 import vinext from "vinext";
 import { defineConfig } from "vite";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import hostingConfig from "./.openai/hosting.json";
 import { readExecutionProfile } from "./scripts/execution-profile.mjs";
 import { sites } from "./build/sites-vite-plugin";
@@ -12,30 +14,28 @@ const { d1, r2 } = hostingConfig;
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const managedLinux = readExecutionProfile() === "managed-linux";
-
-const localBindingConfig = {
-  main: "vinext/server/fetch-handler",
-  compatibility_flags: ["nodejs_compat"],
-  d1_databases: d1
-    ? [
-        {
-          binding: d1,
-          database_name: "site-creator-d1",
-          database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
-        },
-      ]
-    : [],
-  r2_buckets: r2
-    ? [
-        {
-          binding: r2,
-          bucket_name: "site-creator-r2",
-        },
-      ]
-    : [],
-};
-
-export default defineConfig(async () => {
+export default defineConfig(async ({ command }) => {
+  const previewAuthFile = command === "serve" && !managedLinux && process.env.DOCENTETUC_PREVIEW_STATE_DIR
+    ? resolve(process.env.DOCENTETUC_PREVIEW_STATE_DIR, "auth.json") : "";
+  const previewAuth: { secret: string; token: string } | null = previewAuthFile && existsSync(previewAuthFile)
+    ? JSON.parse(readFileSync(previewAuthFile, "utf8")) : null;
+  const localBindingConfig = {
+    main: "vinext/server/fetch-handler",
+    compatibility_flags: ["nodejs_compat"],
+    ...(previewAuth ? { vars: {
+      BETTER_AUTH_SECRET: previewAuth.secret,
+      BETTER_AUTH_URL: "http://localhost:8793",
+      GOOGLE_CLIENT_ID: "local-preview-only",
+      GOOGLE_CLIENT_SECRET: "local-preview-only",
+      AI_PROVIDER: "preview",
+      AI_API_KEY: "local-preview-only",
+      AI_MODEL: "preview",
+    } } : {}),
+    d1_databases: d1
+      ? [{ binding: d1, database_name: "site-creator-d1", database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID }]
+      : [],
+    r2_buckets: r2 ? [{ binding: r2, bucket_name: "site-creator-r2" }] : [],
+  };
   // Use Miniflare's local Request.cf placeholder unless fetching is requested.
   process.env.CLOUDFLARE_CF_FETCH_ENABLED ??= "false";
   process.env.WRANGLER_SEND_METRICS ??= "false";
@@ -60,7 +60,7 @@ export default defineConfig(async () => {
     },
     plugins: [
       vinext(),
-      sites({ mockAuth: !managedLinux }),
+      sites({ mockAuth: !managedLinux, previewAuth }),
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
         inspectorPort: false,

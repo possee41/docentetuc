@@ -136,6 +136,9 @@ class OpenAIProvider implements AIProvider {
 }
 
 export function createAIProvider(config: AIConfig): AIProvider {
+  if (config.provider === "preview" && import.meta.env?.DEV) return {
+    async generate() { return "Respuesta simulada para esta revisión local. Comprobá las fuentes citadas: esta prueba no confirma información nueva ni utiliza Gemini."; },
+  };
   if (config.provider === "gemini") return new GeminiProvider(config.apiKey, config.model);
   if (config.provider === "openai") return new OpenAIProvider(config.apiKey, config.model);
   throw new AIProviderError("AI_PROVIDER debe ser gemini u openai.", 500);
