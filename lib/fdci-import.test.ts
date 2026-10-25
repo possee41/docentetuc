@@ -113,3 +113,24 @@ test("una respuesta activa incompleta no escribe ni declara éxito", async () =>
   await assert.rejects(runFdciImport({ endpoint, token, scope: "active", fetcher }), /FDCI_SELECTION_INCOMPLETE/);
   assert.equal(writes, 0);
 });
+
+test("el barrido completo guarda cursos sanos ante un detalle fallido, sin declarar éxito", async () => {
+  const sent: string[] = [];
+  const healthy = { ...course, capacitacion_id: 43, token: "healthy", slug: "sano" };
+  const failed = { ...course, capacitacion_id: 44, token: "failed", slug: "incompleto" };
+  const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("getCapaActivas")) return Response.json([]);
+    if (url.endsWith("getRestoCapas")) return Response.json([healthy, failed]);
+    if (url.endsWith("getCupo")) return Response.json(JSON.parse(String(init?.body)).token === "healthy" ? { comisiones: [] } : {});
+    if (url === endpoint) {
+      const items = JSON.parse(String(init?.body)).items as { id: string }[];
+      sent.push(...items.map((item) => item.id));
+      return Response.json({ ok: true, received: items.length, created: items.length, updated: 0, unchanged: 0 });
+    }
+    throw new Error("unexpected URL");
+  };
+  await assert.rejects(runFdciImport({ endpoint, token, scope: "full", fetcher }), /FDCI_PARTIAL_SOURCE/);
+  assert.ok(sent.includes("fdci:course:43"));
+  assert.ok(!sent.some((id) => id.startsWith("fdci:commission:")));
+});

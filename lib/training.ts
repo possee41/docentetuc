@@ -55,7 +55,11 @@ const localDateTime = (value: unknown, endOfDay = false) => {
     : `${raw.replace(" ", "T")}${/[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw) ? "" : "-03:00"}`;
   return Number.isFinite(Date.parse(normalized)) ? normalized : undefined;
 };
-export const plainText = (value: unknown) => text(value).replace(/<[^>]*>/g, " ").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
+export const plainText = (value: unknown) => text(value).replace(/<[^>]*>/g, " ")
+  .replace(/&#(x[0-9a-f]+|\d+);/gi, (_match, digits: string) => {
+    const point = Number.parseInt(digits[0].toLowerCase() === "x" ? digits.slice(1) : digits, digits[0].toLowerCase() === "x" ? 16 : 10);
+    return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : "";
+  }).replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
 
 export function enrollmentState(metadata: TrainingMetadata | null, sourceStatus = "", normalizedStatus = "", now = new Date()): EnrollmentState {
   if (["CLOSED", "EXPIRED", "REMOVED_FROM_SOURCE"].includes(normalizedStatus)) return "CERRADA";

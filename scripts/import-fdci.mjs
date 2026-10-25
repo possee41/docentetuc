@@ -61,13 +61,16 @@ export async function runFdciImport({ endpoint, token, fetcher = fetch, collect 
   let created = 0, updated = 0, unchanged = 0, batches = 0;
   const { items, failures, coursesFetched } = await collect(fetcher, selection, scope);
   if (!Array.isArray(items) || (scope === "single" && !items.length)) throw new Error("FDCI_EMPTY_RESPONSE");
-  if (failures || (scope === "single" && (items.length !== 1 || items[0].id !== `fdci:commission:${selection.commissionId}`))) throw new Error("FDCI_SELECTION_INCOMPLETE");
+  if (failures && scope !== "full" || (scope === "single" && (items.length !== 1 || items[0].id !== `fdci:commission:${selection.commissionId}`))) throw new Error("FDCI_SELECTION_INCOMPLETE");
   // One row per invocation keeps the receiver well below its five-row hard limit.
   for (const item of items) {
     const result = await sendFdci(endpoint, token, { mode: "batch", items: [item] }, fetcher);
     if (!result.ok || result.received !== 1) throw new Error("IMPORT_ACK_INVALID");
     created += result.created; updated += result.updated; unchanged += result.unchanged; batches++;
   }
+  // A bad historical detail must not block healthy new courses. The run stays partial:
+  // no source-wide success or absence reconciliation may follow it.
+  if (failures) throw new Error("FDCI_PARTIAL_SOURCE");
   return { coursesFetched, discovered: items.length, created, updated, unchanged, batches, completed: scope === "full" };
 }
 

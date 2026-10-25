@@ -32,7 +32,9 @@ export async function runDirectD1Import({ source, db, sourceFetch = fetch, drive
       }
     } catch (error) {
       if (scope === "full") {
-        try { await db.prepare("UPDATE sync_state SET sync_status='ERROR',error_code='EXTERNAL_IMPORT_FAILED',error_message='Importación externa interrumpida' WHERE source='Capacitación Docente'").bind().run(); } catch { /* Preserve the import failure. */ }
+        try { await db.prepare("UPDATE sync_state SET sync_status=?,error_code=?,error_message='Importación externa incompleta' WHERE source='Capacitación Docente'")
+          .bind(error instanceof Error && error.message === "FDCI_PARTIAL_SOURCE" ? "PARTIAL" : "ERROR",
+            error instanceof Error && error.message === "FDCI_PARTIAL_SOURCE" ? "FDCI_PARTIAL_SOURCE" : "EXTERNAL_IMPORT_FAILED").run(); } catch { /* Preserve the import failure. */ }
       }
       throw error;
     }
