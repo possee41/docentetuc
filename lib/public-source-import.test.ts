@@ -6,6 +6,8 @@ import receiver from "../workers/public-source-receiver.mjs";
 import { runPublicSourceImport } from "../scripts/import-public-sources.mjs";
 import { APP_PUBLICATIONS_QUERY } from "./app-publications-query.ts";
 import { officialMetadata } from "./official-publication.ts";
+import { extractJuntaNotices } from "./junta-notices.ts";
+import { prepareJuntaImport } from "./public-source-import.ts";
 
 const secret = "synthetic_public_import_secret_123456";
 const endpoint = "https://example.test/api/internal/public-source-import/juntas";
@@ -161,6 +163,83 @@ test("Juntas: timeout en Comunicados deja PARTIAL y permite Padrones y Llamados"
   const count = rows.length;
   await assert.rejects(h.run("juntas", { driveKey: "synthetic_drive_api_key_123456", juntaSources: sources }));
   assert.equal(h.sqlite.prepare("SELECT count(*) AS n FROM publications").get()?.n, count);
+});
+
+test("Juntas: documento extenso se mide y rechaza sin frenar Padrones ni Llamados", async () => {
+  const longText = `${noticeText}\n${"Condiciones de inscripción y documentación a presentar. ".repeat(500)}`;
+  const sourceFetch = (async (input: RequestInfo | URL) => {
+    if (String(input).includes("/export?format=txt")) return new Response(longText);
+    const folderId = new URL(String(input)).searchParams.get("q")?.match(/'([^']+)'/)?.[1];
+    return Response.json({ files: [{ id: folderId === "123456789012345678901234567890" ? "padron_pdf_2" : "llamado_pdf_2",
+      name: "Documento oficial sin fecha de cierre", mimeType: "application/pdf" }] });
+  }) as typeof fetch;
+  const h = harness(sourceFetch), sources = [
+    ["com-large", "Comunicados", "Inicial y Primaria", docUrl],
+    ["pad-test", "Padrones", "Inicial y Primaria", folderUrl],
+    ["llam-test", "Llamados abiertos", "Inicial y Primaria", "https://drive.google.com/drive/folders/234567890123456789012345678901"],
+  ] as const;
+  await assert.rejects(h.run("juntas", { driveKey: "synthetic_drive_api_key_123456", juntaSources: sources }),
+    (error: Error & { failures?: { category: string; code: string; summaryBytes?: number; metadataBytes?: number; bodyBytes?: number }[] }) => {
+      assert.equal(error.message, "JUNTAS_PARTIAL_SOURCE");
+      const oversized = error.failures?.find((item) => item.code === "JUNTAS_ITEM_TOO_LARGE");
+      assert.equal(oversized?.category, "Comunicados");
+      assert.ok((oversized?.summaryBytes || 0) > 8000);
+      assert.ok((oversized?.metadataBytes || 0) < 16000, "la evidencia redundante se normaliza");
+      assert.ok((oversized?.bodyBytes || 0) < 100000, "el contenido completo se rechaza por el límite de campo");
+      return true;
+    });
+  assert.equal(h.sqlite.prepare("SELECT sync_status FROM sync_state WHERE source='Comunicados'").get()?.sync_status, "PARTIAL");
+  assert.equal(h.sqlite.prepare("SELECT sync_status FROM sync_state WHERE source='Padrones'").get()?.sync_status, "OK");
+  assert.equal(h.sqlite.prepare("SELECT sync_status FROM sync_state WHERE source='Llamados abiertos'").get()?.sync_status, "OK");
+  assert.equal(h.sqlite.prepare("SELECT COUNT(*) AS n FROM publications WHERE id LIKE '%padron_pdf_2%'").get()?.n, 1);
+  assert.equal(h.sqlite.prepare("SELECT COUNT(*) AS n FROM publications WHERE id LIKE '%llamado_pdf_2%'").get()?.n, 1);
+  const stored = h.sqlite.prepare("SELECT COUNT(*) AS n FROM publications").get()?.n;
+  await assert.rejects(h.run("juntas", { driveKey: "synthetic_drive_api_key_123456", juntaSources: sources }), /JUNTAS_PARTIAL_SOURCE/);
+  assert.equal(h.sqlite.prepare("SELECT COUNT(*) AS n FROM publications").get()?.n, stored);
+});
+
+test("Juntas: un aviso amplio conserva texto, fechas, enlace y evidencia con carga acotada", async () => {
+  const suffix = "Documentación oficial exigida para la inscripción. ".repeat(100);
+  const root = { id: "padrones:valid-long", externalId: "valid-long", source: "Padrones y Comunicados", kind: "junta",
+    category: "Comunicados", junta: "Inicial y Primaria", title: "Comunicado", summary: "", level: "", area: "",
+    location: "", shift: "", character: "", startsAt: null, endsAt: null, status: "Documento público",
+    officialUrl: docUrl, metadata: "{}", contentHash: "", sourceUpdatedAt: null };
+  const notice = extractJuntaNotices(root, `${noticeText}\n${suffix}`).at(-1);
+  assert.ok(notice);
+  const row = await prepareJuntaImport(notice, now);
+  const metadata = officialMetadata({ metadata: row.metadata });
+  assert.ok(row.summary.endsWith(suffix.trim()));
+  assert.equal(row.registrationOpenAt, "2026-10-22");
+  assert.equal(row.registrationCloseAt, "2026-10-25");
+  assert.equal(row.officialUrl, docUrl);
+  assert.ok(metadata?.sources.some((source) => source.url === docUrl));
+  assert.ok(Buffer.byteLength(row.metadata, "utf8") < 16000);
+  assert.ok(Buffer.byteLength(JSON.stringify({ mode: "batch", items: [row] }), "utf8") < 100000);
+});
+
+test("Juntas: 413 individual queda como incidencia; 401 y 503 siguen siendo fallos del receptor", async () => {
+  const sourceFetch = (async () => new Response(noticeText)) as typeof fetch;
+  const sources = [["com-test", "Comunicados", "Inicial y Primaria", docUrl]] as const;
+  for (const status of [413, 401, 503]) {
+    const h = harness(sourceFetch);
+    const receiverFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const payload = JSON.parse(String(init?.body)) as { mode: string; items?: { id: string }[] };
+      if (payload.mode === "batch" && payload.items?.[0].id.startsWith("notice:")) return new Response("", { status });
+      return h.receiverFetch(input, init);
+    }) as typeof fetch;
+    const run = h.run("juntas", { juntaSources: sources, receiverFetch });
+    if (status === 413) {
+      await assert.rejects(run, (error: Error & { failures?: { code: string; bodyBytes?: number }[] }) => {
+        assert.equal(error.message, "JUNTAS_PARTIAL_SOURCE");
+        assert.ok(error.failures?.some((item) => item.code === "RECEIVER_HTTP_413" && Number(item.bodyBytes) > 0));
+        return true;
+      });
+      assert.equal(h.sqlite.prepare("SELECT sync_status FROM sync_state WHERE source='Comunicados'").get()?.sync_status, "PARTIAL");
+    } else {
+      await assert.rejects(run, new RegExp(`RECEIVER_HTTP_${status}`));
+      assert.notEqual(h.sqlite.prepare("SELECT sync_status FROM sync_state WHERE source='Comunicados'").get()?.sync_status, "OK");
+    }
+  }
 });
 
 test("receptor público rechaza no autorizados y fuentes falsas sin escribir", async () => {

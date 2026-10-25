@@ -51,7 +51,7 @@ export function classifyJuntaBlock(block: NoticeBlock, junta: string, source: Of
       appointment = parseOfficialDate(`${d}/${mo}/${y} ${time}`) || appointment;
     }
     m.facts.designation = { ...appointment, status: /(?:horario|hora).{0,60}(?:a confirmar|tentativ)/.test(n) ? "provisional" : "reported",
-      evidence: [{ ...source, excerpt: text }] };
+      evidence: [{ ...source, excerpt: m.correction ? text : labeled?.[0] || text }] };
   }
   const explicitTime = text.match(/(?:HORARIO|HORA)\s+DE\s+DESIGNACI[OÓ]N\s*:\s*(\d{1,2}:\d{2})/i);
   if (explicitTime && Number(explicitTime[1].split(":")[0]) < 24 && Number(explicitTime[1].split(":")[1]) < 60) {
@@ -59,9 +59,10 @@ export function classifyJuntaBlock(block: NoticeBlock, junta: string, source: Of
     if (/horario.{0,50}(a confirmar|tentativ)/.test(n)) m.facts.designationTime.status = "provisional";
   }
   const location = text.match(/(?:LUGAR|DOMICILIO)\s*:\s*([^\n]+)/i)?.[1]?.trim();
-  if (location) m.facts.location = sourceFact(location, source);
-  if (/\bpresencial\b/.test(n)) m.facts.modality = sourceFact("Presencial", source);
-  m.facts.instructions = sourceFact(text, source);
+  if (location) m.facts.location = sourceFact(location, { ...source, excerpt: location });
+  if (/\bpresencial\b/.test(n)) m.facts.modality = sourceFact("Presencial", { ...source, excerpt: text.match(/\bpresencial\b/i)?.[0] || "Presencial" });
+  // The full notice already lives in summary; repeating it as an instructions fact
+  // and in every citation can turn one public document into a >100 KB payload.
   const instructional = /pasos a seguir|instructivo|formulario|como (?:participar|inscribirse)/.test(n);
   const jurado = /eleccion.{0,50}jurado|eleccion de los miembros|sorteo.{0,40}jurado/.test(n);
   const called = !instructional && /\bllamado(?:s)? abierto(?:s)?\b/.test(n) &&
@@ -99,8 +100,10 @@ export function extractJuntaNotices(root: CollectedPublication, raw: string, pre
       try { return JSON.parse(x.metadata || "{}").official?.noticeKey === anchor; } catch { return false; }
     });
     const id = existing?.id || `notice:${root.externalId}:${anchor}`;
-    const source = { id, source: "Junta", url: root.officialUrl, publishedAt: published, excerpt: block.text };
+    const source = { id, source: "Junta", url: root.officialUrl, publishedAt: published,
+      excerpt: block.text.length > 500 ? `${block.text.slice(0, 499)}…` : block.text };
     const m = classifyJuntaBlock(block, root.junta, source); m.noticeKey = anchor; m.sourceRootId = root.id; m.sourceCategory = root.category; m.section = block.section;
+    if (block.text.length > 500) m.issues.push("Extracto de evidencia abreviado; el texto completo está en la síntesis y la fuente original.");
     const category = m.entity === "event" ? "Actos de designación" : m.entity === "opportunity" ? "Llamados abiertos" : m.topics.includes("CLASIFICACION_PENDIENTE") ? "Clasificación pendiente" : "Comunicados";
     const title = lines.filter(x => !/^COMUNICADO|^\d{1,2}\/|^LLAMADO ABIERTO$/i.test(x)).slice(0, 2).join(" · ").slice(0, 220) || lines[0];
     const appointment = m.facts.designation;

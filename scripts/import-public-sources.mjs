@@ -31,12 +31,27 @@ export async function runPublicSourceImport({ source, endpoint, token, driveKey,
   await send(endpoint, token, { mode: "start", health }, receiverFetch);
   const result = { discovered: 0, created: 0, updated: 0, unchanged: 0, queries: 0, rowsRead: 0, rowsWritten: 0 };
   const counts = Object.fromEntries(health.map((name) => [name, 0]));
+  const rejected = [];
   const apply = async (items, sourceCategory) => {
     for (const item of items) {
       const row = source === "juntas" ? await prepareJuntaImport(item, now) :
         await prepareTrainingImport(item, source === "cenet" ? "CeNET / INET" : "INFoD / AulaS-TIC", now);
+      const payload = { mode: "batch", items: [row] };
+      const bytes = source === "juntas" ? Buffer.byteLength(JSON.stringify(payload), "utf8") : 0;
+      const sizes = { bodyBytes: bytes, summaryBytes: Buffer.byteLength(row.summary, "utf8"),
+        metadataBytes: Buffer.byteLength(row.metadata, "utf8") };
+      if (source === "juntas" && (bytes > 100_000 || row.summary.length > 8000 || row.metadata.length > 16000)) {
+        rejected.push({ id: row.id, category: sourceCategory, code: "JUNTAS_ITEM_TOO_LARGE", ...sizes });
+        continue;
+      }
       // One item per request matches the measured narrow receiver path; five remains the hard API ceiling.
-      const ack = await send(endpoint, token, { mode: "batch", items: [row] }, receiverFetch);
+      let ack;
+      try { ack = await send(endpoint, token, payload, receiverFetch); }
+      catch (error) {
+        if (source !== "juntas" || !(error instanceof Error) || error.message !== "RECEIVER_HTTP_413") throw error;
+        rejected.push({ id: row.id, category: sourceCategory, code: "RECEIVER_HTTP_413", ...sizes });
+        continue;
+      }
       if (ack.received !== 1 || ack.created + ack.updated + ack.unchanged !== 1) throw new Error("RECEIVER_ACK_INVALID");
       result.discovered++;
       if (sourceCategory) counts[sourceCategory]++;
@@ -46,13 +61,14 @@ export async function runPublicSourceImport({ source, endpoint, token, driveKey,
   try {
     if (source === "juntas") {
       const scan = await collectJuntaExternal({ fetcher: sourceFetch, driveKey, sources: juntaSources, onItems: apply });
-      const failed = new Set(scan.failures.map((item) => item.category));
+      const failures = [...scan.failures, ...rejected];
+      const failed = new Set(failures.map((item) => item.category));
       for (const name of health) await send(endpoint, token, failed.has(name)
         ? { mode: "error", health: [name], code: "PARTIAL" }
         : { mode: "finish", health: [name], complete: true, count: counts[name] }, receiverFetch);
-      if (scan.failures.length) {
+      if (failures.length) {
         const error = new Error("JUNTAS_PARTIAL_SOURCE");
-        error.failures = scan.failures;
+        error.failures = failures;
         throw error;
       }
       return { ...result, completed: true };
