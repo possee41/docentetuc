@@ -26,7 +26,8 @@ function reference(id: string, category: string, junta: string, url: string, tit
     location: "", shift: "", character: "", startsAt: null, endsAt: null, status: "Documento público · vigencia no informada",
     officialUrl: url, metadata: "{}", contentHash: "", sourceUpdatedAt };
 }
-export async function listDrivePage(folderId: string, key: string, resourceKey: string | undefined, pageToken = "", fetcher: Fetcher = fetch) {
+export async function listDrivePage(folderId: string, key: string,
+  resourceKey: string | readonly { id: string; key: string }[] | undefined, pageToken = "", fetcher: Fetcher = fetch) {
   if (!/^[A-Za-z0-9_-]{10,}$/.test(folderId) || !/^[A-Za-z0-9_-]{10,}$/.test(key)) throw new Error("JUNTAS_DRIVE_CONFIGURATION_INVALID");
   const url = new URL("https://www.googleapis.com/drive/v3/files");
   url.searchParams.set("q", `'${folderId}' in parents and trashed = false`);
@@ -36,11 +37,22 @@ export async function listDrivePage(folderId: string, key: string, resourceKey: 
   url.searchParams.set("includeItemsFromAllDrives", "true");
   if (pageToken) url.searchParams.set("pageToken", pageToken);
   const headers: Record<string, string> = { "x-goog-api-key": key, Accept: "application/json" };
-  if (resourceKey) headers["X-Goog-Drive-Resource-Keys"] = `${folderId}/${resourceKey}`;
+  if (Array.isArray(resourceKey)) {
+    if (resourceKey.some((entry) => !/^[A-Za-z0-9_-]+$/.test(entry.id) || !/^[A-Za-z0-9_-]+$/.test(entry.key)))
+      throw new Error("JUNTAS_DRIVE_CONFIGURATION_INVALID");
+    if (resourceKey.length) headers["X-Goog-Drive-Resource-Keys"] = resourceKey.map((entry) => `${entry.id}/${entry.key}`).join(",");
+  } else if (resourceKey) headers["X-Goog-Drive-Resource-Keys"] = `${folderId}/${resourceKey}`;
   let response: Response;
   try { response = await fetcher(url, { headers, signal: AbortSignal.timeout(20_000) }); }
   catch (error) { throw new Error(networkCode(error)); }
-  if (!response.ok) throw new Error(`JUNTAS_DRIVE_HTTP_${response.status}`);
+  if (!response.ok) {
+    if (response.status === 400 && pageToken) {
+      const body = await response.json().catch(() => null) as { error?: { errors?: { reason?: string }[] } } | null;
+      if (body?.error?.errors?.some((item) => item.reason === "invalidPageToken"))
+        throw new Error("JUNTAS_DRIVE_PAGE_TOKEN_EXPIRED");
+    }
+    throw new Error(`JUNTAS_DRIVE_HTTP_${response.status}`);
+  }
   let data: { incompleteSearch?: boolean; nextPageToken?: string; files?: { id: string; name: string; mimeType: string; modifiedTime?: string; resourceKey?: string }[] };
   try { data = await response.json() as typeof data; }
   catch (error) { throw new Error(networkCode(error) === "JUNTAS_SOURCE_TIMEOUT" ? "JUNTAS_SOURCE_TIMEOUT" : "JUNTAS_DRIVE_JSON_INVALID"); }

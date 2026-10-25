@@ -1,12 +1,14 @@
 // D1 REST transport for an external Node runner. No Worker executes the SQL.
 // The caller supplies an account-scoped D1 Write token. The database ID here
 // selects the target; it is not an authorization boundary for that token.
-export function createD1Rest({ accountId, databaseId, token, fetcher = fetch }) {
+export function createD1Rest({ accountId, databaseId, token, fetcher = fetch, minRequestIntervalMs = 0 }) {
   if (!/^[a-f0-9]{32}$/i.test(accountId || "") ||
       !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(databaseId || "") ||
-      typeof token !== "string" || token.length < 20) throw new Error("D1_CONFIGURATION_INVALID");
+      typeof token !== "string" || token.length < 20 || !Number.isInteger(minRequestIntervalMs) ||
+      minRequestIntervalMs < 0 || minRequestIntervalMs > 10_000) throw new Error("D1_CONFIGURATION_INVALID");
   const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
   const metrics = { requests: 0, rowsRead: 0, rowsWritten: 0 };
+  let nextRequestAt = 0;
 
   async function query(sql, params) {
     if (typeof sql !== "string" || !sql.trim() || !Array.isArray(params) ||
@@ -16,6 +18,11 @@ export function createD1Rest({ accountId, databaseId, token, fetcher = fetch }) 
     // SQLite NULL and numeric types without interpolating untrusted values.
     if ((sql.match(/\?/g) || []).length !== params.length) throw new Error("D1_QUERY_INVALID");
     const body = { sql: sql.replaceAll("?", () => "json_extract(?,'$')"), params: params.map((value) => JSON.stringify(value)) };
+    if (minRequestIntervalMs) {
+      const at = Date.now(), wait = Math.max(0, nextRequestAt - at);
+      nextRequestAt = Math.max(at, nextRequestAt) + minRequestIntervalMs;
+      if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+    }
     metrics.requests++;
     let response;
     try {

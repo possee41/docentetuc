@@ -80,6 +80,17 @@ test("D1 REST rechaza errores sin confirmar escritura ni filtrar el token", asyn
   assert.throws(() => createD1Rest({ accountId: "bad", databaseId: "bad", token: "short" }), /D1_CONFIGURATION_INVALID/);
 });
 
+test("D1 REST checkpoint can pace account API requests", async () => {
+  const starts: number[] = [];
+  const db = createD1Rest({ accountId: "a".repeat(32), databaseId: "11111111-1111-1111-1111-111111111111",
+    token: "local_test_token_12345678901234567890", minRequestIntervalMs: 20,
+    fetcher: async () => { starts.push(Date.now()); return Response.json({ success: true,
+      result: [{ success: true, results: [{ value: 1 }], meta: { rows_read: 1, rows_written: 0 } }] }); } });
+  await Promise.all([db.prepare("SELECT 1").bind().all(), db.prepare("SELECT 1").bind().all()]);
+  assert.equal(starts.length, 2);
+  assert.ok(starts[1] - starts[0] >= 15);
+});
+
 test("el ejecutor FDCI completo usa la fuente sintética y D1 REST sin Worker HTTP", async () => {
   const { sqlite, db } = isolatedRest();
   const course = { capacitacion_id: 42, nombre: "Curso sintético", token: "synthetic", slug: "curso", niveles: "Primaria" };

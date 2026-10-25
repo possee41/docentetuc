@@ -7,9 +7,18 @@ import { createDirectD1ReceiverFetch, sourceHashCache, withSourceHashCache } fro
 import { runFdciImport } from "./import-fdci.mjs";
 import { runSimeImport } from "./import-sime.mjs";
 import { runPublicSourceImport } from "./import-public-sources.mjs";
+import { runJuntasCheckpoint } from "./import-juntas-checkpoint.mjs";
+import { JUNTA_EXTERNAL_SOURCES } from "../lib/junta-external-sources.ts";
 
 /** @param {{source: string, db: any, sourceFetch?: typeof fetch, driveKey?: string, selection?: {token: string, slug: string, commissionId: string}, scope?: string}} options */
-export async function runDirectD1Import({ source, db, sourceFetch = fetch, driveKey, selection, scope = "single" }) {
+export async function runDirectD1Import({ source, db, sourceFetch = fetch, driveKey, selection, scope = "single",
+  juntaRootId, juntaMaxRequests, juntaMaxPublicationWrites }) {
+  if (source === "juntas" && scope === "checkpoint") {
+    const roots = juntaRootId ? JUNTA_EXTERNAL_SOURCES.filter(([id]) => id === juntaRootId) : JUNTA_EXTERNAL_SOURCES;
+    if (!roots.length) throw new Error("JUNTAS_ROOT_INVALID");
+    return { source, ...await runJuntasCheckpoint({ db, driveKey, sourceFetch, sources: roots,
+      maxRequests: juntaMaxRequests ?? 25, maxPublicationWrites: juntaMaxPublicationWrites ?? 20 }) };
+  }
   const storageSource = { sime: "SIME", juntas: "Padrones y Comunicados", cenet: "CeNET / INET", infd: "INFoD / AulaS-TIC" }[source];
   // A paginated, public-only hash snapshot avoids one D1 read per unchanged row.
   // FDCI's single-commission pilot is cheaper with its normal one-row lookup.
@@ -52,18 +61,23 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (process.env.DIRECT_D1_WRITE_ENABLED !== "true") throw new Error("DIRECT_D1_WRITE_DISABLED");
     if (process.env.D1_DATABASE_ID) throw new Error("CANARY_DATABASE_OVERRIDE_FORBIDDEN");
     const accountId = process.env.CF_ACCOUNT_ID, token = process.env.D1_IMPORT_TOKEN;
-    const db = createD1Rest({ accountId, databaseId: CANARY_DATABASE_ID, token });
+    const source = process.env.SYNC_SOURCE || "";
+    const scope = source === "juntas" ? process.env.JUNTAS_SCOPE || "single" : process.env.FDCI_SCOPE || "single";
+    // The D1 REST endpoint shares Cloudflare's account API rate limit.
+    const db = createD1Rest({ accountId, databaseId: CANARY_DATABASE_ID, token,
+      minRequestIntervalMs: source === "juntas" && scope === "checkpoint" ? 350 : 0 });
     const identity = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${CANARY_DATABASE_ID}`,
       { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
     if (!identity.ok) throw new Error(`CANARY_IDENTITY_HTTP_${identity.status}`);
     const body = await identity.json();
     if (body?.success !== true || body.result?.uuid !== CANARY_DATABASE_ID || body.result?.name !== CANARY_DATABASE_NAME)
       throw new Error("CANARY_IDENTITY_MISMATCH");
-    const source = process.env.SYNC_SOURCE || "";
-    const scope = process.env.FDCI_SCOPE || "single";
     const selection = source === "fdci" && scope === "single" ? { token: process.env.FDCI_COURSE_TOKEN || "",
       slug: process.env.FDCI_COURSE_SLUG || "", commissionId: process.env.FDCI_COMMISSION_ID || "" } : undefined;
-    const result = await runDirectD1Import({ source, db, driveKey: process.env.GOOGLE_DRIVE_API_KEY, selection, scope });
+    const result = await runDirectD1Import({ source, db, driveKey: process.env.GOOGLE_DRIVE_API_KEY, selection, scope,
+      juntaRootId: process.env.JUNTAS_ROOT_ID,
+      juntaMaxRequests: process.env.JUNTAS_MAX_REQUESTS ? Number(process.env.JUNTAS_MAX_REQUESTS) : undefined,
+      juntaMaxPublicationWrites: process.env.JUNTAS_MAX_PUBLICATION_WRITES ? Number(process.env.JUNTAS_MAX_PUBLICATION_WRITES) : undefined });
     console.log(JSON.stringify(result));
   } catch (error) {
     // Never include remote response bodies, URLs with tokens, or credentials.
