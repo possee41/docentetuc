@@ -1,4 +1,4 @@
-import { prepareFdciImports } from "../lib/fdci-import.ts";
+import { prepareFdciImports, validFdciImport } from "../lib/fdci-import.ts";
 import { appendFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
@@ -58,19 +58,32 @@ export async function runFdciImport({ endpoint, token, fetcher = fetch, collect 
   if ((target.protocol !== "https:" && !(target.protocol === "http:" && target.hostname === "127.0.0.1")) || !/^[A-Za-z0-9_-]{32,}$/.test(token)) throw new Error("IMPORT_CONFIGURATION_INVALID");
   if (!["single", "active", "full"].includes(scope) || (scope === "single") !== Boolean(selection)) throw new Error("FDCI_SELECTION_INVALID");
   if (selection && (!/^[A-Za-z0-9_-]{1,80}$/.test(selection.token) || !/^[a-z0-9-]{1,160}$/.test(selection.slug) || !/^[0-9]{1,12}$/.test(selection.commissionId))) throw new Error("FDCI_SELECTION_INVALID");
-  let created = 0, updated = 0, unchanged = 0, batches = 0;
+  let created = 0, updated = 0, unchanged = 0, batches = 0, rejected = 0;
   const { items, failures, coursesFetched } = await collect(fetcher, selection, scope);
   if (!Array.isArray(items) || (scope === "single" && !items.length)) throw new Error("FDCI_EMPTY_RESPONSE");
   if (failures && scope !== "full" || (scope === "single" && (items.length !== 1 || items[0].id !== `fdci:commission:${selection.commissionId}`))) throw new Error("FDCI_SELECTION_INCOMPLETE");
   // One row per invocation keeps the receiver well below its five-row hard limit.
   for (const item of items) {
-    const result = await sendFdci(endpoint, token, { mode: "batch", items: [item] }, fetcher);
+    if (scope === "full" && !validFdciImport(item)) { rejected++; continue; }
+    let result;
+    try { result = await sendFdci(endpoint, token, { mode: "batch", items: [item] }, fetcher); }
+    catch (error) {
+      // A rejected public record cannot prevent later healthy records from arriving.
+      // Authentication, D1, and transient server failures still stop the run.
+      if (scope === "full" && error instanceof Error && error.message === "HTTP_400") { rejected++; continue; }
+      throw error;
+    }
     if (!result.ok || result.received !== 1) throw new Error("IMPORT_ACK_INVALID");
     created += result.created; updated += result.updated; unchanged += result.unchanged; batches++;
   }
   // A bad historical detail must not block healthy new courses. The run stays partial:
   // no source-wide success or absence reconciliation may follow it.
-  if (failures) throw new Error("FDCI_PARTIAL_SOURCE");
+  if (failures || rejected) {
+    const error = new Error("FDCI_PARTIAL_SOURCE");
+    error.failures = failures + rejected;
+    error.result = { coursesFetched, discovered: items.length, created, updated, unchanged, rejected, batches };
+    throw error;
+  }
   return { coursesFetched, discovered: items.length, created, updated, unchanged, batches, completed: scope === "full" };
 }
 

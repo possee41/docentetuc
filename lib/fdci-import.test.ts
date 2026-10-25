@@ -130,7 +130,38 @@ test("el barrido completo guarda cursos sanos ante un detalle fallido, sin decla
     }
     throw new Error("unexpected URL");
   };
-  await assert.rejects(runFdciImport({ endpoint, token, scope: "full", fetcher }), /FDCI_PARTIAL_SOURCE/);
+  await assert.rejects(runFdciImport({ endpoint, token, scope: "full", fetcher }), (error: Error & {
+    failures?: number; result?: { created: number; discovered: number };
+  }) => {
+    assert.equal(error.message, "FDCI_PARTIAL_SOURCE");
+    assert.equal(error.failures, 1);
+    assert.equal(error.result?.created, 2);
+    assert.equal(error.result?.discovered, 2);
+    return true;
+  });
   assert.ok(sent.includes("fdci:course:43"));
   assert.ok(!sent.some((id) => id.startsWith("fdci:commission:")));
+});
+
+test("un registro rechazado no bloquea los siguientes ni declara el catálogo completo", async () => {
+  const first = { ...course, capacitacion_id: 45, token: "first", slug: "primero" };
+  const second = { ...course, capacitacion_id: 46, token: "second", slug: "segundo" };
+  const collected = await collectFdci(async (input: RequestInfo | URL) => Response.json(
+    String(input).endsWith("getRestoCapas") ? [first, second] : String(input).endsWith("getCupo") ? { comisiones: [] } : []));
+  const sent: string[] = [];
+  const fetcher = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const id = (JSON.parse(String(init?.body)).items as { id: string }[])[0].id;
+    sent.push(id);
+    return id === "fdci:course:45" ? Response.json({ error: "Lote inválido." }, { status: 400 }) :
+      Response.json({ ok: true, received: 1, created: 1, updated: 0, unchanged: 0 });
+  };
+  await assert.rejects(runFdciImport({ endpoint, token, scope: "full", fetcher, collect: async () => collected }),
+    (error: Error & { failures?: number; result?: { created: number; rejected: number } }) => {
+      assert.equal(error.message, "FDCI_PARTIAL_SOURCE");
+      assert.equal(error.failures, 1);
+      assert.equal(error.result?.created, 1);
+      assert.equal(error.result?.rejected, 1);
+      return true;
+    });
+  assert.deepEqual(sent, ["fdci:course:45", "fdci:course:46"]);
 });

@@ -36,14 +36,21 @@ function meter(db) {
 
 const captured = new Map();
 let sourceRequests = 0;
+let lastFdciDetailAt = 0;
 async function sourceFetch(input, init) {
   const key = `${String(input)}|${init?.method || "GET"}|${init?.body || ""}`;
   if (captured.has(key)) {
     const row = captured.get(key);
     return new Response(row.body, { status: row.status, headers: row.headers });
   }
-  const response = await fetch(input, { ...init, signal: AbortSignal.timeout(20_000) });
+  if (source === "fdci" && String(input).endsWith("/capa/getCupo")) {
+    if (sourceRequests >= 275) throw new Error("FDCI_PROBE_REQUEST_LIMIT");
+    const pauseMs = Math.max(0, 400 - (Date.now() - lastFdciDetailAt));
+    if (pauseMs) await new Promise((resolve) => setTimeout(resolve, pauseMs));
+    lastFdciDetailAt = Date.now();
+  }
   sourceRequests++;
+  const response = await fetch(input, { ...init, signal: AbortSignal.timeout(20_000) });
   const body = await response.arrayBuffer();
   if (body.byteLength > 2_000_000) throw new Error("SOURCE_RESPONSE_TOO_LARGE");
   captured.set(key, { body, status: response.status, headers: response.headers });
@@ -69,16 +76,27 @@ try {
   for (const statement of schema.split(";").map((part) => part.replace(/\s+/g, " ").trim()).filter(Boolean))
     await db.prepare(statement).run();
   const started = new Date().toISOString(), firstDb = meter(db), requestsBefore = sourceRequests;
-  let first, error = null;
+  let first, error = null, partial = null;
   try { first = await runDirectD1Import({ source, db: firstDb, sourceFetch, scope: source === "fdci" ? fdciScope : "single",
     driveKey: process.env.GOOGLE_DRIVE_API_KEY }); }
-  catch (failure) { error = failure instanceof Error ? failure.message.replace(/https?:\/\/\S+/g, "[url]") : "UNKNOWN"; }
+  catch (failure) {
+    error = failure instanceof Error ? failure.message.replace(/https?:\/\/\S+/g, "[url]") : "UNKNOWN";
+    if (error === "FDCI_PARTIAL_SOURCE") partial = { failures: failure.failures, ...failure.result };
+  }
   const firstMetrics = firstDb.metrics(), requests = sourceRequests - requestsBefore;
-  let repeat = null, repeatMetrics = null;
-  if (!error) {
+  let repeat = null, repeatMetrics = null, repeatError = null;
+  if (!error || partial) {
     const secondDb = meter(db);
-    repeat = await runDirectD1Import({ source, db: secondDb, sourceFetch, scope: source === "fdci" ? fdciScope : "single",
-      driveKey: process.env.GOOGLE_DRIVE_API_KEY });
+    try {
+      repeat = await runDirectD1Import({ source, db: secondDb, sourceFetch, scope: source === "fdci" ? fdciScope : "single",
+        driveKey: process.env.GOOGLE_DRIVE_API_KEY });
+    } catch (failure) {
+      repeatError = failure instanceof Error ? failure.message : "UNKNOWN";
+      if (partial) {
+        assert.equal(repeatError, "FDCI_PARTIAL_SOURCE");
+        repeat = failure.result;
+      } else throw failure;
+    }
     repeatMetrics = secondDb.metrics();
     assert.equal(repeat.created, 0, "Repeated official capture must not create duplicates");
     if (source !== "sime") assert.equal(repeat.updated, 0, "Unchanged official capture must not rewrite publications");
@@ -106,7 +124,7 @@ try {
     unknown: count("UNKNOWN"), categories, first: first ? { discovered: first.discovered, created: first.created,
       updated: first.updated, unchanged: first.unchanged } : null, firstMetrics,
     repeat: repeat ? { discovered: repeat.discovered, created: repeat.created,
-      updated: repeat.updated, unchanged: repeat.unchanged } : null, repeatMetrics, health, error,
+      updated: repeat.updated, unchanged: repeat.unchanged } : null, repeatMetrics, repeatError, partial, health, error,
     sample: rows.slice(0, 2).map((row) => ({ title: row.title, url: row.official_url,
       open: row.registration_open_at, close: row.registration_close_at, status: row.normalized_status })) }));
   if (error) process.exitCode = 1;
