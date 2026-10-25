@@ -166,6 +166,7 @@ async function advanceFolder(db, source, state, budget, limit, receiver, metrics
   while (page.index < page.files.length) {
     const file = page.files[page.index];
     if (file.mimeType === folderMime) { page.index++; continue; }
+    metrics.filesExamined++;
     const signature = signatures[candidates.findIndex((item) => item.id === file.id)]?.[1];
     if (signature && known.get(file.id) === signature && page.itemIndex === 0) {
       metrics.skippedUnchanged++; page.index++; continue;
@@ -212,7 +213,7 @@ export async function runJuntasCheckpoint({ db, driveKey, sourceFetch = fetch, s
   const instant = now.toISOString(), budget = { requests: maxRequests, usedRequests: 0 };
   const limit = { remaining: maxPublicationWrites };
   const before = db.metrics?.();
-  const metrics = { sourceRequests: 0, created: 0, updated: 0, unchanged: 0, skippedUnchanged: 0,
+  const metrics = { sourceRequests: 0, filesExamined: 0, created: 0, updated: 0, unchanged: 0, skippedUnchanged: 0,
     queries: 0, rowsRead: 0, rowsWritten: 0, failures: [] };
   const receiver = createDirectD1ReceiverFetch(db);
   const finished = new Set();

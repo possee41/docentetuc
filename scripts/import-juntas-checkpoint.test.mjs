@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { runJuntasCheckpoint } from "./import-juntas-checkpoint.mjs";
+import { boardItems } from "../lib/board-view.ts";
 
 const root = ["pad-test", "Padrones", "Inicial y Primaria",
   "https://drive.google.com/drive/folders/123456789012345678901234567890?resourcekey=0-synthetic"];
@@ -72,11 +73,12 @@ const file = (index, modifiedTime = "2026-10-24T10:00:00Z") => ({ id: `file_${St
   name: `Padrón ${index}`, mimeType: "application/pdf", modifiedTime });
 async function untilComplete(db, options, maximum = 300) {
   let last;
-  const totals = { runs: 0, sourceRequests: 0, created: 0, updated: 0, skippedUnchanged: 0,
+  const totals = { runs: 0, sourceRequests: 0, filesExamined: 0, created: 0, updated: 0, skippedUnchanged: 0,
     d1Queries: 0, d1RowsRead: 0, d1RowsWritten: 0, publicationRowsWritten: 0 };
   for (let n = 0; n < maximum; n++) {
     last = await runJuntasCheckpoint({ db, driveKey: key, now, ...options });
-    totals.runs++; totals.sourceRequests += last.sourceRequests; totals.created += last.created;
+    totals.runs++; totals.sourceRequests += last.sourceRequests; totals.filesExamined += last.filesExamined;
+    totals.created += last.created;
     totals.updated += last.updated; totals.skippedUnchanged += last.skippedUnchanged;
     totals.d1Queries += last.d1.queries; totals.d1RowsRead += last.d1.rowsRead;
     totals.d1RowsWritten += last.d1.rowsWritten; totals.publicationRowsWritten += last.rowsWritten;
@@ -95,6 +97,7 @@ test("4.067 documents survive bounded first crawl, repeated maintenance and one 
     maxPublicationWrites: 20, maxSteps: 40 };
   const first = await untilComplete(h.db, options);
   assert.equal(h.sqlite.prepare("SELECT count(*) AS n FROM publications").get().n, 4067);
+  assert.ok(first.totals.filesExamined >= 4067);
   assert.equal(h.sqlite.prepare("SELECT sync_status FROM sync_state WHERE source='Padrones'").get().sync_status, "OK");
   const firstRequests = fixture.calls.drive;
   assert.ok(firstRequests >= Math.ceil(4067 / 25));
@@ -114,6 +117,30 @@ test("4.067 documents survive bounded first crawl, repeated maintenance and one 
   assert.notEqual(h.sqlite.prepare("SELECT content_hash FROM publications WHERE id='drive:pad-test:file_00000001'").get().content_hash, before);
   assert.equal(h.sqlite.prepare("SELECT count(*) AS n FROM publications WHERE removed_at IS NOT NULL").get().n, 0);
   t.diagnostic(JSON.stringify({ first: first.totals, unchanged: unchanged.totals, changed: changed.totals }));
+  h.sqlite.close();
+});
+
+test("abiertos-primaria resumes a five-request, ten-attempt probe without false current calls", async () => {
+  const h = isolatedD1();
+  const folder = "234567890123456789012345678901";
+  const files = Array.from({ length: 30 }, (_, index) => ({ ...file(index), name: `Convocatoria ${index}` }));
+  const fixture = driveFixture(new Map([[folder, files]]));
+  const options = { db: h.db, driveKey: key, now, sourceFetch: fixture.fetcher, sources: [callRoot],
+    maxRequests: 5, maxPublicationWrites: 10 };
+  const first = await runJuntasCheckpoint(options);
+  const saved = JSON.parse(h.sqlite.prepare("SELECT state_json FROM juntas_import_checkpoint WHERE root_id='abiertos-test'").get().state_json);
+  assert.equal(first.created, 10);
+  assert.ok(first.sourceRequests <= 5);
+  assert.equal(saved.page.index, 10);
+  assert.equal(h.sqlite.prepare("SELECT status FROM juntas_import_checkpoint WHERE root_id='abiertos-test'").get().status, "PARTIAL");
+  const second = await runJuntasCheckpoint(options);
+  assert.equal(second.created, 10);
+  assert.ok(second.sourceRequests <= 5);
+  const rows = h.sqlite.prepare(`SELECT id,kind,category,metadata,starts_at,ends_at,updated_at,
+    source_published_at,removed_at,normalized_status FROM publications`).all();
+  assert.equal(rows.length, 20);
+  assert.equal(new Set(rows.map((row) => row.id)).size, 20);
+  assert.equal(boardItems(rows, "llamados", now).length, 0);
   h.sqlite.close();
 });
 

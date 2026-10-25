@@ -20,4 +20,19 @@ node --experimental-strip-types --test scripts/import-juntas-checkpoint.test.mjs
 node --experimental-strip-types scripts/bench-juntas-checkpoint-local.mjs --records=100
 ```
 
+### Single-folder local probe (manual)
+
+`scripts/probe-juntas-checkpoint-local.mjs` is fixed to `abiertos-primaria`. It uses a persistent Miniflare D1 under `.wrangler/juntas-checkpoint-probe`, applies the isolated publication schema and `0026`, and never uses a Cloudflare token. `--prepare` and `--status` do not contact Google. `--run` requires `GOOGLE_DRIVE_API_KEY` in the same PowerShell session and caps each invocation at five source requests and ten publication attempts. No schedule invokes it.
+
+```powershell
+Set-Location 'C:\Users\joaquin\Documents\Codex\DocenteTuc-1.2-sync-integration'
+node --experimental-strip-types .\scripts\probe-juntas-checkpoint-local.mjs --prepare
+node --experimental-strip-types .\scripts\probe-juntas-checkpoint-local.mjs --status
+# Load GOOGLE_DRIVE_API_KEY privately in this PowerShell before either --run.
+node --experimental-strip-types .\scripts\probe-juntas-checkpoint-local.mjs --run
+node --experimental-strip-types .\scripts\probe-juntas-checkpoint-local.mjs --run
+```
+
+Each `--run` prints request and file counts, publication changes, actual local D1 row metrics, and a redacted checkpoint summary. It never prints the Drive key, resource keys, page tokens, document text, or publication content. The second command resumes from the same local database. A single root does not mark the entire Llamados category healthy. A Drive folder name alone never verifies an open call; `verifiedCurrentCallsInSample` uses the same strict board filter as the app and covers only the bounded sample reported alongside it.
+
 Before activation, verify the new migration in the selected isolated D1, run one root with a small budget, inspect category `PARTIAL`/`OK` and D1 metrics, and confirm the legacy writer is disabled for that source. The first full import, a real Drive update cycle, REST account rate limits, and the cutover still need controlled verification.
