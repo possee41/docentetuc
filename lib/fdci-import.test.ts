@@ -175,6 +175,33 @@ test("clasifica HTTP y JSON inválido sin atribuir un éxito al detalle", async 
   assert.equal(result.diagnostics?.invalidJson, 1);
 });
 
+test("el informe de barrido distingue detalles activos y causas de rechazo sin relajar la validación", async () => {
+  const activeCourse = { ...course, capacitacion_id: 49, token: "active", slug: "activo" };
+  const sourceFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("getCapaActivas")) return Response.json([{ ...commission, capacitacion_id: 49 }]);
+    if (url.endsWith("getRestoCapas")) return Response.json([activeCourse]);
+    if (url.endsWith("getCupo")) return new Response(null, { status: 404 });
+    if (url === endpoint) return Response.json({ ok: true, received: 1, created: 1, updated: 0, unchanged: 0 });
+    throw new Error(`UNEXPECTED_${init?.method || "GET"}`);
+  };
+  const collected = await collectFdci(sourceFetch, undefined, "full");
+  assert.equal(collected.coursesFetched, 1);
+  assert.equal(collected.commissionsExamined, 1);
+  assert.equal(collected.diagnostics?.activeDetailFailures, 1);
+  const invalid = { ...collected.items[0], title: "X".repeat(501), normalizedStatus: "ACTIVE" };
+  await assert.rejects(runFdciImport({ endpoint, token, scope: "full", fetcher: sourceFetch,
+    collect: async () => ({ ...collected, items: [invalid] }) }), (error: Error & {
+      diagnostics?: { rejectedReasons: Record<string, number>; rejectedStatuses: Record<string, number>; activeDetailFailures: number };
+    }) => {
+    assert.equal(error.message, "FDCI_PARTIAL_SOURCE");
+    assert.equal(error.diagnostics?.rejectedReasons["text:title"], 1);
+    assert.equal(error.diagnostics?.rejectedStatuses.ACTIVE, 1);
+    assert.equal(error.diagnostics?.activeDetailFailures, 1);
+    return true;
+  });
+});
+
 test("un registro rechazado no bloquea los siguientes ni declara el catálogo completo", async () => {
   const first = { ...course, capacitacion_id: 45, token: "first", slug: "primero" };
   const second = { ...course, capacitacion_id: 46, token: "second", slug: "segundo" };

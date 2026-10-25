@@ -43,8 +43,8 @@ async function sourceFetch(input, init) {
     const row = captured.get(key);
     return new Response(row.body, { status: row.status, headers: row.headers });
   }
+  if (source === "fdci" && sourceRequests >= 275) throw new Error("FDCI_PROBE_REQUEST_LIMIT");
   if (source === "fdci" && String(input).endsWith("/capa/getCupo")) {
-    if (sourceRequests >= 275) throw new Error("FDCI_PROBE_REQUEST_LIMIT");
     const pauseMs = Math.max(0, 400 - (Date.now() - lastFdciDetailAt));
     if (pauseMs) await new Promise((resolve) => setTimeout(resolve, pauseMs));
     lastFdciDetailAt = Date.now();

@@ -65,24 +65,26 @@ export async function prepareFdciImports(courses: OfficialCourse[], commissions:
 
 const smallText = (value: unknown, max: number) => typeof value === "string" && value.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value);
 const optionalDate = (value: unknown) => value === null || smallText(value, 40) && Number.isFinite(Date.parse(value as string));
-export function validFdciImport(value: unknown): value is FdciImport {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+export function validFdciImport(value: unknown, onReject?: (reason: string) => void): value is FdciImport {
+  const reject = (reason: string) => { onReject?.(reason); return false; };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return reject("record");
   const row = value as Record<string, unknown>;
-  if (!/^fdci:(?:course|commission):[A-Za-z0-9_-]{1,80}$/.test(String(row.id)) || !smallText(row.externalId, 80)) return false;
+  if (!/^fdci:(?:course|commission):[A-Za-z0-9_-]{1,80}$/.test(String(row.id)) || !smallText(row.externalId, 80)) return reject("identity");
   for (const [key, max] of Object.entries({ category: 120, title: 500, summary: 2000, level: 300, area: 300, location: 300, character: 300, status: 100, metadata: 6000, contentHash: 64, circuit: 20, sourceCircuitRaw: 300, circuitInferenceSource: 30 })) {
-    if (!smallText(row[key], max)) return false;
+    if (!smallText(row[key], max)) return reject(`text:${key}`);
   }
-  if (!/^[a-f0-9]{64}$/.test(String(row.contentHash))) return false;
-  if (!["ACTIVE", "UPCOMING", "CLOSED", "EXPIRED", "UNKNOWN"].includes(String(row.normalizedStatus))) return false;
-  if (!["UNKNOWN", "I", "II", "III", "IV", "V", "ALL", "MULTIPLE"].includes(String(row.circuit))) return false;
-  if (!Number.isInteger(row.circuitConfidence) || Number(row.circuitConfidence) < 0 || Number(row.circuitConfidence) > 100) return false;
-  if (![row.startsAt, row.endsAt, row.sourceUpdatedAt, row.registrationOpenAt, row.registrationCloseAt, row.expiresAt].every(optionalDate)) return false;
+  if (!/^[a-f0-9]{64}$/.test(String(row.contentHash))) return reject("hash");
+  if (!["ACTIVE", "UPCOMING", "CLOSED", "EXPIRED", "UNKNOWN"].includes(String(row.normalizedStatus))) return reject("status");
+  if (!["UNKNOWN", "I", "II", "III", "IV", "V", "ALL", "MULTIPLE"].includes(String(row.circuit))) return reject("circuit");
+  if (!Number.isInteger(row.circuitConfidence) || Number(row.circuitConfidence) < 0 || Number(row.circuitConfidence) > 100) return reject("circuitConfidence");
+  for (const key of ["startsAt", "endsAt", "sourceUpdatedAt", "registrationOpenAt", "registrationCloseAt", "expiresAt"])
+    if (!optionalDate(row[key])) return reject(`date:${key}`);
   try {
     const url = new URL(String(row.officialUrl));
-    if (url.protocol !== "https:" || url.hostname !== "capacitaciondocente.educaciontuc.gov.ar" || url.username || url.password) return false;
+    if (url.protocol !== "https:" || url.hostname !== "capacitaciondocente.educaciontuc.gov.ar" || url.username || url.password) return reject("url");
     const metadata = JSON.parse(String(row.metadata)) as Record<string, unknown>;
-    if (metadata.entity !== (String(row.id).startsWith("fdci:commission:") ? "commission" : "course") || !metadata.trainingId) return false;
-    if (metadata.entity === "commission" && String(metadata.commissionId) !== row.externalId) return false;
-  } catch { return false; }
+    if (metadata.entity !== (String(row.id).startsWith("fdci:commission:") ? "commission" : "course") || !metadata.trainingId) return reject("metadata");
+    if (metadata.entity === "commission" && String(metadata.commissionId) !== row.externalId) return reject("metadata");
+  } catch { return reject("metadataOrUrl"); }
   return true;
 }
