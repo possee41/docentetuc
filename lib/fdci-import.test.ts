@@ -175,6 +175,30 @@ test("clasifica HTTP y JSON inválido sin atribuir un éxito al detalle", async 
   assert.equal(result.diagnostics?.invalidJson, 1);
 });
 
+test("el primer 429 detiene los detalles restantes y conserva el resultado parcial", async () => {
+  const courses = ["first", "limited", "later"].map((name, index) =>
+    ({ ...course, capacitacion_id: 70 + index, token: name, slug: name }));
+  const details: string[] = [];
+  const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("getCapaActivas")) return Response.json([]);
+    if (url.endsWith("getRestoCapas")) return Response.json(courses);
+    if (url.endsWith("getCupo")) {
+      const name = JSON.parse(String(init?.body)).token as string;
+      details.push(name);
+      return name === "limited" ? new Response(null, { status: 429 }) : Response.json({ comisiones: [] });
+    }
+    throw new Error("UNEXPECTED_SOURCE_URL");
+  };
+  const result = await collectFdci(fetcher, undefined, "full");
+  assert.deepEqual(details, ["first", "limited"]);
+  assert.equal(result.coursesFetched, 2);
+  assert.equal(result.coursesAvailable, 3);
+  assert.equal(result.failures, 1);
+  assert.equal(result.diagnostics?.http.HTTP_429, 1);
+  assert.ok(result.items.some((item: { id: string }) => item.id === "fdci:course:70"));
+});
+
 test("el informe de barrido distingue detalles activos y causas de rechazo sin relajar la validación", async () => {
   const activeCourse = { ...course, capacitacion_id: 49, token: "active", slug: "activo" };
   const sourceFetch = async (input: RequestInfo | URL, init?: RequestInit) => {

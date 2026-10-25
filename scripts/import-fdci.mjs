@@ -12,13 +12,13 @@ export async function requestJson(url, options = {}, fetcher = fetch) {
     try { response = await fetcher(url, { ...options, signal: AbortSignal.timeout(20_000) }); }
     catch (error) { if (attempt === 2) throw error; await pause(300 * 2 ** attempt); continue; }
     if (response.ok) return response.json();
-    if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 2) throw new Error(`HTTP_${response.status}`);
+    if (![500, 502, 503, 504].includes(response.status) || attempt === 2) throw new Error(`HTTP_${response.status}`);
     await pause(300 * 2 ** attempt);
   }
   throw new Error("REQUEST_FAILED");
 }
 
-/** @returns {Promise<{items: import("../lib/fdci-import.ts").FdciImport[], failures: number, diagnostics?: FdciDiagnostics, coursesFetched: number, commissionsExamined?: number, activeCommissions?: number}>} */
+/** @returns {Promise<{items: import("../lib/fdci-import.ts").FdciImport[], failures: number, diagnostics?: FdciDiagnostics, coursesFetched: number, coursesAvailable?: number, commissionsExamined?: number, activeCommissions?: number}>} */
 export async function collectFdci(fetcher = fetch, selection, scope = "full") {
   const active = await requestJson(`${FDCI}/gestionCapas/getCapaActivas`, {}, fetcher);
   const courses = await requestJson(`${FDCI}/gestionCapas/getRestoCapas`, {}, fetcher);
@@ -38,7 +38,9 @@ export async function collectFdci(fetcher = fetch, selection, scope = "full") {
     !courses.some((course) => String(course.capacitacion_id) === String(item.capacitacion_id))).length,
     missingTokenOrSlug: 0, http: {}, timeoutOrNetwork: 0, invalidJson: 0, schema: 0, other: 0, activeDetailFailures: 0, requestLimit: 0 };
   let failures = diagnostics.orphanActive;
+  let coursesExamined = 0;
   for (const course of candidates) {
+    coursesExamined++;
     if (!course.token || !course.slug) {
       failures++; diagnostics.missingTokenOrSlug++;
       if (activeIds.has(String(course.capacitacion_id))) diagnostics.activeDetailFailures++;
@@ -53,6 +55,7 @@ export async function collectFdci(fetcher = fetch, selection, scope = "full") {
       if (activeIds.has(String(course.capacitacion_id))) diagnostics.activeDetailFailures++;
       const message = error instanceof Error ? error.message : "";
       if (message === "FDCI_PROBE_REQUEST_LIMIT") { diagnostics.requestLimit++; break; }
+      if (message === "HTTP_429") { diagnostics.http.HTTP_429 = (diagnostics.http.HTTP_429 || 0) + 1; break; }
       if (/^HTTP_\d{3}$/.test(message)) diagnostics.http[message] = (diagnostics.http[message] || 0) + 1;
       else if (message === "FDCI_DETAIL_SCHEMA_CHANGED") diagnostics.schema++;
       else if (error instanceof SyntaxError) diagnostics.invalidJson++;
@@ -64,7 +67,7 @@ export async function collectFdci(fetcher = fetch, selection, scope = "full") {
   const items = await prepareFdciImports(candidates, commissions);
   if (selection && !items.some((item) => item.id === `fdci:commission:${selection.commissionId}`)) throw new Error("FDCI_COMMISSION_NOT_FOUND");
   return { items: selection ? items.filter((item) => item.id === `fdci:commission:${selection.commissionId}`) : scope === "active" ? items.filter((item) => activeCommissionIds.has(item.externalId)) : items,
-    failures, diagnostics, coursesFetched: candidates.length,
+    failures, diagnostics, coursesFetched: coursesExamined, coursesAvailable: candidates.length,
     commissionsExamined: new Set(commissions.map((item) => String(item.id))).size, activeCommissions: active.length };
 }
 
@@ -83,7 +86,7 @@ export async function runFdciImport({ endpoint, token, fetcher = fetch, collect 
   let created = 0, updated = 0, unchanged = 0, batches = 0, rejected = 0;
   const rejectedReasons = {}, rejectedStatuses = {};
   const count = (target, key) => { target[key] = (target[key] || 0) + 1; };
-  const { items, failures, diagnostics, coursesFetched, commissionsExamined, activeCommissions } = await collect(fetcher, selection, scope);
+  const { items, failures, diagnostics, coursesFetched, coursesAvailable, commissionsExamined, activeCommissions } = await collect(fetcher, selection, scope);
   if (!Array.isArray(items) || (scope === "single" && !items.length)) throw new Error("FDCI_EMPTY_RESPONSE");
   if (failures && scope !== "full" || (scope === "single" && (items.length !== 1 || items[0].id !== `fdci:commission:${selection.commissionId}`))) throw new Error("FDCI_SELECTION_INCOMPLETE");
   // One row per invocation keeps the receiver well below its five-row hard limit.
@@ -110,10 +113,10 @@ export async function runFdciImport({ endpoint, token, fetcher = fetch, collect 
     const error = new Error("FDCI_PARTIAL_SOURCE");
     error.failures = failures + rejected;
     error.diagnostics = { ...diagnostics, rejected, rejectedReasons, rejectedStatuses };
-    error.result = { coursesFetched, commissionsExamined, activeCommissions, discovered: items.length, created, updated, unchanged, rejected, batches };
+    error.result = { coursesFetched, coursesAvailable, commissionsExamined, activeCommissions, discovered: items.length, created, updated, unchanged, rejected, batches };
     throw error;
   }
-  return { coursesFetched, commissionsExamined, activeCommissions, discovered: items.length, created, updated, unchanged, batches, completed: scope === "full" };
+  return { coursesFetched, coursesAvailable, commissionsExamined, activeCommissions, discovered: items.length, created, updated, unchanged, batches, completed: scope === "full" };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
