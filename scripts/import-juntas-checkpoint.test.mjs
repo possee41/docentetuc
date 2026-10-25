@@ -144,6 +144,32 @@ test("abiertos-primaria resumes a five-request, ten-attempt probe without false 
   h.sqlite.close();
 });
 
+test("a focal folder moves ahead without losing the saved queue", async (t) => {
+  const h = isolatedD1();
+  const firstFolder = "folder_first_1234567890", targetFolder = "folder_target_1234567890";
+  const fixture = driveFixture(new Map([
+    ["234567890123456789012345678901", [firstFolder, targetFolder].map((id) =>
+      ({ id, name: id, mimeType: "application/vnd.google-apps.folder" }))],
+    [firstFolder, [file(1)]], [targetFolder, [file(2)]],
+  ]));
+  const options = { db: h.db, driveKey: key, now, sourceFetch: fixture.fetcher,
+    sources: [callRoot], maxRequests: 1, maxPublicationWrites: 10, maxSteps: 1 };
+  await runJuntasCheckpoint(options);
+  const before = JSON.parse(h.sqlite.prepare("SELECT state_json FROM juntas_import_checkpoint WHERE root_id='abiertos-test'").get().state_json);
+  assert.deepEqual(before.queue.map((entry) => entry.id), [firstFolder, targetFolder]);
+  const focused = await runJuntasCheckpoint({ ...options, focusFolderId: targetFolder });
+  assert.equal(focused.created, 1);
+  assert.ok(focused.d1.rowsWritten - focused.rowsWritten <= 8, "bounded lease/checkpoint control writes");
+  t.diagnostic(JSON.stringify({ focalD1: focused.d1,
+    publicationRowsWritten: focused.rowsWritten,
+    controlRowsWritten: focused.d1.rowsWritten - focused.rowsWritten }));
+  const after = JSON.parse(h.sqlite.prepare("SELECT state_json FROM juntas_import_checkpoint WHERE root_id='abiertos-test'").get().state_json);
+  assert.deepEqual(after.queue.map((entry) => entry.id), [firstFolder]);
+  await runJuntasCheckpoint(options);
+  assert.equal(h.sqlite.prepare("SELECT COUNT(*) AS n FROM publications").get().n, 2);
+  h.sqlite.close();
+});
+
 test("interruption, D1 failure and inaccessible Comunicado keep progress; other roots continue", async () => {
   const h = isolatedD1();
   const folder = "123456789012345678901234567890";

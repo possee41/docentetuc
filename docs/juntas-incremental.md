@@ -35,4 +35,14 @@ node --experimental-strip-types .\scripts\probe-juntas-checkpoint-local.mjs --ru
 
 Each `--run` prints request and file counts, publication changes, actual local D1 row metrics, and a redacted checkpoint summary. It never prints the Drive key, resource keys, page tokens, document text, or publication content. The second command resumes from the same local database. A single root does not mark the entire Llamados category healthy. A Drive folder name alone never verifies an open call; `verifiedCurrentCallsInSample` uses the same strict board filter as the app and covers only the bounded sample reported alongside it.
 
+When broad runs discover only folders, use `--status` to confirm `visitedFolders` rises and `visitedPendingOverlap` stays zero. A separately authorized `--focal-run` checks the first page of **at most three pending folders** for a real file. If none contains a file, it stops without changing the checkpoint. If one does, it moves that folder to the front under the existing lease, then processes **one folder step**. Discovery and processing together make at most five official requests and ten publication attempts; the rest of the queue remains intact. The focused command is intentionally manual:
+
+```powershell
+node --experimental-strip-types .\scripts\probe-juntas-checkpoint-local.mjs --focal-run
+```
+
+If those three pages contain only subfolders, the command reports `nextOffset` and leaves the checkpoint untouched. A later, separately approved run can use `--focal-run --offset=3` to inspect the next three pending folders without repeating the same requests. The offset is never advanced automatically.
+
+The focal run can prove a real document is incorporated. A repeat without source changes proves idempotence in the synthetic test; an actual update requires the official file to change and must not be claimed from an unchanged second read.
+
 Before activation, verify the new migration in the selected isolated D1, run one root with a small budget, inspect category `PARTIAL`/`OK` and D1 metrics, and confirm the legacy writer is disabled for that source. The first full import, a real Drive update cycle, REST account rate limits, and the cutover still need controlled verification.

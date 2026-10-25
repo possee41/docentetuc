@@ -205,10 +205,12 @@ async function advanceFolder(db, source, state, budget, limit, receiver, metrics
 }
 
 export async function runJuntasCheckpoint({ db, driveKey, sourceFetch = fetch, sources = JUNTA_EXTERNAL_SOURCES,
-  now = new Date(), maxRequests = 25, maxPublicationWrites = 20, maxSteps = 100, refreshAfterMs = day }) {
+  now = new Date(), maxRequests = 25, maxPublicationWrites = 20, maxSteps = 100, refreshAfterMs = day,
+  focusFolderId = null }) {
   if (!db || !Array.isArray(sources) || !sources.length || !Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 100 ||
       !Number.isInteger(maxPublicationWrites) || maxPublicationWrites < 1 || maxPublicationWrites > 50 ||
-      !Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 200 || refreshAfterMs < 0)
+      !Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 200 || refreshAfterMs < 0 ||
+      (focusFolderId !== null && (sources.length !== 1 || !/^[A-Za-z0-9_-]{10,}$/.test(focusFolderId))))
     throw new Error("JUNTAS_BUDGET_INVALID");
   const instant = now.toISOString(), budget = { requests: maxRequests, usedRequests: 0 };
   const limit = { remaining: maxPublicationWrites };
@@ -232,6 +234,13 @@ export async function runJuntasCheckpoint({ db, driveKey, sourceFetch = fetch, s
       let state = decode(claimed.state_json);
       if (claimed.status === "OK") {
         state = initial(source, state.cycle + 1, state.lastDocHash);
+        await save(db, rootId, owner, state, instant);
+      }
+      if (focusFolderId && state.queue[0]?.id !== focusFolderId) {
+        if (state.page) throw new Error("JUNTAS_FOCUS_PAGE_IN_PROGRESS");
+        const index = state.queue.findIndex((entry) => entry.id === focusFolderId);
+        if (index < 0) throw new Error("JUNTAS_FOCUS_NOT_PENDING");
+        state.queue.unshift(...state.queue.splice(index, 1));
         await save(db, rootId, owner, state, instant);
       }
       const output = source[3].includes("docs.google.com/document/")

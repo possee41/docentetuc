@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { runJuntasCheckpoint } from "./import-juntas-checkpoint.mjs";
 import { JUNTA_EXTERNAL_SOURCES } from "../lib/junta-external-sources.ts";
+import { listDrivePage } from "../lib/junta-external.ts";
 import { boardItems } from "../lib/board-view.ts";
 
 const require = createRequire(import.meta.url);
@@ -12,9 +13,13 @@ const { Miniflare } = require("../node_modules/.pnpm/miniflare@4.20260515.0/node
 const root = JUNTA_EXTERNAL_SOURCES.find(([id]) => id === "abiertos-primaria");
 const statePath = resolve(fileURLToPath(new URL("../.wrangler/juntas-checkpoint-probe", import.meta.url)));
 const mode = process.argv[2];
-if (!root || !["--prepare", "--status", "--run"].includes(mode) || process.argv.length !== 3)
-  throw new Error("JUNTAS_PROBE_USAGE: --prepare | --status | --run");
-if (mode === "--run" && !/^[A-Za-z0-9_-]{10,}$/.test(process.env.GOOGLE_DRIVE_API_KEY || ""))
+const offsetArg = process.argv[3];
+const folderOffset = offsetArg ? Number(offsetArg.replace(/^--offset=/, "")) : 0;
+if (!root || !["--prepare", "--status", "--run", "--focal-run"].includes(mode) ||
+    (offsetArg && (mode !== "--focal-run" || !/^--offset=\d+$/.test(offsetArg) ||
+      !Number.isSafeInteger(folderOffset) || folderOffset > 1000)) || process.argv.length > (offsetArg ? 4 : 3))
+  throw new Error("JUNTAS_PROBE_USAGE: --prepare | --status | --run | --focal-run [--offset=N]");
+if (["--run", "--focal-run"].includes(mode) && !/^[A-Za-z0-9_-]{10,}$/.test(process.env.GOOGLE_DRIVE_API_KEY || ""))
   throw new Error("GOOGLE_DRIVE_API_KEY_REQUIRED");
 
 const mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('local'); } }",
@@ -46,11 +51,14 @@ try {
     if (!existing) throw new Error("JUNTAS_PROBE_PREPARE_FIRST");
     let result;
     let filesReturned = 0;
-    if (mode === "--run") {
+    let officialRequests = 0;
+    let selectedFolder = null;
+    if (mode === "--run" || mode === "--focal-run") {
       const sourceFetch = async (input, init) => {
         const url = new URL(String(input));
         if (url.origin !== "https://www.googleapis.com" && url.origin !== "https://docs.google.com")
           throw new Error("JUNTAS_PROBE_SOURCE_INVALID");
+        if (++officialRequests > 5) throw new Error("JUNTAS_PROBE_REQUEST_LIMIT");
         const response = await fetch(input, init);
         if (url.pathname === "/drive/v3/files" && response.ok) {
           const body = await response.clone().json();
@@ -58,8 +66,25 @@ try {
         }
         return response;
       };
-      result = await runJuntasCheckpoint({ db: meter(raw), driveKey: process.env.GOOGLE_DRIVE_API_KEY,
-        sourceFetch, sources: [root], maxRequests: 5, maxPublicationWrites: 10 });
+      if (mode === "--focal-run") {
+        const saved = await raw.prepare("SELECT state_json FROM juntas_import_checkpoint WHERE root_id=?").bind(root[0]).first();
+        if (!saved) throw new Error("JUNTAS_PROBE_CHECKPOINT_REQUIRED");
+        const state = JSON.parse(saved.state_json);
+        if (state.page) throw new Error("JUNTAS_PROBE_PAGE_IN_PROGRESS");
+        for (const folder of state.queue.slice(folderOffset, folderOffset + 3)) {
+          const page = await listDrivePage(folder.id, process.env.GOOGLE_DRIVE_API_KEY,
+            folder.keys, folder.token || "", sourceFetch);
+          if (page.files.some((file) => file.mimeType !== "application/vnd.google-apps.folder")) {
+            selectedFolder = folder.id;
+            break;
+          }
+        }
+      }
+      if (mode === "--run" || selectedFolder) {
+        result = await runJuntasCheckpoint({ db: meter(raw), driveKey: process.env.GOOGLE_DRIVE_API_KEY,
+          sourceFetch, sources: [root], maxRequests: 5 - officialRequests, maxPublicationWrites: 10,
+          maxSteps: mode === "--focal-run" ? 1 : 100, focusFolderId: selectedFolder });
+      }
     }
     const row = await raw.prepare("SELECT state_json,status,last_attempt_at,last_success_at,error_code FROM juntas_import_checkpoint WHERE root_id=?")
       .bind(root[0]).first();
@@ -70,14 +95,23 @@ try {
       source_published_at,removed_at,normalized_status FROM publications
       WHERE id LIKE 'drive:abiertos-primaria:%' LIMIT 20`).all()).results;
     console.log(JSON.stringify({ root: root[0],
-      ...(result ? { sourceRequests: result.sourceRequests, filesReturned, filesExamined: result.filesExamined,
+      ...(mode === "--focal-run" ? { selectedFolder, folderOffset,
+        searchedFolders: result ? officialRequests - result.sourceRequests : officialRequests,
+        nextOffset: selectedFolder ? null : folderOffset + officialRequests } : {}),
+      ...(result || officialRequests ? { officialRequests, filesReturned } : {}),
+      ...(result ? { filesExamined: result.filesExamined,
         publicationAttempts: result.publicationAttempts,
         created: result.created, updated: result.updated, unchanged: result.unchanged,
-        skippedUnchanged: result.skippedUnchanged, d1: result.d1, failures: result.failures } : {}),
+        skippedUnchanged: result.skippedUnchanged, d1: result.d1,
+        controlRowsWritten: result.d1?.rowsWritten - result.rowsWritten, failures: result.failures } : {}),
       publications: { total: counts.total, duplicates: counts.total - counts.distinct_ids,
         sampled: publications.length, verifiedCurrentCallsInSample: boardItems(publications, "llamados").length },
       checkpoint: row ? { status: row.status, lastAttempt: row.last_attempt_at, lastComplete: row.last_success_at,
         error: row.error_code, cycle: state.cycle, pendingFolders: state.queue.length,
+        visitedFolders: state.visited.length, uniqueVisitedFolders: new Set(state.visited).size,
+        uniquePendingFolders: new Set(state.queue.map((entry) => entry.id)).size,
+        visitedPendingOverlap: state.queue.filter((entry) => state.visited.includes(entry.id)).length,
+        cachedPageFiles: state.page?.files.filter((file) => file.mimeType !== "application/vnd.google-apps.folder").length || 0,
         currentFolder: state.queue[0]?.id || null, pageTokenPresent: Boolean(state.queue[0]?.token),
         pendingPageItems: state.page ? state.page.files.length - state.page.index : 0 } : null }));
   }
