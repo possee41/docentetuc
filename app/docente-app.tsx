@@ -590,7 +590,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         : view === "informacion" ? <InformationHub items={items} query={query} onQuery={setQuery} savedMap={savedMap} onOpen={openPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAskAI={() => openAI({ type: "informacion", title: viewTitles.informacion[0] })} />
         : view === "junta" ? <OfficialConsultations onView={navigateToView} />
         : view === "padrones" ? <PadronSection query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} />
-        : ["comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection view={view as BoardView} publications={data?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
+        : ["comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection key={`${view}:${juntaFilter}:${query}`} view={view as BoardView} publications={data?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
             <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void syncSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
             <Filters filter={filter} setFilter={setFilter} junta={juntaFilter} setJunta={setJuntaFilter} character={character} setCharacter={setCharacter} query={designationQuery} setQuery={setDesignationQuery} kind={view} date={trainingDate} setDate={setTrainingDate} source={trainingSource} setSource={setTrainingSource} compatibility={trainingCompatibility} setCompatibility={setTrainingCompatibility} sort={trainingSort} setSort={setTrainingSort} hasTrainingTerritoryData={hasTrainingTerritoryData} circuit={view === "vacantes" ? designationCircuit : trainingCircuit} setCircuit={view === "vacantes" ? setDesignationCircuit : setTrainingCircuit} />
             {view === "vacantes" && items.some(item => hasOfficialTopic(item, "CLASIFICACION_PENDIENTE")) && <p role="note" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Los registros con «Procedimiento pendiente de verificar» no están confirmados como inscripciones online. Consultá el detalle oficial antes de actuar.</p>}
@@ -672,7 +672,7 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
         let cursor = "";
         // ponytail: 20k-document safety cap; add server-side year cursors if the corpus outgrows it.
         for (let page = 0; page < 100; page++) {
-          const response = await fetch(`/api/boards/padrones?cursor=${encodeURIComponent(cursor)}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
+          const response = await fetch(`/api/boards/padrones?cursor=${encodeURIComponent(cursor)}&junta=${encodeURIComponent(junta)}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
           if (!response.ok) throw new Error("No pudimos consultar los padrones.");
           const result = await response.json() as { items: Publication[]; nextCursor: string | null };
           if (!Array.isArray(result.items) || result.nextCursor && result.nextCursor === cursor) throw new Error("La consulta de padrones devolvió una página inválida.");
@@ -689,7 +689,7 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
     };
     void load();
     return () => controller.abort();
-  }, [retry]);
+  }, [retry, junta]);
   const selection = padronSelection(padronDocuments(rows));
   const chosen = tab === "history" ? selection.history : tab === "undetermined" ? selection.undetermined : selection.current;
   const visible = chosen.filter(item => (junta === "todas" || matchesJunta(item, junta)) &&
@@ -722,16 +722,59 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
 
 function OfficialBoardSection({ view, publications, query, junta, setJunta, onOpen }: { view: BoardView; publications: Publication[]; query: string; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; onOpen: (item: Publication) => void }) {
   const [title, description] = viewTitles[view];
+  const [rows, setRows] = useState<Publication[]>([]);
+  const [cursor, setCursor] = useState<string | null>("");
+  const [loading, setLoading] = useState(true);
+  const [boardError, setBoardError] = useState("");
+  const [references, setReferences] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const generation = useRef(0);
+  const remote = view === "comunicados" || view === "llamados";
+  useEffect(() => {
+    if (!remote) return;
+    const current = ++generation.current;
+    const controller = new AbortController();
+    const params = new URLSearchParams({ view, junta, mode: references && view === "llamados" ? "references" : "current", cursor: "", q: query.trim() });
+    fetch(`/api/boards?${params}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => { if (!response.ok) throw new Error("BOARD_LOAD_FAILED"); return response.json() as Promise<{ items: Publication[]; nextCursor: string | null }>; })
+      .then((result) => { if (!controller.signal.aborted && generation.current === current) { setRows(result.items); setCursor(result.nextCursor); } })
+      .catch(() => { if (!controller.signal.aborted && generation.current === current) setBoardError("No pudimos consultar los documentos de Juntas."); })
+      .finally(() => { if (!controller.signal.aborted && generation.current === current) setLoading(false); });
+    return () => controller.abort();
+  }, [remote, view, junta, query, references, retry]);
+  const loadMore = async () => {
+    if (!cursor || loading) return;
+    const current = generation.current;
+    setLoading(true); setBoardError("");
+    const params = new URLSearchParams({ view, junta, mode: references && view === "llamados" ? "references" : "current", cursor, q: query.trim() });
+    try {
+      const response = await fetch(`/api/boards?${params}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("BOARD_LOAD_FAILED");
+      const result = await response.json() as { items: Publication[]; nextCursor: string | null };
+      if (generation.current === current) { setRows((previous) => [...previous, ...result.items]); setCursor(result.nextCursor); }
+    } catch { if (generation.current === current) setBoardError("No pudimos consultar los documentos de Juntas."); }
+    finally { if (generation.current === current) setLoading(false); }
+  };
+  const restart = (nextReferences = references) => {
+    generation.current++;
+    setRows([]); setCursor(""); setBoardError(""); setLoading(true);
+    setReferences(nextReferences); setRetry((value) => value + 1);
+  };
   const matchesBoard = (item: Publication) => junta === "todas" || matchesJunta(item, junta) || (readMetadata(item.metadata).portalPlacements as { junta: string }[] | undefined)?.some(p => matchesJunta({ junta: p.junta, level: "" }, junta));
-  const entries = boardItems(publications, view).filter((item) => matchesBoard(item) && (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query))));
+  const entries = remote ? rows : boardItems(publications, view).filter((item) => matchesBoard(item) && (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query))));
   const sources = publications.filter((item) => item.id.startsWith("padrones:") && (view === "actos" || view === "comunicados" ? item.category === "Comunicados" : view === "llamados" ? item.category === "Llamados abiertos" : false) && matchesBoard(item));
   return <section className="space-y-4 pb-16 md:pb-0">
     <VisualSectionBanner kind={view === "padrones" || view === "llamados" ? "padrones" : "novedades"} title={title} description={description} />
     <div className="max-w-lg"><Label htmlFor="board-junta">Junta</Label><Select value={junta} onValueChange={(value) => setJunta((value || "todas") as typeof junta)}><SelectTrigger id="board-junta" className="mt-1 h-11 rounded-xl border-[#c8e1f1] bg-white"><SelectValue placeholder="Todas las juntas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
+    {view === "llamados" && <div className="flex gap-2"><Button variant={!references ? "default" : "outline"} onClick={() => { if (references) restart(false); }}>Vigentes verificados</Button><Button variant={references ? "default" : "outline"} onClick={() => { if (!references) restart(true); }}>Documentos para consultar</Button></div>}
+    {view === "llamados" && references && <p className="rounded-xl border border-amber-200 bg-[var(--surface-primary)] p-3 text-sm text-[var(--text-secondary)]">Estos documentos están en carpetas de Llamados. Su ubicación no confirma una inscripción abierta ni su vigencia. Revisá fecha y requisitos en la fuente oficial.</p>}
     {(view === "comunicados" || view === "padrones") && <p className="rounded-xl border border-[#c8e1f1] bg-white p-3 text-sm text-[#315d7a]">Estos son documentos oficiales. Una carpeta o un documento completo no equivale a un llamado vigente; comprobá siempre la fecha y los requisitos en la fuente.</p>}
-    {entries.length ? <div className="grid gap-3 md:grid-cols-2">{entries.map((item) => <Card as="article" key={item.id} className="rounded-2xl p-4"><p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"}</p><h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2><OfficialPublicationSummary item={item} />{!officialMetadata(item) && (view === "actos" || view === "llamados") && <p className="mt-1 text-sm text-[var(--text-secondary)]">{dateLabel(item.starts_at, true)}{item.location ? ` · ${item.location}` : ""}</p>}<div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button><a href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial <ExternalLink className="size-4" /></a></div></Card>)}</div>
-      : <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-primary)] p-5"><h2 className="font-bold text-[var(--text-primary)]">{view === "actos" || view === "llamados" ? "No hay registros individuales con fecha y vigencia verificadas en esta copia" : "No hay documentos indexados en esta vista"}</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">Esto no significa que la Junta no haya publicado novedades. Consultá las fuentes originales mientras se completa la clasificación.</p></div>}
+    {entries.length ? <div className="grid gap-3 md:grid-cols-2">{entries.map((item) => <Card as="article" key={item.id} className="rounded-2xl p-4"><p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"}</p><h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2><OfficialPublicationSummary item={item} />{!officialMetadata(item) && (view === "actos" || view === "llamados") && !references && <p className="mt-1 text-sm text-[var(--text-secondary)]">{dateLabel(item.starts_at, true)}{item.location ? ` · ${item.location}` : ""}</p>}<div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button><a href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial <ExternalLink className="size-4" /></a></div></Card>)}</div>
+      : (!remote || !loading && !boardError) && <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-primary)] p-5"><h2 className="font-bold text-[var(--text-primary)]">{references ? "No hay documentos de Llamados en esta selección" : view === "actos" || view === "llamados" ? "No hay registros individuales con fecha y vigencia verificadas en esta copia" : "No hay documentos indexados en esta vista"}</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">Esto no significa que la Junta no haya publicado novedades. Consultá las fuentes originales mientras se completa la clasificación.</p></div>}
     {sources.length > 0 && <div><h2 className="mb-2 font-bold text-[var(--text-primary)]">Documentos originales para verificar</h2><div className="flex flex-wrap gap-2">{sources.filter((item) => junta === "todas" || matchesJunta(item, junta)).map((item) => <a key={item.id} href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-[#c8e1f1] bg-white px-3 text-sm font-semibold text-[#075f9b]">{item.junta} <ExternalLink className="size-4" /></a>)}</div></div>}
+    {remote && loading && <p role="status" className="text-sm text-[var(--text-secondary)]">Consultando documentos…</p>}
+    {remote && boardError && <div role="alert"><p>{boardError}</p><Button variant="outline" onClick={() => cursor && rows.length ? void loadMore() : restart()}>Reintentar</Button></div>}
+    {remote && cursor && !loading && !boardError && <Button variant="outline" onClick={() => void loadMore()}>Cargar más documentos</Button>}
     {!entries.length && !sources.length && <a href="https://padrones.educaciontuc.gov.ar/" target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-[#075f9b] underline">Consultar portal oficial de Juntas <ExternalLink className="size-4" /></a>}
   </section>;
 }

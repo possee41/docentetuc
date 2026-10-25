@@ -5,6 +5,7 @@ import { runDirectD1Import } from "./import-direct-d1.mjs";
 import { APP_PUBLICATIONS_QUERY } from "../lib/app-publications-query.ts";
 import { boardItems } from "../lib/board-view.ts";
 import { hasOfficialTopic } from "../lib/official-publication.ts";
+import { safeJuntasFailures } from "./safe-juntas-failure.mjs";
 
 const source = process.argv[2];
 if (!["fdci", "sime", "juntas", "cenet", "infd"].includes(source)) throw new Error("SOURCE_REQUIRED");
@@ -83,10 +84,11 @@ try {
     error = failure instanceof Error ? failure.message.replace(/https?:\/\/\S+/g, "[url]") : "UNKNOWN";
     if (error === "FDCI_PARTIAL_SOURCE") partial = { failures: failure.failures,
       diagnostics: failure.diagnostics, ...failure.result };
+    if (error === "JUNTAS_PARTIAL_SOURCE") partial = { failures: safeJuntasFailures(failure.failures) };
   }
   const firstMetrics = firstDb.metrics(), requests = sourceRequests - requestsBefore;
   let repeat = null, repeatMetrics = null, repeatError = null;
-  if (!error || partial) {
+  if (!error || error === "FDCI_PARTIAL_SOURCE") {
     const secondDb = meter(db);
     try {
       repeat = await runDirectD1Import({ source, db: secondDb, sourceFetch, scope: source === "fdci" ? fdciScope : "single",
@@ -111,8 +113,10 @@ try {
   const count = (status) => rows.filter((row) => row.normalized_status === status).length;
   const categories = Object.fromEntries([...new Set(rows.map((row) => row.category))].sort().map((category) =>
     [category, rows.filter((row) => row.category === category).length]));
-  const health = await db.prepare("SELECT sync_status,last_attempt_at,last_successful_sync_at,error_code FROM sync_state WHERE source=?")
-    .bind(storageSource).first();
+  const health = source === "juntas"
+    ? (await db.prepare("SELECT source,sync_status,last_attempt_at,last_successful_sync_at,error_code FROM sync_state WHERE source IN ('Padrones','Comunicados','Llamados abiertos') ORDER BY source").all()).results
+    : await db.prepare("SELECT sync_status,last_attempt_at,last_successful_sync_at,error_code FROM sync_state WHERE source=?")
+      .bind(storageSource).first();
   const sectionVisible = source === "juntas" ? { comunicados: boardItems(visible, "comunicados").length,
     actos: boardItems(visible, "actos").length, llamados: boardItems(visible, "llamados").length }
     : source === "sime" ? { designaciones: visible.filter((row) => row.source === "SIME" &&
