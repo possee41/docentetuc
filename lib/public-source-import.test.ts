@@ -114,6 +114,55 @@ test("Juntas: página interrumpida conserva lo aplicado y el último éxito, sin
   assert.ok(Number(h.sqlite.prepare("SELECT count(*) AS n FROM publications").get()?.n) > 0);
 });
 
+test("Juntas: timeout en Comunicados deja PARTIAL y permite Padrones y Llamados", async () => {
+  const padronUrl = folderUrl;
+  const llamadoUrl = "https://drive.google.com/drive/folders/234567890123456789012345678901";
+  const validDocUrl = "https://docs.google.com/document/d/345678901234567890123456789012/edit";
+  const sourceFetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/export?format=txt")) {
+      if (url.includes("345678901234567890123456789012")) return new Response(noticeText);
+      throw new DOMException("timed out", "TimeoutError");
+    }
+    const folderId = new URL(url).searchParams.get("q")?.match(/'([^']+)'/)?.[1];
+    if (folderId === "123456789012345678901234567890") return Response.json({ files: [
+      { id: "padron_pdf_1", name: "Padrón oficial", mimeType: "application/pdf" },
+    ] });
+    if (folderId === "234567890123456789012345678901") return Response.json({ files: [
+      { id: "llamado_pdf_1", name: "Llamado abierto sin fecha verificada", mimeType: "application/pdf" },
+    ] });
+    throw new Error("UNEXPECTED_SOURCE_URL");
+  }) as typeof fetch;
+  const h = harness(sourceFetch), sources = [
+    ["com-valid", "Comunicados", "Inicial y Primaria", validDocUrl],
+    ["com-test", "Comunicados", "Inicial y Primaria", docUrl],
+    ["pad-test", "Padrones", "Inicial y Primaria", padronUrl],
+    ["llam-test", "Llamados abiertos", "Inicial y Primaria", llamadoUrl],
+  ] as const;
+  h.sqlite.prepare(`INSERT INTO publications(id,source,external_id,kind,category,title,status,official_url,metadata,content_hash)
+    VALUES('historic:1','Padrones y Comunicados','1','documento','Comunicados','Comunicado anterior','Documento público · vigencia no informada','https://example.test/old','{}','old')`).run();
+  await assert.rejects(h.run("juntas", { driveKey: "synthetic_drive_api_key_123456", juntaSources: sources }), (error: Error & { failures?: { category: string; code: string }[] }) => {
+    assert.equal(error.message, "JUNTAS_PARTIAL_SOURCE");
+    assert.deepEqual(error.failures?.map(({ category, code }) => [category, code]), [["Comunicados", "JUNTAS_SOURCE_TIMEOUT"]]);
+    return true;
+  });
+  const rows = h.sqlite.prepare("SELECT id,category,registration_close_at FROM publications ORDER BY id").all() as { id: string; category: string; registration_close_at: string | null }[];
+  assert.ok(rows.some((row) => row.id === "historic:1"));
+  assert.ok(rows.some((row) => row.id.startsWith("notice:padrones:com-valid:")));
+  assert.ok(rows.some((row) => row.id.includes("padron_pdf_1")));
+  assert.ok(rows.some((row) => row.id.includes("llamado_pdf_1")));
+  assert.equal(rows.find((row) => row.id.includes("llamado_pdf_1"))?.registration_close_at, null);
+  const states = h.sqlite.prepare("SELECT source,sync_status,last_successful_sync_at FROM sync_state ORDER BY source").all() as
+    { source: string; sync_status: string; last_successful_sync_at: string | null }[];
+  assert.deepEqual(states.map(({ source, sync_status }) => [source, sync_status]), [
+    ["Comunicados", "PARTIAL"], ["Llamados abiertos", "OK"], ["Padrones", "OK"],
+  ]);
+  assert.equal(states[0].last_successful_sync_at, null);
+  const count = rows.length;
+  await assert.rejects(h.run("juntas", { driveKey: "synthetic_drive_api_key_123456", juntaSources: sources }));
+  assert.equal(h.sqlite.prepare("SELECT count(*) AS n FROM publications").get()?.n, count);
+});
+
 test("receptor público rechaza no autorizados y fuentes falsas sin escribir", async () => {
   const h = harness((async () => new Response("")) as typeof fetch);
   const unauth = await receiver.fetch(new Request(endpoint, { method: "POST", headers: { "Content-Type": "application/json" },

@@ -30,7 +30,8 @@ export async function runPublicSourceImport({ source, endpoint, token, driveKey,
     [source === "cenet" ? "CeNET / INET" : "INFoD / AulaS-TIC"];
   await send(endpoint, token, { mode: "start", health }, receiverFetch);
   const result = { discovered: 0, created: 0, updated: 0, unchanged: 0, queries: 0, rowsRead: 0, rowsWritten: 0 };
-  const apply = async (items) => {
+  const counts = Object.fromEntries(health.map((name) => [name, 0]));
+  const apply = async (items, sourceCategory) => {
     for (const item of items) {
       const row = source === "juntas" ? await prepareJuntaImport(item, now) :
         await prepareTrainingImport(item, source === "cenet" ? "CeNET / INET" : "INFoD / AulaS-TIC", now);
@@ -38,12 +39,23 @@ export async function runPublicSourceImport({ source, endpoint, token, driveKey,
       const ack = await send(endpoint, token, { mode: "batch", items: [row] }, receiverFetch);
       if (ack.received !== 1 || ack.created + ack.updated + ack.unchanged !== 1) throw new Error("RECEIVER_ACK_INVALID");
       result.discovered++;
+      if (sourceCategory) counts[sourceCategory]++;
       for (const field of ["created", "updated", "unchanged", "queries", "rowsRead", "rowsWritten"]) result[field] += ack[field];
     }
   };
   try {
     if (source === "juntas") {
-      await collectJuntaExternal({ fetcher: sourceFetch, driveKey, sources: juntaSources, onItems: apply });
+      const scan = await collectJuntaExternal({ fetcher: sourceFetch, driveKey, sources: juntaSources, onItems: apply });
+      const failed = new Set(scan.failures.map((item) => item.category));
+      for (const name of health) await send(endpoint, token, failed.has(name)
+        ? { mode: "error", health: [name], code: "PARTIAL" }
+        : { mode: "finish", health: [name], complete: true, count: counts[name] }, receiverFetch);
+      if (scan.failures.length) {
+        const error = new Error("JUNTAS_PARTIAL_SOURCE");
+        error.failures = scan.failures;
+        throw error;
+      }
+      return { ...result, completed: true };
     } else if (source === "cenet") {
       const html = await getText(urls.cenet, sourceFetch);
       if (!isCenetMarkupRecognized(html)) throw new Error("CENET_FORMAT_CHANGED");
@@ -65,6 +77,7 @@ export async function runPublicSourceImport({ source, endpoint, token, driveKey,
     await send(endpoint, token, { mode: "finish", health, complete: true, count: result.discovered }, receiverFetch);
     return { ...result, completed: true };
   } catch (error) {
+    if (source === "juntas" && error instanceof Error && error.message === "JUNTAS_PARTIAL_SOURCE") throw error;
     const message = error instanceof Error ? error.message : "";
     const code = /PARTIAL_SOURCE|JUNTAS_DOCUMENT_UNAVAILABLE/.test(message) ? "PARTIAL" :
       /FORMAT_CHANGED|NOTICE_FORMAT_UNRECOGNIZED/.test(message) ? "FORMAT_CHANGED" :
@@ -79,5 +92,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const result = await runPublicSourceImport({ source, endpoint: process.env.PUBLIC_IMPORT_URL || "",
       token: process.env.PUBLIC_IMPORT_SECRET || "", driveKey: process.env.GOOGLE_DRIVE_API_KEY });
     console.log(JSON.stringify({ source, ...result }));
-  } catch (error) { console.error("PUBLIC_IMPORT_FAILED", sourceErrorCode(error)); process.exitCode = 1; }
+  } catch (error) {
+    console.error("PUBLIC_IMPORT_FAILED", sourceErrorCode(error), error?.failures || "");
+    process.exitCode = 1;
+  }
 }
