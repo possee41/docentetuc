@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { runJuntasCheckpoint } from "./import-juntas-checkpoint.mjs";
 import { boardItems } from "../lib/board-view.ts";
+import { listDrivePage } from "../lib/junta-external.ts";
 
 const root = ["pad-test", "Padrones", "Inicial y Primaria",
   "https://drive.google.com/drive/folders/123456789012345678901234567890?resourcekey=0-synthetic"];
@@ -61,7 +62,8 @@ function driveFixture(filesByFolder, { failFolder = "", failDocument = "", pages
     assert.equal(new Headers(init?.headers).get("x-goog-api-key"), key);
     const folder = url.searchParams.get("q")?.match(/'([^']+)'/)?.[1];
     if (folder === failFolder) return Response.json({ error: "unavailable" }, { status: 503 });
-    const entries = filesByFolder.get(folder) || [];
+    const entries = (filesByFolder.get(folder) || []).filter((item) =>
+      !url.searchParams.get("q")?.includes("mimeType !=") || item.mimeType !== "application/vnd.google-apps.folder");
     const token = Number(url.searchParams.get("pageToken") || 0);
     pages.push({ folder, token });
     return Response.json({ files: entries.slice(token, token + 25),
@@ -147,25 +149,32 @@ test("abiertos-primaria resumes a five-request, ten-attempt probe without false 
 test("a focal folder moves ahead without losing the saved queue", async (t) => {
   const h = isolatedD1();
   const firstFolder = "folder_first_1234567890", targetFolder = "folder_target_1234567890";
+  const children = Array.from({ length: 25 }, (_, index) => ({ id: `child_${String(index).padStart(10, "0")}`,
+    name: `Subcarpeta ${index}`, mimeType: "application/vnd.google-apps.folder" }));
   const fixture = driveFixture(new Map([
     ["234567890123456789012345678901", [firstFolder, targetFolder].map((id) =>
       ({ id, name: id, mimeType: "application/vnd.google-apps.folder" }))],
-    [firstFolder, [file(1)]], [targetFolder, [file(2)]],
+    [firstFolder, [file(1)]], [targetFolder, [...children, file(2)]],
   ]));
   const options = { db: h.db, driveKey: key, now, sourceFetch: fixture.fetcher,
     sources: [callRoot], maxRequests: 1, maxPublicationWrites: 10, maxSteps: 1 };
   await runJuntasCheckpoint(options);
   const before = JSON.parse(h.sqlite.prepare("SELECT state_json FROM juntas_import_checkpoint WHERE root_id='abiertos-test'").get().state_json);
   assert.deepEqual(before.queue.map((entry) => entry.id), [firstFolder, targetFolder]);
-  const focused = await runJuntasCheckpoint({ ...options, focusFolderId: targetFolder });
+  const filtered = await listDrivePage(targetFolder, key, undefined, "", fixture.fetcher, true);
+  assert.deepEqual(filtered.files.map((item) => item.id), ["file_00000002"]);
+  const focused = await runJuntasCheckpoint({ ...options, focusFolderId: targetFolder, focusFilesOnly: true });
   assert.equal(focused.created, 1);
   assert.ok(focused.d1.rowsWritten - focused.rowsWritten <= 8, "bounded lease/checkpoint control writes");
   t.diagnostic(JSON.stringify({ focalD1: focused.d1,
     publicationRowsWritten: focused.rowsWritten,
     controlRowsWritten: focused.d1.rowsWritten - focused.rowsWritten }));
   const after = JSON.parse(h.sqlite.prepare("SELECT state_json FROM juntas_import_checkpoint WHERE root_id='abiertos-test'").get().state_json);
-  assert.deepEqual(after.queue.map((entry) => entry.id), [firstFolder]);
-  await runJuntasCheckpoint(options);
+  assert.deepEqual(after.queue.map((entry) => entry.id), [targetFolder, firstFolder], "filtered page must not mark folder complete");
+  assert.ok(!after.visited.includes(targetFolder));
+  await runJuntasCheckpoint(options); // Unfiltered first page contains only folders.
+  await runJuntasCheckpoint(options); // The later page contains the already imported file.
+  await runJuntasCheckpoint(options); // Continue with the other pending folder.
   assert.equal(h.sqlite.prepare("SELECT COUNT(*) AS n FROM publications").get().n, 2);
   h.sqlite.close();
 });

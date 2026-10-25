@@ -27,10 +27,11 @@ function reference(id: string, category: string, junta: string, url: string, tit
     officialUrl: url, metadata: "{}", contentHash: "", sourceUpdatedAt };
 }
 export async function listDrivePage(folderId: string, key: string,
-  resourceKey: string | readonly { id: string; key: string }[] | undefined, pageToken = "", fetcher: Fetcher = fetch) {
+  resourceKey: string | readonly { id: string; key: string }[] | undefined, pageToken = "", fetcher: Fetcher = fetch,
+  filesOnly = false) {
   if (!/^[A-Za-z0-9_-]{10,}$/.test(folderId) || !/^[A-Za-z0-9_-]{10,}$/.test(key)) throw new Error("JUNTAS_DRIVE_CONFIGURATION_INVALID");
   const url = new URL("https://www.googleapis.com/drive/v3/files");
-  url.searchParams.set("q", `'${folderId}' in parents and trashed = false`);
+  url.searchParams.set("q", `'${folderId}' in parents and trashed = false${filesOnly ? " and mimeType != 'application/vnd.google-apps.folder'" : ""}`);
   url.searchParams.set("pageSize", "25");
   url.searchParams.set("fields", "nextPageToken,incompleteSearch,files(id,name,mimeType,modifiedTime,resourceKey)");
   url.searchParams.set("supportsAllDrives", "true");

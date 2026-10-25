@@ -53,6 +53,8 @@ try {
     let filesReturned = 0;
     let officialRequests = 0;
     let selectedFolder = null;
+    let foldersSearched = 0;
+    let unresolvedFolder = null;
     if (mode === "--run" || mode === "--focal-run") {
       const sourceFetch = async (input, init) => {
         const url = new URL(String(input));
@@ -73,17 +75,20 @@ try {
         if (state.page) throw new Error("JUNTAS_PROBE_PAGE_IN_PROGRESS");
         for (const folder of state.queue.slice(folderOffset, folderOffset + 3)) {
           const page = await listDrivePage(folder.id, process.env.GOOGLE_DRIVE_API_KEY,
-            folder.keys, folder.token || "", sourceFetch);
+            folder.keys, "", sourceFetch, true);
+          foldersSearched++;
           if (page.files.some((file) => file.mimeType !== "application/vnd.google-apps.folder")) {
             selectedFolder = folder.id;
             break;
           }
+          if (page.nextPageToken) { unresolvedFolder = folder.id; break; }
         }
       }
       if (mode === "--run" || selectedFolder) {
         result = await runJuntasCheckpoint({ db: meter(raw), driveKey: process.env.GOOGLE_DRIVE_API_KEY,
           sourceFetch, sources: [root], maxRequests: 5 - officialRequests, maxPublicationWrites: 10,
-          maxSteps: mode === "--focal-run" ? 1 : 100, focusFolderId: selectedFolder });
+          maxSteps: mode === "--focal-run" ? 1 : 100, focusFolderId: selectedFolder,
+          focusFilesOnly: mode === "--focal-run" });
       }
     }
     const row = await raw.prepare("SELECT state_json,status,last_attempt_at,last_success_at,error_code FROM juntas_import_checkpoint WHERE root_id=?")
@@ -95,9 +100,8 @@ try {
       source_published_at,removed_at,normalized_status FROM publications
       WHERE id LIKE 'drive:abiertos-primaria:%' LIMIT 20`).all()).results;
     console.log(JSON.stringify({ root: root[0],
-      ...(mode === "--focal-run" ? { selectedFolder, folderOffset,
-        searchedFolders: result ? officialRequests - result.sourceRequests : officialRequests,
-        nextOffset: selectedFolder ? null : folderOffset + officialRequests } : {}),
+      ...(mode === "--focal-run" ? { selectedFolder, folderOffset, searchedFolders: foldersSearched,
+        unresolvedFolder, nextOffset: selectedFolder || unresolvedFolder ? null : folderOffset + foldersSearched } : {}),
       ...(result || officialRequests ? { officialRequests, filesReturned } : {}),
       ...(result ? { filesExamined: result.filesExamined,
         publicationAttempts: result.publicationAttempts,

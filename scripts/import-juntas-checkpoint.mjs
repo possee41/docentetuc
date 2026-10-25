@@ -137,7 +137,7 @@ async function advanceDocument(db, source, state, budget, limit, receiver, metri
   state.lastDocHash = hash; state.docProcessingHash = null; state.docIndex = 0;
   return { state, complete: true, progressed: true };
 }
-async function advanceFolder(db, source, state, budget, limit, receiver, metrics, sourceFetch, driveKey, now) {
+async function advanceFolder(db, source, state, budget, limit, receiver, metrics, sourceFetch, driveKey, now, filesOnly = false) {
   const current = state.queue[0];
   if (!current) return { state, complete: true, progressed: false };
   if (!state.page) {
@@ -145,14 +145,15 @@ async function advanceFolder(db, source, state, budget, limit, receiver, metrics
     if (!driveKey) throw new Error("JUNTAS_DRIVE_KEY_REQUIRED");
     budget.requests--; budget.usedRequests++;
     let page;
-    try { page = await listDrivePage(current.id, driveKey, current.keys, current.token || "", sourceFetch); }
+    try { page = await listDrivePage(current.id, driveKey, current.keys,
+      filesOnly ? "" : current.token || "", sourceFetch, filesOnly); }
     catch (error) {
       if (error?.message !== "JUNTAS_DRIVE_PAGE_TOKEN_EXPIRED") throw error;
       current.token = null; current.seenTokens = [];
       return { state, complete: false, progressed: true };
     }
     if (page.nextPageToken && current.seenTokens.includes(page.nextPageToken)) throw new Error("JUNTAS_DRIVE_PAGE_INVALID");
-    state.page = { files: page.files, nextToken: page.nextPageToken || null, index: 0, itemIndex: 0 };
+    state.page = { files: page.files, nextToken: page.nextPageToken || null, index: 0, itemIndex: 0, filesOnly };
   }
   const page = state.page;
   const candidates = page.files.filter((file) => file.mimeType !== folderMime);
@@ -188,6 +189,11 @@ async function advanceFolder(db, source, state, budget, limit, receiver, metrics
     page.index++; page.itemIndex = 0;
   }
   if (page.index < page.files.length) return { state, complete: false, progressed: true };
+  if (page.filesOnly) {
+    // A filtered probe never proves the folder's subfolders were traversed.
+    state.page = null;
+    return { state, complete: false, progressed: true };
+  }
   for (const folder of page.files.filter((file) => file.mimeType === folderMime)) {
     if (!state.visited.includes(folder.id) && !state.queue.some((entry) => entry.id === folder.id))
       state.queue.push({ id: folder.id, keys: [...current.keys,
@@ -206,11 +212,12 @@ async function advanceFolder(db, source, state, budget, limit, receiver, metrics
 
 export async function runJuntasCheckpoint({ db, driveKey, sourceFetch = fetch, sources = JUNTA_EXTERNAL_SOURCES,
   now = new Date(), maxRequests = 25, maxPublicationWrites = 20, maxSteps = 100, refreshAfterMs = day,
-  focusFolderId = null }) {
+  focusFolderId = null, focusFilesOnly = false }) {
   if (!db || !Array.isArray(sources) || !sources.length || !Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 100 ||
       !Number.isInteger(maxPublicationWrites) || maxPublicationWrites < 1 || maxPublicationWrites > 50 ||
       !Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 200 || refreshAfterMs < 0 ||
-      (focusFolderId !== null && (sources.length !== 1 || !/^[A-Za-z0-9_-]{10,}$/.test(focusFolderId))))
+      (focusFolderId !== null && (sources.length !== 1 || !/^[A-Za-z0-9_-]{10,}$/.test(focusFolderId))) ||
+      (focusFilesOnly && !focusFolderId))
     throw new Error("JUNTAS_BUDGET_INVALID");
   const instant = now.toISOString(), budget = { requests: maxRequests, usedRequests: 0 };
   const limit = { remaining: maxPublicationWrites };
@@ -245,7 +252,7 @@ export async function runJuntasCheckpoint({ db, driveKey, sourceFetch = fetch, s
       }
       const output = source[3].includes("docs.google.com/document/")
         ? await advanceDocument(db, source, state, budget, limit, receiver, metrics, sourceFetch, now)
-        : await advanceFolder(db, source, state, budget, limit, receiver, metrics, sourceFetch, driveKey, instant);
+        : await advanceFolder(db, source, state, budget, limit, receiver, metrics, sourceFetch, driveKey, instant, focusFilesOnly);
       if (output.progressed) await save(db, rootId, owner, output.state, instant, output.complete);
       if (output.complete || !output.progressed) finished.add(rootId);
     } catch (error) {
