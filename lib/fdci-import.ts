@@ -4,6 +4,22 @@ import { hashSourceSnapshot } from "./sync-diff.ts";
 import { mergeTrainingData, type OfficialCommission, type OfficialCourse } from "./training.ts";
 
 export const FDCI_BATCH_SIZE = 5;
+const FDCI_METADATA_LIMIT = 6000;
+
+function serializeFdciMetadata<T extends { content?: string }>(value: T) {
+  const full = JSON.stringify(value);
+  if (full.length <= FDCI_METADATA_LIMIT || !value.content) return full;
+  // Keep verified dates, capacity, recipients and source intact. The official
+  // link remains available when a course description exceeds the receiver cap.
+  let lower = 0, upper = value.content.length, best = "";
+  while (lower <= upper) {
+    const middle = Math.floor((lower + upper) / 2);
+    const candidate = JSON.stringify({ ...value, content: `${value.content.slice(0, middle)}…` });
+    if (candidate.length <= FDCI_METADATA_LIMIT) { best = candidate; lower = middle + 1; }
+    else upper = middle - 1;
+  }
+  return best || full;
+}
 export async function authorizedFdciImport(header: string | null, secret: string | undefined) {
   const bearer = header?.match(/^Bearer ([A-Za-z0-9_-]{32,})$/)?.[1];
   if (!secret || !bearer) return false;
@@ -25,7 +41,7 @@ export type FdciImport = {
 
 export async function prepareFdciImports(courses: OfficialCourse[], commissions: OfficialCommission[], now = new Date()): Promise<FdciImport[]> {
   return Promise.all(mergeTrainingData(courses, commissions, now).map(async (item) => {
-    const metadata = JSON.stringify(item.metadata);
+    const metadata = serializeFdciMetadata(item.metadata);
     const inferred = inferCircuit({ locality: item.location });
     const sourceHash = await hashSourceSnapshot(item.raw, { metadata: item.metadata, status: item.status, startsAt: item.startsAt, endsAt: item.endsAt });
     const contentHash = await hashSourceSnapshot(sourceHash, { circuit: inferred.normalizedCircuit, raw: inferred.sourceCircuitRaw, via: inferred.circuitInferenceSource });

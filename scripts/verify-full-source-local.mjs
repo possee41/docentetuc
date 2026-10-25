@@ -81,7 +81,8 @@ try {
     driveKey: process.env.GOOGLE_DRIVE_API_KEY }); }
   catch (failure) {
     error = failure instanceof Error ? failure.message.replace(/https?:\/\/\S+/g, "[url]") : "UNKNOWN";
-    if (error === "FDCI_PARTIAL_SOURCE") partial = { failures: failure.failures, ...failure.result };
+    if (error === "FDCI_PARTIAL_SOURCE") partial = { failures: failure.failures,
+      diagnostics: failure.diagnostics, ...failure.result };
   }
   const firstMetrics = firstDb.metrics(), requests = sourceRequests - requestsBefore;
   let repeat = null, repeatMetrics = null, repeatError = null;

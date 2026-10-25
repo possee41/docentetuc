@@ -1,12 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { collectFdci, runFdciImport } from "../scripts/import-fdci.mjs";
+import { prepareFdciImports, validFdciImport } from "./fdci-import.ts";
 
 const course = { capacitacion_id: 42, nombre: "Capacitación sintética", token: "synthetic", slug: "curso", niveles: "Primaria" };
 const commission = { id: 6379, capacitacion_id: 42, fecha_apertura_preinscripcion: "2026-10-17 23:00:00", fecha_cierre_preinscripcion: "2026-10-19 08:00:00" };
 const selection = { token: course.token, slug: course.slug, commissionId: String(commission.id) };
 const endpoint = "https://receiver.example/api/internal/fdci-import";
 const token = "synthetic_receiver_secret_1234567890";
+
+test("un contenido FDCI extenso conserva datos críticos bajo el límite del receptor", async () => {
+  const [row] = await prepareFdciImports([{ ...course, contenido: "Contenido oficial ".repeat(650) }],
+    [{ ...commission, cupo_disponible_pre: 0 }]);
+  const metadata = JSON.parse(row.metadata);
+  assert.ok(row.metadata.length <= 6000);
+  assert.equal(validFdciImport(row), true);
+  assert.equal(metadata.trainingId, String(course.capacitacion_id));
+  assert.equal(metadata.sourceUrl, row.officialUrl);
+  assert.equal(metadata.registrationOpensAt, "2026-10-17T23:00:00-03:00");
+  assert.equal(metadata.availablePreCapacity, 0);
+  assert.ok(metadata.content.endsWith("…"));
+});
 
 test("la selección consulta un solo detalle y conserva la fecha oficial de la comisión", async () => {
   const calls: string[] = [];
@@ -131,16 +145,34 @@ test("el barrido completo guarda cursos sanos ante un detalle fallido, sin decla
     throw new Error("unexpected URL");
   };
   await assert.rejects(runFdciImport({ endpoint, token, scope: "full", fetcher }), (error: Error & {
-    failures?: number; result?: { created: number; discovered: number };
+    failures?: number; diagnostics?: { schema: number }; result?: { created: number; discovered: number };
   }) => {
     assert.equal(error.message, "FDCI_PARTIAL_SOURCE");
     assert.equal(error.failures, 1);
+    assert.equal(error.diagnostics?.schema, 1);
     assert.equal(error.result?.created, 2);
     assert.equal(error.result?.discovered, 2);
     return true;
   });
   assert.ok(sent.includes("fdci:course:43"));
   assert.ok(!sent.some((id) => id.startsWith("fdci:commission:")));
+});
+
+test("clasifica HTTP y JSON inválido sin atribuir un éxito al detalle", async () => {
+  const courses = [{ ...course, capacitacion_id: 47, token: "http", slug: "http" },
+    { ...course, capacitacion_id: 48, token: "json", slug: "json" }];
+  const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("getCapaActivas")) return Response.json([]);
+    if (url.endsWith("getRestoCapas")) return Response.json(courses);
+    if (url.endsWith("getCupo")) return JSON.parse(String(init?.body)).token === "http" ?
+      new Response(null, { status: 404 }) : new Response("{", { status: 200 });
+    throw new Error("unexpected URL");
+  };
+  const result = await collectFdci(fetcher, undefined, "full");
+  assert.equal(result.failures, 2);
+  assert.equal(result.diagnostics?.http.HTTP_404, 1);
+  assert.equal(result.diagnostics?.invalidJson, 1);
 });
 
 test("un registro rechazado no bloquea los siguientes ni declara el catálogo completo", async () => {
