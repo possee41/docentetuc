@@ -89,7 +89,7 @@ test("candidata descubierta no se publica sola, se actualiza sin duplicar ni pis
     await mutateNewsAdmin(database, adminId, { action: "publish", id, updatedAt });
     updatedAt = String(raw.prepare("SELECT updated_at FROM news_items WHERE id=?").get(id)!.updated_at);
     await mutateNewsAdmin(database, adminId, { action: "feature", id, updatedAt });
-    const visibleNow = new Date("2026-10-25T12:00:00.000Z");
+    const visibleNow = new Date(Date.parse(String(raw.prepare("SELECT published_at FROM news_items WHERE id=?").get(id)!.published_at)) + 1000);
     const list = await listPublicNews(database, new URLSearchParams(), visibleNow);
     assert.equal(list.items.find((item) => item.id === id)?.primarySource.url, article.url);
     assert.equal((await listPublicNews(database, new URLSearchParams("home=1"), visibleNow)).items[0]?.id, id);

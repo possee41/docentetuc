@@ -162,7 +162,8 @@ test("materialización por REST agrupa 25 avisos e idempotencia en cuatro consul
     content_hash,source_status,normalized_status) VALUES(?,'Capacitación Docente','rest-test','capacitacion',
     'Capacitación','Ensayo aislado','vigente','https://capacitaciondocente.educaciontuc.gov.ar/',?,?,'vigente','ACTIVE')`)
     .run(id, JSON.stringify({ entity: "commission", availablePreCapacity: 5,
-      registrationOpensAt: "2026-10-25T12:00:00Z" }), hash);
+      registrationOpensAt: "2026-10-25T12:00:00Z", registrationClosesAt: "2026-10-30T12:00:00Z",
+      dateStatus: "confirmed" }), hash);
   for (let index = 0; index < 25; index++) sqlite.prepare("INSERT INTO profiles VALUES(?,1,'all')").run(`user-${index}`);
   const options = { events: [{ id, contentHash: hash, change: "created" }],
     now: new Date("2026-10-24T12:00:00Z") };

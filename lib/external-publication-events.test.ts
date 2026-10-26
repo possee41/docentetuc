@@ -33,7 +33,8 @@ const now = new Date("2026-10-22T12:00:00Z");
 const insert = `INSERT INTO publications(id,source,kind,category,title,metadata,content_hash,normalized_status,circuit)
   VALUES (?,'Capacitación Docente','capacitacion','Capacitación','Curso sintético',?,?,'ACTIVE','UNKNOWN')`;
 const metadata = JSON.stringify({ entity: "commission", availablePreCapacity: 5,
-  registrationOpensAt: "2026-10-23T12:00:00Z" });
+  registrationOpensAt: "2026-10-23T12:00:00Z", registrationClosesAt: "2026-10-30T12:00:00Z",
+  dateStatus: "confirmed" });
 
 test("el evento se guarda con la publicación, sin duplicar al repetir y sin tocar históricos", () => {
   const { sqlite } = fixture();

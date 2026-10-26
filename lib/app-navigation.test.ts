@@ -58,7 +58,7 @@ test("el loader existente limpia el aviso solo tras JSON válido y lo conserva s
   const revalidation = source.split("const previous = previousAccountView.current;")[1]?.split("document.querySelector(\".app-background\")")[0];
   assert.ok(revalidation);
   assert.match(revalidation, /shouldRevalidateAccount\([^)]+\)/u);
-  assert.match(revalidation, /load\(false, false\)\.finally/u);
+  assert.match(revalidation, /load\(false\)\.finally/u);
   assert.doesNotMatch(revalidation, /fetch\(|\/api\/auth\/status|\/api\/installations\/credential|\/api\/auth\/link/u);
 });
 

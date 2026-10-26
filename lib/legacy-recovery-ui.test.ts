@@ -21,7 +21,7 @@ test("una instalación que requiere recuperación no muestra datos privados como
 test("la recuperación legacy no bloquea los módulos públicos ni reutiliza un caché privado", () => {
   const publicRoute = readFileSync(new URL("../app/api/public-app/route.ts", import.meta.url), "utf8");
   assert.match(app, /fetch\("\/api\/public-app"/);
-  assert.match(app, /if \(response\.status === 401\).*privateDataVerified\.current = false.*setData\(publicData\.current\)/);
+  assert.match(app, /if \(response\.status === 401\).*privateData\.current = null.*setPrivateReady\(false\).*setData\(publicData\.current\)/);
   assert.doesNotMatch(app, /getItem\("docentetuc-data-v1"\)/);
   assert.match(publicRoute, /APP_PUBLICATIONS_QUERY/);
   assert.doesNotMatch(publicRoute, /currentUser|getAuthenticatedAccount|SELECT \* FROM profiles|saved_publications|manual_events/);
