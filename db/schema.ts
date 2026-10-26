@@ -30,7 +30,7 @@ export const publications = sqliteTable("publications", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`), lastSeenAt: text("last_seen_at").notNull().default(""), lastChangedAt: text("last_changed_at").notNull().default(""),
   sourcePublishedAt: text("source_published_at"), registrationOpenAt: text("registration_open_at"), registrationCloseAt: text("registration_close_at"), expiresAt: text("expires_at"),
   sourceStatus: text("source_status").notNull().default("UNKNOWN"), normalizedStatus: text("normalized_status").notNull().default("UNKNOWN"), removedAt: text("removed_at"), circuitConfidence: integer("circuit_confidence").notNull().default(0),
-}, (table) => [index("idx_publications_kind_ends").on(table.kind, table.endsAt), index("idx_publications_source_external").on(table.source, table.externalId), index("idx_publications_lifecycle").on(table.normalizedStatus, table.kind, table.source)]);
+}, (table) => [index("idx_publications_kind_ends").on(table.kind, table.endsAt), index("idx_publications_kind_id").on(table.kind, table.id), index("idx_publications_source_external").on(table.source, table.externalId), index("idx_publications_lifecycle").on(table.normalizedStatus, table.kind, table.source)]);
 
 export const externalPublicationEvents = sqliteTable("external_publication_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),

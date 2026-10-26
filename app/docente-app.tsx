@@ -25,7 +25,7 @@ import { designationRoleFromTitle, isEligibleForPersonalizedHome, isEligibleMatc
 import { isGeneralNotice } from "@/lib/notice-classification";
 import type { MatchResult } from "@/lib/matching";
 import { safeDate } from "@/lib/safe-date";
-import { enrollmentState, openingCountdown, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
+import { openingCountdown, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
 import { calendarDayDistance, compareHomePriority, homePriority, homeTrainingEnrollmentRank, registrationState } from "@/lib/home-dashboard";
 import { DESIGNATION_STATUSES, designationFacts } from "@/lib/designations";
 import { circuitMatches, inferCircuit, TUCUMAN_CIRCUITS } from "@/lib/circuits";
@@ -43,6 +43,8 @@ import { PublicProfileSection } from "@/components/public-profile-section";
 import { AccountSignInSection } from "@/components/account-sign-in-section";
 import { GoogleAccountPhoto } from "@/components/google-account-photo";
 import { GlobalPublicationSearch } from "@/components/global-publication-search";
+import { usePersonalizedCatalog } from "@/components/use-personalized-catalog";
+import { enrollmentForDisplay, matchProfileFromUser, publicationForMatch, publicationLifecycleForDisplay } from "@/lib/personalized-catalog";
 import type { PublicationSearchKind } from "@/lib/publication-search";
 import { PublicNewsSection } from "@/components/public-news";
 import { AppSidebar, AppSidebarEdge, AppSidebarTrigger, navigation, useAppSidebarState } from "@/components/app-sidebar";
@@ -53,7 +55,7 @@ import { boardItems } from "@/lib/board-view";
 import { sourceHealth, sourceNotices } from "@/lib/source-health";
 import type { BoardView } from "@/lib/board-view";
 import { groupPadrones, padronDocuments, padronSelection, padronTitleFacts, padronYear } from "@/lib/padron-documents";
-import { eventDate as officialEventDate, hasOfficialTopic, officialDestination, officialLifecycle, officialMetadata, readMetadata } from "@/lib/official-publication";
+import { eventDate as officialEventDate, hasOfficialTopic, officialDestination, officialMetadata, readMetadata } from "@/lib/official-publication";
 import { officialSavedLookup, resolveOfficialAlias } from "@/lib/official-reconciliation";
 import { OfficialPublicationDetails, OfficialPublicationSummary } from "@/components/official-publication-details";
 import type { AdminNotice } from "@/lib/admin-notices";
@@ -103,23 +105,8 @@ const tucumanDay = (value: Date | string) => new Intl.DateTimeFormat("en-CA", { 
 const opensToday = (item: Publication) => { const opens = parseTrainingMetadata(item.metadata)?.registrationOpensAt; return Boolean(opens && tucumanDay(opens) === tucumanDay(new Date())); };
 const healthNameForPublication = (item: Publication) => item.source === "Padrones y Comunicados" ? officialMetadata(item)?.sourceCategory || item.category : item.source;
 const healthForPublication = (item: Publication, sync: SyncStatus[]) => sync.find((source) => source.source === healthNameForPublication(item));
-const publicationLifecycleForUI = (item: Publication, now = new Date()) => {
-  const official = officialLifecycle(item, now);
-  if (official) return official;
-  const metadata = parseTrainingMetadata(item.metadata);
-  const designation = item.kind === "vacante";
-  return publicationLifecycle({
-    normalizedStatus: item.normalized_status,
-    sourceStatus: item.source_status || item.status,
-    sourceStatusIsExplicit: true,
-    registrationOpenAt: designation ? item.starts_at : metadata?.registrationOpensAt,
-    registrationCloseAt: designation ? item.ends_at : metadata?.registrationClosesAt,
-    expiresAt: designation ? item.ends_at : metadata?.courseEndsAt,
-    dateStatus: designation ? "confirmed" : metadata?.dateStatus,
-    now,
-  });
-};
-const enrollmentForUI = (item: Publication, now = new Date()) => enrollmentState(parseTrainingMetadata(item.metadata), item.source_status || item.status, item.normalized_status, now);
+const publicationLifecycleForUI = publicationLifecycleForDisplay;
+const enrollmentForUI = enrollmentForDisplay;
 const enrollmentLabel = (item: Publication, now = new Date()) => {
   const state = enrollmentForUI(item, now), tentative = parseTrainingMetadata(item.metadata)?.dateStatus === "tentative";
   return state === "PROXIMAMENTE" ? tentative ? "Preinscripción prevista · fecha tentativa" : "Próximamente"
@@ -406,19 +393,14 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     availableCount: data.publications.filter((item) => item.kind === "vacante").length,
     sourceStatus: data.sync.find((source) => source.source === "SIME")?.sync_status,
   }) : { profileRequired: false, sourceUnavailable: false, sourceVerifiedEmpty: false };
-  const matchProfile = profile ? { levels: profile.levels, areas: profile.areas, subjects: profile.subjects, boards: profile.boards, roles: profile.roles, department: profile.department, locality: profile.locality, shifts: profile.shifts, characters: profile.characters, circuits: profile.circuits, personalMatchThreshold: profile.personal_match_threshold, wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: profile.training_interests } : null;
-  const publicationForMatch = (publication: Publication) => {
-    const trainingMetadata = publication.kind === "capacitacion" ? parseTrainingMetadata(publication.metadata) : null;
-    let sourceCircuitRaw = publication.source_circuit_raw || "";
-    if (!sourceCircuitRaw && trainingMetadata) sourceCircuitRaw = [trainingMetadata.recipients, trainingMetadata.content].filter(Boolean).join(" ");
-    return { kind: publication.kind, title: publication.title, summary: publication.summary, level: publication.level, area: publication.area, role: publication.kind === "vacante" ? designationFacts(publication).role : undefined, junta: publication.junta, location: publication.location, shift: publication.shift, character: publication.character, circuit: publication.circuit, sourceCircuitRaw, circuitInferenceSource: publication.circuit_inference_source, recipients: trainingMetadata?.recipients };
-  };
+  const matchProfile = profile ? matchProfileFromUser(profile) : null;
+  const personalized = usePersonalizedCatalog(filter === "para-mi" && (view === "vacantes" || view === "capacitaciones") ? view === "vacantes" ? "vacante" : "capacitacion" : null, profile ? `${profile.user_id}:${profile.updated_at || ""}` : "");
   const matchResult = (publication: Publication) => isGeneralNotice(publication) ? { status: "unconfigured", outcome: "UNKNOWN", score: 0, compatibility: 0, compatibilityScore: 0, confidence: 0, matchConfidence: 0, matched: 0, total: 0, reasons: ["Información general"], criteria: [{ key: "general", label: "Información general", expected: "", matched: false, available: false, outcome: "UNKNOWN", required: false }] } as MatchResult : matchProfile ? profileMatch(publicationForMatch(publication), matchProfile) : { status: "unconfigured", outcome: "UNKNOWN", score: 0, compatibility: 0, compatibilityScore: 0, confidence: 0, matchConfidence: 0, matched: 0, total: 0, reasons: [], criteria: [] } as MatchResult;
   const matches = (publication: Publication) => Boolean(matchProfile && !isGeneralNotice(publication) && isEligibleForPersonalizedHome(publicationForMatch(publication), matchProfile));
   const relevantTraining = (publication: Publication) => publication.kind === "capacitacion" && matchProfile ? isEligibleForPersonalizedHome(publicationForMatch(publication), matchProfile) : false;
 
   function filteredPublications(search = query) {
-    let items = (data?.publications || []).filter(item => !officialMetadata(item)?.canonicalId || resolveOfficialAlias(item, data?.publications || []).id === item.id);
+    let items = (filter === "para-mi" && (view === "vacantes" || view === "capacitaciones") ? personalized.items : data?.publications || []).filter(item => !officialMetadata(item)?.canonicalId || resolveOfficialAlias(item, data?.publications || []).id === item.id);
     if (view === "vacantes") items = items.filter((item) => hasOfficialTopic(item, "INSCRIPCION_SIME") || item.source === "SIME" && hasOfficialTopic(item, "CLASIFICACION_PENDIENTE"));
     if (view === "capacitaciones") items = items.filter((item) => item.kind === "capacitacion");
     if (view === "junta") items = items.filter((item) => item.kind === "junta");
@@ -584,9 +566,15 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
             <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void refreshSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
             <Filters filter={filter} setFilter={setFilter} junta={juntaFilter} setJunta={setJuntaFilter} character={character} setCharacter={setCharacter} query={designationQuery} setQuery={setDesignationQuery} kind={view} date={trainingDate} setDate={setTrainingDate} source={trainingSource} setSource={setTrainingSource} compatibility={trainingCompatibility} setCompatibility={setTrainingCompatibility} sort={trainingSort} setSort={setTrainingSort} hasTrainingTerritoryData={hasTrainingTerritoryData} circuit={view === "vacantes" ? designationCircuit : trainingCircuit} setCircuit={view === "vacantes" ? setDesignationCircuit : setTrainingCircuit} />
             {view === "vacantes" && items.some(item => hasOfficialTopic(item, "CLASIFICACION_PENDIENTE")) && <p role="note" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Los registros con «Procedimiento pendiente de verificar» no están confirmados como inscripciones online. Consultá el detalle oficial antes de actuar.</p>}
-             {view === "vacantes" && !loading && items.length === 0 && (designationAvailability.profileRequired || designationAvailability.sourceUnavailable || designationAvailability.sourceVerifiedEmpty)
+             {view === "vacantes" && filter !== "para-mi" && !loading && items.length === 0 && (designationAvailability.profileRequired || designationAvailability.sourceUnavailable || designationAvailability.sourceVerifiedEmpty)
                ? <DesignationEmptyState {...designationAvailability} onCompleteProfile={() => setView("perfil")} />
-               : <PublicationList items={items} sync={data?.sync || []} loading={loading} savedMap={savedMap} reminderMap={reminderMap} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} emptyContext={view === "capacitaciones" ? trainingSource === "platform:fdci" ? "FDCI" : trainingSource === "platform:infod" ? "INFoD" : trainingSource === "platform:cenet" ? "CeNET / INET" : "las plataformas seleccionadas" : "esta búsqueda"} onClearFilters={() => { setTrainingSource("todas"); setTrainingDate(""); setTrainingCircuit("todos"); setDesignationCircuit("todos"); setTrainingCompatibility("todas"); setJuntaFilter("todas"); setCharacter("todos"); setFilter("todas"); setDesignationQuery(""); setQuery(""); }} />}
+               : filter === "para-mi" && (view === "vacantes" || view === "capacitaciones") && !items.length && (personalized.loading || personalized.nextCursor || personalized.totalMatches > 0 || personalized.error || !profile || personalized.profileRequired) ? null
+               : <PublicationList items={items} sync={data?.sync || []} loading={loading || personalized.loading && filter === "para-mi"} savedMap={savedMap} reminderMap={reminderMap} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} emptyContext={view === "capacitaciones" ? trainingSource === "platform:fdci" ? "FDCI" : trainingSource === "platform:infod" ? "INFoD" : trainingSource === "platform:cenet" ? "CeNET / INET" : "las plataformas seleccionadas" : "esta búsqueda"} onClearFilters={() => { setTrainingSource("todas"); setTrainingDate(""); setTrainingCircuit("todos"); setDesignationCircuit("todos"); setTrainingCompatibility("todas"); setJuntaFilter("todas"); setCharacter("todos"); setFilter("todas"); setDesignationQuery(""); setQuery(""); }} />}
+            {filter === "para-mi" && (view === "vacantes" || view === "capacitaciones") && <div role="status" className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-4 text-sm text-[var(--text-secondary)]">
+              {personalized.loading ? "Buscando coincidencias en el catálogo…" : personalized.error || (!profile || personalized.profileRequired ? "Completá tu perfil para buscar coincidencias." : personalized.nextCursor ? `Revisados ${personalized.scanned} registros; ${personalized.totalMatches} coincidencias encontradas. Todavía quedan páginas por examinar.` : `Búsqueda completa: ${personalized.scanned} registros examinados; ${personalized.totalMatches} coincidencias encontradas.`)}
+              {personalized.error ? <Button type="button" variant="outline" onClick={personalized.retry} className="mt-3 min-h-11 rounded-xl">Reintentar</Button> : personalized.nextCursor && <Button type="button" variant="outline" disabled={personalized.loading} onClick={() => void personalized.loadMore()} className="mt-3 min-h-11 rounded-xl">Buscar más coincidencias</Button>}
+              {personalized.page > 1 && <Button type="button" variant="ghost" onClick={personalized.retry} className="mt-3 min-h-11 rounded-xl">Volver al inicio</Button>}
+            </div>}
             {(view === "vacantes" || view === "capacitaciones") && <div className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-4 text-sm text-[var(--text-secondary)]">
               Esta vista muestra una selección reciente. El catálogo completo, incluidos registros anteriores y resultados fuera de esta selección, se puede recorrer por páginas.
               <Button type="button" variant="outline" onClick={() => navigateToView("busqueda", "", view === "vacantes" ? "vacante" : "capacitacion")} className="mt-3 min-h-11 rounded-xl">Ver catálogo completo</Button>
