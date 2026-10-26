@@ -39,5 +39,5 @@ test("/api/app no consulta ni devuelve el catálogo público; el cliente descart
   assert.match(client, /requestId !== privateLoadSequence\.current/u);
   assert.match(client, /setData\(combineAppData\(result, privateData\.current\)\)/u);
   assert.match(client, /setData\(combineAppData\(publicData\.current, result\)\)/u);
-  assert.match(client, /await loadPublic\(\);\s*await loadRef\.current\(false, false\)/u);
+  assert.match(client, /const refreshed = await loadPublic\(\);\s*await loadRef\.current\(false\)/u);
 });

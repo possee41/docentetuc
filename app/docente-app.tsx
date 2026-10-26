@@ -137,8 +137,6 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const privateLoadSequence = useRef(0);
   const publicLoadProblem = useRef("");
   const privateLoadProblem = useRef("");
-  const shouldAutoSync = useRef(false);
-  const privateDataVerified = useRef(false);
   const [privateReady, setPrivateReady] = useState(false);
   const [accountPhoto, setAccountPhoto] = useState<{ authenticated: boolean; image: string | null }>({ authenticated: false, image: null });
   const [installationSecurity, setInstallationSecurity] = useState<InstallationSecurity>("unavailable");
@@ -166,7 +164,6 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const [syncing, setSyncing] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [offline, setOffline] = useState(false);
-  const autoSyncStarted = useRef(false);
   const installationBootstrapStarted = useRef(false);
   const [theme, setTheme] = useState<Theme>("light");
   const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(null);
@@ -180,8 +177,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const [agendaReminder, setAgendaReminder] = useState("one_day");
   const [manualEvent, setManualEvent] = useState<ManualEvent | null | "new">(null);
   const [manualEventDate, setManualEventDate] = useState("");
-  const loadRef = useRef<(syncIfEmpty?: boolean, showLoading?: boolean) => Promise<void>>(async () => {});
-  const syncSourcesRef = useRef<(notify?: boolean) => Promise<void>>(async () => {});
+  const loadRef = useRef<(showLoading?: boolean) => Promise<void>>(async () => {});
   const previousAccountView = useRef<View | null>(null);
   const accountRevalidationInFlight = useRef(false);
   const [navigationRestored, setNavigationRestored] = useState(false);
@@ -246,13 +242,6 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     history.replaceState({ ...history.state, docentetuc: undefined }, "", sectionUrl(destination));
   }, []);
 
-  const syncIfPublicEmpty = useCallback(() => {
-    if (!shouldAutoSync.current || !privateDataVerified.current || !publicData.current || publicData.current.publications.length || autoSyncStarted.current) return;
-    autoSyncStarted.current = true;
-    shouldAutoSync.current = false;
-    window.setTimeout(() => { void syncSourcesRef.current(false); }, 0);
-  }, []);
-
   const refreshLoadError = useCallback(() => setLoadError(privateLoadProblem.current || publicLoadProblem.current), []);
 
   const loadPublic = useCallback(async () => {
@@ -261,20 +250,20 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
       const response = await fetch("/api/public-app", { cache: "no-store", signal: AbortSignal.timeout(15_000) });
       if (!response.ok) throw new Error("Public source unavailable");
       const result = await response.json() as AppData;
-      if (requestId !== publicLoadSequence.current) return;
+      if (requestId !== publicLoadSequence.current) return false;
       publicData.current = result;
       publicLoadProblem.current = "";
       setData(combineAppData(result, privateData.current));
       refreshLoadError();
       resolveDeepLink(result.publications);
-      syncIfPublicEmpty();
       try { localStorage.setItem("docentetuc-public-data-v1", JSON.stringify(result)); } catch { /* The live public response remains usable without offline storage. */ }
+      return true;
     } catch {
-      if (requestId !== publicLoadSequence.current) return;
+      if (requestId !== publicLoadSequence.current) return false;
       if (publicData.current) {
         publicLoadProblem.current = "No pudimos actualizar las fuentes. Mostramos la última copia pública disponible.";
         refreshLoadError();
-        return;
+        return false;
       }
       const cached = localStorage.getItem("docentetuc-public-data-v1");
       if (cached) {
@@ -285,63 +274,53 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
           setData(combineAppData(stored, privateData.current));
           resolveDeepLink(stored.publications);
           refreshLoadError();
-          return;
+          return false;
         } catch { /* Ignore an invalid public cache. */ }
       }
       publicLoadProblem.current = "No pudimos cargar la información pública. Intentá nuevamente.";
       refreshLoadError();
+      return false;
     } finally { if (requestId === publicLoadSequence.current) setLoading(false); }
-  }, [refreshLoadError, resolveDeepLink, syncIfPublicEmpty]);
+  }, [refreshLoadError, resolveDeepLink]);
   useEffect(() => { queueMicrotask(() => { void loadPublic(); }); }, [loadPublic]);
 
-  const load = useCallback(async (syncIfEmpty = true, showLoading = true) => {
+  const load = useCallback(async (showLoading = true) => {
     const requestId = ++privateLoadSequence.current;
-    if (syncIfEmpty) shouldAutoSync.current = true;
     if (showLoading) setLoading(true);
     try {
       const response = await fetch("/api/app", { cache: "no-store", headers: apiHeaders(), signal: AbortSignal.timeout(15000) });
       if (requestId !== privateLoadSequence.current) return;
-      if (response.status === 401) { privateData.current = null; privateDataVerified.current = false; shouldAutoSync.current = false; privateLoadProblem.current = "No se pudo verificar esta instalación o su cuenta. Sus datos privados se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."; setPrivateReady(false); setData(publicData.current); refreshLoadError(); return; }
+      if (response.status === 401) { privateData.current = null; privateLoadProblem.current = "No se pudo verificar esta instalación o su cuenta. Sus datos privados se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."; setPrivateReady(false); setData(publicData.current); refreshLoadError(); return; }
       if (!response.ok) throw new Error("No se pudo cargar la información");
       const result = await response.json() as PrivateAppData;
       if (requestId !== privateLoadSequence.current) return;
       result.designations ||= []; result.manualEvents ||= []; if (result.profile) result.profile.roles ||= [];
       privateData.current = result;
-      privateDataVerified.current = true;
       privateLoadProblem.current = "";
       setPrivateReady(true);
       setData(combineAppData(publicData.current, result));
       refreshLoadError();
-      syncIfPublicEmpty();
-    } catch { if (requestId === privateLoadSequence.current) { privateData.current = null; privateDataVerified.current = false; shouldAutoSync.current = false; privateLoadProblem.current = "No pudimos cargar los datos privados en este momento. La información pública sigue disponible; intentá nuevamente."; setPrivateReady(false); setData(publicData.current); refreshLoadError(); } }
+    } catch { if (requestId === privateLoadSequence.current) { privateData.current = null; privateLoadProblem.current = "No pudimos cargar los datos privados en este momento. La información pública sigue disponible; intentá nuevamente."; setPrivateReady(false); setData(publicData.current); refreshLoadError(); } }
     finally { if (requestId === privateLoadSequence.current) setLoading(false); }
-  }, [refreshLoadError, syncIfPublicEmpty]);
+  }, [refreshLoadError]);
 
-  const syncSources = useCallback(async (notify = true) => {
+  const refreshSources = useCallback(async () => {
     setSyncing(true);
     try {
-      const response = await fetch("/api/sync", { method: "POST", headers: apiHeaders(), signal: AbortSignal.timeout(60_000) });
-      const result = await response.json() as { error?: string; skipped?: boolean; count?: number; failures?: number; verifiedSources?: number };
-      if (!response.ok) throw new Error(result.error || "No se pudo actualizar");
-      if (notify) {
-        if (result.skipped) toast.success("Las fuentes ya estaban actualizadas");
-        else if (result.failures) toast.warning(`${result.verifiedSources ?? 0} fuentes verificadas; ${result.failures} pendientes o no disponibles.`);
-        else toast.success(`${result.verifiedSources ?? 0} fuentes verificadas · ${result.count ?? 0} publicaciones revisadas.`);
-      }
-      await loadPublic();
-      await loadRef.current(false, false);
-    } catch (error) { const message = error instanceof DOMException && error.name === "TimeoutError" ? "La actualización tardó demasiado. Podría seguir en curso; consultá nuevamente más tarde." : error instanceof Error ? error.message : "No se pudo actualizar"; if (notify) toast.error(message); }
-    finally { setSyncing(false); }
+      const refreshed = await loadPublic();
+      await loadRef.current(false);
+      if (refreshed) toast.success("Información pública recargada");
+    } finally { setSyncing(false); }
   }, [loadPublic]);
 
-  useEffect(() => { loadRef.current = load; syncSourcesRef.current = syncSources; }, [load, syncSources]);
+  useEffect(() => { loadRef.current = load; }, [load]);
 
   useEffect(() => {
     const previous = previousAccountView.current;
     previousAccountView.current = view;
     if (!shouldRevalidateAccount(previous, view, Boolean(privateLoadProblem.current), accountRevalidationInFlight.current)) return;
     accountRevalidationInFlight.current = true;
-    void load(false, false).finally(() => { accountRevalidationInFlight.current = false; });
+    void load(false).finally(() => { accountRevalidationInFlight.current = false; });
   }, [view, loadError, load]);
 
   useEffect(() => {
@@ -372,7 +351,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
             } else setInstallationSecurity("unavailable");
           } catch { setInstallationSecurity("unavailable"); }
           finally { setInstallationBootstrapComplete(true); }
-          await loadRef.current(true, false);
+          await loadRef.current(false);
         })();
       });
     }
@@ -554,7 +533,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         {offline && <div className="flex items-center justify-center gap-2 bg-[#fff3dd] px-4 py-2 text-sm font-semibold text-[#7d541b]"><WifiOff className="size-4" />Sin conexión. Podés consultar la última información cargada.</div>}
 
         <div className="mobile-content mx-auto w-full max-w-7xl p-4 md:p-8">
-      {loadError && data && view !== "noticias" && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950"><span>{loadError}</span><Button variant="outline" onClick={() => { void loadPublic(); void load(false, false); }} className="min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div>}
+      {loadError && data && view !== "noticias" && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950"><span>{loadError}</span><Button variant="outline" onClick={() => { void loadPublic(); void load(false); }} className="min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div>}
       {sourceWarnings.length > 0 && <section aria-label="Estado de actualización de las fuentes" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
         <p className="font-bold">Algunas fuentes no tienen una verificación reciente. Confirmá fechas y vacantes antes de actuar.</p>
         <ul className="mt-2 space-y-1">{sourceWarnings.map((item) => {
@@ -566,7 +545,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
       </section>}
       {privateView && !privateReady ? recoveryRequired ? <RecoveryRequiredNotice onOpenAccount={() => setView("cuentas")} />
         : <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><h1 className="font-black text-[var(--text-primary)]">No podemos mostrar tus datos privados todavía</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">Verificá esta instalación o iniciá sesión con la cuenta vinculada. Tus datos permanecen conservados.</p><Button onClick={() => void load(false)} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
-        : loadError && !data && !["inicio", "cuentas", "busqueda", "noticias"].includes(view) ? <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><WifiOff className="mx-auto mb-3 size-8 text-[var(--accent-text)]" /><h1 className="font-black text-[var(--text-primary)]">No pudimos cargar esta sección</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{loadError}</p><Button onClick={() => { void loadPublic(); void load(false, false); }} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
+        : loadError && !data && !["inicio", "cuentas", "busqueda", "noticias"].includes(view) ? <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><WifiOff className="mx-auto mb-3 size-8 text-[var(--accent-text)]" /><h1 className="font-black text-[var(--text-primary)]">No pudimos cargar esta sección</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{loadError}</p><Button onClick={() => { void loadPublic(); void load(false); }} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
         : view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={navigateToView} loading={loading} error={loadError} />
         : view === "busqueda" ? <GlobalPublicationSearch query={query} onQuery={setQuery} onOpen={openPublication} />
         : view === "noticias" ? <PublicNewsSection />
@@ -580,7 +559,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
               <h2 id="accounts-access-title" className="text-xl font-black text-[var(--text-primary)]">Mis cuentas y accesos</h2>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">Google autentica tu cuenta de DocenteTuc. Los accesos externos usan sus propias credenciales y no se comparten con DocenteTuc.</p>
             </div>
-            <AccountSignInSection headers={apiHeaders} installationSecurity={installationSecurity} onLinked={() => void load(false)} onSignedOut={() => { ++privateLoadSequence.current; privateData.current = null; privateDataVerified.current = false; shouldAutoSync.current = false; privateLoadProblem.current = ""; setPrivateReady(false); setData(publicData.current); refreshLoadError(); }} />
+            <AccountSignInSection headers={apiHeaders} installationSecurity={installationSecurity} onLinked={() => void load(false)} onSignedOut={() => { ++privateLoadSequence.current; privateData.current = null; privateLoadProblem.current = ""; setPrivateReady(false); setData(publicData.current); refreshLoadError(); }} />
           </section>
           <PlatformAccessSection />
           <DataDeletionSection profile={profile ?? null} />
@@ -591,7 +570,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         : view === "junta" ? <OfficialConsultations onView={navigateToView} />
         : view === "padrones" ? <PadronSection query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} />
         : ["comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection key={`${view}:${query}`} view={view as BoardView} publications={data?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
-            <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void syncSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
+            <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void refreshSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
             <Filters filter={filter} setFilter={setFilter} junta={juntaFilter} setJunta={setJuntaFilter} character={character} setCharacter={setCharacter} query={designationQuery} setQuery={setDesignationQuery} kind={view} date={trainingDate} setDate={setTrainingDate} source={trainingSource} setSource={setTrainingSource} compatibility={trainingCompatibility} setCompatibility={setTrainingCompatibility} sort={trainingSort} setSort={setTrainingSort} hasTrainingTerritoryData={hasTrainingTerritoryData} circuit={view === "vacantes" ? designationCircuit : trainingCircuit} setCircuit={view === "vacantes" ? setDesignationCircuit : setTrainingCircuit} />
             {view === "vacantes" && items.some(item => hasOfficialTopic(item, "CLASIFICACION_PENDIENTE")) && <p role="note" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Los registros con «Procedimiento pendiente de verificar» no están confirmados como inscripciones online. Consultá el detalle oficial antes de actuar.</p>}
              {view === "vacantes" && !loading && items.length === 0 && (designationAvailability.profileRequired || designationAvailability.sourceUnavailable || designationAvailability.sourceVerifiedEmpty)
@@ -985,7 +964,7 @@ function PageHeader({ view, count, filter = "todas", query = "", syncing = false
   const isComunicados = filter === "comunicados" || (filter !== "nuevas" && /comunicad/.test(normalize(query)));
   const isNewsTab = view === "junta" && (isNovedades || isComunicados);
   const title = isNewsTab ? (isNovedades ? "Novedades" : "Comunicados") : defaultTitle;
-  const action = view === "vacantes" || view === "capacitaciones" ? undefined : <div className="flex flex-wrap gap-2">{onAskAI && <Button onClick={onAskAI} className="rounded-xl bg-[#0878be] text-[var(--text-on-accent)]"><Sparkles className="size-4" />Preguntar a IA</Button>}{onSync && <Button onClick={onSync} disabled={syncing} variant="outline" className="dt-refresh-button rounded-xl"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />Actualizar</Button>}</div>;
+  const action = view === "vacantes" || view === "capacitaciones" ? undefined : <div className="flex flex-wrap gap-2">{onAskAI && <Button onClick={onAskAI} className="rounded-xl bg-[#0878be] text-[var(--text-on-accent)]"><Sparkles className="size-4" />Preguntar a IA</Button>}{onSync && <Button onClick={onSync} disabled={syncing} variant="outline" className="dt-refresh-button rounded-xl"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />Recargar</Button>}</div>;
   const kind = view === "vacantes" || view === "capacitaciones" ? view : view === "junta" ? (isNewsTab ? "novedades" : "padrones") : "informacion";
   return <VisualSectionBanner kind={kind} title={title} description={view === "perfil" ? subtitle : `${subtitle} · ${count} resultados`} action={action} />;
 }
