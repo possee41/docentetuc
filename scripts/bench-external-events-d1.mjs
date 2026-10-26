@@ -38,7 +38,8 @@ try {
     await db.prepare(`INSERT INTO publications(id,source,content_hash,normalized_status,kind,category,title,metadata,circuit)
       VALUES(?,'Capacitación Docente',?,'ACTIVE','capacitacion','Capacitación','Curso sintético',?,'UNKNOWN')`)
       .bind(publicationId, String(count).padStart(64, "a"), JSON.stringify({ entity: "commission", availablePreCapacity: 5,
-        registrationOpensAt: "2026-10-23T12:00:00Z" })).run();
+        registrationOpensAt: "2026-10-23T12:00:00Z", registrationClosesAt: "2026-10-30T12:00:00Z",
+        dateStatus: "confirmed" })).run();
     const metrics = { requests: 0, rowsRead: 0, rowsWritten: 0 };
     const measured = { prepare: (sql) => ({ bind: (...params) => {
       const statement = db.prepare(sql).bind(...params);
@@ -69,7 +70,8 @@ try {
   const apply = async (index, version = 1) => {
     const source = sources[index], kind = index === 1 ? "vacante" : index === 2 ? "junta" : "capacitacion";
     const metadata = kind === "capacitacion" ? JSON.stringify({ entity: "commission", availablePreCapacity: 5,
-      registrationOpensAt: "2026-10-23T12:00:00Z" }) : "{}";
+      registrationOpensAt: "2026-10-23T12:00:00Z", registrationClosesAt: "2026-10-30T12:00:00Z",
+      dateStatus: "confirmed" }) : "{}";
     const result = await upsert.bind(`synthetic:cycle:${index}`, source, `${index}${version}`.padStart(64, "a"), kind,
       kind === "junta" ? "Comunicados" : kind === "vacante" ? "Vacante" : "Capacitación",
       `Publicación sintética ${index}`, metadata).run();

@@ -67,6 +67,22 @@ test("una fuente legacy no encola eventos hasta completar su corte", () => {
   sqlite.close();
 });
 
+test("el corte habilita eventos por cada una de las cinco fuentes sin activar las otras", () => {
+  const { sqlite } = fixture();
+  sqlite.prepare("DELETE FROM external_event_sources").run();
+  const sources = ["Capacitación Docente", "SIME", "Padrones y Comunicados", "CeNET / INET", "INFoD / AulaS-TIC"];
+  const write = sqlite.prepare("INSERT INTO publications(id,source,title,content_hash) VALUES(?,?,?,?)");
+  for (const [index, source] of sources.entries()) write.run(`legacy:${index}`, source, "Histórica", "a");
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM external_publication_events").get()?.n, 0);
+  for (const [index, source] of sources.entries()) {
+    sqlite.prepare("INSERT INTO external_event_sources(source) VALUES(?)").run(source);
+    write.run(`external:${index}`, source, "Nueva", "b");
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM external_publication_events").get()?.n, index + 1);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM publications").get()?.n, sources.length + index + 1);
+  }
+  sqlite.close();
+});
+
 test("reanudación, concurrencia, cambio posterior y deduplicación por perfil", async () => {
   const { sqlite, db } = fixture();
   sqlite.prepare(insert).run(id, metadata, hash);

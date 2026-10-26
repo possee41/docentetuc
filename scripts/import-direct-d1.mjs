@@ -1,5 +1,6 @@
-// Opt-in pilot runner. Keep workflows on their isolated receivers until the
-// D1 REST path and source cutover are explicitly approved.
+// Opt-in runner. Canary remains the default; production needs an approved SHA,
+// a separately protected account ID, and a verified database identity.
+import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { createD1Rest } from "./d1-rest.mjs";
 import { CANARY_DATABASE_ID, CANARY_DATABASE_NAME } from "./probe-d1-rest-canary.mjs";
@@ -9,6 +10,31 @@ import { runSimeImport } from "./import-sime.mjs";
 import { runPublicSourceImport } from "./import-public-sources.mjs";
 import { runJuntasCheckpoint } from "./import-juntas-checkpoint.mjs";
 import { JUNTA_EXTERNAL_SOURCES } from "../lib/junta-external-sources.ts";
+
+const PRODUCTION_DATABASE_ID = "baaf5886-0123-4948-96da-aa7106424549";
+const PRODUCTION_DATABASE_NAME = "docentetuc-db";
+
+export function resolveDirectD1Target(config, revision) {
+  if (config.D1_DATABASE_ID) throw new Error("D1_DATABASE_OVERRIDE_FORBIDDEN");
+  const target = config.DIRECT_D1_TARGET || "canary";
+  if (target === "canary") return { id: CANARY_DATABASE_ID, name: CANARY_DATABASE_NAME };
+  if (target !== "production" || config.DIRECT_D1_PRODUCTION_ENABLED !== "true" ||
+      !/^[a-f0-9]{32}$/i.test(config.CF_ACCOUNT_ID || "") ||
+      config.CF_ACCOUNT_ID?.toLowerCase() !== config.D1_PRODUCTION_ACCOUNT_ID?.toLowerCase() ||
+      !/^[a-f0-9]{40}$/i.test(config.DIRECT_D1_APPROVED_SHA || "") ||
+      config.DIRECT_D1_APPROVED_SHA?.toLowerCase() !== revision?.toLowerCase())
+    throw new Error("PRODUCTION_D1_NOT_APPROVED");
+  return { id: PRODUCTION_DATABASE_ID, name: PRODUCTION_DATABASE_NAME };
+}
+
+export async function verifyDirectD1Identity({ accountId, token, target, fetcher = fetch }) {
+  const response = await fetcher(`https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${target.id}`,
+    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
+  if (!response.ok) throw new Error(`D1_IDENTITY_HTTP_${response.status}`);
+  const body = await response.json();
+  if (body?.success !== true || body.result?.uuid !== target.id || body.result?.name !== target.name)
+    throw new Error("D1_IDENTITY_MISMATCH");
+}
 
 /** @param {{source: string, db: any, sourceFetch?: typeof fetch, driveKey?: string, selection?: {token: string, slug: string, commissionId: string}, scope?: string}} options */
 export async function runDirectD1Import({ source, db, sourceFetch = fetch, driveKey, selection, scope = "single",
@@ -59,19 +85,16 @@ export async function runDirectD1Import({ source, db, sourceFetch = fetch, drive
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     if (process.env.DIRECT_D1_WRITE_ENABLED !== "true") throw new Error("DIRECT_D1_WRITE_DISABLED");
-    if (process.env.D1_DATABASE_ID) throw new Error("CANARY_DATABASE_OVERRIDE_FORBIDDEN");
     const accountId = process.env.CF_ACCOUNT_ID, token = process.env.D1_IMPORT_TOKEN;
+    const revision = process.env.DIRECT_D1_TARGET === "production"
+      ? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim() : "";
+    const target = resolveDirectD1Target(process.env, revision);
     const source = process.env.SYNC_SOURCE || "";
     const scope = source === "juntas" ? process.env.JUNTAS_SCOPE || "single" : process.env.FDCI_SCOPE || "single";
     // The D1 REST endpoint shares Cloudflare's account API rate limit.
-    const db = createD1Rest({ accountId, databaseId: CANARY_DATABASE_ID, token,
+    const db = createD1Rest({ accountId, databaseId: target.id, token,
       minRequestIntervalMs: source === "juntas" && scope === "checkpoint" ? 350 : 0 });
-    const identity = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${CANARY_DATABASE_ID}`,
-      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
-    if (!identity.ok) throw new Error(`CANARY_IDENTITY_HTTP_${identity.status}`);
-    const body = await identity.json();
-    if (body?.success !== true || body.result?.uuid !== CANARY_DATABASE_ID || body.result?.name !== CANARY_DATABASE_NAME)
-      throw new Error("CANARY_IDENTITY_MISMATCH");
+    await verifyDirectD1Identity({ accountId, token, target });
     const selection = source === "fdci" && scope === "single" ? { token: process.env.FDCI_COURSE_TOKEN || "",
       slug: process.env.FDCI_COURSE_SLUG || "", commissionId: process.env.FDCI_COMMISSION_ID || "" } : undefined;
     const result = await runDirectD1Import({ source, db, driveKey: process.env.GOOGLE_DRIVE_API_KEY, selection, scope,

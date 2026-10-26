@@ -19,7 +19,7 @@ import { classifyDriveReference, documentReference, extractJuntaNotices } from "
 import { BOARD_PORTAL, parseBoardPlacements } from "@/lib/board-sources";
 import { officialChange, reconcileOfficialPublications } from "@/lib/official-reconciliation";
 import { fdciLegacyEnabled } from "@/lib/fdci-sync-mode";
-import { externalSyncSources } from "@/lib/external-sync-sources";
+import { externalSyncSources, legacySyncPaused } from "@/lib/external-sync-sources";
 
 export const dynamic = "force-dynamic";
 
@@ -532,6 +532,8 @@ export async function POST(request: Request) {
   try {
     const scheduled = Boolean(env.CRON_SECRET) && request.headers.get("x-docentetuc-cron") === env.CRON_SECRET;
     if (!scheduled) await currentUser(request);
+    if (legacySyncPaused((env as { LEGACY_SYNC_PAUSED?: string }).LEGACY_SYNC_PAUSED))
+      return Response.json({ ok: true, skipped: true, reason: "legacy_sync_paused" });
     const db = getD1();
     const latest = await db.prepare("SELECT MAX(last_attempt_at) AS attempted_at, COUNT(*) AS source_count, SUM(CASE WHEN sync_status<>'OK' THEN 1 ELSE 0 END) AS unhealthy FROM sync_state").first<{ attempted_at: string | null; source_count: number; unhealthy: number | null }>();
     if (!scheduled && Number(latest?.source_count || 0) >= 9 && Number(latest?.unhealthy || 0) === 0 && latest?.attempted_at && Date.now() - new Date(latest.attempted_at).getTime() < 60 * 60_000) return Response.json({ ok: true, skipped: true, reason: "central_sync_recent" });

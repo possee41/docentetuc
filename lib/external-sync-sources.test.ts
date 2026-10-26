@@ -1,13 +1,26 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import { externalSyncSources } from "./external-sync-sources.ts";
+import { externalSyncSources, legacySyncPaused } from "./external-sync-sources.ts";
 
 test("el corte externo es por fuente y conserva las otras", () => {
   assert.deepEqual([...externalSyncSources("sime, JUNTAS", "legacy")].sort(), ["Padrones y Comunicados", "SIME"]);
   assert.deepEqual([...externalSyncSources(undefined, "external")], ["Capacitación Docente"]);
   assert.equal(externalSyncSources(undefined, "legacy").size, 0);
+  assert.deepEqual([...externalSyncSources("FDCI,SIME,JUNTAS,CENET,INFD", "legacy")].sort(),
+    ["Capacitación Docente", "CeNET / INET", "INFoD / AulaS-TIC", "Padrones y Comunicados", "SIME"]);
 });
 
 test("una configuración inválida no puede reactivar un escritor legacy", () => {
   assert.throws(() => externalSyncSources("SIME,ERROR", "legacy"), /EXTERNAL_SYNC_SOURCES_INVALID/);
+});
+
+test("la pausa legacy exige true explícito y se aplica después de autenticar, antes de D1", () => {
+  assert.equal(legacySyncPaused(undefined), false);
+  assert.equal(legacySyncPaused("false"), false);
+  assert.equal(legacySyncPaused("true"), true);
+  const route = readFileSync(new URL("../app/api/sync/route.ts", import.meta.url), "utf8");
+  const post = route.split("export async function POST(request: Request)")[1];
+  assert.ok(post.indexOf("if (!scheduled) await currentUser(request)") < post.indexOf("legacySyncPaused("));
+  assert.ok(post.indexOf("legacySyncPaused(") < post.indexOf("const db = getD1()"));
 });

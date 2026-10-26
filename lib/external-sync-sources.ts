@@ -6,6 +6,8 @@ const sourceNames = {
   INFD: ["INFoD / AulaS-TIC"],
 } as const;
 
+export const legacySyncPaused = (value: string | undefined) => value === "true";
+
 // A bad cutover setting must stop the sync, never silently re-enable a legacy writer.
 export function externalSyncSources(value: string | undefined, fdciMode: string | undefined) {
   const names = new Set<string>();
