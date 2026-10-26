@@ -15,12 +15,12 @@ test("una configuración inválida no puede reactivar un escritor legacy", () =>
   assert.throws(() => externalSyncSources("SIME,ERROR", "legacy"), /EXTERNAL_SYNC_SOURCES_INVALID/);
 });
 
-test("la pausa legacy exige true explícito y se aplica después de autenticar, antes de D1", () => {
+test("el endpoint autenticado de estado no puede iniciar el barrido legacy", () => {
   assert.equal(legacySyncPaused(undefined), false);
   assert.equal(legacySyncPaused("false"), false);
   assert.equal(legacySyncPaused("true"), true);
   const route = readFileSync(new URL("../app/api/sync/route.ts", import.meta.url), "utf8");
   const post = route.split("export async function POST(request: Request)")[1];
-  assert.ok(post.indexOf("if (!scheduled) await currentUser(request)") < post.indexOf("legacySyncPaused("));
-  assert.ok(post.indexOf("legacySyncPaused(") < post.indexOf("const db = getD1()"));
+  assert.ok(post.indexOf("if (!scheduled) await currentUser(request)") < post.indexOf("readSyncHealth(getD1())"));
+  assert.doesNotMatch(route, /runSync\(|collectSimePublications|trainingPublications|boardPublications/);
 });

@@ -10,7 +10,7 @@
   "no_bundle": true,
   "rules": [{ "type": "ESModule", "globs": ["**/*.js", "**/*.mjs"] }],
   "assets": { "directory": "dist/client" },
-  "triggers": { "crons": ["0 * * * *", "1 * * * *", "2-57/5 * * * *"] },
+  "triggers": { "crons": ["1 * * * *", "2-57/5 * * * *"] },
   "d1_databases": [{
     "binding": "DB",
     "database_name": "docentetuc-db",

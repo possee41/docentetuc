@@ -1,12 +1,14 @@
 // Each expression produces a separate scheduled invocation and resource budget.
 export const SCHEDULED_TASKS = Object.freeze({
-  "0 * * * *": ["sync", "/api/sync"],
   "1 * * * *": ["retention", "/api/community/retention"],
   "2-57/5 * * * *": ["push", "/api/push/dispatch"],
 });
 
 export async function runScheduledTask(cron, secret, fetcher, legacyPaused = false) {
   if (!secret) throw new Error("CRON_SECRET_NOT_CONFIGURED");
+  // A previously scheduled hourly trigger may arrive during propagation.
+  // Never let it restart the retired Worker catalog sweep.
+  if (cron === "0 * * * *") return "sync-retired";
   // An old trigger can arrive while Cloudflare propagates the new schedule.
   // During the cutover pause, keep push running; hourly retention can wait.
   const task = SCHEDULED_TASKS[cron] ??
