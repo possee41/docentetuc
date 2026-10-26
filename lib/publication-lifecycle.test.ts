@@ -36,7 +36,8 @@ test("publication lifecycle distinguishes current, upcoming, closed, expired and
   assert.equal(publicationLifecycle({ sourceStatus: "vigente", sourceStatusIsExplicit: true, now }), "ACTIVE");
   assert.equal(publicationLifecycle({ registrationOpenAt: "2026-10-01T00:00:00Z", dateStatus: "confirmed", now }), "UPCOMING");
   assert.equal(publicationLifecycle({ registrationOpenAt: "2026-10-01T00:00:00Z", dateStatus: "tentative", now }), "UNKNOWN");
-  assert.equal(publicationLifecycle({ sourceStatus: "inscripción abierta", sourceStatusIsExplicit: true, registrationCloseAt: "2026-10-12T23:59:59-03:00", dateStatus: "tentative", now: new Date("2026-10-11T12:00:00-03:00") }), "ACTIVE");
+  assert.equal(publicationLifecycle({ sourceStatus: "inscripción abierta", sourceStatusIsExplicit: true, registrationOpenAt: "2026-10-10T09:00:00-03:00", registrationCloseAt: "2026-10-12T23:59:59-03:00", dateStatus: "tentative", now: new Date("2026-10-11T12:00:00-03:00") }), "ACTIVE");
+  assert.equal(publicationLifecycle({ sourceStatus: "inscripción abierta", sourceStatusIsExplicit: true, registrationOpenAt: "2026-10-12T09:00:00-03:00", registrationCloseAt: "2026-10-13T09:00:00-03:00", dateStatus: "tentative", now: new Date("2026-10-11T12:00:00-03:00") }), "UNKNOWN");
   assert.equal(publicationLifecycle({ sourceStatus: "finalizada", sourceStatusIsExplicit: true, registrationCloseAt: "2026-09-27T00:00:00Z", dateStatus: "tentative", now }), "UNKNOWN");
   assert.equal(publicationLifecycle({ registrationCloseAt: "2026-09-27T00:00:00Z", dateStatus: "general_window", now }), "UNKNOWN");
   assert.equal(publicationLifecycle({ sourceStatus: "inscripción cerrada", sourceStatusIsExplicit: true, dateStatus: "general_window", now }), "CLOSED");
@@ -64,6 +65,9 @@ test("home recommendation requires a current lifecycle and a recently successful
   assert.equal(canRecommendCurrentPublication({ lifecycle: "ACTIVE", health: recent, now }), true);
   assert.equal(canRecommendCurrentPublication({ lifecycle: "REMOVED_FROM_SOURCE", health: recent, now }), false);
   assert.equal(canRecommendCurrentPublication({ lifecycle: "ACTIVE", health: { ...recent, last_successful_sync_at: "2026-09-25 11:00:00" }, now }), false);
+  assert.equal(canRecommendCurrentPublication({ lifecycle: "ACTIVE", health: { ...recent, sync_status: "PARTIAL" }, now }), false);
+  assert.equal(canRecommendCurrentPublication({ lifecycle: "ACTIVE", health: { ...recent, last_attempt_at: "2026-09-28 11:30:00" }, now }), false);
+  assert.equal(canRecommendCurrentPublication({ lifecycle: "ACTIVE", health: { ...recent, last_successful_sync_at: "2026-09-28 08:00:00" }, now }), false);
   assert.equal(sourceFreshness(undefined, now).fresh, false);
 });
 

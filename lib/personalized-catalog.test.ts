@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { eligiblePersonalPublication, hasPersonalCriteria, personalizedCatalogPage, publicationForMatch, PERSONAL_CATALOG_SQL, PERSONAL_PAGE_SIZE, PERSONAL_SCAN_SIZE } from "./personalized-catalog.ts";
+import { eligiblePersonalPublication, hasPersonalCriteria, personalizedCatalogPage, publicationForMatch, publicationLifecycleForDisplay, PERSONAL_CATALOG_SQL, PERSONAL_PAGE_SIZE, PERSONAL_SCAN_SIZE } from "./personalized-catalog.ts";
 import { profileMatch } from "./matching.ts";
 import { emptyPersonalFilters, parsePersonalFilters, passesPersonalFilters } from "./personalized-filters.ts";
 import type { Profile, Publication } from "./types.ts";
@@ -25,6 +25,11 @@ function row(kind: "vacante" | "capacitacion", metadata: string, extra: Partial<
 
 test("respeta evidencia, umbral, estados y cupo sin falsos positivos", () => {
   assert.equal(eligiblePersonalPublication(row("vacante", official), profile, "vacante", now), true);
+  const upcomingSime = JSON.stringify({ ...JSON.parse(official), official: { ...JSON.parse(official).official,
+    abierto: false, facts: { publicationStart: { value: "2026-10-27T09:00:00-03:00", precision: "datetime" },
+      publicationEnd: { value: "2026-10-28T18:00:00-03:00", precision: "datetime" } } } });
+  assert.equal(eligiblePersonalPublication(row("vacante", upcomingSime), profile, "vacante", now), true);
+  assert.equal(eligiblePersonalPublication(row("vacante", upcomingSime), profile, "vacante", new Date("2026-10-29T12:00:00-03:00")), false);
   assert.equal(eligiblePersonalPublication(row("vacante", official, { level: "Primario", junta: "Primario" }), profile, "vacante", now), false);
   const partial = row("vacante", official, { character: "Interino" });
   assert.equal(profileMatch(publicationForMatch(partial), { levels: ["Secundario"], areas: ["Matemática"], roles: ["Profesor de Matemática"], characters: ["Suplente"] }).status, "partial");
@@ -40,6 +45,9 @@ test("respeta evidencia, umbral, estados y cupo sin falsos positivos", () => {
   assert.equal(eligiblePersonalPublication(row("capacitacion", JSON.stringify({ ...JSON.parse(training), registrationClosesAt: "2026-10-25T18:00:00-03:00" })), profile, "capacitacion", now), false);
   assert.equal(eligiblePersonalPublication(row("capacitacion", JSON.stringify({ ...JSON.parse(training), availablePreCapacity: 0 })), profile, "capacitacion", now), false);
   assert.equal(eligiblePersonalPublication(row("capacitacion", "{}"), profile, "capacitacion", now), false);
+  assert.equal(publicationLifecycleForDisplay(row("capacitacion", "{}"), now), "UNKNOWN");
+  assert.equal(publicationLifecycleForDisplay(row("capacitacion", JSON.stringify({ ...JSON.parse(training), availablePreCapacity: 0 })), now), "UNKNOWN");
+  assert.equal(publicationLifecycleForDisplay(row("capacitacion", training), now), "ACTIVE");
   assert.equal(eligiblePersonalPublication(row("capacitacion", training), { ...profile, levels: [], areas: [], subjects: [], training_interests: [] }, "capacitacion", now), false);
   assert.equal(hasPersonalCriteria({ ...profile, levels: [], boards: [], areas: [], subjects: [], roles: [], shifts: [], characters: [], circuits: [], training_interests: [] }, "vacante"), false);
   assert.equal(hasPersonalCriteria({ ...profile, levels: [], boards: [], areas: [], subjects: [], training_interests: [] }, "capacitacion"), false);

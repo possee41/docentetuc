@@ -4,8 +4,8 @@ import { randomUUID } from "node:crypto";
 import { circuitMatches, inferCircuit } from "../lib/circuits.ts";
 import { designationRoleFromTitle, isEligibleForPersonalizedHome, matchesProfile, profileMatch } from "../lib/matching.ts";
 import { notificationDedupeKey } from "../lib/notification-events.ts";
-import { officialMetadata } from "../lib/official-publication.ts";
-import { parseTrainingMetadata } from "../lib/training.ts";
+import { officialLifecycle, officialMetadata } from "../lib/official-publication.ts";
+import { enrollmentState, parseTrainingMetadata } from "../lib/training.ts";
 import { registrationState } from "../lib/home-dashboard.ts";
 import { dispatchPushNotifications } from "../lib/push.ts";
 import { materializeExternalReminderBatch } from "./external-reminders.mjs";
@@ -75,6 +75,12 @@ export async function materializeExternalNoticePage(db, { events, cursor = "", l
     if (!["ACTIVE", "UPCOMING"].includes(row.normalized_status) || row.removed_at || row.kind === "informacion" ||
         row.id.startsWith("drive:") || (official && (official.canonicalId || official.entity === "reference" ||
           official.candidateIds?.length || official.topics.includes("CLASIFICACION_PENDIENTE")))) continue;
+    if (row.kind === "vacante" && !["ACTIVE", "UPCOMING"].includes(officialLifecycle(row, now))) continue;
+    if (row.kind === "capacitacion") {
+      const metadata = parseTrainingMetadata(row.metadata);
+      if (metadata?.dateStatus !== "confirmed" || !["PROXIMAMENTE", "ABRE_HOY", "ABIERTA"].includes(
+        enrollmentState(metadata, row.source_status || row.status, row.normalized_status, now))) continue;
+    }
     rows.push({ row, event });
   }
   if (!rows.length) return { profiles: 0, considered: 0, inserted: 0, nextCursor: null };

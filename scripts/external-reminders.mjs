@@ -1,11 +1,14 @@
 // Runs in Node against isolated D1. A failed insert never marks its reminder sent.
+import { CONFIRMED_TRAINING_REMINDER_SQL } from "../lib/training.ts";
+
 const sources = [
   {
     table: "training_reminders", flag: "notified", touch: true, type: "CAPACITACION_ABRE",
-    select: "SELECT id,user_id,publication_id,opens_at,advance_minutes,remind_at FROM training_reminders WHERE notified=0 AND datetime(remind_at)<=datetime(?) ORDER BY remind_at,id LIMIT ?",
+    select: `SELECT id,user_id,publication_id,opens_at,advance_minutes,remind_at FROM training_reminders WHERE notified=0 AND datetime(remind_at)<=datetime(?) AND ${CONFIRMED_TRAINING_REMINDER_SQL} ORDER BY remind_at,id LIMIT ?`,
     key: (row) => `training-reminder:${row.id}:${row.opens_at}:${row.advance_minutes ?? 0}`,
-    where: "id=? AND remind_at=? AND notified=0",
-    args: (row) => [row.id, row.remind_at],
+    where: `id=? AND remind_at=? AND notified=0 AND ${CONFIRMED_TRAINING_REMINDER_SQL}`,
+    args: (row, now) => [row.id, row.remind_at, now],
+    confirmedTraining: true,
   },
   {
     table: "designation_tracking", flag: "reminder_notified", touch: true, type: "DESIGNACION_RECORDATORIO",
@@ -42,10 +45,10 @@ export async function materializeExternalReminderBatch(db, { limit = 10, now = n
   let remaining = limit, inserted = 0, processed = 0;
   for (const source of sources) {
     if (!remaining) break;
-    const due = await db.prepare(source.select).bind(now.toISOString(), remaining).all();
+    const due = await db.prepare(source.select).bind(now.toISOString(), ...(source.confirmedTraining ? [now.toISOString()] : []), remaining).all();
     for (const row of due.results || []) {
       const key = source.key(row);
-      const args = source.args(row);
+      const args = source.args(row, now.toISOString());
       const notice = await db.prepare(`INSERT OR IGNORE INTO notifications (user_id,publication_id,type,dedupe_key,scheduled_at)
         SELECT user_id,publication_id,?,?,? FROM ${source.table} WHERE ${source.where}`)
         .bind(source.type, key, now.toISOString(), ...args).run();

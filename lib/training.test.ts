@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { enrollmentState, mergeTrainingData, openingCountdown, trainingReminderKey, trainingStatus } from "./training.ts";
+import { canScheduleTrainingReminder, enrollmentState, mergeTrainingData, openingCountdown, trainingReminderKey, trainingStatus } from "./training.ts";
 
 const now = new Date("2026-09-26T12:00:00-03:00");
 const course = { capacitacion_id: 10, nombre: "Curso oficial", token: "abc", slug: "curso-oficial", niveles: "Secundario" };
@@ -79,8 +79,23 @@ test("FDCI prefiere las fechas y horas de la comisión al catálogo y al cursado
 
 test("FDCI respeta un cierre oficial aunque la ventana todavía no terminó", () => {
   assert.equal(trainingStatus({ ...commission, isActivePre: 0 }, now), "inscripción cerrada");
+  assert.equal(trainingStatus({ ...commission, isActivePre: 0 }, new Date("2026-09-24T12:00:00-03:00")), "inscripción cerrada");
   assert.equal(trainingStatus({ ...commission, comision_cerrada: 1 }, new Date("2026-09-24T12:00:00-03:00")), "inscripción cerrada");
   assert.equal(trainingStatus({ ...commission, fecha_cierre_preinscripcion: undefined }, now), "consultar", "sin cierre ni estado abierto oficial no se presume abierta indefinidamente");
+});
+
+test("cupo, apertura ausente y recordatorios no crean oportunidades falsas", () => {
+  const future = { entity: "commission" as const, trainingId: "20", registrationOpensAt: "2026-09-27T23:00:00-03:00",
+    registrationClosesAt: "2026-09-29T08:00:00-03:00", registrationHasTime: true, dateStatus: "confirmed" as const };
+  assert.equal(enrollmentState({ ...future, availablePreCapacity: 0 }, "próximamente", "UPCOMING", now), "SIN_CUPO");
+  assert.equal(enrollmentState({ ...future, registrationOpensAt: undefined }, "inscripción abierta", "ACTIVE", now), "SIN_FECHA_CONFIRMADA");
+  assert.equal(enrollmentState({ ...future, registrationOpensAt: undefined, dateStatus: "tentative" }, "inscripción abierta", "ACTIVE", now), "SIN_FECHA_CONFIRMADA");
+  assert.equal(canScheduleTrainingReminder(future, "próximamente", "UPCOMING", now), true);
+  assert.equal(canScheduleTrainingReminder({ ...future, dateStatus: "tentative" }, "próximamente", "UPCOMING", now), false);
+  assert.equal(canScheduleTrainingReminder({ ...future, registrationHasTime: false }, "próximamente", "UPCOMING", now), false);
+  assert.equal(canScheduleTrainingReminder({ ...future, availablePreCapacity: 0 }, "próximamente", "UPCOMING", now), false);
+  assert.equal(canScheduleTrainingReminder(future, "inscripción abierta", "ACTIVE", new Date("2026-09-27T23:00:00-03:00")), false);
+  assert.equal(canScheduleTrainingReminder(future, "inscripción cerrada", "CLOSED", now), false);
 });
 
 test("FDCI conserva cupo cero sin anunciar inscripción disponible", () => {

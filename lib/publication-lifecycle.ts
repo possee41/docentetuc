@@ -18,6 +18,7 @@ export class SourceSyncError extends Error {
 export type SourceHealthSnapshot = {
   sync_status?: string | null;
   last_successful_sync_at?: string | null;
+  last_attempt_at?: string | null;
   synced_at?: string | null;
 };
 
@@ -82,7 +83,9 @@ export function publicationLifecycle(input: {
   if (dateStatus !== "tentative" && input.sourceStatusIsExplicit && /cerrad|finaliz|vencid|expired|closed/i.test(source)) return "CLOSED";
   // Parser-derived course states are not proof when the source marks its dates
   // tentative, as a general catalogue window, or unknown.
-  if (dateStatus === "tentative" && input.sourceStatusIsExplicit && /abiert/i.test(source) && input.registrationCloseAt && Date.parse(input.registrationCloseAt) >= now) return "ACTIVE";
+  if (dateStatus === "tentative" && input.sourceStatusIsExplicit && /abiert/i.test(source) &&
+    input.registrationOpenAt && Date.parse(input.registrationOpenAt) <= now &&
+    input.registrationCloseAt && Date.parse(input.registrationCloseAt) >= now) return "ACTIVE";
   if (["tentative", "general_window", "unknown"].includes(dateStatus)) return "UNKNOWN";
   const expiry = input.expiresAt ? Date.parse(input.expiresAt) : Number.NaN;
   if (Number.isFinite(expiry) && expiry < now) return "EXPIRED";
@@ -97,12 +100,14 @@ export function publicationLifecycle(input: {
   return "UNKNOWN";
 }
 
-export function sourceFreshness(health: SourceHealthSnapshot | undefined, now = new Date(), maxAgeMs = 24 * 60 * 60_000) {
-  if (!health) return { fresh: false, verifiedAt: null as string | null };
-  const value = health.last_successful_sync_at || (!health.sync_status ? health.synced_at : null) || null;
+export function sourceFreshness(health: SourceHealthSnapshot | undefined, now = new Date(), maxAgeMs = 3 * 60 * 60_000) {
+  if (!health || health.sync_status !== "OK") return { fresh: false, verifiedAt: health?.last_successful_sync_at || null };
+  const value = health.last_successful_sync_at || null;
   if (!value) return { fresh: false, verifiedAt: null as string | null };
   const timestamp = timestampValue(value);
-  return { fresh: Number.isFinite(timestamp) && now.getTime() - timestamp <= maxAgeMs && timestamp <= now.getTime(), verifiedAt: value };
+  const attempt = health.last_attempt_at ? timestampValue(health.last_attempt_at) : Number.NaN;
+  return { fresh: Number.isFinite(timestamp) && (!Number.isFinite(attempt) || attempt <= timestamp) &&
+    now.getTime() - timestamp <= maxAgeMs && timestamp <= now.getTime(), verifiedAt: value };
 }
 
 export function canRecommendCurrentPublication(input: {

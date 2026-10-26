@@ -46,9 +46,11 @@ test("recordatorios externos respetan preferencias, envían una vez y no mezclan
   } };
   const now = new Date("2026-10-22T12:00:00Z");
   const hash = "a".repeat(64);
+  sqlite.prepare("UPDATE publications SET kind='capacitacion', normalized_status='UPCOMING', metadata=? WHERE id='p1'")
+    .run(JSON.stringify({ entity: "commission", dateStatus: "confirmed", registrationHasTime: true, registrationOpensAt: "2026-10-22T13:00:00Z", registrationClosesAt: "2026-10-23T13:00:00Z" }));
   sqlite.prepare(`INSERT INTO publications(id,title,content_hash,normalized_status,kind,metadata,circuit)
     VALUES ('fdci:commission:synthetic','Curso sintético',?,'ACTIVE','capacitacion',?,'UNKNOWN')`)
-    .run(hash, JSON.stringify({ entity: "commission", availablePreCapacity: 5, registrationOpensAt: "2026-10-23T12:00:00Z" }));
+    .run(hash, JSON.stringify({ entity: "commission", availablePreCapacity: 5, registrationOpensAt: "2026-10-23T12:00:00Z", registrationClosesAt: "2026-10-24T12:00:00Z", dateStatus: "confirmed" }));
   const events = [{ id: "fdci:commission:synthetic", contentHash: hash, change: "created" }];
   await assert.rejects(runExternalNotificationStep(db, { events, now }), /PUSH_PROVIDER_REQUIRED/);
   await assert.rejects(dispatchPushNotifications(db, {}, now, provider), /VAPID_NOT_CONFIGURED/);

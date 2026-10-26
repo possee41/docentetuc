@@ -33,6 +33,11 @@ export function publicationForMatch(publication: Publication): MatchPublication 
 }
 
 export function publicationLifecycleForDisplay(item: Publication, now = new Date()) {
+  if (item.kind === "capacitacion") {
+    if (item.normalized_status === "REMOVED_FROM_SOURCE" || item.source_status === "REMOVED_FROM_SOURCE") return "REMOVED_FROM_SOURCE";
+    const state = enrollmentForDisplay(item, now);
+    return state === "ABIERTA" ? "ACTIVE" : state === "PROXIMAMENTE" || state === "ABRE_HOY" ? "UPCOMING" : state === "CERRADA" ? "CLOSED" : "UNKNOWN";
+  }
   const official = officialLifecycle(item, now);
   if (official) return official;
   const metadata = parseTrainingMetadata(item.metadata);
@@ -49,7 +54,7 @@ export function enrollmentForDisplay(item: Publication, now = new Date()) {
 
 export function eligiblePersonalPublication(item: Publication, profile: Profile, kind: PersonalKind, now = new Date()) {
   if (item.kind !== kind || officialMetadata(item)?.canonicalId) return false;
-  if (kind === "vacante" && (!hasOfficialTopic(item, "INSCRIPCION_SIME") || publicationLifecycleForDisplay(item, now) !== "ACTIVE")) return false;
+  if (kind === "vacante" && (!hasOfficialTopic(item, "INSCRIPCION_SIME") || !["ACTIVE", "UPCOMING"].includes(publicationLifecycleForDisplay(item, now)))) return false;
   if (kind === "capacitacion" && !["ABRE_HOY", "PROXIMAMENTE", "ABIERTA"].includes(enrollmentForDisplay(item, now))) return false;
   return isEligibleMatchResult(profileMatch(publicationForMatch(item), matchProfileFromUser(profile)), profile.personal_match_threshold);
 }

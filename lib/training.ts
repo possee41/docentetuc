@@ -69,20 +69,28 @@ export function enrollmentState(metadata: TrainingMetadata | null, sourceStatus 
   const closes = metadata.registrationClosesAt ? Date.parse(metadata.registrationClosesAt) : Number.NaN;
   const time = now.getTime();
   if (Number.isFinite(closes) && time > closes) return "CERRADA";
+  if (metadata.availablePreCapacity != null && metadata.availablePreCapacity <= 0) return "SIN_CUPO";
   if (Number.isFinite(opens) && time < opens) {
     const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
     return day.format(now) === day.format(new Date(opens)) ? "ABRE_HOY" : "PROXIMAMENTE";
   }
-  if (metadata.availablePreCapacity != null && metadata.availablePreCapacity <= 0) return "SIN_CUPO";
   if (Number.isFinite(opens) && metadata.registrationHasTime === false && !/abiert/i.test(sourceStatus)) {
     const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
     if (day.format(now) === day.format(new Date(opens))) return "ABRE_HOY";
   }
   // A tentative calendar is a forecast, not proof that registration actually opened.
-  if (metadata.dateStatus === "tentative") return /abiert/i.test(sourceStatus) && Number.isFinite(closes) && time <= closes ? "ABIERTA" : "SIN_FECHA_CONFIRMADA";
-  if (Number.isFinite(closes) && time <= closes && (Number.isFinite(opens) || /abiert/i.test(sourceStatus))) return "ABIERTA";
+  if (metadata.dateStatus === "tentative") return /abiert/i.test(sourceStatus) && Number.isFinite(opens) && opens <= time &&
+    Number.isFinite(closes) && time <= closes ? "ABIERTA" : "SIN_FECHA_CONFIRMADA";
+  if (Number.isFinite(opens) && Number.isFinite(closes) && time <= closes) return "ABIERTA";
   if (Number.isFinite(opens) && /abiert/i.test(sourceStatus)) return "ABIERTA";
   return "SIN_FECHA_CONFIRMADA";
+}
+
+export function canScheduleTrainingReminder(metadata: TrainingMetadata | null, sourceStatus = "", normalizedStatus = "", now = new Date()) {
+  if (metadata?.dateStatus !== "confirmed" || metadata.registrationHasTime !== true || !metadata.registrationOpensAt) return false;
+  const opens = Date.parse(metadata.registrationOpensAt);
+  return Number.isFinite(opens) && opens > now.getTime() &&
+    ["PROXIMAMENTE", "ABRE_HOY"].includes(enrollmentState(metadata, sourceStatus, normalizedStatus, now));
 }
 
 export function trainingStatus(commission: OfficialCommission | undefined, now = new Date()): TrainingStatus {
@@ -94,9 +102,9 @@ export function trainingStatus(commission: OfficialCommission | undefined, now =
   const finishes = localDateTime(commission.fecha_fin, true);
   const closed = Boolean(Number(commission.comision_cerrada));
   if (closed) return "inscripción cerrada";
+  if (opens && commission.isActivePre != null && !Boolean(Number(commission.isActivePre))) return "inscripción cerrada";
   if (opens && time < new Date(opens).getTime()) return "próximamente";
   if (closes && time > new Date(closes).getTime()) return "inscripción cerrada";
-  if (opens && commission.isActivePre != null && !Boolean(Number(commission.isActivePre))) return "inscripción cerrada";
   if (opens && (closes || Boolean(Number(commission.isActivePre)))) return "inscripción abierta";
   if (starts && time < new Date(starts).getTime()) return "consultar";
   if (starts && finishes && time <= new Date(finishes).getTime()) return "en curso";
@@ -183,3 +191,17 @@ export const parseTrainingMetadata = (value: string | null | undefined): Trainin
 };
 
 export const trainingReminderKey = (metadata: TrainingMetadata) => metadata.commissionId ? `fdci:commission:${metadata.commissionId}` : metadata.trainingId;
+
+// Recheck a stored reminder against the current publication before queuing it.
+// The single placeholder is the current instant, supplied by the caller.
+export const CONFIRMED_TRAINING_REMINDER_SQL = `EXISTS (SELECT 1 FROM publications p
+  WHERE p.id=training_reminders.publication_id AND p.kind='capacitacion'
+  AND p.normalized_status NOT IN ('CLOSED','EXPIRED','REMOVED_FROM_SOURCE')
+  AND CASE WHEN json_valid(p.metadata) THEN
+    json_extract(p.metadata,'$.dateStatus')='confirmed'
+    AND json_extract(p.metadata,'$.registrationHasTime')=1
+    AND json_extract(p.metadata,'$.registrationOpensAt')=training_reminders.opens_at
+    AND COALESCE(json_extract(p.metadata,'$.availablePreCapacity'),1)>0
+    AND (json_extract(p.metadata,'$.registrationClosesAt') IS NULL OR
+      datetime(json_extract(p.metadata,'$.registrationClosesAt'))>=datetime(?))
+  ELSE 0 END)`;
