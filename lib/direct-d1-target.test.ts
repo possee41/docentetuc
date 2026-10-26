@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveDirectD1Target, verifyDirectD1Identity } from "../scripts/import-direct-d1.mjs";
+import { resolveDirectD1Target, runDirectD1Import, verifyDirectD1Identity } from "../scripts/import-direct-d1.mjs";
 
 const account = "a".repeat(32), revision = "b".repeat(40);
 const approved = { DIRECT_D1_TARGET: "production", DIRECT_D1_PRODUCTION_ENABLED: "true",
@@ -31,4 +31,11 @@ test("D1 REST comprueba UUID y nombre antes de importar; no consulta SQL", async
   await assert.rejects(verifyDirectD1Identity({ accountId: account, token: "synthetic-token", target,
     fetcher: async () => Response.json({ success: true, result: { uuid: target.id, name: "otra-base" } }) }),
   /D1_IDENTITY_MISMATCH/);
+});
+
+test("Juntas rechaza el recorrido monolítico antes de consultar D1 o Drive", async () => {
+  let calls = 0;
+  await assert.rejects(runDirectD1Import({ source: "juntas", db: { prepare: () => { calls++; } },
+    sourceFetch: async () => { calls++; throw new Error("fetch inesperado"); } }), /JUNTAS_CHECKPOINT_REQUIRED/);
+  assert.equal(calls, 0);
 });

@@ -39,13 +39,14 @@ export async function verifyDirectD1Identity({ accountId, token, target, fetcher
 /** @param {{source: string, db: any, sourceFetch?: typeof fetch, driveKey?: string, selection?: {token: string, slug: string, commissionId: string}, scope?: string}} options */
 export async function runDirectD1Import({ source, db, sourceFetch = fetch, driveKey, selection, scope = "single",
   juntaRootId, juntaMaxRequests, juntaMaxPublicationWrites }) {
+  if (source === "juntas" && scope !== "checkpoint") throw new Error("JUNTAS_CHECKPOINT_REQUIRED");
   if (source === "juntas" && scope === "checkpoint") {
     const roots = juntaRootId ? JUNTA_EXTERNAL_SOURCES.filter(([id]) => id === juntaRootId) : JUNTA_EXTERNAL_SOURCES;
     if (!roots.length) throw new Error("JUNTAS_ROOT_INVALID");
     return { source, ...await runJuntasCheckpoint({ db, driveKey, sourceFetch, sources: roots,
       maxRequests: juntaMaxRequests ?? 25, maxPublicationWrites: juntaMaxPublicationWrites ?? 20 }) };
   }
-  const storageSource = { sime: "SIME", juntas: "Padrones y Comunicados", cenet: "CeNET / INET", infd: "INFoD / AulaS-TIC" }[source];
+  const storageSource = { sime: "SIME", cenet: "CeNET / INET", infd: "INFoD / AulaS-TIC" }[source];
   // A paginated, public-only hash snapshot avoids one D1 read per unchanged row.
   // FDCI's single-commission pilot is cheaper with its normal one-row lookup.
   const receiverDb = storageSource ? withSourceHashCache(db, await sourceHashCache(db, storageSource)) : db;
@@ -75,7 +76,7 @@ export async function runDirectD1Import({ source, db, sourceFetch = fetch, drive
     }
   } else if (source === "sime") {
     result = await runSimeImport({ endpoint, token: receiver.token, sourceFetch, receiverFetch: receiver.receiverFetch });
-  } else if (["juntas", "cenet", "infd"].includes(source)) {
+  } else if (["cenet", "infd"].includes(source)) {
     result = await runPublicSourceImport({ source, endpoint, token: receiver.token, sourceFetch,
       receiverFetch: receiver.receiverFetch, driveKey });
   } else throw new Error("SOURCE_INVALID");
@@ -90,7 +91,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       ? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim() : "";
     const target = resolveDirectD1Target(process.env, revision);
     const source = process.env.SYNC_SOURCE || "";
-    const scope = source === "juntas" ? process.env.JUNTAS_SCOPE || "single" : process.env.FDCI_SCOPE || "single";
+    const scope = source === "juntas" ? process.env.JUNTAS_SCOPE || "checkpoint" : process.env.FDCI_SCOPE || "single";
     // The D1 REST endpoint shares Cloudflare's account API rate limit.
     const db = createD1Rest({ accountId, databaseId: target.id, token,
       minRequestIntervalMs: source === "juntas" && scope === "checkpoint" ? 350 : 0 });

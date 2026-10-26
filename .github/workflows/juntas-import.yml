@@ -38,6 +38,9 @@ jobs:
         env:
           DIRECT_D1_WRITE_ENABLED: 'true'
           SYNC_SOURCE: juntas
+          JUNTAS_SCOPE: checkpoint
+          JUNTAS_MAX_REQUESTS: '25'
+          JUNTAS_MAX_PUBLICATION_WRITES: '20'
           CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           D1_IMPORT_TOKEN: ${{ secrets.D1_IMPORT_TOKEN }}
           GOOGLE_DRIVE_API_KEY: ${{ secrets.GOOGLE_DRIVE_API_KEY }}

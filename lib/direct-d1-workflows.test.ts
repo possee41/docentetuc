@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 test("los cinco importadores siguen manuales y usan únicamente el ejecutor REST canary", () => {
+  const concurrencyGroups = new Set<string>();
   for (const source of ["fdci", "sime", "juntas", "cenet", "infd"]) {
     const workflow = readFileSync(new URL(`../.github/workflows/${source}-import.yml`, import.meta.url), "utf8");
     assert.match(workflow, /workflow_dispatch:/);
@@ -13,5 +14,14 @@ test("los cinco importadores siguen manuales y usan únicamente el ejecutor REST
     assert.match(workflow, /github\.ref == 'refs\/heads\/feat\/1\.2-sync-integration'/);
     assert.match(workflow, /git rev-parse HEAD/);
     assert.doesNotMatch(workflow, /D1_DATABASE_ID:|FDCI_IMPORT_URL:|SIME_IMPORT_URL:|PUBLIC_IMPORT_URL:/);
+    assert.doesNotMatch(workflow, /^\s+needs:/m, "un fallo de otra fuente no debe bloquear este workflow");
+    const group = workflow.match(/^\s+group: ([\w-]+)$/m)?.[1];
+    assert.ok(group);
+    assert.equal(concurrencyGroups.has(group), false, "cada fuente debe tener concurrencia independiente");
+    concurrencyGroups.add(group);
   }
+  const juntas = readFileSync(new URL("../.github/workflows/juntas-import.yml", import.meta.url), "utf8");
+  assert.match(juntas, /JUNTAS_SCOPE: checkpoint/);
+  assert.match(juntas, /JUNTAS_MAX_REQUESTS: '25'/);
+  assert.match(juntas, /JUNTAS_MAX_PUBLICATION_WRITES: '20'/);
 });
