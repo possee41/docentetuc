@@ -58,7 +58,9 @@ test("recordatorios externos respetan preferencias, envían una vez y no mezclan
   const first = await runExternalNotificationStep(db, { events, now, provider, environment: syntheticEnvironment });
   assert.equal(first.notices.inserted, 1);
   assert.deepEqual(first.reminders, { considered: 5, inserted: 5, processed: 5 });
-  assert.deepEqual(first.delivery, { considered: 6, sent: 5, failed: 0, removed: 0, deferred: 0 });
+  assert.deepEqual(first.delivery, { considered: 2, sent: 2, failed: 0, removed: 0, deferred: 0 });
+  for (let page = 0; page < 4; page++)
+    await dispatchPushNotifications(db, syntheticEnvironment, now, provider);
   assert.equal(sent.length, 5);
   assert.ok(sent.every(({ endpoint }) => endpoint.endsWith("/a")));
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM push_deliveries WHERE status='skipped'").get()?.n, 1);

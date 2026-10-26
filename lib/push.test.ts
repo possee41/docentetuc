@@ -42,7 +42,7 @@ test("una suscripción push no puede reasignarse a otra cuenta o instalación", 
 });
 
 test("el despacho programa lotes acotados para respetar el presupuesto de CPU del cron", () => {
-  assert.equal(PUSH_DELIVERY_BATCH_SIZE, 10);
+  assert.equal(PUSH_DELIVERY_BATCH_SIZE, 2);
 });
 
 test("el push no reenvía notificaciones históricas sin programación y respeta las futuras", () => {

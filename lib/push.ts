@@ -57,11 +57,20 @@ function nextRecurringStart(value: string, recurrence: string) {
 }
 
 const minutes = (value: string) => { const match = /^(\d{2}):(\d{2})$/.exec(value); return match ? Number(match[1]) * 60 + Number(match[2]) : null; };
+const quietFormatters = new Map<string, Intl.DateTimeFormat>();
 export function isQuietTime(date: Date, start: string, end: string, timezone: string) {
   const startMinute = minutes(start), endMinute = minutes(end);
   if (startMinute == null || endMinute == null || startMinute === endMinute) return false;
   let parts: Intl.DateTimeFormatPart[];
-  try { parts = new Intl.DateTimeFormat("en", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date); }
+  try {
+    let formatter = quietFormatters.get(timezone);
+    if (!formatter) {
+      formatter = new Intl.DateTimeFormat("en", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+      if (quietFormatters.size >= 16) quietFormatters.clear();
+      quietFormatters.set(timezone, formatter);
+    }
+    parts = formatter.formatToParts(date);
+  }
   catch { return false; }
   const current = Number(parts.find((part) => part.type === "hour")?.value || 0) * 60 + Number(parts.find((part) => part.type === "minute")?.value || 0);
   return startMinute < endMinute ? current >= startMinute && current < endMinute : current >= startMinute || current < endMinute;
@@ -99,7 +108,7 @@ export function notificationMessage(type: string, title: string): PushMessage {
 type PublicationRow = { id: string; kind: string; title: string; summary: string; level: string; area: string; junta: string; location: string; shift: string; character: string; circuit?: string; source_circuit_raw?: string; starts_at: string | null; ends_at: string | null; status: string; metadata: string; normalized_status?: string };
 type ProfileRow = Record<string, unknown> & { user_id: string };
 const dayInTucuman = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(date);
-export const PUSH_DELIVERY_BATCH_SIZE = 10;
+export const PUSH_DELIVERY_BATCH_SIZE = 2;
 
 function matchProfile(profile: ProfileRow) {
   return { level: String(profile.level || ""), area: String(profile.area || ""), subjects: String(profile.subjects || ""), junta: String(profile.junta || ""), roles: String(profile.roles || ""), department: String(profile.department || ""), locality: String(profile.locality || ""), shifts: String(profile.shifts || ""), characters: String(profile.characters || "").split(/[,;|]/).filter(Boolean), circuits: String(profile.circuits || "").split(/[,;|]/).filter(Boolean), personalMatchThreshold: Number(profile.personal_match_threshold) || 85, wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: String(profile.training_interests || "") };
@@ -132,7 +141,9 @@ export function scheduledNotificationTypes(publication: PublicationRow, profile:
   if (publication.kind !== "capacitacion" || ["CLOSED", "EXPIRED", "REMOVED_FROM_SOURCE"].includes(String(publication.normalized_status || "").toUpperCase())) return events;
   if (!trainingNotificationsEnabled(publication, profile)) return events;
   if (!metadata || !["confirmed", "course_confirmed"].includes(String(metadata.dateStatus || "").toLowerCase())) return events;
+  if (metadata.entity === "commission" && metadata.availablePreCapacity === 0) return events;
   const closingAt = metadata?.registrationClosesAt || publication.ends_at;
+  if (closingAt && new Date(closingAt) <= now) return events;
   if (saved && closingAt) {
     const remaining = new Date(closingAt).getTime() - now.getTime();
     if (remaining > 0 && remaining <= 48 * 3_600_000) events.push("CIERRE_PROXIMO");
@@ -260,15 +271,4 @@ export async function dispatchPushNotifications(db: D1Database, environment: Pus
     }
   }
   return { considered: deliveries.length, sent, failed, removed, deferred };
-}
-
-export class NotificationService {
-  constructor(privateDb: D1Database, privateEnvironment: PushEnvironment) { this.db = privateDb; this.environment = privateEnvironment; }
-  private db: D1Database;
-  private environment: PushEnvironment;
-  async process(now = new Date()) {
-    const materialized = await materializeScheduledNotifications(this.db, now);
-    const delivery = await dispatchPushNotifications(this.db, this.environment, now);
-    return { materialized, delivery };
-  }
 }

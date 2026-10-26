@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { purgeExpiredCommunityContent } from "../lib/community.ts";
 import { dispatchPushNotifications, materializeScheduledNotifications } from "../lib/push.ts";
+import { runExternalMaterialization } from "./materialize-external.mjs";
 import { connectWorkerdCpuProfiler } from "./workerd-cpu-profiler.mjs";
 
 const require = createRequire(import.meta.url);
@@ -75,12 +76,16 @@ try {
     "CREATE TABLE manual_events(id TEXT,user_id TEXT,title TEXT,starts_at TEXT,recurrence TEXT,reminder_minutes INTEGER,reminder_at TEXT,reminder_notified INTEGER,updated_at TEXT)",
     "CREATE TABLE manual_event_push_queue(id INTEGER PRIMARY KEY,user_id TEXT,event_id TEXT,title TEXT,occurrence_at TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP)",
     "CREATE TABLE profiles(user_id TEXT PRIMARY KEY,notify_new_trainings INTEGER,training_notify_scope TEXT,level TEXT,area TEXT,training_interests TEXT)",
-    "CREATE TABLE publications(id TEXT PRIMARY KEY,kind TEXT,title TEXT,summary TEXT,level TEXT,area TEXT,junta TEXT,location TEXT,shift TEXT,character TEXT,circuit TEXT,source_circuit_raw TEXT,starts_at TEXT,ends_at TEXT,status TEXT,metadata TEXT,normalized_status TEXT)",
+    "CREATE TABLE publications(id TEXT PRIMARY KEY,kind TEXT,title TEXT,summary TEXT,level TEXT,area TEXT,junta TEXT,location TEXT,shift TEXT,character TEXT,circuit TEXT,source_circuit_raw TEXT,starts_at TEXT,ends_at TEXT,status TEXT,metadata TEXT,normalized_status TEXT,removed_at TEXT)",
     "CREATE TABLE notifications(id INTEGER PRIMARY KEY,user_id TEXT,publication_id TEXT,type TEXT,dedupe_key TEXT,scheduled_at TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,attempted_at TEXT,accepted_at TEXT,failure_reason TEXT,UNIQUE(user_id,dedupe_key))",
+    "CREATE TABLE external_publication_events(id INTEGER PRIMARY KEY,publication_id TEXT,content_hash TEXT,change TEXT,profile_cursor TEXT,status TEXT,lease_until TEXT,lease_owner TEXT,updated_at TEXT)",
+    "CREATE TABLE external_notice_cycle(id INTEGER PRIMARY KEY,cycle_at TEXT,profile_cursor TEXT,status TEXT,lease_owner TEXT,lease_until TEXT,completed_at TEXT)",
     "CREATE TABLE push_subscriptions(endpoint TEXT PRIMARY KEY,user_id TEXT,p256dh TEXT,auth TEXT,expiration_time INTEGER,active INTEGER,created_at TEXT,updated_at TEXT)",
+    "CREATE INDEX idx_push_subscriptions_user ON push_subscriptions(user_id,active)",
     "CREATE TABLE push_preferences(user_id TEXT PRIMARY KEY,enabled INTEGER,vacancies INTEGER,trainings INTEGER,commissions INTEGER,reminders INTEGER,date_changes INTEGER,closing_soon INTEGER,boards INTEGER,designation_exact INTEGER,designation_partial INTEGER,designation_roles INTEGER,quiet_start TEXT,quiet_end TEXT,timezone TEXT)",
     "CREATE TABLE push_deliveries(id INTEGER PRIMARY KEY,endpoint TEXT,notification_id INTEGER,event_key TEXT,status TEXT,attempts INTEGER,scheduled_at TEXT,attempted_at TEXT,accepted_at TEXT,sent_at TEXT,failure_reason TEXT,last_error TEXT,next_attempt_at TEXT,UNIQUE(endpoint,event_key))",
   ]) await raw.prepare(sql).run();
+  await raw.prepare("INSERT INTO external_notice_cycle(id,cycle_at,profile_cursor,status) VALUES(1,'','','done')").run();
 
   const now = new Date("2026-10-26T12:00:00Z");
   for (let index = 0; index < 100; index++) {
@@ -123,6 +128,13 @@ try {
     activePush.push({ profiles: count, first: { ...first.result, ...initial.metrics, wallMs: first.wallMs },
       repeated: { ...repeated.result, ...retry.metrics, wallMs: repeated.wallMs } });
   }
+  await raw.prepare("DELETE FROM notifications").run();
+  const externalDb = measured(raw);
+  const external = await timed(() => runExternalMaterialization(externalDb.db, { now }));
+  assert.equal(external.result.scheduledNotices, 1000);
+  const externalRetryDb = measured(raw);
+  const externalRetry = await timed(() => runExternalMaterialization(externalRetryDb.db, { now }));
+  assert.equal(externalRetryDb.metrics.rowsWritten, 0);
   await raw.prepare("INSERT INTO publications(id,kind,title,normalized_status) VALUES('p1','capacitacion','Sintética','ACTIVE')").run();
   await raw.prepare("INSERT INTO notifications(user_id,publication_id,type,dedupe_key,scheduled_at) VALUES('dispatch-user','p1','CAPACITACION_NUEVA','synthetic',?)").bind(now.toISOString()).run();
   await raw.prepare("INSERT INTO push_subscriptions(endpoint,user_id,p256dh,auth,active,created_at) VALUES('https://fcm.googleapis.com/synthetic','dispatch-user','synthetic','synthetic',1,'2026-10-20T00:00:00Z')").run();
@@ -134,6 +146,21 @@ try {
   const repeat = await timed(() => dispatchPushNotifications(retryDispatch.db, env, now, provider));
   assert.equal(first.result.sent, 1);
   assert.equal(repeat.result.sent, 0);
+  // A backlog exercises the actual bounded Worker dispatcher without invoking
+  // the legacy profile materializer. Setup writes are excluded from metrics.
+  for (let offset = 0; offset < 500; offset += 25) {
+    const ids = Array.from({ length: 25 }, (_, index) => `push-${offset + index}`);
+    await raw.prepare(`INSERT INTO notifications(user_id,publication_id,type,dedupe_key,scheduled_at)
+      VALUES ${ids.map(() => "(?,'p1','CAPACITACION_NUEVA',?,?)").join(",")}`)
+      .bind(...ids.flatMap((id) => [id, id, now.toISOString()])).run();
+    await raw.prepare(`INSERT INTO push_subscriptions(endpoint,user_id,p256dh,auth,active,created_at)
+      VALUES ${ids.map(() => "(?,?, 'synthetic','synthetic',1,'2026-10-20T00:00:00Z')").join(",")}`)
+      .bind(...ids.flatMap((id) => [`https://fcm.googleapis.com/${id}`, id])).run();
+  }
+  const queuedDispatch = measured(raw);
+  const queued = await timed(() => dispatchPushNotifications(queuedDispatch.db, env, now, provider));
+  assert.equal(queued.result.sent, 2);
+  assert.ok(queuedDispatch.metrics.calls <= 50);
   const sampledCpu = {};
   if (profile) {
     for (let index = 0; index < 25; index++) {
@@ -141,14 +168,18 @@ try {
       await raw.prepare("INSERT INTO community_comments(id,post_id,moderation_status) VALUES(?,?,'visible')").bind(`profile-c${index}`, `profile-p${index}`).run();
     }
     profiler = await connectWorkerdCpuProfiler(await mf.getInspectorURL());
-    for (const task of ["retention", "retention", "materialize", "dispatch"]) {
+    for (const task of ["retention", "retention", "dispatch", "dispatch", "dispatch"]) {
       const measurement = await profiler.measure(() => mf.dispatchFetch(`http://local/${task}`));
-      sampledCpu[task === "retention" ? sampledCpu.retentionActive ? "retentionIdle" : "retentionActive" : task] =
-        { ...(await measurement.value.json()), cpu: measurement.cpu };
+      const key = task === "retention" ? sampledCpu.retentionActive ? "retentionIdle" : "retentionActive" : "dispatchQueued";
+      if (key === "dispatchQueued") (sampledCpu.dispatchQueued ||= []).push({ ...(await measurement.value.json()), cpu: measurement.cpu });
+      else sampledCpu[key] = { ...(await measurement.value.json()), cpu: measurement.cpu };
     }
   }
   console.log(JSON.stringify({ database: "D1 efímera Workerd", retention, push, activePush,
+    externalMaterialization: { first: { ...external.result, ...externalDb.metrics, wallMs: external.wallMs },
+      repeated: { ...externalRetry.result, ...externalRetryDb.metrics, wallMs: externalRetry.wallMs } },
     dispatch: { first: { ...first.result, ...firstDispatch.metrics, wallMs: first.wallMs },
-      repeated: { ...repeat.result, ...retryDispatch.metrics, wallMs: repeat.wallMs } },
+      repeated: { ...repeat.result, ...retryDispatch.metrics, wallMs: repeat.wallMs },
+      queued500: { ...queued.result, ...queuedDispatch.metrics, wallMs: queued.wallMs } },
     sampledCpu: profile ? sampledCpu : null, note: "CPU de CDP es muestreada; wallMs no representa CPU facturada" }));
 } finally { profiler?.close(); await mf.dispose(); }
