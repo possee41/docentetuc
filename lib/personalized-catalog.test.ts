@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { eligiblePersonalPublication, personalizedCatalogPage, publicationForMatch, PERSONAL_CATALOG_SQL, PERSONAL_PAGE_SIZE, PERSONAL_SCAN_SIZE } from "./personalized-catalog.ts";
+import { eligiblePersonalPublication, hasPersonalCriteria, personalizedCatalogPage, publicationForMatch, PERSONAL_CATALOG_SQL, PERSONAL_PAGE_SIZE, PERSONAL_SCAN_SIZE } from "./personalized-catalog.ts";
 import { profileMatch } from "./matching.ts";
+import { emptyPersonalFilters, parsePersonalFilters, passesPersonalFilters } from "./personalized-filters.ts";
 import type { Profile, Publication } from "./types.ts";
 
 const now = new Date("2026-10-26T12:00:00-03:00");
@@ -40,10 +41,15 @@ test("respeta evidencia, umbral, estados y cupo sin falsos positivos", () => {
   assert.equal(eligiblePersonalPublication(row("capacitacion", JSON.stringify({ ...JSON.parse(training), availablePreCapacity: 0 })), profile, "capacitacion", now), false);
   assert.equal(eligiblePersonalPublication(row("capacitacion", "{}"), profile, "capacitacion", now), false);
   assert.equal(eligiblePersonalPublication(row("capacitacion", training), { ...profile, levels: [], areas: [], subjects: [], training_interests: [] }, "capacitacion", now), false);
+  assert.equal(hasPersonalCriteria({ ...profile, levels: [], boards: [], areas: [], subjects: [], roles: [], shifts: [], characters: [], circuits: [], training_interests: [] }, "vacante"), false);
+  assert.equal(hasPersonalCriteria({ ...profile, levels: [], boards: [], areas: [], subjects: [], training_interests: [] }, "capacitacion"), false);
   assert.equal(PERSONAL_PAGE_SIZE, 20);
   assert.equal(PERSONAL_SCAN_SIZE, 120);
   assert.match(PERSONAL_CATALOG_SQL, /kind=\? AND id>\?/);
   assert.equal(profileMatch({ kind: "vacante", title: "Profesor de Matemática", level: "Secundario" }, { levels: ["Secundario"], roles: ["Profesor de Matemática"], shifts: ["Mañana"], locality: "Capital" }).status, "unknown");
+  assert.throws(() => parsePersonalFilters(new URLSearchParams("character=Inexistente"), "vacante"));
+  assert.equal(passesPersonalFilters(row("vacante", official, { circuit: "II", shift: "Mañana" }), profile, "vacante", { ...emptyPersonalFilters, circuit: "II", junta: "secundaria", query: "matemática" }, now), true);
+  assert.equal(passesPersonalFilters(row("vacante", official, { circuit: "II" }), profile, "vacante", { ...emptyPersonalFilters, circuit: "I" }, now), false);
 });
 
 test("recorre 7.200 publicaciones y encuentra coincidencias después del registro 400 y al final", async () => {
@@ -55,8 +61,11 @@ test("recorre 7.200 publicaciones y encuentra coincidencias después del registr
   sqlite.exec("BEGIN");
   for (let index = 0; index < 7200; index++) {
     const kind = index < 3600 ? "vacante" : "capacitacion";
-    const item = row(kind, matches.has(index) ? kind === "vacante" ? official : training : "{}", {
-      id: `p:${String(index).padStart(4, "0")}`, area: matches.has(index) ? "Matemática" : "Historia" });
+    const future = JSON.stringify({ ...JSON.parse(training), registrationOpensAt: "2026-11-01T09:00:00-03:00" });
+    const item = row(kind, matches.has(index) ? kind === "vacante" ? official : index === 7199 ? future : training : "{}", {
+      id: `p:${String(index).padStart(4, "0")}`, area: matches.has(index) ? "Matemática" : "Historia",
+      title: index === 7199 ? "Foco Matemática docente" : kind === "vacante" ? "Escuela X - Profesor de Matemática" : "Matemática docente",
+      character: index === 7199 ? "Virtual" : "" });
     insert.run(item.id, item.kind, item.source, item.title, item.summary, item.level, item.area, item.junta, item.location,
       item.shift, item.character, item.metadata, item.status, item.normalized_status ?? "", item.starts_at, item.ends_at, item.official_url, item.updated_at);
   }
@@ -80,5 +89,23 @@ test("recorre 7.200 publicaciones y encuentra coincidencias después del registr
   assert.equal(new Set(found).size, 4);
   assert.equal(scanned, 7200);
   assert.equal(pages, 60);
+  let designationCursor = "";
+  const designations: string[] = [];
+  do {
+    const page = await personalizedCatalogPage(db, profile, "vacante", designationCursor, now,
+      item => passesPersonalFilters(item, profile, "vacante", { ...emptyPersonalFilters, junta: "secundaria", query: "matemática" }, now));
+    designations.push(...page.items.map(item => item.id));
+    designationCursor = page.nextCursor || "";
+  } while (designationCursor);
+  assert.deepEqual(designations, ["p:0500", "p:3500"]);
+  let filteredCursor = "";
+  const filtered: string[] = [];
+  do {
+    const page = await personalizedCatalogPage(db, profile, "capacitacion", filteredCursor, now,
+      item => passesPersonalFilters(item, profile, "capacitacion", { ...emptyPersonalFilters, source: "platform:fdci", date: "month", character: "virtual", query: "foco" }, now));
+    filtered.push(...page.items.map(item => item.id));
+    filteredCursor = page.nextCursor || "";
+  } while (filteredCursor);
+  assert.deepEqual(filtered, ["p:7199"]);
   sqlite.close();
 });

@@ -28,7 +28,7 @@ import { safeDate } from "@/lib/safe-date";
 import { openingCountdown, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
 import { calendarDayDistance, compareHomePriority, homePriority, homeTrainingEnrollmentRank, registrationState } from "@/lib/home-dashboard";
 import { DESIGNATION_STATUSES, designationFacts } from "@/lib/designations";
-import { circuitMatches, inferCircuit, TUCUMAN_CIRCUITS } from "@/lib/circuits";
+import { TUCUMAN_CIRCUITS } from "@/lib/circuits";
 import { OFFICIAL_CHARACTERS, OFFICIAL_JUNTAS, matchesCharacter, matchesJunta, normalizeJunta, normalizeSearchText } from "@/lib/juntas";
 import type { DesignationTracking } from "@/lib/types";
 import type { AppData, ManualEvent, Notice, Profile, Publication, Saved, SyncStatus, TrainingReminder } from "@/lib/types";
@@ -45,6 +45,7 @@ import { GoogleAccountPhoto } from "@/components/google-account-photo";
 import { GlobalPublicationSearch } from "@/components/global-publication-search";
 import { usePersonalizedCatalog } from "@/components/use-personalized-catalog";
 import { enrollmentForDisplay, matchProfileFromUser, publicationForMatch, publicationLifecycleForDisplay } from "@/lib/personalized-catalog";
+import { publicationCircuitMatch, publicationSearchText, trainingPlatform, type PersonalFilters } from "@/lib/personalized-filters";
 import type { PublicationSearchKind } from "@/lib/publication-search";
 import { PublicNewsSection } from "@/components/public-news";
 import { AppSidebar, AppSidebarEdge, AppSidebarTrigger, navigation, useAppSidebarState } from "@/components/app-sidebar";
@@ -80,19 +81,11 @@ const INFOD_LOGIN = "https://aulastic.infd.edu.ar/";
 const EDUCATION_LEVELS = ["Inicial", "Primario", "Secundario", "Superior"];
 
 const normalize = (value = "") => value.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-const publicationCircuitMatch = (item: Publication, circuit: string) => {
-  if (item.circuit === "ALL") return true;
-  const direct = item.circuit && /^[iv]+$|^[1-5]$/i.test(item.circuit) ? `Circuito ${item.circuit}` : item.source_circuit_raw || "";
-  const inference = inferCircuit({ explicit: direct, locality: item.location || item.source_circuit_raw || "" });
-  return circuitMatches(inference, [circuit]) === true;
-};
 const publicationLabel = (item: Publication) => officialMetadata(item)?.entity === "event" ? "ACTO DE DESIGNACIÓN" : hasOfficialTopic(item, "LLAMADO_ABIERTO") ? "LLAMADO ABIERTO" : hasOfficialTopic(item, "INSCRIPCION_SIME") ? "INSCRIPCIÓN SIME" : hasOfficialTopic(item, "CLASIFICACION_PENDIENTE") ? "PROCEDIMIENTO PENDIENTE DE VERIFICAR" : item.kind === "capacitacion" ? "CAPACITACIÓN" : item.category.toUpperCase();
-const publicationSearchText = (item: Publication) => [item.title, item.summary, item.level, item.area, item.junta, item.location, item.character, item.category, item.source, item.metadata, item.circuit, item.source_circuit_raw, item.kind === "vacante" ? "designaciones vacantes" : "", Date.now() - new Date(`${item.updated_at}Z`).getTime() < 30 * 864e5 ? "novedades" : ""].join(" ");
 const simeCodeForPublication = (item?: Pick<Publication, "metadata"> | null) => {
   if (!item?.metadata) return "";
   try { const parsed = JSON.parse(item.metadata) as { simeCode?: unknown }; return typeof parsed.simeCode === "string" ? parsed.simeCode.trim() : ""; } catch { return ""; }
 };
-const trainingPlatform = (source: string) => { const key = normalize(source); return /cenet|inet/.test(key) ? "cenet" : /infod|aulastic/.test(key) ? "infod" : /fdci|capacitacion docente/.test(key) ? "fdci" : "other"; };
 const apiHeaders = (json = false) => {
   return deviceRequestHeaders(localStorage.getItem("docentetuc-device-id"), json);
 };
@@ -394,13 +387,26 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     sourceStatus: data.sync.find((source) => source.source === "SIME")?.sync_status,
   }) : { profileRequired: false, sourceUnavailable: false, sourceVerifiedEmpty: false };
   const matchProfile = profile ? matchProfileFromUser(profile) : null;
-  const personalized = usePersonalizedCatalog(filter === "para-mi" && (view === "vacantes" || view === "capacitaciones") ? view === "vacantes" ? "vacante" : "capacitacion" : null, profile ? `${profile.user_id}:${profile.updated_at || ""}` : "");
+  const personalFilters: PersonalFilters = { query: view === "vacantes" ? designationQuery : query,
+    junta: view === "vacantes" ? juntaFilter : "todas", circuit: view === "vacantes" ? designationCircuit : trainingCircuit,
+    character, source: view === "capacitaciones" ? trainingSource : "todas", compatibility: trainingCompatibility, date: trainingDate };
+  const personalized = usePersonalizedCatalog(filter === "para-mi" && (view === "vacantes" || view === "capacitaciones") ? view === "vacantes" ? "vacante" : "capacitacion" : null, profile ? `${profile.user_id}:${profile.updated_at || ""}` : "", JSON.stringify(personalFilters));
   const matchResult = (publication: Publication) => isGeneralNotice(publication) ? { status: "unconfigured", outcome: "UNKNOWN", score: 0, compatibility: 0, compatibilityScore: 0, confidence: 0, matchConfidence: 0, matched: 0, total: 0, reasons: ["Información general"], criteria: [{ key: "general", label: "Información general", expected: "", matched: false, available: false, outcome: "UNKNOWN", required: false }] } as MatchResult : matchProfile ? profileMatch(publicationForMatch(publication), matchProfile) : { status: "unconfigured", outcome: "UNKNOWN", score: 0, compatibility: 0, compatibilityScore: 0, confidence: 0, matchConfidence: 0, matched: 0, total: 0, reasons: [], criteria: [] } as MatchResult;
   const matches = (publication: Publication) => Boolean(matchProfile && !isGeneralNotice(publication) && isEligibleForPersonalizedHome(publicationForMatch(publication), matchProfile));
   const relevantTraining = (publication: Publication) => publication.kind === "capacitacion" && matchProfile ? isEligibleForPersonalizedHome(publicationForMatch(publication), matchProfile) : false;
 
   function filteredPublications(search = query) {
-    let items = (filter === "para-mi" && (view === "vacantes" || view === "capacitaciones") ? personalized.items : data?.publications || []).filter(item => !officialMetadata(item)?.canonicalId || resolveOfficialAlias(item, data?.publications || []).id === item.id);
+    const trainingCompare = (a: Publication, b: Publication) => {
+      const opening = (item: Publication) => Date.parse(parseTrainingMetadata(item.metadata)?.registrationOpensAt || "") || Number.MAX_SAFE_INTEGER;
+      const rank = (item: Publication) => ({ ABRE_HOY: 0, PROXIMAMENTE: 1, ABIERTA: 2, SIN_CUPO: 3, SIN_FECHA_CONFIRMADA: 4, CERRADA: 5 })[enrollmentForUI(item)];
+      if (trainingSort === "opening") return opening(a) - opening(b);
+      if (trainingSort === "open") return Number(enrollmentForUI(b) === "ABIERTA") - Number(enrollmentForUI(a) === "ABIERTA") || opening(a) - opening(b);
+      if (trainingSort === "recent") return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      if (trainingSource === "platform:fdci" && ["ABRE_HOY", "PROXIMAMENTE"].includes(enrollmentForUI(a)) && ["ABRE_HOY", "PROXIMAMENTE"].includes(enrollmentForUI(b))) return opening(a) - opening(b);
+      return rank(a) - rank(b) || Number(relevantTraining(b)) - Number(relevantTraining(a)) || matchResult(b).score - matchResult(a).score || opening(a) - opening(b);
+    };
+    if (filter === "para-mi" && (view === "vacantes" || view === "capacitaciones")) return view === "capacitaciones" ? [...personalized.items].sort(trainingCompare) : personalized.items;
+    let items = (data?.publications || []).filter(item => !officialMetadata(item)?.canonicalId || resolveOfficialAlias(item, data?.publications || []).id === item.id);
     if (view === "vacantes") items = items.filter((item) => hasOfficialTopic(item, "INSCRIPCION_SIME") || item.source === "SIME" && hasOfficialTopic(item, "CLASIFICACION_PENDIENTE"));
     if (view === "capacitaciones") items = items.filter((item) => item.kind === "capacitacion");
     if (view === "junta") items = items.filter((item) => item.kind === "junta");
@@ -442,15 +448,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     if (view === "capacitaciones" && trainingSource === "platform:fdci" && trainingCircuit !== "todos") items = items.filter((item) => publicationCircuitMatch(item, trainingCircuit));
     const activeSearch = view === "vacantes" ? designationQuery : search;
     if (activeSearch.trim()) { const term = normalizeSearchText(activeSearch); items = items.filter((item) => normalizeSearchText(publicationSearchText(item)).includes(term)); }
-    if (view === "capacitaciones") items = [...items].sort((a, b) => {
-      const opening = (item: Publication) => Date.parse(parseTrainingMetadata(item.metadata)?.registrationOpensAt || "") || Number.MAX_SAFE_INTEGER;
-      const rank = (item: Publication) => ({ ABRE_HOY: 0, PROXIMAMENTE: 1, ABIERTA: 2, SIN_CUPO: 3, SIN_FECHA_CONFIRMADA: 4, CERRADA: 5 })[enrollmentForUI(item)];
-      if (trainingSort === "opening") return opening(a) - opening(b);
-      if (trainingSort === "open") return Number(enrollmentForUI(b) === "ABIERTA") - Number(enrollmentForUI(a) === "ABIERTA") || opening(a) - opening(b);
-      if (trainingSort === "recent") return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-      if (trainingSource === "platform:fdci" && ["ABRE_HOY", "PROXIMAMENTE"].includes(enrollmentForUI(a)) && ["ABRE_HOY", "PROXIMAMENTE"].includes(enrollmentForUI(b))) return opening(a) - opening(b);
-      return rank(a) - rank(b) || Number(relevantTraining(b)) - Number(relevantTraining(a)) || matchResult(b).score - matchResult(a).score || opening(a) - opening(b);
-    });
+    if (view === "capacitaciones") items = [...items].sort(trainingCompare);
     return items;
   }
 
@@ -576,7 +574,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
               {personalized.page > 1 && <Button type="button" variant="ghost" onClick={personalized.retry} className="mt-3 min-h-11 rounded-xl">Volver al inicio</Button>}
             </div>}
             {(view === "vacantes" || view === "capacitaciones") && <div className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-4 text-sm text-[var(--text-secondary)]">
-              Esta vista muestra una selección reciente. El catálogo completo, incluidos registros anteriores y resultados fuera de esta selección, se puede recorrer por páginas.
+              {filter === "para-mi" ? "Estas coincidencias se consultan por páginas sobre el catálogo completo. El orden visible se aplica a la página actual." : "Esta vista muestra una selección reciente. El catálogo completo, incluidos registros anteriores y resultados fuera de esta selección, se puede recorrer por páginas."}
               <Button type="button" variant="outline" onClick={() => navigateToView("busqueda", "", view === "vacantes" ? "vacante" : "capacitacion")} className="mt-3 min-h-11 rounded-xl">Ver catálogo completo</Button>
             </div>}
           </>}
@@ -840,9 +838,9 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
     </header>
     <section className="home-section home-for-you"><div className="home-section-title"><div><p>IMPORTANTE PARA VOS</p><h2>Oportunidades a tu medida</h2></div><button onClick={() => onView("capacitaciones")}>Ver oportunidades <ChevronRight className="size-4" /></button></div>
       {loading ? <HomeSkeleton /> : <>
-        {nextTraining && nextMetadata && <div className="home-next-registration"><button className="home-next-main" onClick={() => onOpen(nextTraining)}><span className="home-next-eyebrow">{priorityLabel(nextTraining)}</span>{nextMetadata.dateStatus === "tentative" && <span className="home-next-tentative">PREINSCRIPCIÓN PREVISTA · FECHA TENTATIVA</span>}<strong>{nextTraining.title}</strong><small>{nextTraining.source}</small><span className="home-next-dates">📅 Abre: {dateLabel(nextMetadata.registrationOpensAt || null, Boolean(nextMetadata.registrationHasTime))}{nextMetadata.registrationClosesAt ? ` · Cierra: ${dateLabel(nextMetadata.registrationClosesAt, true)}` : ""}</span>{nextMatch?.status !== "unconfigured" && nextMatch?.score != null && <span className="home-match">{nextMatch.score}% compatible con tu perfil</span>}</button><div className="home-next-actions"><button onClick={() => onOpen(nextTraining)}>{registrationState(nextMetadata.registrationOpensAt, nextMetadata.registrationClosesAt, now) === "open" ? "Inscribirme" : "Ver curso"}</button><button onClick={() => onRemind(nextTraining)}><Bell className="size-4" />{reminderMap.has(trainingReminderKey(nextMetadata)) ? "Avisos activos" : "Avisarme"}</button></div>{upcoming.length > 1 && <button className="home-next-more" onClick={() => onView("capacitaciones")}>{upcoming.length - 1} {upcoming.length === 2 ? "inscripción más próxima" : "inscripciones más próximas"} <ChevronRight className="size-4" /></button>}</div>}
-        {forYou.length ? <div className="home-priority-list">{forYou.map((item) => { const result = matchResult(item), metadata = parseTrainingMetadata(item.metadata), reminded = metadata ? reminderMap.has(trainingReminderKey(metadata)) : false; return <article key={item.id}><button className="home-priority-main" onClick={() => onOpen(item)}><span className="home-priority-badge">{priorityLabel(item)}</span><strong>{item.title}</strong><small>{[item.level || item.junta || item.category, item.character].filter(Boolean).join(" · ")} · confianza {result.confidence}% · {item.source}</small>{result.status !== "unconfigured" && <span className="home-match">{result.score}% compatible</span>}</button><div className="home-priority-actions"><button onClick={() => onOpen(item)}>Ver</button>{item.kind === "capacitacion" && metadata?.registrationOpensAt && <button onClick={() => onRemind(item)}><Bell className="size-4" />{reminded ? "Aviso activo" : "Avisarme"}</button>}</div></article>; })}</div> : !nextTraining && <p className="home-empty-line">No hay oportunidades compatibles nuevas por ahora.</p>}
-        {profileNeedsDetail && <button className="home-profile-nudge" onClick={() => onView("perfil")}><span><strong>{profileReady ? "Sumá detalles a tu perfil" : "Completá tu perfil"}</strong><small>{profileReady ? "Necesitamos más coincidencias verificables para personalizar tus oportunidades." : "Recibí oportunidades más precisas."}</small></span><ChevronRight className="size-5" /></button>}
+        {nextTraining && nextMetadata && <div className="home-next-registration"><button className="home-next-main" onClick={() => onOpen(nextTraining)}><span className="home-next-eyebrow">{priorityLabel(nextTraining)}</span>{nextMetadata.dateStatus === "tentative" && <span className="home-next-tentative">PREINSCRIPCIÓN PREVISTA · FECHA TENTATIVA</span>}<strong>{nextTraining.title}</strong><small>{nextTraining.source}</small><span className="home-next-dates">📅 Abre: {dateLabel(nextMetadata.registrationOpensAt || null, Boolean(nextMetadata.registrationHasTime))}{nextMetadata.registrationClosesAt ? ` · Cierra: ${dateLabel(nextMetadata.registrationClosesAt, true)}` : ""}</span>{nextMatch?.status !== "unconfigured" && nextMatch?.score != null && <span className="home-match">{nextMatch.score}% compatible con tu perfil</span>}</button><div className="home-next-actions"><button onClick={() => onOpen(nextTraining)}>{registrationState(nextMetadata.registrationOpensAt, nextMetadata.registrationClosesAt, now) === "open" ? "Inscribirme" : "Ver curso"}</button><button onClick={() => onRemind(nextTraining)}><Bell className="size-4" />{reminderMap.has(trainingReminderKey(nextMetadata)) ? "Avisos activos" : "Avisarme"}</button></div>{upcoming.length > 1 && <button className="home-next-more" onClick={() => onView("capacitaciones")}>{upcoming.length - 1} {upcoming.length === 2 ? "inscripción más próxima en Inicio" : "inscripciones más próximas en Inicio"} <ChevronRight className="size-4" /></button>}</div>}
+        {forYou.length ? <div className="home-priority-list">{forYou.map((item) => { const result = matchResult(item), metadata = parseTrainingMetadata(item.metadata), reminded = metadata ? reminderMap.has(trainingReminderKey(metadata)) : false; return <article key={item.id}><button className="home-priority-main" onClick={() => onOpen(item)}><span className="home-priority-badge">{priorityLabel(item)}</span><strong>{item.title}</strong><small>{[item.level || item.junta || item.category, item.character].filter(Boolean).join(" · ")} · confianza {result.confidence}% · {item.source}</small>{result.status !== "unconfigured" && <span className="home-match">{result.score}% compatible</span>}</button><div className="home-priority-actions"><button onClick={() => onOpen(item)}>Ver</button>{item.kind === "capacitacion" && metadata?.registrationOpensAt && <button onClick={() => onRemind(item)}><Bell className="size-4" />{reminded ? "Aviso activo" : "Avisarme"}</button>}</div></article>; })}</div> : !nextTraining && <p className="home-empty-line">No encontramos coincidencias en la selección de Inicio. Abrí «Para mí» para revisar todo el catálogo.</p>}
+        {profileNeedsDetail && <button className="home-profile-nudge" onClick={() => onView("perfil")}><span><strong>{profileReady ? "Sumá detalles a tu perfil" : "Completá tu perfil"}</strong><small>{profileReady ? "Podés completar tus preferencias para afinar las recomendaciones de Inicio." : "Recibí oportunidades más precisas."}</small></span><ChevronRight className="size-5" /></button>}
       </>}
     </section>
 
@@ -853,9 +851,9 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
       <span className="min-w-0 flex-1"><span className="block text-xs font-black uppercase tracking-[.14em] text-sky-700">Comunidad Docente</span><span className="mt-1 block font-extrabold text-[var(--text-primary)]">Preguntá, compartí y ayudá a otros docentes</span><span className="mt-1 block text-sm text-[var(--text-muted)]">Conversaciones y respuestas sobre docencia.</span></span><ChevronRight className="size-5 shrink-0 text-sky-700" aria-hidden="true" />
     </button>
 
-    <section className="home-section home-today"><div className="home-section-title"><div><p>RESUMEN DEL DÍA</p><h2>Hoy en tu actividad docente</h2></div></div><div className="home-summary"><button onClick={() => onView("agenda")}><CalendarDays className="size-5" /><span><strong>{todayEvents}</strong> {todayEvents === 1 ? "evento" : "eventos"}</span><ChevronRight className="size-4" /></button><button onClick={() => onView("vacantes")}><BriefcaseBusiness className="size-5" /><span><strong>{vacancies.length}</strong> oportunidades compatibles</span><ChevronRight className="size-4" /></button><button onClick={() => onView("alertas")}><Bell className="size-5" /><span><strong>{unread.length}</strong> {unread.length === 1 ? "alerta relevante" : "alertas relevantes"}</span><ChevronRight className="size-4" /></button></div></section>
+    <section className="home-section home-today"><div className="home-section-title"><div><p>RESUMEN DEL DÍA</p><h2>Hoy en tu actividad docente</h2></div></div><div className="home-summary"><button onClick={() => onView("agenda")}><CalendarDays className="size-5" /><span><strong>{todayEvents}</strong> {todayEvents === 1 ? "evento" : "eventos"}</span><ChevronRight className="size-4" /></button><button onClick={() => onView("vacantes")}><BriefcaseBusiness className="size-5" /><span><strong>{vacancies.length}</strong> oportunidades compatibles en Inicio</span><ChevronRight className="size-4" /></button><button onClick={() => onView("alertas")}><Bell className="size-5" /><span><strong>{unread.length}</strong> {unread.length === 1 ? "alerta relevante" : "alertas relevantes"}</span><ChevronRight className="size-4" /></button></div></section>
 
-    <section className="home-split"><button onClick={() => onView("agenda")}><span className="home-kicker">PRÓXIMO · AGENDA</span>{nextAgendaEntry ? <><strong>{nextAgendaEntry.title}</strong><small>{dateLabel(nextAgendaEntry.startsAt, true)}</small></> : <><strong>Agenda al día</strong><small>Creá un evento personal cuando lo necesites.</small></>}<span>Ver agenda <ChevronRight className="size-4" /></span></button><button onClick={() => onView("vacantes")}><span className="home-kicker">DESIGNACIONES PARA VOS</span>{vacancies[0] ? <><strong>{vacancies[0].title}</strong><small>{vacancies.length} coincidencias · mejor {matchResult(vacancies[0]).score}%</small></> : <><strong>Sin coincidencias nuevas</strong><small>Te avisaremos cuando aparezcan.</small></>}<span>Ver designaciones <ChevronRight className="size-4" /></span></button></section>
+    <section className="home-split"><button onClick={() => onView("agenda")}><span className="home-kicker">PRÓXIMO · AGENDA</span>{nextAgendaEntry ? <><strong>{nextAgendaEntry.title}</strong><small>{dateLabel(nextAgendaEntry.startsAt, true)}</small></> : <><strong>Agenda al día</strong><small>Creá un evento personal cuando lo necesites.</small></>}<span>Ver agenda <ChevronRight className="size-4" /></span></button><button onClick={() => onView("vacantes")}><span className="home-kicker">DESIGNACIONES PARA VOS</span>{vacancies[0] ? <><strong>{vacancies[0].title}</strong><small>{vacancies.length} coincidencias en Inicio · mejor {matchResult(vacancies[0]).score}%</small></> : <><strong>Sin coincidencias en Inicio</strong><small>Abrí «Para mí» para consultar todo el catálogo.</small></>}<span>Ver designaciones <ChevronRight className="size-4" /></span></button></section>
 
     <section className="home-section"><div className="home-section-title"><div><p>TRÁMITES</p><h2>Información para resolver gestiones</h2></div><button onClick={() => onView("informacion")}>Ver trámites <ChevronRight className="size-4" /></button></div><button className="home-profile-nudge" onClick={() => onView("informacion")}><span><strong>Sueldo, legajo, licencias y certificados</strong><small>Consultá organismos, requisitos publicados y accesos oficiales.</small></span><ChevronRight className="size-5" /></button></section>
 
@@ -970,7 +968,7 @@ function PageHeader({ view, count, filter = "todas", query = "", syncing = false
   const title = isNewsTab ? (isNovedades ? "Novedades" : "Comunicados") : defaultTitle;
   const action = view === "vacantes" || view === "capacitaciones" ? undefined : <div className="flex flex-wrap gap-2">{onAskAI && <Button onClick={onAskAI} className="rounded-xl bg-[#0878be] text-[var(--text-on-accent)]"><Sparkles className="size-4" />Preguntar a IA</Button>}{onSync && <Button onClick={onSync} disabled={syncing} variant="outline" className="dt-refresh-button rounded-xl"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />Recargar</Button>}</div>;
   const kind = view === "vacantes" || view === "capacitaciones" ? view : view === "junta" ? (isNewsTab ? "novedades" : "padrones") : "informacion";
-  return <VisualSectionBanner kind={kind} title={title} description={view === "perfil" ? subtitle : `${subtitle} · ${count} ${view === "vacantes" || view === "capacitaciones" ? "en esta selección" : "resultados"}`} action={action} />;
+  return <VisualSectionBanner kind={kind} title={title} description={view === "perfil" ? subtitle : `${subtitle} · ${count} ${view === "vacantes" || view === "capacitaciones" ? filter === "para-mi" ? "en esta página" : "en esta selección" : "resultados"}`} action={action} />;
 }
 
 function Filters({ filter, setFilter: onFilterChange, junta, setJunta, character, setCharacter, query, setQuery, kind, date, setDate, source, setSource: onSourceChange, compatibility, setCompatibility, sort, setSort, hasTrainingTerritoryData, circuit, setCircuit }: { filter: string; setFilter: (value: string) => void; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; character: string; setCharacter: (value: string) => void; query: string; setQuery: (value: string) => void; kind: View; date: string; setDate: (value: string) => void; source: string; setSource: (value: string) => void; compatibility: string; setCompatibility: (value: string) => void; sort: string; setSort: (value: string) => void; hasTrainingTerritoryData: boolean; circuit: string; setCircuit: (value: string) => void }) {

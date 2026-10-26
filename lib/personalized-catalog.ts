@@ -16,6 +16,13 @@ export function matchProfileFromUser(profile: Profile): MatchProfile {
     wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: profile.training_interests };
 }
 
+export function hasPersonalCriteria(profile: Profile, kind: PersonalKind) {
+  const fields = kind === "vacante"
+    ? [profile.levels, profile.boards, profile.areas, profile.subjects, profile.roles, profile.shifts, profile.characters, profile.circuits, profile.locality, profile.department]
+    : [profile.levels, profile.boards, profile.areas, profile.subjects, profile.training_interests, profile.shifts, profile.circuits, profile.locality, profile.department];
+  return fields.some(value => Array.isArray(value) ? value.some(Boolean) : Boolean(value));
+}
+
 export function publicationForMatch(publication: Publication): MatchPublication {
   const training = publication.kind === "capacitacion" ? parseTrainingMetadata(publication.metadata) : null;
   return { kind: publication.kind, title: publication.title, summary: publication.summary, level: publication.level,
@@ -51,13 +58,13 @@ export const PERSONAL_CATALOG_SQL = `SELECT * FROM publications WHERE kind=? AND
 
 type CatalogDB = { prepare(sql: string): { bind(...values: string[]): { all<T>(): Promise<{ results: T[]; meta?: { rows_read?: number } }> } } };
 
-export async function personalizedCatalogPage(db: CatalogDB, profile: Profile, kind: PersonalKind, cursor = "", now = new Date()) {
+export async function personalizedCatalogPage(db: CatalogDB, profile: Profile, kind: PersonalKind, cursor = "", now = new Date(), accepts: (item: Publication) => boolean = () => true) {
   const result = await db.prepare(PERSONAL_CATALOG_SQL).bind(kind, cursor).all<Publication>();
   const items: Publication[] = [];
   let scanned = 0;
   for (const item of result.results.slice(0, PERSONAL_SCAN_SIZE)) {
     scanned++;
-    if (eligiblePersonalPublication(item, profile, kind, now)) items.push(item);
+    if (eligiblePersonalPublication(item, profile, kind, now) && accepts(item)) items.push(item);
     if (items.length === PERSONAL_PAGE_SIZE) break;
   }
   const nextCursor = (scanned < result.results.length || result.results.length > PERSONAL_SCAN_SIZE)
