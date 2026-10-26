@@ -275,6 +275,45 @@ test("la retención purga contenido moderado al cumplir 90 días y conserva audi
   } finally { raw.close(); }
 });
 
+test("retención acotada reanuda un post con muchos comentarios sin borrado en cascada", async () => {
+  const { raw, database } = setup();
+  try {
+    const old = new Date(NOW - 91 * 86_400_000).toISOString();
+    raw.prepare("INSERT INTO community_posts(id,author_user_id,body,moderation_status,moderated_at) VALUES('post-bounded',?,'Texto','hidden',?)")
+      .run(ACCOUNT_A, old);
+    const insert = raw.prepare("INSERT INTO community_comments(id,post_id,author_user_id,body) VALUES(?,'post-bounded',?,'Comentario')");
+    for (let index = 0; index < 55; index++) insert.run(`comment-${index}`, ACCOUNT_B);
+    const first = await purgeExpiredCommunityContent(database, NOW);
+    assert.equal(first.commentsPurged, 25);
+    assert.equal(first.postsPurged, 0);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM community_comments WHERE post_id='post-bounded'").get()?.n, 30);
+    await Promise.all([purgeExpiredCommunityContent(database, NOW), purgeExpiredCommunityContent(database, NOW)]);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM community_comments WHERE post_id='post-bounded'").get()?.n, 0);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM community_posts WHERE id='post-bounded'").get()?.n, 0);
+    assert.deepEqual((await purgeExpiredCommunityContent(database, NOW)).postsPurged, 0);
+  } finally { raw.close(); }
+});
+
+test("fallo D1 en retención revierte el lote y el siguiente intento lo completa", async () => {
+  const { raw, database } = setup();
+  try {
+    const old = new Date(NOW - 91 * 86_400_000).toISOString();
+    raw.prepare("INSERT INTO community_posts(id,author_user_id,body,moderation_status,moderated_at) VALUES('post-retry',?,'Texto','hidden',?)")
+      .run(ACCOUNT_A, old);
+    raw.prepare("INSERT INTO community_comments(id,post_id,author_user_id,body) VALUES('comment-retry','post-retry',?,'Comentario')")
+      .run(ACCOUNT_B);
+    const failed = { prepare: (sql: string) => database.prepare(sql), batch: async (statements: unknown[]) => {
+      raw.exec("BEGIN");
+      try { (statements[0] as Bound).runSync(); throw new Error("D1_INTERRUPTED"); }
+      finally { raw.exec("ROLLBACK"); }
+    } };
+    await assert.rejects(purgeExpiredCommunityContent(failed, NOW), /D1_INTERRUPTED/);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM community_comments").get()?.n, 1);
+    assert.deepEqual((await purgeExpiredCommunityContent(database, NOW)).postsPurged, 1);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM community_posts WHERE id='post-retry'").get()?.n, 0);
+  } finally { raw.close(); }
+});
+
 test("el límite servidor de publicaciones es 5 por cuenta y ventana de una hora", async () => {
   const { raw, database } = setup();
   try {

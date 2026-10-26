@@ -24,10 +24,10 @@ export type CommunityDatabase = {
     bind(...values: unknown[]): {
       first<T>(): Promise<T | null>;
       all<T>(): Promise<{ results?: T[] }>;
-      run(): Promise<{ meta?: { changes?: number } }>;
+      run(): Promise<{ meta?: { changes?: number; rows_read?: number; rows_written?: number } }>;
     };
   };
-  batch(statements: unknown[]): Promise<Array<{ meta?: { changes?: number } }>>;
+  batch(statements: unknown[]): Promise<Array<{ meta?: { changes?: number; rows_read?: number; rows_written?: number } }>>;
 };
 
 export class CommunityError extends Error {
@@ -715,19 +715,27 @@ export async function moderateCommunityContent(database: CommunityDatabase, mode
 /** Purges moderated content after 90 days while retaining detached minimal audit metadata. */
 export async function purgeExpiredCommunityContent(database: CommunityDatabase, now = Date.now()) {
   const cutoff = new Date(now - MODERATED_CONTENT_RETENTION_MS).toISOString();
-  const expiredPosts = `SELECT id FROM community_posts
-    WHERE moderation_status IN ('hidden', 'removed') AND datetime(moderated_at) <= datetime(?)`;
-  const expiredComments = `SELECT id FROM community_comments
-    WHERE moderation_status IN ('hidden', 'removed') AND datetime(moderated_at) <= datetime(?)`;
+  // A parent's expiry also expires its comments. Delete comments first so a
+  // post deletion never cascades through an unbounded number of children.
+  const expiredComments = `SELECT c.id FROM community_comments c JOIN community_posts p ON p.id=c.post_id
+    WHERE (c.moderation_status IN ('hidden','removed') AND datetime(c.moderated_at)<=datetime(?))
+       OR (p.moderation_status IN ('hidden','removed') AND datetime(p.moderated_at)<=datetime(?))
+    ORDER BY c.id LIMIT 25`;
+  const expiredPosts = `SELECT p.id FROM community_posts p
+    WHERE p.moderation_status IN ('hidden','removed') AND datetime(p.moderated_at)<=datetime(?)
+      AND NOT EXISTS (SELECT 1 FROM community_comments c WHERE c.post_id=p.id)
+    ORDER BY p.id LIMIT 25`;
   const results = await database.batch([
-    database.prepare(`UPDATE community_moderation_events SET post_id=NULL, comment_id=NULL
-      WHERE post_id IN (${expiredPosts}) OR comment_id IN (${expiredComments})
-        OR comment_id IN (SELECT id FROM community_comments WHERE post_id IN (${expiredPosts}))`)
-      .bind(cutoff, cutoff, cutoff),
+    database.prepare(`UPDATE community_moderation_events SET post_id=NULL,comment_id=NULL
+      WHERE comment_id IN (${expiredComments})`).bind(cutoff, cutoff),
+    database.prepare(`DELETE FROM community_comments WHERE id IN (${expiredComments})`).bind(cutoff, cutoff),
+    database.prepare(`UPDATE community_moderation_events SET post_id=NULL,comment_id=NULL
+      WHERE post_id IN (${expiredPosts})`).bind(cutoff),
     database.prepare(`DELETE FROM community_posts WHERE id IN (${expiredPosts})`).bind(cutoff),
-    database.prepare(`DELETE FROM community_comments WHERE id IN (${expiredComments})`).bind(cutoff),
   ]);
-  return { postsPurged: Number(results[1]?.meta?.changes ?? 0), commentsPurged: Number(results[2]?.meta?.changes ?? 0) };
+  return { postsPurged: Number(results[3]?.meta?.changes ?? 0), commentsPurged: Number(results[1]?.meta?.changes ?? 0),
+    queries: results.length, rowsRead: results.reduce((total, result) => total + Number(result.meta?.rows_read || 0), 0),
+    rowsWritten: results.reduce((total, result) => total + Number(result.meta?.rows_written || 0), 0) };
 }
 
 export function isCommunityReason(value: unknown): value is CommunityReportReason {

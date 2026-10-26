@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { categoryForNotification, isPushNotificationDue, isQuietTime, publicationFitsProfileCircuit, PUSH_DELIVERY_BATCH_SIZE, scheduledNotificationTypes, UPSERT_PUSH_SUBSCRIPTION_SQL, validPushEndpoint } from "./push.ts";
+import { categoryForNotification, isPushNotificationDue, isQuietTime, materializeScheduledNotifications, publicationFitsProfileCircuit, PUSH_DELIVERY_BATCH_SIZE, scheduledNotificationTypes, UPSERT_PUSH_SUBSCRIPTION_SQL, validPushEndpoint } from "./push.ts";
 
 test("quiet hours work across midnight in Tucumán", () => {
   assert.equal(isQuietTime(new Date("2026-09-27T02:30:00Z"), "22:00", "07:00", "America/Argentina/Buenos_Aires"), true);
@@ -75,6 +75,44 @@ test("automatic relevant-training alerts include recipient metadata in matching"
   const profile = { user_id: "u1", level: "Secundario", notify_new_trainings: 1, training_notify_scope: "relevant", training_interests: "Matemática" };
   const now = new Date("2026-09-28T12:00:00Z");
   assert.ok(scheduledNotificationTypes(publication, profile, false, now).includes("CAPACITACION_ABRE_MANANA"));
+});
+
+test("sin capacitaciones en ventana se conservan recordatorios y se omite el recorrido de perfiles", async () => {
+  const raw = new DatabaseSync(":memory:");
+  try {
+    raw.exec(`CREATE TABLE notifications(id INTEGER PRIMARY KEY,user_id TEXT,publication_id TEXT,type TEXT,dedupe_key TEXT,scheduled_at TEXT,UNIQUE(user_id,dedupe_key));
+      CREATE TABLE training_reminders(id TEXT,user_id TEXT,publication_id TEXT,opens_at TEXT,advance_minutes INTEGER,notified INTEGER,remind_at TEXT,updated_at TEXT);
+      CREATE TABLE designation_tracking(id TEXT,user_id TEXT,publication_id TEXT,reminder_notified INTEGER,reminder_at TEXT,updated_at TEXT);
+      CREATE TABLE saved_publications(user_id TEXT,publication_id TEXT,in_agenda INTEGER,agenda_reminder_notified INTEGER,agenda_reminder_at TEXT);
+      CREATE TABLE manual_events(id TEXT,user_id TEXT,title TEXT,starts_at TEXT,recurrence TEXT,reminder_minutes INTEGER,reminder_at TEXT,reminder_notified INTEGER,updated_at TEXT);
+      CREATE TABLE manual_event_push_queue(id INTEGER PRIMARY KEY,user_id TEXT,event_id TEXT,title TEXT,occurrence_at TEXT,UNIQUE(event_id,occurrence_at));
+      CREATE TABLE profiles(user_id TEXT,notify_new_trainings INTEGER);
+      CREATE TABLE publications(id TEXT,kind TEXT,title TEXT,summary TEXT,level TEXT,area TEXT,junta TEXT,location TEXT,shift TEXT,character TEXT,circuit TEXT,source_circuit_raw TEXT,starts_at TEXT,ends_at TEXT,status TEXT,normalized_status TEXT,metadata TEXT);
+      INSERT INTO training_reminders VALUES('t','u','training','2026-10-27T12:00:00Z',60,0,'2026-10-26T11:00:00Z',NULL);
+      INSERT INTO designation_tracking VALUES('d','u','vacancy',0,'2026-10-26T11:00:00Z',NULL);
+      INSERT INTO saved_publications VALUES('u','agenda',1,0,'2026-10-26T11:00:00Z');
+      INSERT INTO manual_events VALUES('m','u','Reunión','2026-10-27T12:00:00Z','none',NULL,'2026-10-26T11:00:00Z',0,NULL);
+      INSERT INTO profiles VALUES('u',1);`);
+    let profileQueries = 0;
+    const db = { prepare: (sql: string) => {
+      if (sql.includes("SELECT * FROM profiles")) profileQueries++;
+      const bound = (...values: unknown[]) => {
+        const statement = raw.prepare(sql);
+        const runSync = () => ({ meta: { rows_written: Number(statement.run(...values as []).changes) } });
+        return { runSync, run: async () => runSync(),
+          all: async () => ({ results: statement.all(...values as []) }),
+          first: async () => statement.get(...values as []) || null };
+      };
+      return { ...bound(), bind: bound };
+    }, batch: async (statements: unknown[]) => (statements as { runSync(): unknown }[]).map((statement) => statement.runSync()) };
+    const now = new Date("2026-10-26T12:00:00Z");
+    await materializeScheduledNotifications(db as never, now);
+    await materializeScheduledNotifications(db as never, now);
+    assert.equal(profileQueries, 0);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM notifications").get()?.n, 3);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM manual_event_push_queue").get()?.n, 1);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM training_reminders WHERE notified=1").get()?.n, 1);
+  } finally { raw.close(); }
 });
 
 test("las alertas territoriales excluyen incompatibilidades y conservan UNKNOWN", () => {

@@ -166,16 +166,15 @@ export async function materializeScheduledNotifications(db: D1Database, now = ne
     } else await db.prepare("UPDATE manual_events SET reminder_notified=1, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?").bind(event.id, event.user_id).run();
   }
 
-  const [profiles, publications] = await Promise.all([
-    db.prepare("SELECT * FROM profiles WHERE notify_new_trainings=1").all<ProfileRow>(),
-    db.prepare("SELECT id, kind, title, summary, level, area, junta, location, shift, character, circuit, source_circuit_raw, starts_at, ends_at, status, metadata, normalized_status FROM publications WHERE kind='capacitacion' AND normalized_status IN ('ACTIVE','UPCOMING') LIMIT 800").all<PublicationRow>(),
-  ]);
+  const publications = await db.prepare("SELECT id, kind, title, summary, level, area, junta, location, shift, character, circuit, source_circuit_raw, starts_at, ends_at, status, metadata, normalized_status FROM publications WHERE kind='capacitacion' AND normalized_status IN ('ACTIVE','UPCOMING') LIMIT 800").all<PublicationRow>();
   const upcomingTrainings = publications.results.filter((publication) => {
     const metadata = parseTrainingMetadata(publication.metadata);
     if (!metadata?.registrationOpensAt) return false;
     const opening = new Date(metadata.registrationOpensAt).getTime(), remaining = opening - now.getTime(), closing = metadata.registrationClosesAt || publication.ends_at;
     return (remaining > 0 && remaining <= 7 * 86_400_000) || (opening <= now.getTime() && (!closing || new Date(closing).getTime() > now.getTime()));
   });
+  if (!upcomingTrainings.length) return { considered: 0, rowsWritten };
+  const profiles = await db.prepare("SELECT * FROM profiles WHERE notify_new_trainings=1").all<ProfileRow>();
   const statements: D1PreparedStatement[] = [];
   for (const profile of profiles.results) {
     const followed = await db.prepare("SELECT publication_id FROM saved_publications WHERE user_id=?").bind(profile.user_id).all<{ publication_id: string }>();
