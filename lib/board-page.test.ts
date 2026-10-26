@@ -17,7 +17,7 @@ test("Juntas pages reach documents beyond the global catalog and filter by Junta
   const reference = JSON.stringify({ official: { version: 1, entity: "reference", topics: ["LLAMADO_ABIERTO"], sources: [], facts: {}, scope: {}, issues: [] } });
   for (let n = 0; n < 2273; n++) insert.run(`reference:${String(n).padStart(4, "0")}`, "Llamados abiertos", `Documento de convocatoria ${n} sin vigencia verificada`, reference, "Secundaria");
   const catalog = db.prepare(APP_PUBLICATIONS_QUERY).all() as { id: string }[];
-  assert.equal(catalog.length, 1500);
+  assert.equal(catalog.length, 400);
   let cursor = "", count = 0;
   for (;;) {
     const query = boardPageQuery("padrones", "inicial-primaria");

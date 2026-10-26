@@ -1,0 +1,30 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
+import { PERSONAL_PUBLICATIONS_QUERY } from "./personal-publications.ts";
+import { combineAppData } from "./app-data.ts";
+import type { AppData } from "./types.ts";
+
+test("las vistas privadas recuperan solo publicaciones referidas por el usuario", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(`CREATE TABLE publications(id TEXT PRIMARY KEY, kind TEXT);
+    CREATE TABLE saved_publications(user_id TEXT, publication_id TEXT);
+    CREATE TABLE training_reminders(user_id TEXT, publication_id TEXT);
+    CREATE TABLE designation_tracking(user_id TEXT, publication_id TEXT);
+    CREATE TABLE notifications(user_id TEXT, publication_id TEXT, created_at TEXT);`);
+  for (const id of ["initial", "saved", "reminder", "tracking", "notice", "other"]) db.prepare("INSERT INTO publications VALUES (?, 'capacitacion')").run(id);
+  db.exec(`INSERT INTO saved_publications VALUES ('me','saved'),('other','other');
+    INSERT INTO training_reminders VALUES ('me','reminder');
+    INSERT INTO designation_tracking VALUES ('me','tracking');
+    INSERT INTO notifications VALUES ('me','notice','2026-10-26');`);
+  const personal = db.prepare(PERSONAL_PUBLICATIONS_QUERY).all("me", "me", "me", "me") as { id: string }[];
+  assert.deepEqual(personal.map(row => row.id).sort(), ["notice", "reminder", "saved", "tracking"]);
+  const publicData = { publications: [{ id: "initial" }, { id: "saved" }], sync: [] } as unknown as AppData;
+  const combined = combineAppData(publicData, { personalPublications: personal, saved: [] } as never);
+  assert.deepEqual(combined?.publications.map(item => item.id), ["initial", "saved", "notice", "reminder", "tracking"]);
+  const recentPrivate = [{ id: "saved", updated_at: "2026-10-27", title: "Actualizada" }];
+  const stalePublic = { publications: [{ id: "saved", updated_at: "2026-10-26", title: "Anterior" }], sync: [] } as unknown as AppData;
+  assert.equal(combineAppData(stalePublic, { personalPublications: recentPrivate } as never)?.publications[0].title, "Actualizada");
+  assert.equal(combineAppData(publicData, null)?.publications.length, 2);
+  db.close();
+});

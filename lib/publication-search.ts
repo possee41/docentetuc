@@ -1,4 +1,6 @@
 export const PUBLICATION_SEARCH_PAGE_SIZE = 20;
+export const PUBLICATION_SEARCH_KINDS = ["all", "vacante", "capacitacion", "junta", "informacion"] as const;
+export type PublicationSearchKind = typeof PUBLICATION_SEARCH_KINDS[number];
 
 type CursorRow = { updated_at: string; id: string };
 
@@ -13,11 +15,11 @@ const accentPairs = [["á", "a"], ["é", "e"], ["í", "i"], ["ó", "o"], ["ú", 
 const foldedText = `lower(${accentPairs.reduce((expression, [from, to]) => `replace(${expression}, '${from}', '${to}')`, searchableText)})`;
 const escapeLike = (term: string) => term.replace(/[\\%_]/g, "\\$&");
 
-export function publicationSearchQuery(query: string, cursor?: string, pageSize = PUBLICATION_SEARCH_PAGE_SIZE) {
+export function publicationSearchQuery(query: string, cursor?: string, pageSize = PUBLICATION_SEARCH_PAGE_SIZE, kind?: PublicationSearchKind) {
   if (query.length > 120) throw new Error("Búsqueda demasiado larga.");
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 80) throw new Error("Límite de búsqueda inválido.");
   const terms = query.trim().split(/\s+/).filter(Boolean);
-  if (!terms.length || terms.length > 8) throw new Error("Búsqueda inválida.");
+  if ((!terms.length && !kind) || terms.length > 8 || kind && !PUBLICATION_SEARCH_KINDS.includes(kind)) throw new Error("Búsqueda inválida.");
   const params: (string | number)[] = terms.map((term) => {
     const folded = term.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     return `%${escapeLike(folded)}%`;
@@ -30,9 +32,11 @@ export function publicationSearchQuery(query: string, cursor?: string, pageSize 
     cursorCondition = " AND (updated_at < ? OR (updated_at = ? AND id < ?))";
     params.push(value[0], value[0], value[1]);
   }
+  if (kind && kind !== "all") params.unshift(kind);
   const sql = `SELECT * FROM publications WHERE kind IN ('vacante','capacitacion','junta','informacion')
+    ${kind && kind !== "all" ? "AND kind=?" : ""}
     AND (CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.official.canonicalId') IS NULL ELSE 1 END)
-    AND ${terms.map(() => `${foldedText} LIKE ? ESCAPE '\\'`).join(" AND ")}${cursorCondition}
+    ${terms.length ? `AND ${terms.map(() => `${foldedText} LIKE ? ESCAPE '\\'`).join(" AND ")}` : ""}${cursorCondition}
     ORDER BY updated_at DESC, id DESC LIMIT ${pageSize + 1}`;
   return { sql, params };
 }

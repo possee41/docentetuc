@@ -43,6 +43,7 @@ import { PublicProfileSection } from "@/components/public-profile-section";
 import { AccountSignInSection } from "@/components/account-sign-in-section";
 import { GoogleAccountPhoto } from "@/components/google-account-photo";
 import { GlobalPublicationSearch } from "@/components/global-publication-search";
+import type { PublicationSearchKind } from "@/lib/publication-search";
 import { PublicNewsSection } from "@/components/public-news";
 import { AppSidebar, AppSidebarEdge, AppSidebarTrigger, navigation, useAppSidebarState } from "@/components/app-sidebar";
 import type { AppView as View } from "@/components/app-sidebar";
@@ -145,6 +146,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const viewRef = useRef(view);
   useEffect(() => { viewRef.current = view; }, [view]);
   const [query, setQuery] = useState("");
+  const [searchKind, setSearchKind] = useState<PublicationSearchKind>("all");
   const [designationQuery, setDesignationQuery] = useState("");
   const [filter, setFilter] = useState(() => viewFromSection(initialSection) === "capacitaciones" ? "todas" : "para-mi");
   const trainingFilterRef = useRef("todas");
@@ -228,18 +230,26 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     window.addEventListener("docentetuc:refresh-auth-status", refreshAccountPhoto);
     return () => window.removeEventListener("docentetuc:refresh-auth-status", refreshAccountPhoto);
   }, [refreshAccountPhoto]);
-  const openPublication = (publication: Publication) => { const canonical = resolveOfficialAlias(publication, data?.publications || []); setSelected(canonical); history.pushState({ ...history.state, publicationId: canonical.id }, "", `#publicacion-${encodeURIComponent(canonical.id)}`); };
+  const openPublication = (publication: Publication) => { const canonical = resolveOfficialAlias(publication, data?.publications || []); setData(current => current && !current.publications.some(item => item.id === canonical.id) ? { ...current, publications: [...current.publications, canonical] } : current); setSelected(canonical); history.pushState({ ...history.state, publicationId: canonical.id }, "", `#publicacion-${encodeURIComponent(canonical.id)}`); };
   const closePublication = () => { if (history.state?.publicationId) history.back(); else setSelected(null); };
 
   const resolveDeepLink = useCallback((publications: Publication[]) => {
     const deepLinkId = new URLSearchParams(location.search).get("publication");
-    const deepLink = deepLinkId ? publications.find((item) => item.id === deepLinkId) : null;
-    if (!deepLink) return;
-    const canonical = resolveOfficialAlias(deepLink, publications);
-    const destination = canonical.kind === "capacitacion" ? "capacitaciones" : canonical.kind === "informacion" ? "informacion" : officialDestination(canonical);
-    setSelected(canonical);
-    setViewState(destination);
-    history.replaceState({ ...history.state, docentetuc: undefined }, "", sectionUrl(destination));
+    if (!deepLinkId) return;
+    const show = (item: Publication) => {
+      const canonical = resolveOfficialAlias(item, publications);
+      const destination = canonical.kind === "capacitacion" ? "capacitaciones" : canonical.kind === "informacion" ? "informacion" : officialDestination(canonical);
+      setData(current => current && !current.publications.some(row => row.id === canonical.id) ? { ...current, publications: [...current.publications, canonical] } : current);
+      setSelected(canonical);
+      setViewState(destination);
+      history.replaceState({ ...history.state, docentetuc: undefined }, "", sectionUrl(destination));
+    };
+    const loaded = publications.find((item) => item.id === deepLinkId);
+    if (loaded) { show(loaded); return; }
+    void fetch(`/api/search?id=${encodeURIComponent(deepLinkId)}`, { cache: "no-store", signal: AbortSignal.timeout(15_000) })
+      .then(response => response.ok ? response.json() as Promise<{ items: Publication[] }> : null)
+      .then(result => { if (result?.items[0]) show(result.items[0]); })
+      .catch(() => {});
   }, []);
 
   const refreshLoadError = useCallback(() => setLoadError(privateLoadProblem.current || publicLoadProblem.current), []);
@@ -294,7 +304,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
       if (!response.ok) throw new Error("No se pudo cargar la información");
       const result = await response.json() as PrivateAppData;
       if (requestId !== privateLoadSequence.current) return;
-      result.designations ||= []; result.manualEvents ||= []; if (result.profile) result.profile.roles ||= [];
+      result.designations ||= []; result.manualEvents ||= []; result.personalPublications ||= []; if (result.profile) result.profile.roles ||= [];
       privateData.current = result;
       privateLoadProblem.current = "";
       setPrivateReady(true);
@@ -505,8 +515,9 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const hasTrainingTerritoryData = (data?.publications || []).some((item) => item.kind === "capacitacion" && trainingPlatform(item.source) === "fdci" && item.circuit && item.circuit !== "UNKNOWN");
   const designationMap = officialSavedLookup(data?.designations || [], data?.publications || []);
   const roleOptions = [...new Set((data?.publications || []).filter((item) => item.kind === "vacante").map((item) => designationFacts(item).role).filter(Boolean))].slice(0, 80);
-  const navigateToView = (target: View, term = "") => {
+  const navigateToView = (target: View, term = "", archiveKind: PublicationSearchKind = "all") => {
     if (target === "comunidad") { router.push("/comunidad"); return; }
+    if (target === "busqueda") setSearchKind(archiveKind);
     setView(target); setQuery(term); setDesignationQuery(""); setFilter(filterForNavigation(target, trainingFilterRef.current));
   };
   const openDesignationOfficial = (item: Publication) => { if (hasOfficialTopic(item, "INSCRIPCION_SIME")) localStorage.setItem("docentetuc-pending-designation", item.id); window.open(item.official_url, "_blank", "noopener,noreferrer"); };
@@ -547,7 +558,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         : <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><h1 className="font-black text-[var(--text-primary)]">No podemos mostrar tus datos privados todavía</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">Verificá esta instalación o iniciá sesión con la cuenta vinculada. Tus datos permanecen conservados.</p><Button onClick={() => void load(false)} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
         : loadError && !data && !["inicio", "cuentas", "busqueda", "noticias"].includes(view) ? <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><WifiOff className="mx-auto mb-3 size-8 text-[var(--accent-text)]" /><h1 className="font-black text-[var(--text-primary)]">No pudimos cargar esta sección</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{loadError}</p><Button onClick={() => { void loadPublic(); void load(false); }} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
         : view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={navigateToView} loading={loading} error={loadError} />
-        : view === "busqueda" ? <GlobalPublicationSearch query={query} onQuery={setQuery} onOpen={openPublication} />
+        : view === "busqueda" ? <GlobalPublicationSearch query={query} onQuery={setQuery} kind={searchKind} onKind={setSearchKind} onOpen={openPublication} />
         : view === "noticias" ? <PublicNewsSection />
         : view === "perfil" ? <>
           <ProfileForm key={profile?.updated_at || "profile"} profile={profile} roleOptions={roleOptions} onSaved={() => void load(false)} />
@@ -566,7 +577,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         </>
         : view === "alertas" ? <><PushSettings key={`push:${profile?.updated_at || "profile"}`} profile={profile ?? null} /><Alerts data={data} onOpen={openPublication} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} /></>
           : view === "agenda" ? <Agenda publications={data?.publications || []} savedMap={savedMap} manualEvents={data?.manualEvents || []} onOpen={openPublication} onNewEvent={(date) => { setManualEventDate(date || ""); setManualEvent("new"); }} onEditEvent={setManualEvent} />
-        : view === "informacion" ? <InformationHub items={items} query={query} onQuery={setQuery} savedMap={savedMap} onOpen={openPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAskAI={() => openAI({ type: "informacion", title: viewTitles.informacion[0] })} />
+        : view === "informacion" ? <InformationHub items={items} query={query} onQuery={setQuery} onBrowse={() => navigateToView("busqueda", "", "informacion")} savedMap={savedMap} onOpen={openPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAskAI={() => openAI({ type: "informacion", title: viewTitles.informacion[0] })} />
         : view === "junta" ? <OfficialConsultations onView={navigateToView} />
         : view === "padrones" ? <PadronSection query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} />
         : ["comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection key={`${view}:${query}`} view={view as BoardView} publications={data?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
@@ -576,6 +587,10 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
              {view === "vacantes" && !loading && items.length === 0 && (designationAvailability.profileRequired || designationAvailability.sourceUnavailable || designationAvailability.sourceVerifiedEmpty)
                ? <DesignationEmptyState {...designationAvailability} onCompleteProfile={() => setView("perfil")} />
                : <PublicationList items={items} sync={data?.sync || []} loading={loading} savedMap={savedMap} reminderMap={reminderMap} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} emptyContext={view === "capacitaciones" ? trainingSource === "platform:fdci" ? "FDCI" : trainingSource === "platform:infod" ? "INFoD" : trainingSource === "platform:cenet" ? "CeNET / INET" : "las plataformas seleccionadas" : "esta búsqueda"} onClearFilters={() => { setTrainingSource("todas"); setTrainingDate(""); setTrainingCircuit("todos"); setDesignationCircuit("todos"); setTrainingCompatibility("todas"); setJuntaFilter("todas"); setCharacter("todos"); setFilter("todas"); setDesignationQuery(""); setQuery(""); }} />}
+            {(view === "vacantes" || view === "capacitaciones") && <div className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-4 text-sm text-[var(--text-secondary)]">
+              Esta vista muestra una selección reciente. El catálogo completo, incluidos registros anteriores y resultados fuera de esta selección, se puede recorrer por páginas.
+              <Button type="button" variant="outline" onClick={() => navigateToView("busqueda", "", view === "vacantes" ? "vacante" : "capacitacion")} className="mt-3 min-h-11 rounded-xl">Ver catálogo completo</Button>
+            </div>}
           </>}
         </div>
 
@@ -608,7 +623,7 @@ function RecoveryRequiredNotice({ onOpenAccount }: { onOpenAccount: () => void }
   </section>;
 }
 
-function InformationHub({ items, query, onQuery, savedMap, onOpen, onSave, onAskAI }: { items: Publication[]; query: string; onQuery: (value: string) => void; savedMap: Map<string, Saved>; onOpen: (item: Publication) => void; onSave: (item: Publication, enabled: boolean) => void; onAskAI: () => void }) {
+function InformationHub({ items, query, onQuery, onBrowse, savedMap, onOpen, onSave, onAskAI }: { items: Publication[]; query: string; onQuery: (value: string) => void; onBrowse: () => void; savedMap: Map<string, Saved>; onOpen: (item: Publication) => void; onSave: (item: Publication, enabled: boolean) => void; onAskAI: () => void }) {
   const allCategories = [...new Set(items.map((item) => item.category))], [category, setCategory] = useState<string | null>(null);
   const visible = (category ? items.filter((item) => item.category === category) : query ? items : []).filter((item) => !query || normalize(publicationSearchText(item)).includes(normalize(query)));
   const favorites = items.filter((item) => savedMap.has(item.id));
@@ -618,6 +633,7 @@ function InformationHub({ items, query, onQuery, savedMap, onOpen, onSave, onAsk
   return <section className="space-y-4 pb-16 md:pb-0">
     <VisualSectionBanner kind="informacion" title={category || "Información útil"} description="Organismos, trámites y servicios docentes en un solo lugar." />
     <header className="info-search-header">{category && <button aria-label="Volver a Información útil" onClick={() => { setCategory(null); history.back(); }} className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent-text)]"><ChevronRight className="size-5 rotate-180" /></button>}<div className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[var(--text-muted)]" /><Input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Buscar: recibo, junta, certificado..." className="h-11 rounded-xl bg-[var(--input-background)] pl-11" /></div></header>
+    <Button type="button" variant="outline" onClick={onBrowse} className="min-h-11 rounded-xl">Ver toda la información útil</Button>
     <a href="/privacidad" className="flex min-h-11 items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface-primary)] px-4 text-sm font-bold text-[var(--accent-text)]">Política de Privacidad de DocenteTuc <ChevronRight className="size-4" aria-hidden="true" /></a>
     {!category && !query && <div className="space-y-1.5">{allCategories.map((name) => <button key={name} onClick={() => openCategory(name)} className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-primary)] px-3 text-left text-sm font-black text-[var(--text-primary)]"><span className="text-lg">{usefulCategoryIcons[name] || "ℹ️"}</span><span className="flex-1">{name}</span><ChevronRight className="size-4 text-[var(--text-muted)]" /></button>)}</div>}
     {!category && !query && favorites.length > 0 && <div><h2 className="mb-1.5 text-xs font-black uppercase tracking-wide text-[var(--accent-text)]">Mis contactos</h2><div className="grid gap-1.5">{favorites.map((item) => <button key={item.id} onClick={() => onOpen(item)} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-primary)] px-3 text-left"><Star className="size-4 fill-[#f4b942] text-[#9a6810]" /><span className="truncate font-bold text-[var(--text-primary)]">{item.title}</span><ChevronRight className="ml-auto size-4" /></button>)}</div></div>}
@@ -966,7 +982,7 @@ function PageHeader({ view, count, filter = "todas", query = "", syncing = false
   const title = isNewsTab ? (isNovedades ? "Novedades" : "Comunicados") : defaultTitle;
   const action = view === "vacantes" || view === "capacitaciones" ? undefined : <div className="flex flex-wrap gap-2">{onAskAI && <Button onClick={onAskAI} className="rounded-xl bg-[#0878be] text-[var(--text-on-accent)]"><Sparkles className="size-4" />Preguntar a IA</Button>}{onSync && <Button onClick={onSync} disabled={syncing} variant="outline" className="dt-refresh-button rounded-xl"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />Recargar</Button>}</div>;
   const kind = view === "vacantes" || view === "capacitaciones" ? view : view === "junta" ? (isNewsTab ? "novedades" : "padrones") : "informacion";
-  return <VisualSectionBanner kind={kind} title={title} description={view === "perfil" ? subtitle : `${subtitle} · ${count} resultados`} action={action} />;
+  return <VisualSectionBanner kind={kind} title={title} description={view === "perfil" ? subtitle : `${subtitle} · ${count} ${view === "vacantes" || view === "capacitaciones" ? "en esta selección" : "resultados"}`} action={action} />;
 }
 
 function Filters({ filter, setFilter: onFilterChange, junta, setJunta, character, setCharacter, query, setQuery, kind, date, setDate, source, setSource: onSourceChange, compatibility, setCompatibility, sort, setSort, hasTrainingTerritoryData, circuit, setCircuit }: { filter: string; setFilter: (value: string) => void; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; character: string; setCharacter: (value: string) => void; query: string; setQuery: (value: string) => void; kind: View; date: string; setDate: (value: string) => void; source: string; setSource: (value: string) => void; compatibility: string; setCompatibility: (value: string) => void; sort: string; setSort: (value: string) => void; hasTrainingTerritoryData: boolean; circuit: string; setCircuit: (value: string) => void }) {

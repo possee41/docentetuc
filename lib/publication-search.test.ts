@@ -83,6 +83,24 @@ test("pagina resultados sin un tope global ni repetir elementos", () => {
   db.close();
 });
 
+test("permite recorrer una sección completa sin texto de búsqueda", () => {
+  const { db, add } = fixture();
+  for (let index = 0; index < 48; index++) add(`course:${String(index).padStart(2, "0")}`, "Curso", "capacitacion");
+  add("notice", "Aviso", "junta");
+  let cursor: string | undefined;
+  const found: string[] = [];
+  do {
+    const { sql, params } = publicationSearchQuery("", cursor, 20, "capacitacion");
+    const rows = db.prepare(sql).all(...params) as { id: string; updated_at: string }[];
+    found.push(...rows.slice(0, 20).map(row => row.id));
+    cursor = rows.length > 20 ? searchCursor(rows[19]) : undefined;
+  } while (cursor);
+  assert.equal(found.length, 48);
+  assert.equal(new Set(found).size, 48);
+  assert.ok(!found.includes("notice"));
+  db.close();
+});
+
 test("rechaza cursores inválidos y no interpreta comodines del usuario", () => {
   const { db, add, search } = fixture();
   add("literal", "Curso 100% presencial");

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { officialDestination } from "@/lib/official-publication";
 import type { Publication } from "@/lib/types";
+import type { PublicationSearchKind } from "@/lib/publication-search";
 
 type SearchPage = { items: Publication[]; nextCursor: string | null };
 type SearchState = SearchPage & { term: string; error: string };
@@ -16,40 +17,40 @@ const sectionLabel = (item: Publication) => item.kind === "vacante" ? "Designaci
   : item.kind === "informacion" ? "Información útil"
   : ({ padrones: "Padrones", comunicados: "Comunicados", actos: "Actos de designación", llamados: "Llamados abiertos", vacantes: "Designaciones / SIME" } as Record<string, string>)[officialDestination(item)] || item.category || "Juntas";
 
-export function GlobalPublicationSearch({ query, onQuery, onOpen }: { query: string; onQuery: (query: string) => void; onOpen: (item: Publication) => void }) {
+export function GlobalPublicationSearch({ query, onQuery, kind, onKind, onOpen }: { query: string; onQuery: (query: string) => void; kind: PublicationSearchKind; onKind: (kind: PublicationSearchKind) => void; onOpen: (item: Publication) => void }) {
   const [state, setState] = useState<SearchState>(emptyState);
   const [loadingMore, setLoadingMore] = useState(false);
   const [retry, setRetry] = useState(0);
-  const current = state.term === query.trim() ? state : emptyState;
-  const pending = Boolean(query.trim() && state.term !== query.trim());
+  const searchKey = `${kind}:${query.trim()}`;
+  const current = state.term === searchKey ? state : emptyState;
+  const pending = state.term !== searchKey;
 
   useEffect(() => {
     const term = query.trim();
-    if (!term) return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const response = await fetch(`/api/search?q=${encodeURIComponent(term)}`, { cache: "no-store", signal: controller.signal });
+        const response = await fetch(`/api/search?q=${encodeURIComponent(term)}&kind=${kind}`, { cache: "no-store", signal: controller.signal });
         if (!response.ok) throw new Error("No pudimos completar la búsqueda.");
         const page = await response.json() as SearchPage;
-        if (!controller.signal.aborted) setState({ ...page, term, error: "" });
+        if (!controller.signal.aborted) setState({ ...page, term: searchKey, error: "" });
       } catch {
-        if (!controller.signal.aborted) setState({ ...emptyState, term, error: "No pudimos buscar ahora. Intentá nuevamente." });
+        if (!controller.signal.aborted) setState({ ...emptyState, term: searchKey, error: "No pudimos buscar ahora. Intentá nuevamente." });
       }
     }, 300);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [query, retry]);
+  }, [query, kind, searchKey, retry]);
 
   async function loadMore() {
     if (!current.nextCursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}&cursor=${encodeURIComponent(current.nextCursor)}`, { cache: "no-store" });
+      const response = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}&kind=${kind}&cursor=${encodeURIComponent(current.nextCursor)}`, { cache: "no-store" });
       if (!response.ok) throw new Error("No pudimos cargar más resultados.");
       const page = await response.json() as SearchPage;
-      setState(previous => previous.term === query.trim() ? { ...previous, items: [...previous.items, ...page.items], nextCursor: page.nextCursor, error: "" } : previous);
+      setState(previous => previous.term === searchKey ? { ...previous, items: [...previous.items, ...page.items], nextCursor: page.nextCursor, error: "" } : previous);
     } catch {
-      setState(previous => previous.term === query.trim() ? { ...previous, error: "No pudimos cargar más resultados. Intentá nuevamente." } : previous);
+      setState(previous => previous.term === searchKey ? { ...previous, error: "No pudimos cargar más resultados. Intentá nuevamente." } : previous);
     } finally { setLoadingMore(false); }
   }
 
@@ -60,9 +61,11 @@ export function GlobalPublicationSearch({ query, onQuery, onOpen }: { query: str
       <div className="relative mt-4 max-w-2xl"><Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[#52708c]" />
         <Input value={query} onChange={event => onQuery(event.target.value)} maxLength={120} aria-label="Buscar publicaciones públicas" placeholder="Título, organismo, materia o localidad" className="h-12 rounded-2xl border-[#c8e1f1] pl-12" />
       </div>
+      <select aria-label="Sección del catálogo" value={kind} onChange={event => onKind(event.target.value as PublicationSearchKind)} className="mt-3 min-h-11 rounded-xl border border-[#c8e1f1] bg-white px-3 text-sm text-[#062b55]">
+        <option value="all">Todas las secciones</option><option value="vacante">Designaciones SIME</option><option value="capacitacion">Capacitaciones</option><option value="junta">Juntas</option><option value="informacion">Información útil</option>
+      </select>
     </div>
-    {!query.trim() ? <p className="rounded-2xl bg-white p-5 text-sm text-[#315d7a]">Escribí un término para buscar en todas las publicaciones públicas.</p>
-      : pending ? <p role="status" className="rounded-2xl bg-white p-5 text-sm text-[#315d7a]">Buscando…</p>
+    {pending ? <p role="status" className="rounded-2xl bg-white p-5 text-sm text-[#315d7a]">Cargando publicaciones…</p>
       : <>
         {current.error && <div role="alert" className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><span>{current.error}</span><Button type="button" variant="outline" onClick={() => setRetry(value => value + 1)}>Reintentar</Button></div>}
         {!current.error && current.items.length === 0 && <p role="status" className="rounded-2xl bg-white p-5 text-sm text-[#315d7a]">No encontramos resultados para esta búsqueda.</p>}
