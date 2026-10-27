@@ -6,7 +6,7 @@ export const SCHEDULED_TASKS = Object.freeze({
 
 export async function runScheduledTask(cron, secret, fetcher, legacyPaused = false, pushMode = "worker") {
   if (!secret) throw new Error("CRON_SECRET_NOT_CONFIGURED");
-  if (!["worker", "external"].includes(pushMode)) throw new Error("PUSH_DISPATCH_MODE_INVALID");
+  if (!["worker", "external", "disabled"].includes(pushMode)) throw new Error("PUSH_DISPATCH_MODE_INVALID");
   // A previously scheduled hourly trigger may arrive during propagation.
   // Never let it restart the retired Worker catalog sweep.
   if (cron === "0 * * * *") return "sync-retired";
@@ -16,7 +16,7 @@ export async function runScheduledTask(cron, secret, fetcher, legacyPaused = fal
     (legacyPaused && cron === "*/5 * * * *" ? SCHEDULED_TASKS["2-57/5 * * * *"] : null);
   if (!task) throw new Error("UNKNOWN_CRON_TRIGGER");
   const [name, path] = task;
-  if (name === "push" && pushMode === "external") return "push-external";
+  if (name === "push" && pushMode !== "worker") return `push-${pushMode}`;
   const started = performance.now();
   const response = await fetcher(new Request(`https://docentetuc.internal${path}`, {
     method: "POST", headers: { "x-docentetuc-cron": secret },

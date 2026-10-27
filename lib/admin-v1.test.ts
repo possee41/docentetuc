@@ -142,6 +142,8 @@ test("Admin muestra diagnóstico push sin secretos ni destinatarios", async () =
     const config = adminConfiguration(settings, true);
     assert.equal(status.mode, "external");
     assert.equal(status.workerDispatchEnabled, false);
+    assert.equal((await adminNotificationStatus(database, { PUSH_DISPATCH_MODE: "disabled" })).mode, "disabled");
+    assert.equal(adminConfiguration({ PUSH_DISPATCH_MODE: "disabled" }, true).pushMode, "disabled");
     assert.equal(status.deliveries.failed, 1);
     assert.equal(status.deliveries.sent, 1);
     assert.deepEqual(status.recentErrorCodes, ["PUSH_503"]);

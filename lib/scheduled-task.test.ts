@@ -38,6 +38,18 @@ test("retención y push tienen invocaciones distintas; el disparador de sync ret
     return Response.json({ ok: true });
   }, false, "external"), "retention");
   assert.deepEqual(externalPaths, ["/api/community/retention"]);
+  assert.equal(config.vars.AI_WEB_SEARCH_ENABLED, "0");
+  assert.equal(config.vars.PUSH_DISPATCH_MODE, "disabled");
+  const disabledPaths: string[] = [];
+  assert.equal(await runScheduledTask("2-57/5 * * * *", "synthetic-secret", async (request: Request) => {
+    disabledPaths.push(new URL(request.url).pathname);
+    return Response.json({ ok: true });
+  }, false, "disabled"), "push-disabled");
+  assert.equal(await runScheduledTask("1 * * * *", "synthetic-secret", async (request: Request) => {
+    disabledPaths.push(new URL(request.url).pathname);
+    return Response.json({ ok: true });
+  }, false, "disabled"), "retention");
+  assert.deepEqual(disabledPaths, ["/api/community/retention"]);
   await assert.rejects(runScheduledTask("2-57/5 * * * *", "synthetic-secret",
     async () => Response.json({ ok: true }), false, "typo"), /PUSH_DISPATCH_MODE_INVALID/);
   await assert.rejects(runScheduledTask(config.triggers.crons[0], "", async () => Response.json({ ok: true })), /CRON_SECRET_NOT_CONFIGURED/);

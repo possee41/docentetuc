@@ -120,7 +120,8 @@ export async function adminNotificationStatus(database: CommunityDatabase, setti
       .bind().all<{ code: string | null }>(),
   ]);
   const deliveries = Object.fromEntries((rows.results || []).map((row) => [row.status, Number(row.count)]));
-  const mode = settings.PUSH_DISPATCH_MODE === "external" ? "external"
+  const mode = settings.PUSH_DISPATCH_MODE === "disabled" ? "disabled"
+    : settings.PUSH_DISPATCH_MODE === "external" ? "external"
     : settings.VAPID_PUBLIC_KEY && settings.VAPID_PRIVATE_KEY && settings.VAPID_SUBJECT ? "worker" : "disabled";
   return { mode, workerDispatchEnabled: mode === "worker", externalExecutionVerified: false,
     simulation: "Solo disponible en canary; no hay registro de ensayos en esta D1.", deliveries,
@@ -132,7 +133,8 @@ export async function adminNotificationStatus(database: CommunityDatabase, setti
 }
 
 export function adminConfiguration(settings: Record<string, string | undefined>, databaseAvailable: boolean) {
-  return { databaseAvailable, pushMode: settings.PUSH_DISPATCH_MODE === "external" ? "external" : "worker",
+  return { databaseAvailable, pushMode: settings.PUSH_DISPATCH_MODE === "disabled" ? "disabled"
+    : settings.PUSH_DISPATCH_MODE === "external" ? "external" : "worker",
     legacySyncPaused: settings.LEGACY_SYNC_PAUSED === "true",
     note: "Esta vista no cambia sincronizadores, cron ni credenciales." };
 }
