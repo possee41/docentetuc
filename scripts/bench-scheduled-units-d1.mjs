@@ -78,6 +78,8 @@ try {
     "CREATE TABLE profiles(user_id TEXT PRIMARY KEY,notify_new_trainings INTEGER,training_notify_scope TEXT,level TEXT,area TEXT,training_interests TEXT)",
     "CREATE TABLE publications(id TEXT PRIMARY KEY,kind TEXT,title TEXT,summary TEXT,level TEXT,area TEXT,junta TEXT,location TEXT,shift TEXT,character TEXT,circuit TEXT,source_circuit_raw TEXT,starts_at TEXT,ends_at TEXT,status TEXT,metadata TEXT,normalized_status TEXT,removed_at TEXT)",
     "CREATE TABLE notifications(id INTEGER PRIMARY KEY,user_id TEXT,publication_id TEXT,type TEXT,dedupe_key TEXT,scheduled_at TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,attempted_at TEXT,accepted_at TEXT,failure_reason TEXT,UNIQUE(user_id,dedupe_key))",
+    "CREATE INDEX idx_notifications_scheduled ON notifications(scheduled_at, read)",
+    "CREATE INDEX idx_notifications_user_read ON notifications(user_id, read)",
     "CREATE TABLE external_publication_events(id INTEGER PRIMARY KEY,publication_id TEXT,content_hash TEXT,change TEXT,profile_cursor TEXT,status TEXT,lease_until TEXT,lease_owner TEXT,updated_at TEXT)",
     "CREATE TABLE external_notice_cycle(id INTEGER PRIMARY KEY,cycle_at TEXT,profile_cursor TEXT,status TEXT,lease_owner TEXT,lease_until TEXT,completed_at TEXT)",
     "CREATE TABLE push_subscriptions(endpoint TEXT PRIMARY KEY,user_id TEXT,p256dh TEXT,auth TEXT,expiration_time INTEGER,active INTEGER,created_at TEXT,updated_at TEXT)",

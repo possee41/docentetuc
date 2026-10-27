@@ -34,11 +34,14 @@ export function createD1Rest({ accountId, databaseId, token, fetcher = fetch, mi
     let envelope;
     try { envelope = await response.json(); } catch { throw new Error("D1_RESPONSE_INVALID"); }
     const result = envelope?.result;
+    const meta = result?.[0]?.meta;
     if (envelope?.success !== true || !Array.isArray(result) || result.length !== 1 || result[0]?.success !== true ||
         (result[0].results !== undefined && !Array.isArray(result[0].results)) ||
-        (/^\s*SELECT\b/i.test(sql) && !Array.isArray(result[0].results))) throw new Error("D1_QUERY_FAILED");
-    metrics.rowsRead += Number(result[0].meta?.rows_read || 0);
-    metrics.rowsWritten += Number(result[0].meta?.rows_written || 0);
+        (/^\s*SELECT\b/i.test(sql) && !Array.isArray(result[0].results)) ||
+        !Number.isSafeInteger(meta?.rows_read) || meta.rows_read < 0 ||
+        !Number.isSafeInteger(meta?.rows_written) || meta.rows_written < 0) throw new Error("D1_QUERY_FAILED");
+    metrics.rowsRead += meta.rows_read;
+    metrics.rowsWritten += meta.rows_written;
     return { ...result[0], results: result[0].results || [] };
   }
 

@@ -80,6 +80,21 @@ test("D1 REST rechaza errores sin confirmar escritura ni filtrar el token", asyn
   assert.throws(() => createD1Rest({ accountId: "bad", databaseId: "bad", token: "short" }), /D1_CONFIGURATION_INVALID/);
 });
 
+test("D1 REST rechaza respuestas inesperadas sin contaminar métricas ni mostrar credenciales", async () => {
+  const token = "local_test_token_12345678901234567890";
+  for (const body of [
+    { success: true, result: [{ success: true, results: [], meta: { rows_read: 0, rows_written: "desconocido" } }] },
+    { success: true, result: [{ success: true, results: [], meta: { rows_read: -1, rows_written: 0 } }] },
+    { success: true, result: [{ success: true, results: [] }] },
+  ]) {
+    const db = createD1Rest({ accountId: "a".repeat(32), databaseId: "11111111-1111-1111-1111-111111111111",
+      token, fetcher: async () => Response.json(body) });
+    await assert.rejects(db.prepare("SELECT 1").bind().all(), (error: Error) =>
+      error.message === "D1_QUERY_FAILED" && !error.message.includes(token));
+    assert.deepEqual(db.metrics(), { requests: 1, rowsRead: 0, rowsWritten: 0 });
+  }
+});
+
 test("D1 REST checkpoint can pace account API requests", async () => {
   const starts: number[] = [];
   const db = createD1Rest({ accountId: "a".repeat(32), databaseId: "11111111-1111-1111-1111-111111111111",

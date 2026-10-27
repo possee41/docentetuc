@@ -13,6 +13,23 @@ import { JUNTA_EXTERNAL_SOURCES } from "../lib/junta-external-sources.ts";
 
 const PRODUCTION_DATABASE_ID = "baaf5886-0123-4948-96da-aa7106424549";
 const PRODUCTION_DATABASE_NAME = "docentetuc-db";
+const SAFE_IMPORT_ERRORS = new Set([
+  "D1_DATABASE_OVERRIDE_FORBIDDEN", "PRODUCTION_D1_NOT_APPROVED", "DIRECT_D1_WRITE_DISABLED",
+  "D1_CONFIGURATION_INVALID", "D1_QUERY_INVALID", "D1_QUERY_FAILED", "D1_NETWORK_ERROR", "D1_RESPONSE_INVALID",
+  "D1_IDENTITY_NETWORK_ERROR", "D1_IDENTITY_RESPONSE_INVALID", "D1_IDENTITY_MISMATCH",
+  "SOURCE_INVALID", "SOURCE_HTTP_429", "RECEIVER_ACK_INVALID", "IMPORT_ACK_INVALID", "IMPORT_CONFIGURATION_INVALID",
+  "FDCI_PARTIAL_SOURCE", "FDCI_SELECTION_REQUIRED", "FDCI_SELECTION_INVALID", "FDCI_SELECTION_INCOMPLETE",
+  "FDCI_EMPTY_RESPONSE", "FDCI_SCHEMA_CHANGED", "FDCI_DETAIL_SCHEMA_CHANGED", "FDCI_COURSE_NOT_FOUND", "FDCI_COMMISSION_NOT_FOUND",
+  "SIME_PARTIAL_SOURCE", "SIME_RECEIVER_ACK_INVALID", "SIME_IMPORT_CONFIGURATION_INVALID", "SIME_PREVIOUS_PAGE_INVALID", "SIME_PREVIOUS_ROW_INVALID",
+  "CENET_FORMAT_CHANGED", "CENET_EMPTY_SUSPECT", "INFD_FORMAT_CHANGED", "INFD_PARTIAL_SOURCE", "INFD_EMPTY_SUSPECT",
+  "JUNTAS_CHECKPOINT_REQUIRED", "JUNTAS_CHECKPOINT_INVALID", "JUNTAS_CHECKPOINT_LEASE_LOST", "JUNTAS_ROOT_INVALID",
+  "JUNTAS_SOURCE_TIMEOUT", "JUNTAS_SOURCE_NETWORK", "JUNTAS_DOCUMENT_FORMAT_INVALID", "JUNTAS_NOTICE_FORMAT_UNRECOGNIZED",
+  "JUNTAS_ITEM_TOO_LARGE", "JUNTAS_RECEIVER_ACK_INVALID", "JUNTAS_DRIVE_KEY_REQUIRED", "JUNTAS_DRIVE_PAGE_INVALID",
+  "JUNTAS_BUDGET_INVALID", "JUNTAS_FOCUS_PAGE_IN_PROGRESS", "JUNTAS_FOCUS_NOT_PENDING",
+]);
+export const safeImportErrorCode = (error) => error instanceof Error &&
+  (SAFE_IMPORT_ERRORS.has(error.message) || /^(?:D1(?:_IDENTITY)?|SOURCE|RECEIVER|SIME_RECEIVER|JUNTAS(?:_RECEIVER)?|HTTP)_HTTP_[1-5][0-9]{2}$/.test(error.message))
+  ? error.message : "UNEXPECTED_IMPORT_ERROR";
 
 export function resolveDirectD1Target(config, revision) {
   if (config.D1_DATABASE_ID) throw new Error("D1_DATABASE_OVERRIDE_FORBIDDEN");
@@ -28,10 +45,14 @@ export function resolveDirectD1Target(config, revision) {
 }
 
 export async function verifyDirectD1Identity({ accountId, token, target, fetcher = fetch }) {
-  const response = await fetcher(`https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${target.id}`,
-    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
+  let response;
+  try {
+    response = await fetcher(`https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${target.id}`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
+  } catch { throw new Error("D1_IDENTITY_NETWORK_ERROR"); }
   if (!response.ok) throw new Error(`D1_IDENTITY_HTTP_${response.status}`);
-  const body = await response.json();
+  let body;
+  try { body = await response.json(); } catch { throw new Error("D1_IDENTITY_RESPONSE_INVALID"); }
   if (body?.success !== true || body.result?.uuid !== target.id || body.result?.name !== target.name)
     throw new Error("D1_IDENTITY_MISMATCH");
 }
@@ -105,7 +126,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log(JSON.stringify(result));
   } catch (error) {
     // Never include remote response bodies, URLs with tokens, or credentials.
-    console.error("DIRECT_D1_IMPORT_FAILED", error instanceof Error ? error.message.replace(/https?:\/\/\S+/g, "[url]") : "unknown");
+    console.error("DIRECT_D1_IMPORT_FAILED", safeImportErrorCode(error));
     process.exitCode = 1;
   }
 }

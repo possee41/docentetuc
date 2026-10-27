@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveDirectD1Target, runDirectD1Import, verifyDirectD1Identity } from "../scripts/import-direct-d1.mjs";
+import { resolveDirectD1Target, runDirectD1Import, safeImportErrorCode, verifyDirectD1Identity } from "../scripts/import-direct-d1.mjs";
 
 const account = "a".repeat(32), revision = "b".repeat(40);
 const approved = { DIRECT_D1_TARGET: "production", DIRECT_D1_PRODUCTION_ENABLED: "true",
@@ -31,6 +31,10 @@ test("D1 REST comprueba UUID y nombre antes de importar; no consulta SQL", async
   await assert.rejects(verifyDirectD1Identity({ accountId: account, token: "synthetic-token", target,
     fetcher: async () => Response.json({ success: true, result: { uuid: target.id, name: "otra-base" } }) }),
   /D1_IDENTITY_MISMATCH/);
+  await assert.rejects(verifyDirectD1Identity({ accountId: account, token: "synthetic-token", target,
+    fetcher: async () => { throw new Error("synthetic-token"); } }), /^Error: D1_IDENTITY_NETWORK_ERROR$/);
+  await assert.rejects(verifyDirectD1Identity({ accountId: account, token: "synthetic-token", target,
+    fetcher: async () => new Response("invalid json") }), /^Error: D1_IDENTITY_RESPONSE_INVALID$/);
 });
 
 test("Juntas rechaza el recorrido monolítico antes de consultar D1 o Drive", async () => {
@@ -38,4 +42,11 @@ test("Juntas rechaza el recorrido monolítico antes de consultar D1 o Drive", as
   await assert.rejects(runDirectD1Import({ source: "juntas", db: { prepare: () => { calls++; } },
     sourceFetch: async () => { calls++; throw new Error("fetch inesperado"); } }), /JUNTAS_CHECKPOINT_REQUIRED/);
   assert.equal(calls, 0);
+});
+
+test("los errores del ejecutor no imprimen tokens ni respuestas externas", () => {
+  assert.equal(safeImportErrorCode(new Error("D1_HTTP_503")), "D1_HTTP_503");
+  assert.equal(safeImportErrorCode(new Error("token=secret-example")), "UNEXPECTED_IMPORT_ERROR");
+  assert.equal(safeImportErrorCode(new Error("UPPERCASE_SECRET_123456")), "UNEXPECTED_IMPORT_ERROR");
+  assert.equal(safeImportErrorCode(new Error("https://example.invalid/with-secret")), "UNEXPECTED_IMPORT_ERROR");
 });
