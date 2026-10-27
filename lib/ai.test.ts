@@ -18,6 +18,21 @@ const publicDocument = { ...base, id: "comunicado", kind: "junta", category: "Co
 const openCall = { ...base, id: "llamado", kind: "junta", category: "Llamados abiertos", title: "Convocatoria abierta de Inicial", status: "vigente" } as Publication;
 const usefulRecords = usefulInformation.map((item) => ({ ...base, id: `info:${item.id}`, external_id: item.id, kind: "informacion", category: item.category, title: item.title, summary: item.summary, level: "", area: (item.metadata.aliases || []).join(" · "), status: "vigente", official_url: item.officialUrl, metadata: JSON.stringify(item.metadata) })) as Publication[];
 
+test("la IA enlaza los formularios de licencias sin tratarlos como normativa vigente", () => {
+  const found = buildAIContext("¿Dónde descargo el modelo de licencia Art. 51 F?", usefulRecords);
+  assert.equal(found.intent, "licencias");
+  assert.ok(found.sources.some((source) => source.url === "/documents/Modelo_Licencia_Art_51F.docx" && source.sourceType === "public"));
+  assert.match(found.context, /no implica la autorización de la licencia/);
+  assert.match(found.context, /vigencia legal no verificada/);
+});
+
+test("sin registro oficial la IA no presenta los formularios como prueba de requisitos", () => {
+  const found = buildAIContext("¿Qué requisitos legales vigentes tiene la licencia?", []);
+  assert.equal(found.sources.filter((source) => source.sourceType === "official").length, 0);
+  assert.match(found.context, /no hay información suficiente para confirmarlo/);
+  assert.match(found.context, /No se recuperaron evidencias públicas suficientes/);
+});
+
 test("recupera primero la próxima inscripción usando datos reales", () => assert.equal(retrievePublications("¿Qué capacitación abre primero?", records, 8, { now: new Date("2026-10-01T09:00:00-03:00") })[0]?.id, "next"));
 test("una conversación general no adjunta fuentes irrelevantes", () => assert.equal(buildAIContext("Hola", records).sources.length, 0));
 test("una definición de suplente no cita vacantes del panel abierto", () => {
