@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
+import { createRequire } from "node:module";
 import test from "node:test";
 import { checkPushCanaryConfig } from "../scripts/check-push-canary-config.mjs";
 import { generatePushCanarySql } from "../scripts/generate-push-canary-sql.mjs";
@@ -10,6 +11,7 @@ const config = JSON.parse(readFileSync("wrangler.push-canary.json", "utf8"));
 const schema = readFileSync("scripts/push-canary-schema.sql", "utf8");
 const token = "synthetic_canary_token_12345678901234567890";
 const now = new Date("2026-10-26T12:00:00Z");
+const require = createRequire(import.meta.url);
 
 function localD1(sqlite: DatabaseSync) {
   type Statement = { bind: (...values: unknown[]) => Statement; all: () => Promise<object>; run: () => Promise<object> };
@@ -22,7 +24,8 @@ function localD1(sqlite: DatabaseSync) {
 }
 
 test("config canary falla cerrada ante UUID pendiente, producción y bindings extra", () => {
-  assert.throws(() => checkPushCanaryConfig(config), /PUSH_CANARY_CONFIG_UNSAFE/);
+  const placeholder = { ...config, d1_databases: [{ ...config.d1_databases[0], database_id: "00000000-0000-0000-0000-000000000000" }] };
+  assert.throws(() => checkPushCanaryConfig(placeholder), /PUSH_CANARY_CONFIG_UNSAFE/);
   const isolated = { ...config, d1_databases: [{ ...config.d1_databases[0], database_id: "11111111-1111-1111-1111-111111111111" }] };
   assert.equal(checkPushCanaryConfig(isolated), true);
   for (const unsafe of [
@@ -66,6 +69,10 @@ test("Worker canary autentica, valida D1 y usa el despacho real sin enviar push"
     assert.equal(denied.status, 401);
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS n FROM push_deliveries").get() as { n: number }).n, 0);
     const authorized = () => new Request(url, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+    const badClock = await handlePushCanary(authorized(), env, {} as Date);
+    assert.equal(badClock.status, 500);
+    assert.equal((await badClock.json() as { error: string }).error, "CANARY_CLOCK_INVALID");
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS n FROM push_deliveries").get() as { n: number }).n, 0);
     const first = await handlePushCanary(authorized(), env, now);
     assert.equal(first.status, 200);
     const report = await first.json() as { result: { sent: number }, d1: { queries: number, rowsWritten: number } };
@@ -79,4 +86,26 @@ test("Worker canary autentica, valida D1 y usa el despacho real sin enviar push"
     sqlite.prepare("UPDATE push_canary_identity SET marker='wrong'").run();
     assert.equal((await handlePushCanary(authorized(), env, now)).status, 503);
   } finally { globalThis.fetch = originalFetch; console.log = originalLog; sqlite.close(); }
+});
+
+test("Worker canary despacha el escenario vacío con D1 real de Miniflare", async () => {
+  const { Miniflare } = require("../node_modules/.pnpm/miniflare@4.20260515.0/node_modules/miniflare");
+  const { build } = require("../node_modules/.pnpm/esbuild@0.28.2/node_modules/esbuild");
+  const bundle = await build({ entryPoints: ["workers/push-canary.mjs"], bundle: true,
+    write: false, format: "esm", platform: "browser", target: "es2022" });
+  const mf = new Miniflare({ modules: true, script: bundle.outputFiles[0].text,
+    d1Databases: ["DB"], bindings: { CANARY_BEARER_TOKEN: token } });
+  try {
+    const db = await mf.getD1Database("DB");
+    for (const sql of schema.replace(/^--.*$/gm, "").split(";").map((part: string) => part.trim()).filter(Boolean))
+      await db.prepare(sql).run();
+    const response = await mf.dispatchFetch("https://push-canary.invalid/run/0-sparse/local-empty",
+      { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+    const body = await response.json() as { result: { considered: number, sent: number },
+      d1: { queries: number, rowsWritten: number } };
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.deepEqual(body.result, { considered: 0, sent: 0, failed: 0, removed: 0, deferred: 0 });
+    assert.equal(body.d1.queries, 3);
+    assert.equal(body.d1.rowsWritten, 0);
+  } finally { await mf.dispose(); }
 });

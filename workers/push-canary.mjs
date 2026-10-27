@@ -6,7 +6,7 @@ const CANARY_MARKER = "docentetuc-push-canary-1-2";
 const VAPID_PLACEHOLDER = { VAPID_PUBLIC_KEY: "synthetic", VAPID_PRIVATE_KEY: "synthetic",
   VAPID_SUBJECT: "mailto:canary@example.invalid" };
 const simulatedProvider = { send: async () => new Response(null, { status: 201 }) };
-const isolateId = crypto.randomUUID();
+let isolateId;
 let isolateInvocation = 0;
 const reply = (body, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
@@ -49,24 +49,30 @@ export async function handlePushCanary(request, env, now = new Date()) {
     return reply({ error: "UNAUTHORIZED" }, 401);
 
   const [, count, density, runId] = match;
+  isolateId ||= crypto.randomUUID();
   const measured = measuredD1(env.DB);
+  let stage = "identity";
   try {
     const identity = await measured.db.prepare("SELECT marker FROM push_canary_identity LIMIT 1").all();
     if (identity.results?.[0]?.marker !== CANARY_MARKER) {
       console.error(JSON.stringify({ event: "push_canary_identity_invalid", runId, scenario: `${count}-${density}` }));
       return reply({ error: "CANARY_DB_IDENTITY_INVALID" }, 503);
     }
+    stage = "dispatch";
+    if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new Error("CANARY_CLOCK_INVALID");
     const result = await dispatchPushNotifications(measured.db, VAPID_PLACEHOLDER, now, simulatedProvider);
     const report = { runId, scenario: `${count}-${density}`, isolateId, isolateInvocation: invocation,
       result, d1: measured.metrics, wallMs: Math.round((performance.now() - started) * 100) / 100 };
     console.log(JSON.stringify({ event: "push_canary", ...report }));
     return reply(report);
-  } catch {
-    console.error(JSON.stringify({ event: "push_canary_error", runId, scenario: `${count}-${density}`,
+  } catch (error) {
+    const code = error instanceof Error && error.message === "CANARY_CLOCK_INVALID"
+      ? "CANARY_CLOCK_INVALID" : "CANARY_DISPATCH_FAILED";
+    console.error(JSON.stringify({ event: "push_canary_error", code, stage, runId, scenario: `${count}-${density}`,
       isolateId, isolateInvocation: invocation, d1: measured.metrics }));
-    return reply({ error: "CANARY_DISPATCH_FAILED", runId, d1: measured.metrics }, 500);
+    return reply({ error: code, runId, d1: measured.metrics }, 500);
   }
 }
 
-const worker = { fetch: handlePushCanary };
+const worker = { fetch: (request, env) => handlePushCanary(request, env) };
 export default worker;
