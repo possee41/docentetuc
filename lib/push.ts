@@ -22,6 +22,7 @@ export class WebPushProvider implements NotificationProvider {
   constructor(vapid: VapidKeys) { this.vapid = vapid; }
 
   async send(subscription: PushSubscription, message: PushMessage) {
+    if (!validPushEndpoint(subscription.endpoint)) throw new Error("PUSH_ENDPOINT_INVALID");
     const request = await buildPushPayload({ data: JSON.stringify(message), options: { ttl: 86_400, urgency: "high" } }, subscription, this.vapid);
     return fetch(subscription.endpoint, request);
   }

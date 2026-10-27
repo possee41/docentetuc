@@ -7,7 +7,8 @@ const worker = {
   },
   async scheduled(controller, environment, context) {
     await runScheduledTask(controller.cron, environment.CRON_SECRET,
-      (request) => application.fetch(request, environment, context), environment.LEGACY_SYNC_PAUSED === "true");
+      (request) => application.fetch(request, environment, context),
+      environment.LEGACY_SYNC_PAUSED === "true", environment.PUSH_DISPATCH_MODE);
   },
 };
 

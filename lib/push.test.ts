@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { categoryForNotification, isPushNotificationDue, isQuietTime, materializeScheduledNotifications, publicationFitsProfileCircuit, PUSH_DELIVERY_BATCH_SIZE, scheduledNotificationTypes, UPSERT_PUSH_SUBSCRIPTION_SQL, validPushEndpoint } from "./push.ts";
+import { categoryForNotification, isPushNotificationDue, isQuietTime, materializeScheduledNotifications, publicationFitsProfileCircuit, PUSH_DELIVERY_BATCH_SIZE, scheduledNotificationTypes, UPSERT_PUSH_SUBSCRIPTION_SQL, validPushEndpoint, WebPushProvider } from "./push.ts";
 
 test("quiet hours work across midnight in Tucumán", () => {
   assert.equal(isQuietTime(new Date("2026-09-27T02:30:00Z"), "22:00", "07:00", "America/Argentina/Buenos_Aires"), true);
@@ -33,6 +33,13 @@ test("push endpoints reject arbitrary hosts", () => {
   assert.equal(validPushEndpoint("https://fcm.googleapis.com/fcm/send/example"), true);
   assert.equal(validPushEndpoint("https://example.com/steal"), false);
   assert.equal(validPushEndpoint("http://fcm.googleapis.com/example"), false);
+});
+
+test("el proveedor real rechaza un endpoint almacenado inválido antes de usar red", async () => {
+  const provider = new WebPushProvider({ publicKey: "synthetic", privateKey: "synthetic", subject: "mailto:test@example.invalid" });
+  await assert.rejects(provider.send({ endpoint: "https://example.invalid/device", expirationTime: null,
+    keys: { p256dh: "synthetic", auth: "synthetic" } }, { title: "Prueba", body: "Local", tag: "local", url: "/" }),
+  /PUSH_ENDPOINT_INVALID/);
 });
 
 test("una suscripción push no puede reasignarse a otra cuenta o instalación", () => {

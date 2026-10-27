@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   if (!env.CRON_SECRET || request.headers.get("x-docentetuc-cron") !== env.CRON_SECRET) return Response.json({ error: "No autorizado." }, { status: 401 });
+  if (env.PUSH_DISPATCH_MODE && env.PUSH_DISPATCH_MODE !== "worker") return Response.json({ error: "Despacho Worker desactivado." }, { status: 409 });
   try {
     const delivery = await dispatchPushNotifications(getD1(), env);
     return Response.json({ ok: true, delivery });
