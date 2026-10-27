@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { activeAdminNotices, listAdminNotices, saveAdminNotice } from "./admin-notices.ts";
-import { adminAIStatus, adminDashboard, adminPublications, adminSyncStatus, adminUsers } from "./admin-data.ts";
+import { adminAIStatus, adminConfiguration, adminDashboard, adminNotificationStatus, adminPublications, adminSyncStatus, adminUsers } from "./admin-data.ts";
 import { requireCommunityAdmin } from "./community-admin.ts";
 import type { CommunityDatabase } from "./community.ts";
 
@@ -23,6 +23,7 @@ function fixture() {
     CREATE TABLE sync_state(source TEXT, synced_at TEXT, last_attempt_at TEXT,
       last_successful_sync_at TEXT, sync_status TEXT, item_count INTEGER, error_code TEXT, error_message TEXT);
     CREATE TABLE ai_rate_limits(user_bucket TEXT, request_count INTEGER, expires_at TEXT);
+    CREATE TABLE push_deliveries(status TEXT, attempted_at TEXT, accepted_at TEXT, failure_reason TEXT);
   `);
   raw.exec(migration);
   raw.prepare('INSERT INTO "user" VALUES(?,?,?,?)').run(ADMIN, "Admin", "admin@example.invalid", Date.now());
@@ -128,6 +129,26 @@ test("dashboard, usuarios, sync e IA solo exponen campos mínimos", async () => 
     assert.equal(serialized.includes("PRIVATE_HEADER"), false);
     assert.equal(serialized.includes("token"), false);
     assert.equal(ai.available, true);
+  } finally { raw.close(); }
+});
+
+test("Admin muestra diagnóstico push sin secretos ni destinatarios", async () => {
+  const { raw, database } = fixture();
+  try {
+    raw.prepare("INSERT INTO push_deliveries VALUES(?,?,?,?)").run("failed", "2026-10-27T12:00:00Z", null, "PUSH_503");
+    raw.prepare("INSERT INTO push_deliveries VALUES(?,?,?,?)").run("sent", "2026-10-27T12:01:00Z", "2026-10-27T12:01:00Z", "secret endpoint");
+    const settings = { PUSH_DISPATCH_MODE: "external", VAPID_PRIVATE_KEY: "NEVER_EXPOSE" };
+    const status = await adminNotificationStatus(database, settings);
+    const config = adminConfiguration(settings, true);
+    assert.equal(status.mode, "external");
+    assert.equal(status.workerDispatchEnabled, false);
+    assert.equal(status.deliveries.failed, 1);
+    assert.equal(status.deliveries.sent, 1);
+    assert.deepEqual(status.recentErrorCodes, ["PUSH_503"]);
+    assert.equal(status.lastJobRunAt, null);
+    assert.equal(config.databaseAvailable, true);
+    assert.equal(JSON.stringify({ status, config }).includes("NEVER_EXPOSE"), false);
+    assert.equal(JSON.stringify({ status, config }).includes("secret endpoint"), false);
   } finally { raw.close(); }
 });
 

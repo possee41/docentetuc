@@ -35,6 +35,7 @@ export function NewsAdminPanel() {
   const [detail, setDetail] = useState<Detail | null>(null), [draft, setDraft] = useState<Draft | null>(null);
   const [originQuery, setOriginQuery] = useState(""), [origins, setOrigins] = useState<Origin[]>([]);
   const [source, setSource] = useState({ sourceName: "", sourceTitle: "", url: "", sourceType: "official", isPrimary: false });
+  const [newItem, setNewItem] = useState({ title: "", summary: "", sourceName: "", url: "", sourceType: "official", sourcePublishedAt: "" });
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const loadList = useCallback(async () => {
     const params = new URLSearchParams({ status, q: query, page: String(page) });
@@ -70,6 +71,7 @@ export function NewsAdminPanel() {
       await loadList();
       await open(String(result.id));
       if (body.action === "source_add") setSource({ sourceName: "", sourceTitle: "", url: "", sourceType: "official", isPrimary: false });
+      if (body.action === "create_draft") setNewItem({ title: "", summary: "", sourceName: "", url: "", sourceType: "official", sourcePublishedAt: "" });
     } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo guardar. Recargá la noticia antes de reintentar."); }
     finally { setBusy(false); }
   };
@@ -109,6 +111,18 @@ export function NewsAdminPanel() {
     <div className="flex gap-2"><button type="button" disabled={page === 0} onClick={() => setPage(page - 1)} className="min-h-11 rounded-xl border border-sky-200 bg-white px-4 disabled:opacity-50">Anterior</button>
       <button type="button" disabled={list.items.length < 30} onClick={() => setPage(page + 1)} className="min-h-11 rounded-xl border border-sky-200 bg-white px-4 disabled:opacity-50">Siguiente</button></div>
 
+    <form onSubmit={(event) => { event.preventDefault(); void submit({ action: "create_draft", ...newItem }); }}
+      className="grid gap-3 rounded-2xl bg-white p-4 shadow-sm sm:grid-cols-2" aria-label="Crear borrador de noticia">
+      <h3 className="font-bold sm:col-span-2">Nuevo borrador con fuente verificable</h3>
+      <label className="text-sm font-bold">Título<input required maxLength={160} value={newItem.title} onChange={(event) => setNewItem({ ...newItem, title: event.target.value })} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 px-3" /></label>
+      <label className="text-sm font-bold">Fuente<input required maxLength={120} value={newItem.sourceName} onChange={(event) => setNewItem({ ...newItem, sourceName: event.target.value })} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 px-3" /></label>
+      <label className="text-sm font-bold sm:col-span-2">Resumen<textarea required maxLength={1200} value={newItem.summary} onChange={(event) => setNewItem({ ...newItem, summary: event.target.value })} className="mt-1 w-full rounded-xl border border-sky-200 p-3" /></label>
+      <label className="text-sm font-bold">Enlace original HTTPS<input required type="url" maxLength={2048} value={newItem.url} onChange={(event) => setNewItem({ ...newItem, url: event.target.value })} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 px-3" /></label>
+      <label className="text-sm font-bold">Fecha oficial (si está confirmada)<input type="date" value={newItem.sourcePublishedAt} onChange={(event) => setNewItem({ ...newItem, sourcePublishedAt: event.target.value })} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 px-3" /></label>
+      <label className="text-sm font-bold">Tipo de fuente<select value={newItem.sourceType} onChange={(event) => setNewItem({ ...newItem, sourceType: event.target.value })} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 px-3">{NEWS_SOURCE_TYPES.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+      <div className="flex items-end"><button disabled={busy} className="min-h-11 rounded-xl bg-[#0878be] px-4 font-bold text-white disabled:opacity-50">Crear borrador</button></div>
+      <p className="text-xs text-slate-600 sm:col-span-2">El borrador no se publica solo. Completá imagen y vigencia en la ficha editorial antes de aprobar.</p>
+    </form>
     <section className="space-y-3 rounded-2xl bg-white p-4 shadow-sm" aria-label="Crear candidata"><h3 className="font-bold">Crear candidata desde publicación</h3>
       <label className="block text-sm">Buscar publicación existente<input value={originQuery} onChange={(e) => setOriginQuery(e.target.value)} maxLength={100} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 px-3" /></label>
       {origins.map((origin) => <div key={origin.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-sky-100 pt-2 text-sm">
@@ -165,7 +179,7 @@ export function NewsAdminPanel() {
       <div className="flex flex-wrap gap-2 border-t border-sky-100 pt-4">{([
         ["approve", "Aprobar", detail.item.status === "candidate"], ["publish", "Publicar", detail.item.status === "approved"],
         ["reject", "Rechazar", ["candidate", "approved"].includes(detail.item.status)],
-        ["archive", "Archivar", ["approved", "published"].includes(detail.item.status)],
+        ["archive", detail.item.status === "candidate" ? "Descartar borrador" : "Archivar", ["candidate", "approved", "published"].includes(detail.item.status)],
         ["reopen", "Reabrir como candidata", ["rejected", "archived"].includes(detail.item.status)],
         [detail.item.featured ? "unfeature" : "feature", detail.item.featured ? "Quitar destaque" : "Destacar", detail.item.status === "published"],
       ] as const).filter(([, , shown]) => shown).map(([action, label]) => <button key={action} type="button" disabled={busy} onClick={() => act(action)}

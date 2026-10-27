@@ -73,6 +73,40 @@ test("solo admin crea candidata manual, sin duplicar publicación ni modificarla
   } finally { raw.close(); }
 });
 
+test("admin descarta un borrador sin borrar la fuente ni la auditoría", async () => {
+  const { raw, database } = fixture();
+  try {
+    const { id } = await create(database);
+    const item = (await details(database, id)).item;
+    await assert.rejects(change(database, id, item.updated_at, "archive", {}, USER), { status: 403 });
+    const archived = await change(database, id, item.updated_at, "archive");
+    assert.equal((await details(database, id)).item.status, "archived");
+    assert.equal((await listNewsAdmin(database, new URLSearchParams("status=candidate"))).items.length, 0);
+    assert.equal(count(raw, "publications"), 2);
+    assert.equal(count(raw, "news_events"), 2);
+    await assert.rejects(change(database, id, item.updated_at, "archive"), { status: 409 });
+    assert.ok(archived.updatedAt);
+  } finally { raw.close(); }
+});
+
+test("admin crea un borrador manual con enlace y fecha verificados", async () => {
+  const { raw, database } = fixture();
+  try {
+    const input = { action: "create_draft", title: "Noticia sintética", summary: "Resumen de prueba",
+      sourceName: "Fuente de prueba", url: "https://example.org/noticia", sourceType: "official", sourcePublishedAt: "2026-10-27" };
+    await assert.rejects(mutateNewsAdmin(database, USER, input), { status: 403 });
+    await assert.rejects(mutateNewsAdmin(database, ADMIN, { ...input, url: "javascript:alert(1)" }), { status: 400 });
+    await assert.rejects(mutateNewsAdmin(database, ADMIN, { ...input, sourcePublishedAt: "2026-02-30" }), { status: 400 });
+    const result = await mutateNewsAdmin(database, ADMIN, input);
+    const detail = await details(database, result.id);
+    assert.equal(detail.item.status, "candidate");
+    assert.equal(detail.sources[0].url, input.url);
+    assert.equal(detail.sources[0].source_published_at, input.sourcePublishedAt);
+    assert.equal(detail.events[0].action, "create_candidate");
+    assert.equal(count(raw, "publications"), 2);
+  } finally { raw.close(); }
+});
+
 test("edición usa updated_at y rechaza versiones viejas sin evento adicional", async () => {
   const { raw, database } = fixture();
   try {

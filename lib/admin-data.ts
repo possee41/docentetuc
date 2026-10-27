@@ -3,7 +3,7 @@ import { boardItems, type BoardPublication } from "./board-view.ts";
 import type { CommunityDatabase } from "./community.ts";
 
 type Row = Record<string, unknown>;
-const SOURCES = ["SIME", "Comunicados", "Padrones", "Capacitación Docente", "INFoD / AulaS-TIC", "CeNET / INET"];
+const SOURCES = ["SIME", "Comunicados", "Padrones", "Llamados abiertos", "Capacitación Docente", "INFoD / AulaS-TIC", "CeNET / INET"];
 
 export async function adminDashboard(database: CommunityDatabase, now = new Date()) {
   const [users, rows, sync] = await Promise.all([
@@ -108,4 +108,31 @@ export async function adminAIStatus(database: CommunityDatabase, settings: Recor
     recentRequests: Number(usage?.count || 0), requestWindow: "ventana activa de 15 minutos",
     recentErrors: "No se conserva un historial de errores de IA en D1.",
     webFallback: settings.AI_WEB_SEARCH_PROVIDER || "Desactivado" };
+}
+
+export async function adminNotificationStatus(database: CommunityDatabase, settings: Record<string, string | undefined>) {
+  const [rows, errors] = await Promise.all([
+    database.prepare(`SELECT status, COUNT(*) AS count,
+      MAX(attempted_at) AS lastAttemptAt, MAX(accepted_at) AS lastAcceptedAt
+      FROM push_deliveries GROUP BY status`).bind().all<{ status: string; count: number;
+        lastAttemptAt: string | null; lastAcceptedAt: string | null }>(),
+    database.prepare("SELECT failure_reason AS code FROM push_deliveries WHERE status='failed' ORDER BY attempted_at DESC LIMIT 5")
+      .bind().all<{ code: string | null }>(),
+  ]);
+  const deliveries = Object.fromEntries((rows.results || []).map((row) => [row.status, Number(row.count)]));
+  const mode = settings.PUSH_DISPATCH_MODE === "external" ? "external"
+    : settings.VAPID_PUBLIC_KEY && settings.VAPID_PRIVATE_KEY && settings.VAPID_SUBJECT ? "worker" : "disabled";
+  return { mode, workerDispatchEnabled: mode === "worker", externalExecutionVerified: false,
+    simulation: "Solo disponible en canary; no hay registro de ensayos en esta D1.", deliveries,
+    recentErrorCodes: (errors.results || []).map((row) => row.code).filter((code): code is string =>
+      typeof code === "string" && /^[A-Z0-9_]{2,60}$/.test(code)),
+    lastAttemptAt: (rows.results || []).map((row) => row.lastAttemptAt).filter(Boolean).sort().at(-1) || null,
+    lastAcceptedAt: (rows.results || []).map((row) => row.lastAcceptedAt).filter(Boolean).sort().at(-1) || null,
+    lastJobRunAt: null };
+}
+
+export function adminConfiguration(settings: Record<string, string | undefined>, databaseAvailable: boolean) {
+  return { databaseAvailable, pushMode: settings.PUSH_DISPATCH_MODE === "external" ? "external" : "worker",
+    legacySyncPaused: settings.LEGACY_SYNC_PAUSED === "true",
+    note: "Esta vista no cambia sincronizadores, cron ni credenciales." };
 }

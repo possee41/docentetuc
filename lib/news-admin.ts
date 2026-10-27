@@ -9,7 +9,7 @@ type NewsRow = Row & { id: string; status: string; updated_at: string; editorial
   relevance: string; valid_from: string | null; valid_until: string | null; origin_publication_id: string | null;
   hero_image_url: string | null; hero_image_alt: string | null; hero_image_credit: string | null;
   hero_image_source_url: string | null; hero_image_rights_note: string | null; hero_image_rights_url: string | null };
-type Action = "create_candidate" | "edit" | "approve" | "publish" | "reject" | "archive" | "reopen" | "feature" | "unfeature" | "source_add" | "source_remove";
+type Action = "create_candidate" | "create_draft" | "edit" | "approve" | "publish" | "reject" | "archive" | "reopen" | "feature" | "unfeature" | "source_add" | "source_remove";
 
 function fail(code = "INVALID_NEWS", status: CommunityError["status"] = 400): never { throw new CommunityError(code, status); }
 function id(value: unknown): string { if (typeof value !== "string" || !UUID.test(value)) fail(); return value as string; }
@@ -106,6 +106,26 @@ function event(database: CommunityDatabase, eventId: string, item: NewsRow, acto
 export async function mutateNewsAdmin(database: CommunityDatabase, actorId: string, input: Record<string, unknown>) {
   await requireCommunityAdmin(database, actorId);
   const action = input.action;
+  if (action === "create_draft") {
+    const title = bounded(input.title, 160, true), summary = bounded(input.summary, 1200, true);
+    const sourceName = bounded(input.sourceName, 120, true), url = normalizeNewsSourceUrl(input.url);
+    const publishedAt = bounded(input.sourcePublishedAt ?? "", 10);
+    if (!url || !isNewsSourceType(input.sourceType) ||
+        publishedAt && (!/^\d{4}-\d{2}-\d{2}$/.test(publishedAt) ||
+          Number.isNaN(Date.parse(publishedAt)) || new Date(publishedAt).toISOString().slice(0, 10) !== publishedAt)) fail();
+    const now = new Date().toISOString(), newsId = crypto.randomUUID();
+    await applyBatch(database, [
+      database.prepare(`INSERT INTO news_items(id,status,editorial_title,editorial_summary,created_by_user_id,created_at,updated_at)
+        VALUES(?,'candidate',?,?,?,?,?)`).bind(newsId, title, summary, actorId, now, now),
+      database.prepare(`INSERT INTO news_sources(id,news_item_id,source_name,source_title,url,normalized_url,
+        source_type,is_primary,source_published_at) VALUES(?,?,?,?,?,?,?,1,?)`)
+        .bind(crypto.randomUUID(), newsId, sourceName, title, url, url, input.sourceType, publishedAt || null),
+      database.prepare(`INSERT INTO news_events(id,news_item_id,actor_user_id,actor_kind,action,next_status,details,created_at)
+        VALUES(?,?,?,'admin','create_candidate','candidate',?,?)`)
+        .bind(crypto.randomUUID(), newsId, actorId, '{"manual":true}', now),
+    ]);
+    return { id: newsId };
+  }
   if (action === "create_candidate") {
     const publicationId = bounded(input.publicationId, 240, true);
     const publication = await database.prepare(`SELECT id,title,summary,source,official_url,source_published_at,removed_at
@@ -188,7 +208,7 @@ export async function mutateNewsAdmin(database: CommunityDatabase, actorId: stri
   } else {
     const transitions: Partial<Record<Action, [string[], string]>> = {
       approve: [["candidate"], "approved"], publish: [["approved"], "published"],
-      reject: [["candidate", "approved"], "rejected"], archive: [["approved", "published"], "archived"],
+      reject: [["candidate", "approved"], "rejected"], archive: [["candidate", "approved", "published"], "archived"],
       reopen: [["rejected", "archived"], "candidate"],
     };
     const transition = transitions[kind];
