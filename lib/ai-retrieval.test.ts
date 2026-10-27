@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import type { D1Database } from "@cloudflare/workers-types";
 import { APP_PUBLICATIONS_QUERY } from "./app-publications-query.ts";
 import { buildAIContext } from "./ai.ts";
-import { aiSearchTerms, retrieveAIRecords } from "./ai-retrieval.ts";
+import { aiSearchTerms, retrieveAIRecords, retrieveAINews } from "./ai-retrieval.ts";
 
 function fixture() {
   const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec(`CREATE TABLE publications (
+  sqlite.exec(`CREATE TABLE "user"(id TEXT PRIMARY KEY); CREATE TABLE publications (
     id TEXT PRIMARY KEY, kind TEXT, source TEXT, category TEXT, title TEXT, summary TEXT,
     level TEXT DEFAULT '', area TEXT DEFAULT '', junta TEXT DEFAULT '', location TEXT DEFAULT '',
     character TEXT DEFAULT '', source_circuit_raw TEXT DEFAULT '', shift TEXT DEFAULT '',
@@ -18,6 +19,8 @@ function fixture() {
     registration_open_at TEXT, registration_close_at TEXT, expires_at TEXT, removed_at TEXT,
     source_status TEXT DEFAULT '', external_id TEXT DEFAULT ''
   ); CREATE TABLE saved_publications (user_id TEXT, publication_id TEXT, in_agenda INTEGER, saved_at TEXT);`);
+  sqlite.exec(readFileSync(new URL("../migrations/0021_news_editorial.sql", import.meta.url), "utf8"));
+  sqlite.exec(readFileSync(new URL("../migrations/0022_news_media_content.sql", import.meta.url), "utf8"));
   const add = (id: string, title: string, kind: string, fields: Record<string, string> = {}) => {
     const allowed = new Set(["source", "category", "summary", "level", "area", "junta", "location", "metadata", "updated_at", "source_published_at", "normalized_status", "official_url", "ends_at", "starts_at"]);
     const columns = ["id", "title", "kind", ...Object.keys(fields).filter((key) => allowed.has(key))];
@@ -98,4 +101,23 @@ test("sin evidencia pública no inventa fuente y evita una consulta para convers
 test("los términos de búsqueda de IA respetan el límite del buscador público", () => {
   const terms = aiSearchTerms(`${"a".repeat(45)} ${"b".repeat(45)} ${"c".repeat(45)}`);
   assert.equal(terms.join(" ").length, 119);
+});
+
+test("IA sólo recupera Noticias publicadas y distingue fuente gremial", async () => {
+  const { sqlite, database } = fixture();
+  try {
+    for (const [id, status] of [["uno", "published"], ["borrador", "candidate"]]) {
+      sqlite.prepare("INSERT INTO news_items(id,status,editorial_title,editorial_summary,published_at) VALUES(?,?,?,?,?)")
+        .run(id, status, `Noticia sobre drones ${id}`, "Resumen editorial de prueba", "2026-10-20T12:00:00.000Z");
+      const url = `https://atep-delosdocentestucumanos.blogspot.com/${id}`;
+      sqlite.prepare("INSERT INTO news_sources(id,news_item_id,source_name,source_title,url,normalized_url,source_type,is_primary) VALUES(?,?,?,?,?,?,?,1)")
+        .run(`source-${id}`, id, "ATEP Tucumán", `Artículo ${id}`, url, url, "union");
+    }
+    const news = await retrieveAINews(database, "¿Qué noticias hay sobre drones?");
+    assert.deepEqual(news.map((item) => item.id), ["uno"]);
+    const context = buildAIContext("¿Qué noticias hay sobre drones?", [], { news });
+    assert.equal(context.sources[0].sourceType, "union");
+    assert.match(context.context, /NOTICIA EDITORIAL.*drones/u);
+    assert.doesNotMatch(context.context, /borrador/u);
+  } finally { sqlite.close(); }
 });

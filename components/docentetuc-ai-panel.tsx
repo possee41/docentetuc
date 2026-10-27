@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { AIContext } from "@/components/app-chrome";
 import { licenseForms } from "@/lib/license-forms";
 
-type Source = { title: string; source: string; sourceType: "official" | "public" | "union" | "media" | "personal" | "inference"; url: string; publishedAt: string | null; relevantAt: string | null; registrationOpenAt: string | null; registrationCloseAt: string | null; validity: string };
+type Source = { title: string; source: string; sourceType: "official" | "public" | "union" | "media" | "personal" | "inference"; url: string; publishedAt: string | null; relevantAt: string | null; registrationOpenAt: string | null; registrationCloseAt: string | null; validity: string; updatedAt: string };
 type Disclosure = { kind: "official" | "public" | "internal" | "general" | "mixed" | "unavailable" | "unverified"; label: string; detail: string };
 type Message = { role: "user" | "assistant"; content: string; sources?: Source[]; disclosure?: Disclosure };
 export type AIAssistantAction = "save" | "agenda" | "remind";
@@ -21,7 +21,7 @@ const validityLabel: Record<string, string> = { ACTIVE: "Vigente", UPCOMING: "Pr
 const citationDate = (value: string | null) => value && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10).split("-").reverse().join("/") : null;
 
 function AICitation({ source, number }: { source: Source; number: number }) {
-  const dates = [["Publicada", source.publishedAt], ["Fecha relevante", source.relevantAt], ["Abre", source.registrationOpenAt], ["Cierra", source.registrationCloseAt]]
+  const dates = [["Publicada", source.publishedAt], ["Registro actualizado en DocenteTuc", source.updatedAt], ["Fecha relevante", source.relevantAt], ["Abre", source.registrationOpenAt], ["Cierra", source.registrationCloseAt]]
     .flatMap(([label, value]) => { const date = citationDate(value); return date ? [`${label}: ${date}`] : []; });
   return <div className="block rounded-xl bg-[var(--surface-secondary)] p-3 text-xs text-[var(--text-secondary)]">
     <strong className="block">[{number}] {source.title}</strong>

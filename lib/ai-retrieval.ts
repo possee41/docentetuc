@@ -1,6 +1,8 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { detectIntent } from "./ai.ts";
 import { publicationSearchQuery } from "./publication-search.ts";
+import { listPublicNews } from "./public-news.ts";
+import type { CommunityDatabase } from "./community.ts";
 import type { Publication } from "./types.ts";
 
 const publicKinds = "kind IN ('vacante','capacitacion','junta','informacion')";
@@ -10,6 +12,16 @@ const noise = new Set("que cuales cual hay tiene tienen sobre para entre esta es
 export function aiSearchTerms(question: string) {
   return [...new Set(question.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z0-9]+/)
     .filter((term) => term.length >= 3 && !noise.has(term)).map((term) => term.slice(0, 39)))].slice(0, 3);
+}
+
+// Consult the same published editorial catalog as Noticias; never expose candidates or drafts to IA.
+export async function retrieveAINews(database: D1Database, question: string) {
+  if (!/\b(noticias?|novedades?|actualidad|gremial|atep)\b/i.test(question)) return [];
+  const generic = new Set(["noticia", "noticias", "novedad", "novedades", "actualidad", "gremial", "atep", "tucuman", "ministerio", "educacion"]);
+  const term = aiSearchTerms(question).find((word) => !generic.has(word));
+  const params = term ? new URLSearchParams({ q: term }) : new URLSearchParams({ latest: "1" });
+  const result = await listPublicNews(database as unknown as CommunityDatabase, params);
+  return result.items.slice(0, 3);
 }
 
 function intentWhere(intent: ReturnType<typeof detectIntent>) {
