@@ -8,6 +8,16 @@ test("quiet hours work across midnight in Tucumán", () => {
   assert.equal(isQuietTime(new Date("2026-09-27T15:00:00Z"), "22:00", "07:00", "America/Argentina/Buenos_Aires"), false);
 });
 
+test("el despacho reutiliza la hora local sin mezclar zonas ni preferencias", () => {
+  const now = new Date("2026-09-27T02:30:00Z");
+  const currentMinute = new Map<string, number>();
+  assert.equal(isQuietTime(now, "23:00", "01:00", "America/Argentina/Buenos_Aires", currentMinute), true);
+  assert.equal(isQuietTime(now, "00:00", "07:00", "America/Argentina/Buenos_Aires", currentMinute), false);
+  assert.equal(isQuietTime(now, "23:00", "01:00", "UTC", currentMinute), false);
+  assert.equal(currentMinute.size, 2);
+  assert.equal(isQuietTime(now, "22:00", "22:00", "America/Argentina/Buenos_Aires", currentMinute), false);
+});
+
 test("notification types map to user-facing categories", () => {
   assert.equal(categoryForNotification("VACANTE_NUEVA"), "vacancies");
   assert.equal(categoryForNotification("DESIGNACION_EXACTA_CARGO"), "vacancies");

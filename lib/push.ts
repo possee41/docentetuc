@@ -58,21 +58,24 @@ function nextRecurringStart(value: string, recurrence: string) {
 
 const minutes = (value: string) => { const match = /^(\d{2}):(\d{2})$/.exec(value); return match ? Number(match[1]) * 60 + Number(match[2]) : null; };
 const quietFormatters = new Map<string, Intl.DateTimeFormat>();
-export function isQuietTime(date: Date, start: string, end: string, timezone: string) {
+export function isQuietTime(date: Date, start: string, end: string, timezone: string, minuteByTimezone?: Map<string, number>) {
   const startMinute = minutes(start), endMinute = minutes(end);
   if (startMinute == null || endMinute == null || startMinute === endMinute) return false;
-  let parts: Intl.DateTimeFormatPart[];
-  try {
-    let formatter = quietFormatters.get(timezone);
-    if (!formatter) {
-      formatter = new Intl.DateTimeFormat("en", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-      if (quietFormatters.size >= 16) quietFormatters.clear();
-      quietFormatters.set(timezone, formatter);
+  let current = minuteByTimezone?.get(timezone);
+  if (current === undefined) {
+    try {
+      let formatter = quietFormatters.get(timezone);
+      if (!formatter) {
+        formatter = new Intl.DateTimeFormat("en", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+        if (quietFormatters.size >= 16) quietFormatters.clear();
+        quietFormatters.set(timezone, formatter);
+      }
+      const parts = formatter.formatToParts(date);
+      current = Number(parts.find((part) => part.type === "hour")?.value || 0) * 60 + Number(parts.find((part) => part.type === "minute")?.value || 0);
+      minuteByTimezone?.set(timezone, current);
     }
-    parts = formatter.formatToParts(date);
+    catch { return false; }
   }
-  catch { return false; }
-  const current = Number(parts.find((part) => part.type === "hour")?.value || 0) * 60 + Number(parts.find((part) => part.type === "minute")?.value || 0);
   return startMinute < endMinute ? current >= startMinute && current < endMinute : current >= startMinute || current < endMinute;
 }
 
@@ -230,6 +233,7 @@ export async function dispatchPushNotifications(db: D1Database, environment: Pus
       OR (d.status='pending' AND d.attempts<3 AND datetime(d.attempted_at)<=datetime(?,'-10 minutes')))
     ORDER BY q.created_at LIMIT ${PUSH_DELIVERY_BATCH_SIZE}`).bind(now.toISOString(), now.toISOString()).all<DeliveryRow>();
   let sent = 0, failed = 0, removed = 0, deferred = 0;
+  const minuteByTimezone = new Map<string, number>();
   const deliveries = [...rows.results, ...eventRows.results].filter((row) => isPushNotificationDue(row.scheduled_at, now) || row.publication_id.startsWith("manual:")).sort((a, b) => new Date(a.queued_at).getTime() - new Date(b.queued_at).getTime()).slice(0, PUSH_DELIVERY_BATCH_SIZE);
   for (const row of deliveries) {
     const category = categoryForNotification(row.type);
@@ -239,7 +243,7 @@ export async function dispatchPushNotifications(db: D1Database, environment: Pus
       await db.prepare("INSERT OR IGNORE INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, scheduled_at, failure_reason) VALUES (?, ?, ?, 'skipped', 0, ?, ?)").bind(row.endpoint, row.notification_id, eventKey, row.queued_at, !row.enabled ? "PUSH_DISABLED" : "CATEGORY_DISABLED").run();
       continue;
     }
-    if (isQuietTime(now, row.quiet_start, row.quiet_end, row.timezone)) { deferred++; continue; }
+    if (isQuietTime(now, row.quiet_start, row.quiet_end, row.timezone, minuteByTimezone)) { deferred++; continue; }
     message.url = manualEvent ? "/" : `/?publication=${encodeURIComponent(row.publication_id)}`;
     message.tag = eventKey;
     const claim = await db.prepare(`INSERT INTO push_deliveries (endpoint, notification_id, event_key, status, attempts, scheduled_at, attempted_at)
