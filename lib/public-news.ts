@@ -54,7 +54,7 @@ const item = (row: NewsRow): PublicNewsItem => {
 };
 
 export async function listPublicNews(database: CommunityDatabase, params: URLSearchParams, now = new Date()) {
-  const home = params.get("home") === "1", pageText = params.get("page") || "0";
+  const home = params.get("home") === "1", latest = params.get("latest") === "1", pageText = params.get("page") || "0";
   if (!/^\d{1,3}$/.test(pageText) || Number(pageText) > 100) throw new RangeError("Página inválida.");
   const page = Number(pageText), q = (params.get("q") || "").trim(), topic = (params.get("topic") || "").trim();
   const relevance = params.get("relevance") || "";
@@ -70,6 +70,11 @@ export async function listPublicNews(database: CommunityDatabase, params: URLSea
     const rows = await database.prepare(`SELECT ${columns} ${publicFrom} WHERE ${where}
       ORDER BY CASE n.relevance WHEN 'urgente' THEN 0 WHEN 'importante' THEN 1 ELSE 2 END,
       n.featured DESC,n.published_at DESC,n.id DESC LIMIT 5`).bind(...values).all<NewsRow>();
+    return { items: (rows.results || []).map(item) };
+  }
+  if (latest) {
+    const rows = await database.prepare(`SELECT ${columns} ${publicFrom} WHERE ${where}
+      ORDER BY n.published_at DESC,n.id DESC LIMIT 3`).bind(...values).all<NewsRow>();
     return { items: (rows.results || []).map(item) };
   }
   if (topic) { where += " AND n.topic=?"; values.push(topic); }

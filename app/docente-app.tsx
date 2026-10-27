@@ -48,7 +48,7 @@ import { usePersonalizedCatalog } from "@/components/use-personalized-catalog";
 import { enrollmentForDisplay, matchProfileFromUser, publicationForMatch, publicationLifecycleForDisplay } from "@/lib/personalized-catalog";
 import { publicationCircuitMatch, publicationSearchText, trainingPlatform, type PersonalFilters } from "@/lib/personalized-filters";
 import type { PublicationSearchKind } from "@/lib/publication-search";
-import { PublicNewsSection } from "@/components/public-news";
+import { HomeLatestNews, PublicNewsSection } from "@/components/public-news";
 import { AppSidebar, AppSidebarEdge, AppSidebarTrigger, navigation, useAppSidebarState } from "@/components/app-sidebar";
 import type { AppView as View } from "@/components/app-sidebar";
 import { deviceRequestHeaders } from "@/lib/device-user";
@@ -880,6 +880,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
     <section className="home-section"><div className="home-section-title"><div><p>TRÁMITES</p><h2>Información para resolver gestiones</h2></div><button onClick={() => onView("informacion")}>Ver trámites <ChevronRight className="size-4" /></button></div><button className="home-profile-nudge" onClick={() => onView("informacion")}><span><strong>Sueldo, legajo, licencias y certificados</strong><small>Consultá organismos, requisitos publicados y accesos oficiales.</small></span><ChevronRight className="size-5" /></button></section>
 
     <section className="home-section home-latest"><div className="home-section-title"><div><p>NOVEDADES RELEVANTES</p><h2>Información para tu actividad</h2></div><button onClick={() => onView("comunicados")}>Ver comunicados <ChevronRight className="size-4" /></button></div><HomeAdminNotices />{importantNotice && <button className="home-alert" onClick={() => onOpen(importantNotice.publication!)}><span>📣</span><span><strong>{isGeneralNotice(importantNotice.publication!) ? "INFORMACIÓN GENERAL" : "NOVEDAD PARA VOS"}</strong><small>{importantNotice.notice.title}</small></span><ChevronRight className="size-5" /></button>}{latest.length ? <div>{latest.map((item) => <CompactItem key={item.id} item={item} saved={savedMap.has(item.id)} onOpen={() => onOpen(item)} />)}</div> : !importantNotice && <p className="home-empty-line">No hay novedades relevantes nuevas.</p>}</section>
+    <HomeLatestNews />
   </div>;
 }
 

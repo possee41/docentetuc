@@ -127,7 +127,7 @@ export function HomeNewsCarousel({ name, excludedOriginIds }: { name?: string; e
         <span className="home-carousel-news-content">
           <span className="home-carousel-kicker">{item.relevance === "urgente" ? "Urgente" : item.featured ? "Noticia destacada" : "Actualidad educativa"}{item.image.kind === "illustration" ? " · Ilustración" : ""}</span>
           <strong>{item.title}</strong>
-          <span>Fuente {item.primarySource.type === "official" ? "oficial" : "verificable"} · {item.primarySource.name} · {newsDate(item.primarySource.publishedAt || item.publishedAt)}</span>
+          <span>Fuente {item.primarySource.type === "official" ? "oficial" : item.primarySource.type === "union" ? "gremial" : item.primarySource.type === "media" ? "periodística" : "pública"} · {item.primarySource.name} · {newsDate(item.primarySource.publishedAt || item.publishedAt)}</span>
         </span>
       </a>
     </div>)}

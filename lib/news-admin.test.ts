@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { listNewsAdmin, mutateNewsAdmin, newsAdminDetail, searchNewsOrigins } from "./news-admin.ts";
+import { listPublicNews, publicNewsDetail } from "./public-news.ts";
 import type { CommunityDatabase } from "./community.ts";
 
 const ADMIN = "550e8400-e29b-41d4-a716-446655440000";
@@ -223,6 +224,29 @@ test("publicación exige aprobación, contenido, fuente principal y caducidad ur
     assert.equal((await details(database, id)).item.status, "published");
     assert.ok((await details(database, id)).item.published_at);
     assert.equal(count(raw, "news_events"), 8);
+  } finally { raw.close(); }
+});
+
+test("una noticia aprobada desde Admin llega a Noticias e Inicio; su borrador no", async () => {
+  const { raw, database } = fixture();
+  try {
+    const { id } = await create(database);
+    const draft = await mutateNewsAdmin(database, ADMIN, { action: "create_draft", title: "Borrador local",
+      summary: "Aún sin revisión", sourceName: "Fuente sintética", url: "https://example.org/borrador", sourceType: "public" });
+    assert.equal((await listPublicNews(database, new URLSearchParams("latest=1"))).items.length, 0);
+    assert.equal(await publicNewsDetail(database, draft.id), null);
+    let item = (await details(database, id)).item;
+    await change(database, id, item.updated_at, "edit", { title: "Noticia de prueba", summary: "Publicación revisada",
+      topic: "Educación", relevance: "importante", validFrom: null, validUntil: null });
+    item = (await details(database, id)).item;
+    const approved = await change(database, id, item.updated_at, "approve");
+    await change(database, id, approved.updatedAt, "publish");
+    const afterPublication = new Date(Date.now() + 1000);
+    for (const params of ["", "latest=1", "home=1"]) {
+      assert.deepEqual((await listPublicNews(database, new URLSearchParams(params), afterPublication)).items.map((entry) => entry.id), [id]);
+    }
+    assert.equal((await publicNewsDetail(database, id, afterPublication))?.primarySource.url, "https://sime.educaciontuc.gov.ar/aviso/1");
+    assert.equal((await publicNewsDetail(database, draft.id)), null);
   } finally { raw.close(); }
 });
 

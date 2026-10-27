@@ -108,6 +108,22 @@ test("Inicio sin noticias editoriales conserva solo el banner original", async (
   } finally { raw.close(); }
 });
 
+test("últimas noticias de Inicio ordena por fecha y excluye borradores y retiradas", async () => {
+  const { raw, database } = fixture();
+  try {
+    for (let index = 0; index < 5; index++) add(raw, `published-${index}`, {
+      publishedAt: `2026-10-${String(10 + index).padStart(2, "0")}T12:00:00.000Z`,
+      sourceType: index === 4 ? "union" : "official",
+    });
+    add(raw, "candidate", { status: "candidate", publishedAt: "2026-10-15T11:00:00.000Z" });
+    add(raw, "withdrawn", { sourcePublication: "withdrawn-a", publishedAt: "2026-10-15T11:00:00.000Z" });
+    const latest = await listPublicNews(database, new URLSearchParams("latest=1"), now);
+    assert.deepEqual(latest.items.map((entry) => entry.id), ["published-4", "published-3", "published-2"]);
+    assert.equal(latest.items[0].primarySource.type, "union");
+    assert.equal(new Set(latest.items.map((entry) => entry.id)).size, 3);
+  } finally { raw.close(); }
+});
+
 test("una destacada antigua permanece en Noticias pero sale del carrusel", async () => {
   const { raw, database } = fixture();
   try {
@@ -193,6 +209,7 @@ test("Noticias usa URL propia, menú e Inicio sin ocupar la navegación inferior
   assert.match(sidebar, /\["noticias", "Noticias"/);
   assert.match(app, /view === "noticias" \? <PublicNewsSection \/>/);
   assert.match(app, /<HomeNewsCarousel name=/);
+  assert.match(app, /<HomeLatestNews \/>/);
   assert.doesNotMatch(app, /\["inicio", "comunidad", "agenda", "perfil", "cuentas", "noticias"\]/);
   assert.match(component, /newsDetail: true/);
   assert.match(component, /window\.addEventListener\("popstate", onPop\)/);

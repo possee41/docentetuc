@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { ArrowLeft, ArrowRight, ExternalLink, ListFilter, RefreshCw } from "lucide-react";
+import { sectionUrl } from "@/lib/app-navigation";
 import type { PublicNewsItem, PublicNewsSource } from "@/lib/public-news";
 
 type NewsPage = { items: PublicNewsItem[]; nextPage: number | null; topics: string[] };
@@ -51,6 +52,31 @@ function NewsCard({ item, onOpen, wide = false }: { item: PublicNewsItem; onOpen
       <button type="button" onClick={onOpen} className="inline-flex min-h-10 items-center gap-1 font-bold text-[var(--accent-text)]">Leer noticia <ArrowRight className="size-4" /></button>
     </div>
   </article>;
+}
+
+export function HomeLatestNews() {
+  const [items, setItems] = useState<PublicNewsItem[]>([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void getNews<{ items: PublicNewsItem[] }>("/api/news?latest=1", controller.signal)
+      .then((result) => setItems(result.items))
+      .catch(() => { /* Inicio y sus alertas siguen disponibles si Noticias falla. */ });
+    return () => controller.abort();
+  }, []);
+  if (!items.length) return null;
+  return <section className="home-section" aria-labelledby="home-latest-news-title">
+    <div className="home-section-title"><div><p>ACTUALIDAD EDUCATIVA</p><h2 id="home-latest-news-title">Últimas noticias</h2></div>
+      <a href={sectionUrl("noticias")} className="inline-flex min-h-10 items-center gap-1 text-xs font-extrabold text-[var(--accent-text)]">Ver todas <ArrowRight className="size-4" /></a></div>
+    <div className="grid gap-4 md:grid-cols-3">{items.map((item) => <article key={item.id} className="min-w-0 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)]">
+      <a href={`${sectionUrl("noticias")}&news=${encodeURIComponent(item.id)}`} className="block h-full text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-text)]">
+        {item.image && <div className="relative aspect-video overflow-hidden"><Image src={item.image.url} alt={item.image.alt} fill unoptimized sizes="(max-width: 768px) 100vw, 33vw" className="object-cover" /></div>}
+        <div className="space-y-2 p-4"><p className="text-xs font-bold text-[var(--text-muted)]">{sourceLabels[item.primarySource.type]} · {item.primarySource.name} · {date(item.primarySource.publishedAt || item.publishedAt)}</p>
+          <h3 className="line-clamp-2 text-lg font-black leading-snug text-[var(--text-primary)]">{item.title}</h3>
+          <p className="line-clamp-3 text-sm text-[var(--text-secondary)]">{item.summary}</p>
+          {item.image?.kind === "illustration" && <p className="text-xs text-[var(--text-muted)]">Imagen ilustrativa</p>}</div>
+      </a>
+    </article>)}</div>
+  </section>;
 }
 
 export function PublicNewsSection() {
