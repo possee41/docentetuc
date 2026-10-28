@@ -24,6 +24,7 @@ test("gateway fails closed before any D1 query when disabled or unauthenticated"
   assert.equal((await gateway.fetch(request(), env)).status, 401);
   assert.equal(db.reads, 0);
   assert.equal((await gateway.fetch(new Request("https://canary.invalid/", { method: "POST", body: "DROP TABLE publications" }), env)).status, 404);
+  assert.equal((await gateway.fetch(request(secret), { ...env, IMPORT_GATE_ALLOWED_SOURCE: "juntas" })).status, 503);
 });
 
 test("gateway verifies its bound D1 and Node verifies the same target", async () => {

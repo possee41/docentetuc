@@ -35,6 +35,11 @@ const gateway = { async fetch(request, env) {
   if (!route) return reply(404, "NOT_FOUND");
   if (env.IMPORT_GATE_ENABLED !== "true" || !env.DB || !env.IMPORT_DATABASE_NAME || !env.IMPORT_DATABASE_ID)
     return reply(503, "IMPORT_DISABLED");
+  const requestedSource = identityRequest ? url.searchParams.get("source") :
+    url.pathname === "/api/internal/juntas-checkpoint" ? "juntas" :
+      Object.keys(paths).find((source) => paths[source] === url.pathname);
+  if (env.IMPORT_GATE_ALLOWED_SOURCE && env.IMPORT_GATE_ALLOWED_SOURCE !== requestedSource)
+    return reply(503, "IMPORT_DISABLED");
   const [secretName, receiver] = route;
   if (!await authorized(request.headers.get("authorization"), env[secretName])) return reply(401, "UNAUTHORIZED");
   let identity;
