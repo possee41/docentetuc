@@ -42,30 +42,47 @@ function setup() {
   return { sqlite, env, receiverFetch: (url, init) => gateway.fetch(new Request(url, init), env) };
 }
 
-test("Juntas checkpoint and publication use only the isolated authenticated gateway", async () => {
+test("Juntas resumes a partial local checkpoint through the isolated gateway without omissions or duplicates", async () => {
   const h = setup();
   const target = resolveGatewayConfig(config);
+  const step = { ...config, JUNTAS_MAX_REQUESTS: "1", JUNTAS_MAX_PUBLICATION_WRITES: "1" };
+  let sourceCalls = 0;
   const sourceFetch = async (input) => {
+    sourceCalls++;
     assert.equal(new URL(input).hostname, "www.googleapis.com");
-    return Response.json({ files: [{ id: "synthetic-file-123456", name: "Llamado histórico de referencia",
-      mimeType: "application/pdf", modifiedTime: "2026-10-01T10:00:00Z" }] });
+    return Response.json({ files: ["synthetic-file-123456", "synthetic-file-654321"].map((id) => ({
+      id, name: "Llamado histórico de referencia", mimeType: "application/pdf",
+      modifiedTime: "2026-10-01T10:00:00Z" })) });
   };
   const unauth = await gateway.fetch(new Request(`${target.origin}/api/internal/juntas-checkpoint`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "health", args: [] }) }), h.env);
   assert.equal(unauth.status, 401);
+  assert.equal((await gateway.fetch(new Request(target.endpoint, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: "batch", items: [] }) }), h.env)).status, 401);
   const injection = await h.receiverFetch(`${target.origin}/api/internal/juntas-checkpoint`, { method: "POST",
     headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
     body: JSON.stringify({ op: "sql", args: ["DELETE FROM publications"] }) });
   assert.equal(injection.status, 400);
   assert.throws(() => createJuntasGatewayDb(target, h.receiverFetch).prepare("DELETE FROM publications"), /SQL_FORBIDDEN/);
-  const first = await runGatewayImport(target, config, sourceFetch, h.receiverFetch);
+  const first = await runGatewayImport(target, step, sourceFetch, h.receiverFetch);
   assert.equal(first.created, 1);
   assert.equal(first.completed, false); // Other official Junta roots have not completed.
+  assert.equal(first.publicationAttempts, 1);
+  const partial = h.sqlite.prepare("SELECT state_json,status FROM juntas_import_checkpoint WHERE root_id='abiertos-primaria'").get();
+  assert.equal(partial.status, "PARTIAL");
+  assert.equal(JSON.parse(partial.state_json).page.index, 1);
   assert.equal(h.sqlite.prepare("SELECT COUNT(*) AS n FROM publications").get().n, 1);
   assert.equal(h.sqlite.prepare("SELECT normalized_status FROM publications").get().normalized_status, "UNKNOWN");
-  const repeat = await runGatewayImport(target, config, sourceFetch, h.receiverFetch);
-  assert.equal(repeat.created, 0);
-  assert.equal(repeat.updated, 0);
-  assert.equal(h.sqlite.prepare("SELECT COUNT(*) AS n FROM publications").get().n, 1);
-  assert.equal(h.sqlite.prepare("SELECT status FROM juntas_import_checkpoint WHERE root_id='abiertos-primaria'").get().status, "OK");
+  const resume = await runGatewayImport(target, step, async () => { throw new Error("UNEXPECTED_SOURCE_REQUERY"); }, h.receiverFetch);
+  assert.equal(resume.created, 1);
+  assert.equal(resume.updated, 0);
+  assert.equal(resume.publicationAttempts, 1);
+  assert.equal(resume.sourceRequests, 0);
+  assert.equal(sourceCalls, 1);
+  assert.deepEqual(h.sqlite.prepare("SELECT id FROM publications ORDER BY id").all().map((row) => row.id),
+    ["drive:abiertos-primaria:synthetic-file-123456", "drive:abiertos-primaria:synthetic-file-654321"]);
+  assert.equal(h.sqlite.prepare("SELECT COUNT(*) AS n FROM juntas_import_applied WHERE root_id='abiertos-primaria'").get().n, 2);
+  const finished = h.sqlite.prepare("SELECT state_json,status FROM juntas_import_checkpoint WHERE root_id='abiertos-primaria'").get();
+  assert.equal(finished.status, "OK");
+  assert.equal(JSON.parse(finished.state_json).queue.length, 0);
 });
