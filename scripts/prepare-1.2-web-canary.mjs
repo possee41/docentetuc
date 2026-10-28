@@ -17,21 +17,15 @@ const paths = ["0000_docentetuc.sql", "0001_training_metadata.sql", "0002_remind
   .map((name) => join(root, "drizzle", name));
 paths.push(...readdirSync(join(root, "migrations")).filter((name) => /^\d{4}_.+\.sql$/.test(name))
   .sort().map((name) => join(root, "migrations", name)));
-const seed = `
+const identity = `
 INSERT INTO import_gateway_identity(id,database_name,database_id)
 VALUES(1,'docentetuc-web-canary-1-2-local','00000000-0000-4000-8000-000000000012');
-INSERT INTO publications(id,source,external_id,kind,category,title,summary,status,official_url,content_hash,metadata,normalized_status,source_status)
-VALUES
-('preview:sime','Vista previa local','preview-sime','vacante','Inscripciones SIME','PRUEBA LOCAL — pedido SIME','Dato sintético; vigencia no verificada.','sin verificar','','preview-sime','{"preview":true}','UNKNOWN','sin verificar'),
-('preview:training','Vista previa local','preview-training','capacitacion','Capacitaciones','PRUEBA LOCAL — capacitación','Dato sintético; inscripción no confirmada.','sin verificar','','preview-training','{"preview":true}','UNKNOWN','sin verificar'),
-('preview:padron','Vista previa local','preview-padron','junta','Padrones','PRUEBA LOCAL — padrón','Documento sintético de referencia.','sin verificar','','preview-padron','{"preview":true}','UNKNOWN','sin verificar'),
-('preview:comunicado','Vista previa local','preview-comunicado','junta','Comunicados','PRUEBA LOCAL — comunicado','Documento sintético de referencia.','sin verificar','','preview-comunicado','{"preview":true}','UNKNOWN','sin verificar'),
-('preview:llamado','Vista previa local','preview-llamado','junta','Llamados abiertos','PRUEBA LOCAL — llamado histórico','Documento sintético sin fecha de inscripción verificada.','sin verificar','','preview-llamado','{"preview":true}','UNKNOWN','sin verificar');
 `;
 const directory = join(root, ".wrangler");
 mkdirSync(directory, { recursive: true });
 const file = join(directory, "web-canary-schema.sql");
-writeFileSync(file, paths.map((path) => readFileSync(path, "utf8")).join("\n") + seed);
+writeFileSync(file, paths.map((path) => readFileSync(path, "utf8")).join("\n") + identity +
+  readFileSync(join(root, "scripts", "seed-1.2-canary.sql"), "utf8"));
 try {
   const result = spawnSync(process.execPath, ["node_modules/wrangler/bin/wrangler.js", "d1", "execute", "DB",
     "--config", "wrangler.1.2-web-canary.jsonc", "--local", "--persist-to", ".wrangler/web-canary",
