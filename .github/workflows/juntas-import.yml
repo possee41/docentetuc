@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   import:
-    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/feat/1.2-sync-integration'
+    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/feat/1.2-sync-integration' && vars.JUNTAS_DIRECT_REST_ALLOWED == 'true'
     runs-on: ubuntu-latest
     environment: juntas-pilot
     timeout-minutes: 30

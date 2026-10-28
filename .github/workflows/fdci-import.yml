@@ -1,6 +1,6 @@
 name: FDCI external import
 on:
-  # Programación propuesta, DESACTIVADA hasta validar REST, corte legacy y cuotas:
+  # Programación propuesta, DESACTIVADA hasta validar gateway, corte legacy y cuotas:
   # schedule: [{ cron: '17 * * * *' }]
   workflow_dispatch:
     inputs:
@@ -53,14 +53,16 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$IMPORT_REF"
           git merge-base --is-ancestor d321e7225e7dc75ff76a0e612525386855e05e08 HEAD
-      - name: Import public FDCI data into isolated D1 by REST
+      - name: Import public FDCI data through isolated gateway
         env:
-          DIRECT_D1_WRITE_ENABLED: 'true'
+          IMPORT_GATEWAY_ENABLED: 'true'
           SYNC_SOURCE: fdci
-          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
-          D1_IMPORT_TOKEN: ${{ secrets.D1_IMPORT_TOKEN }}
+          IMPORT_GATEWAY_ORIGIN: ${{ vars.IMPORT_GATEWAY_ORIGIN }}
+          IMPORT_GATEWAY_DATABASE_ID: ${{ vars.IMPORT_GATEWAY_DATABASE_ID }}
+          IMPORT_GATEWAY_DATABASE_NAME: ${{ vars.IMPORT_GATEWAY_DATABASE_NAME }}
+          FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
           FDCI_COURSE_TOKEN: ${{ inputs.course_token }}
           FDCI_COURSE_SLUG: ${{ inputs.course_slug }}
           FDCI_COMMISSION_ID: ${{ inputs.commission_id }}
           FDCI_SCOPE: ${{ inputs.scope }}
-        run: node --experimental-strip-types scripts/import-direct-d1.mjs
+        run: node --experimental-strip-types scripts/import-via-gateway.mjs

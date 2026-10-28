@@ -22,7 +22,8 @@ const baseline = ["drizzle/0000_docentetuc.sql", "drizzle/0001_training_metadata
   });
 const additions = ["0021_news_editorial.sql", "0022_news_media_content.sql",
   "0025_external_publication_events.sql", "0026_juntas_incremental.sql",
-  "0027_personal_catalog_index.sql", "0028_external_notice_cycle.sql"];
+  "0027_personal_catalog_index.sql", "0028_external_notice_cycle.sql",
+  "0029_import_gateway_identity.sql"];
 const publishedSql = (file) => execFileSync("git", ["show", `${base}:${file}`], { encoding: "utf8", maxBuffer: 2_000_000 });
 async function applySql(db, sql) {
   const blocks = sql.replace(/\r/g, "").split(/\n\s*\n|--> statement-breakpoint/);
@@ -59,6 +60,7 @@ try {
   const columnsBefore = await Promise.all(oldTables.map(async (table) =>
     (await db.prepare(`PRAGMA table_info(${table})`).all()).results.map((column) => column.name)));
   for (const file of additions) await applySql(db, readFileSync(new URL(`../migrations/${file}`, import.meta.url), "utf8"));
+  assert.equal((await db.prepare("SELECT COUNT(*) AS total FROM import_gateway_identity").first()).total, 0);
   for (const [index, table] of oldTables.entries())
     assert.deepEqual((await db.prepare(`PRAGMA table_info(${table})`).all()).results.map((column) => column.name), columnsBefore[index]);
   const after = await db.prepare("SELECT p.name,p.level,s.publication_id,s.in_agenda,s.followed,n.type,x.title FROM profiles p JOIN saved_publications s ON s.user_id=p.user_id JOIN notifications n ON n.user_id=p.user_id AND n.publication_id=s.publication_id JOIN publications x ON x.id=s.publication_id WHERE p.user_id=?")

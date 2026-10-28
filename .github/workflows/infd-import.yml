@@ -1,6 +1,6 @@
 name: INFoD external import pilot
 on:
-  # Programación propuesta, DESACTIVADA hasta validar REST, corte legacy y cuotas:
+  # Programación propuesta, DESACTIVADA hasta validar gateway, corte legacy y cuotas:
   # schedule: [{ cron: '47 */6 * * *' }]
   workflow_dispatch:
 permissions:
@@ -34,10 +34,12 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$IMPORT_REF"
           git merge-base --is-ancestor d321e7225e7dc75ff76a0e612525386855e05e08 HEAD
-      - name: Import public INFoD courses into isolated D1 by REST
+      - name: Import public INFoD courses through isolated gateway
         env:
-          DIRECT_D1_WRITE_ENABLED: 'true'
+          IMPORT_GATEWAY_ENABLED: 'true'
           SYNC_SOURCE: infd
-          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
-          D1_IMPORT_TOKEN: ${{ secrets.D1_IMPORT_TOKEN }}
-        run: node --experimental-strip-types scripts/import-direct-d1.mjs
+          IMPORT_GATEWAY_ORIGIN: ${{ vars.IMPORT_GATEWAY_ORIGIN }}
+          IMPORT_GATEWAY_DATABASE_ID: ${{ vars.IMPORT_GATEWAY_DATABASE_ID }}
+          IMPORT_GATEWAY_DATABASE_NAME: ${{ vars.IMPORT_GATEWAY_DATABASE_NAME }}
+          INFD_IMPORT_SECRET: ${{ secrets.INFD_IMPORT_SECRET }}
+        run: node --experimental-strip-types scripts/import-via-gateway.mjs
