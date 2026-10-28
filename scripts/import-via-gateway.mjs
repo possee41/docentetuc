@@ -4,10 +4,13 @@ import { pathToFileURL } from "node:url";
 import { runFdciImport } from "./import-fdci.mjs";
 import { runSimeImport } from "./import-sime.mjs";
 import { runPublicSourceImport } from "./import-public-sources.mjs";
+import { runJuntasCheckpoint } from "./import-juntas-checkpoint.mjs";
+import { createJuntasGatewayDb } from "./juntas-gateway-db.mjs";
+import { JUNTA_EXTERNAL_SOURCES } from "../lib/junta-external-sources.ts";
 
 const productionId = "baaf5886-0123-4948-96da-aa7106424549";
 const paths = { fdci: "/api/internal/fdci-import", sime: "/api/internal/sime-import",
-  cenet: "/api/internal/public-source-import/cenet", infd: "/api/internal/public-source-import/infd" };
+  juntas: "/api/internal/public-source-import/juntas", cenet: "/api/internal/public-source-import/cenet", infd: "/api/internal/public-source-import/infd" };
 
 export function resolveGatewayConfig(config, revision = "") {
   const source = config.SYNC_SOURCE, path = paths[source];
@@ -57,6 +60,16 @@ export async function runGatewayImport(target, config, sourceFetch = fetch, rece
       scope, fetcher: (url, init) => String(url).startsWith(target.origin) ? receiverFetch(url, init) : sourceFetch(url, init) });
   }
   if (target.source === "sime") return runSimeImport({ endpoint: target.endpoint, token: target.secret, sourceFetch, receiverFetch });
+  if (target.source === "juntas") {
+    const root = config.JUNTA_ROOT_ID;
+    const sources = root ? JUNTA_EXTERNAL_SOURCES.filter(([id]) => id === root) : JUNTA_EXTERNAL_SOURCES;
+    if (!sources.length) throw new Error("JUNTAS_ROOT_INVALID");
+    const requestBudget = Number(config.JUNTAS_MAX_REQUESTS || 25);
+    const writeBudget = Number(config.JUNTAS_MAX_PUBLICATION_WRITES || 20);
+    return runJuntasCheckpoint({ db: createJuntasGatewayDb(target, receiverFetch), driveKey: config.GOOGLE_DRIVE_API_KEY,
+      sourceFetch, sources, maxRequests: requestBudget, maxPublicationWrites: writeBudget,
+      receiverOverride: { token: target.secret, endpoint: (path) => `${target.origin}${path}`, receiverFetch } });
+  }
   return runPublicSourceImport({ source: target.source, endpoint: target.endpoint, token: target.secret,
     sourceFetch, receiverFetch });
 }

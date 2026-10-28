@@ -212,7 +212,7 @@ async function advanceFolder(db, source, state, budget, limit, receiver, metrics
 
 export async function runJuntasCheckpoint({ db, driveKey, sourceFetch = fetch, sources = JUNTA_EXTERNAL_SOURCES,
   now = new Date(), maxRequests = 25, maxPublicationWrites = 20, maxSteps = 100, refreshAfterMs = day,
-  focusFolderId = null, focusFilesOnly = false }) {
+  focusFolderId = null, focusFilesOnly = false, receiverOverride = null }) {
   if (!db || !Array.isArray(sources) || !sources.length || !Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 100 ||
       !Number.isInteger(maxPublicationWrites) || maxPublicationWrites < 1 || maxPublicationWrites > 50 ||
       !Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 200 || refreshAfterMs < 0 ||
@@ -224,7 +224,7 @@ export async function runJuntasCheckpoint({ db, driveKey, sourceFetch = fetch, s
   const before = db.metrics?.();
   const metrics = { sourceRequests: 0, filesExamined: 0, created: 0, updated: 0, unchanged: 0, skippedUnchanged: 0,
     queries: 0, rowsRead: 0, rowsWritten: 0, failures: [] };
-  const receiver = createDirectD1ReceiverFetch(db);
+  const receiver = receiverOverride || createDirectD1ReceiverFetch(db);
   const finished = new Set();
   for (let step = 0; step < maxSteps && budget.requests > 0 && limit.remaining > 0; step++) {
     if (finished.size === sources.length) break;

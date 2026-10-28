@@ -1,6 +1,6 @@
 name: Juntas external import pilot
 on:
-  # Programación propuesta, DESACTIVADA hasta validar REST, corte legacy y cuotas:
+  # Programación propuesta, DESACTIVADA hasta validar gateway, corte legacy y cuotas:
   # schedule: [{ cron: '23 */2 * * *' }]
   workflow_dispatch:
 permissions:
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   import:
-    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/feat/1.2-sync-integration' && vars.JUNTAS_DIRECT_REST_ALLOWED == 'true'
+    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/feat/1.2-sync-integration' && vars.JUNTAS_GATEWAY_ALLOWED == 'true'
     runs-on: ubuntu-latest
     environment: juntas-pilot
     timeout-minutes: 30
@@ -34,14 +34,15 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$IMPORT_REF"
           git merge-base --is-ancestor d321e7225e7dc75ff76a0e612525386855e05e08 HEAD
-      - name: Import public Junta notices and references into isolated D1 by REST
+      - name: Import public Junta notices and references through isolated gateway
         env:
-          DIRECT_D1_WRITE_ENABLED: 'true'
+          IMPORT_GATEWAY_ENABLED: 'true'
           SYNC_SOURCE: juntas
-          JUNTAS_SCOPE: checkpoint
           JUNTAS_MAX_REQUESTS: '25'
           JUNTAS_MAX_PUBLICATION_WRITES: '20'
-          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
-          D1_IMPORT_TOKEN: ${{ secrets.D1_IMPORT_TOKEN }}
+          IMPORT_GATEWAY_ORIGIN: ${{ vars.IMPORT_GATEWAY_ORIGIN }}
+          IMPORT_GATEWAY_DATABASE_ID: ${{ vars.IMPORT_GATEWAY_DATABASE_ID }}
+          IMPORT_GATEWAY_DATABASE_NAME: ${{ vars.IMPORT_GATEWAY_DATABASE_NAME }}
+          JUNTAS_IMPORT_SECRET: ${{ secrets.JUNTAS_IMPORT_SECRET }}
           GOOGLE_DRIVE_API_KEY: ${{ secrets.GOOGLE_DRIVE_API_KEY }}
-        run: node --experimental-strip-types scripts/import-direct-d1.mjs
+        run: node --experimental-strip-types scripts/import-via-gateway.mjs

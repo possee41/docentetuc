@@ -40,7 +40,17 @@ test("runner rejects production, unrelated hosts and incomplete configuration", 
   assert.throws(() => resolveGatewayConfig({ ...local, IMPORT_GATEWAY_ORIGIN: "https://docentetuc.com.ar/" }), /GATEWAY_CONFIG_INVALID/);
   assert.throws(() => resolveGatewayConfig({ ...local, IMPORT_GATEWAY_TARGET: "production" }), /GATEWAY_PRODUCTION_NOT_APPROVED/);
   assert.throws(() => resolveGatewayConfig({ ...local, SIME_IMPORT_SECRET: "" }), /GATEWAY_SECRET_INVALID/);
-  assert.throws(() => resolveGatewayConfig({ ...local, SYNC_SOURCE: "juntas" }), /GATEWAY_SOURCE_INVALID/);
+  assert.throws(() => resolveGatewayConfig({ ...local, SYNC_SOURCE: "juntas" }), /GATEWAY_SECRET_INVALID/);
+  assert.equal(resolveGatewayConfig({ ...local, SYNC_SOURCE: "juntas", JUNTAS_IMPORT_SECRET: secret }).source, "juntas");
+});
+
+test("the other three gateway routes remain source-specific", () => {
+  for (const source of ["fdci", "cenet", "infd"]) {
+    const target = resolveGatewayConfig({ ...local, SYNC_SOURCE: source, [`${source.toUpperCase()}_IMPORT_SECRET`]: secret });
+    assert.equal(new URL(target.endpoint).pathname, source === "fdci" ? "/api/internal/fdci-import" :
+      `/api/internal/public-source-import/${source}`);
+    assert.equal(target.id, local.IMPORT_GATEWAY_DATABASE_ID);
+  }
 });
 
 test("both canary configs bind only the synthetic D1, with no route or Cron", () => {

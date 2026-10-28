@@ -2,11 +2,13 @@
 import fdci from "./fdci-receiver.mjs";
 import sime from "./sime-receiver.mjs";
 import publicSources from "./public-source-receiver.mjs";
+import juntasCheckpoint from "./juntas-checkpoint-gateway.mjs";
 
 const routes = new Map([
   ["/api/internal/fdci-import", ["FDCI_IMPORT_SECRET", fdci]],
   ["/api/internal/sime-import", ["SIME_IMPORT_SECRET", sime]],
   ["/api/internal/public-source-import/juntas", ["JUNTAS_IMPORT_SECRET", publicSources]],
+  ["/api/internal/juntas-checkpoint", ["JUNTAS_IMPORT_SECRET", juntasCheckpoint]],
   ["/api/internal/public-source-import/cenet", ["CENET_IMPORT_SECRET", publicSources]],
   ["/api/internal/public-source-import/infd", ["INFD_IMPORT_SECRET", publicSources]],
 ]);
