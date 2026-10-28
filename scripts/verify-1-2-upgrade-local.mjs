@@ -71,6 +71,20 @@ try {
   assert.equal((await db.prepare("SELECT source,last_successful_sync_at FROM sync_state ORDER BY source").all()).results.length, 0);
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM external_event_sources").first())?.n, 0);
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM external_publication_events").first())?.n, 0);
+  // Rollback also needs legacy writes to keep working with the additive schema.
+  // Only columns already present in the published 1.1 schema are used here.
+  await db.prepare("UPDATE profiles SET level=? WHERE user_id=?").bind("Secundaria", account).run();
+  await db.prepare("UPDATE publications SET content_hash=? WHERE id=?").bind("legacy-updated", publication).run();
+  await db.prepare("UPDATE saved_publications SET in_agenda=0 WHERE user_id=? AND publication_id=?")
+    .bind(account, publication).run();
+  await db.prepare("INSERT INTO publications(id,source,external_id,kind,category,title,official_url,content_hash) VALUES(?,?,?,?,?,?,?,?)")
+    .bind("1.1:after-rollback", "SIME", "two", "vacante", "Designaciones", "Referencia ficticia", "https://example.invalid/two", "hash-two").run();
+  assert.equal((await db.prepare("SELECT level FROM profiles WHERE user_id=?").bind(account).first()).level, "Secundaria");
+  assert.equal((await db.prepare("SELECT content_hash FROM publications WHERE id=?").bind(publication).first()).content_hash, "legacy-updated");
+  assert.equal((await db.prepare("SELECT in_agenda FROM saved_publications WHERE user_id=? AND publication_id=?")
+    .bind(account, publication).first()).in_agenda, 0);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM publications").first()).n, 2);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM external_publication_events").first()).n, 0);
   await db.prepare("INSERT INTO news_items(id,status,editorial_title,editorial_summary,published_at) VALUES(?,'published',?,?,?)")
     .bind("news:synthetic", "Noticia de prueba", "Resumen ficticio", "2026-10-27T10:00:00.000Z").run();
   await db.prepare("INSERT INTO news_sources(id,news_item_id,source_name,source_title,url,normalized_url,source_type,is_primary) VALUES(?,?,?,?,?,?,?,1)")
@@ -84,7 +98,8 @@ try {
   assert.equal((await db.prepare("PRAGMA foreign_key_check").all()).results.length, 0);
   console.log(JSON.stringify({ database: "Miniflare D1 efímera", base, migrations: additions.map((name) => name.slice(0, 4)),
     profilePreserved: true, savedPreserved: true, notificationPreserved: true, publicationPreserved: true,
-    legacyTablesUnchanged: true, legacyReadsCompatible: true, publicSelection: true, newsRouteQuery: true, adminAuthorized: true,
+    legacyTablesUnchanged: true, legacyReadsCompatible: true, legacyWritesCompatible: true,
+    disabledEventTriggers: true, publicSelection: true, newsRouteQuery: true, adminAuthorized: true,
     adminDenied: true, foreignKeys: "ok" }));
 } finally {
   await mf.dispose();

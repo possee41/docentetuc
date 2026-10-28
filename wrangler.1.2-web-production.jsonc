@@ -1,0 +1,23 @@
+{
+  "name": "docentetuc",
+  "main": "dist/server/worker-entry.mjs",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "keep_vars": true,
+  "preview_urls": false,
+  "vars": {
+    "LEGACY_SYNC_PAUSED": "true",
+    "AI_WEB_SEARCH_ENABLED": "0",
+    "PUSH_DISPATCH_MODE": "disabled"
+  },
+  "no_bundle": true,
+  "rules": [{ "type": "ESModule", "globs": ["**/*.js", "**/*.mjs"] }],
+  "assets": { "directory": "dist/client" },
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "docentetuc-db",
+    "database_id": "baaf5886-0123-4948-96da-aa7106424549",
+    "migrations_dir": "migrations"
+  }]
+}

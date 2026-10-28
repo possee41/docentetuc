@@ -1,0 +1,21 @@
+{
+  "name": "docentetuc-import-1-2",
+  "main": "workers/source-import-gateway.mjs",
+  "compatibility_date": "2026-05-15",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [],
+  "vars": {
+    "IMPORT_GATE_ENABLED": "false",
+    "IMPORT_GATE_ALLOWED_SOURCE": "sime",
+    "FDCI_EXTERNAL_ENABLED": "false",
+    "IMPORT_DATABASE_NAME": "docentetuc-db",
+    "IMPORT_DATABASE_ID": "baaf5886-0123-4948-96da-aa7106424549"
+  },
+  "triggers": { "crons": [] },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "docentetuc-db",
+    "database_id": "baaf5886-0123-4948-96da-aa7106424549"
+  }]
+}
