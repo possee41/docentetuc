@@ -1,5 +1,5 @@
 // One synthetic SIME import per invocation. This script cannot target production.
-import { resolveGatewayConfig, runGatewayImport } from "./import-via-gateway.mjs";
+import { resolveGatewayConfig, runGatewayImport, verifyGatewayIdentity } from "./import-via-gateway.mjs";
 
 const config = {
   SYNC_SOURCE: "sime",
@@ -26,8 +26,13 @@ const sourceFetch = async (input) => {
 
 try {
   const target = resolveGatewayConfig(config);
-  const result = await runGatewayImport(target, config, sourceFetch);
-  console.log(JSON.stringify({ synthetic: true, source: "sime", ...result }));
+  if (process.argv.includes("--identity-only")) {
+    await verifyGatewayIdentity(target);
+    console.log("CANARY_SIME_IDENTITY_OK");
+  } else {
+    const result = await runGatewayImport(target, config, sourceFetch);
+    console.log(JSON.stringify({ synthetic: true, source: "sime", ...result }));
+  }
 } catch (error) {
   console.error("CANARY_SIME_IMPORT_FAILED", error instanceof Error && /^[A-Z_0-9]+$/.test(error.message)
     ? error.message : "CANARY_SIME_IMPORT_FAILED");
