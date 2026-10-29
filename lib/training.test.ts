@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canScheduleTrainingReminder, enrollmentState, mergeTrainingData, openingCountdown, trainingReminderKey, trainingStatus } from "./training.ts";
+import { canScheduleTrainingReminder, enrollmentState, mergeTrainingData, openingCountdown, summaryText, trainingReminderKey, trainingStatus } from "./training.ts";
 
 const now = new Date("2026-09-26T12:00:00-03:00");
 const course = { capacitacion_id: 10, nombre: "Curso oficial", token: "abc", slug: "curso-oficial", niveles: "Secundario" };
@@ -116,6 +116,21 @@ test("calcula la cuenta regresiva sin inventar hora", () => {
 });
 
 test("admite respuestas oficiales vacías", () => assert.deepEqual(mergeTrainingData([], [], now), []));
+
+test("el resumen visible descarta restos de HTML, CSS y JavaScript sin perder contenido ni enlaces", () => {
+  const summary = '<style>.wp-block-x{color:#333;margin:0}</style><p>Curso de <strong>lectura</strong> &amp; escritura en Tucum&aacute;n</p>'
+    + '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Course"}</script>'
+    + '<p>M&aacute;s info: <a href="https://red.infd.edu.ar/curso/">https://red.infd.edu.ar/curso/</a></p>'
+    + 'function init(){window.tracked=1}';
+  assert.equal(summaryText(summary), "Curso de lectura & escritura en Tucumán\nMás info: https://red.infd.edu.ar/curso/");
+  assert.equal(summaryText("Texto&nbsp;escapado &lt;p&gt;visible&lt;/p&gt;"), "Texto escapado visible");
+  assert.equal(summaryText(""), "");
+  assert.equal(summaryText(null), "");
+  assert.equal(summaryText(".wp-block-x{color:#333} Contenido real"), "Contenido real");
+  const plain = "Curso autoasistido de 4 semanas.\nInscripción: 14/09 al 26/09.";
+  assert.equal(summaryText(plain), plain);
+  assert.equal(summaryText("Ver https://aulastic.infd.edu.ar/catalogo.cgi?wAccion=oferta_view&oferta_id=751"), "Ver https://aulastic.infd.edu.ar/catalogo.cgi?wAccion=oferta_view&oferta_id=751");
+});
 
 test("propaga una caída temporal para conservar los datos almacenados", async () => {
   const load = async (fetcher: () => Promise<Parameters<typeof mergeTrainingData>[0]>) => mergeTrainingData(await fetcher(), [], now);

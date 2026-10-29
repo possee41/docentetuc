@@ -5,6 +5,7 @@ import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { officialDestination } from "@/lib/official-publication";
+import { summaryText } from "@/lib/training";
 import type { Publication } from "@/lib/types";
 import type { PublicationSearchKind } from "@/lib/publication-search";
 
@@ -72,7 +73,7 @@ export function GlobalPublicationSearch({ query, onQuery, kind, onKind, onOpen }
         <div className="space-y-3">{current.items.map(item => <article key={item.id} className="rounded-2xl border border-[#c8e1f1] bg-white p-4 shadow-sm">
           <p className="text-xs font-bold uppercase tracking-wide text-[#0878be]">{sectionLabel(item)} · {item.source}</p>
           <h2 className="mt-1 font-bold text-[#062b55]">{item.title}</h2>
-          {item.summary && <p className="mt-1 line-clamp-2 text-sm text-[#315d7a]">{item.summary}</p>}
+          {summaryText(item.summary) && <p className="mt-1 line-clamp-2 text-sm text-[#315d7a]">{summaryText(item.summary)}</p>}
           <Button type="button" variant="outline" className="mt-3 min-h-10 rounded-xl" onClick={() => onOpen(item)}>Ver detalle</Button>
         </article>)}</div>
         {current.nextCursor && <Button type="button" variant="outline" disabled={loadingMore} onClick={() => void loadMore()} className="min-h-11 rounded-xl">{loadingMore ? "Cargando…" : "Cargar más resultados"}</Button>}

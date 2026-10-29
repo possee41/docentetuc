@@ -1,4 +1,5 @@
 import { calendarDayDistance } from "./home-dashboard.ts";
+import { htmlToText } from "./public-documents.ts";
 
 export type TrainingStatus = "inscripción abierta" | "próximamente" | "inscripción cerrada" | "en curso" | "finalizada" | "consultar";
 export type EnrollmentState = "PROXIMAMENTE" | "ABRE_HOY" | "ABIERTA" | "SIN_CUPO" | "CERRADA" | "SIN_FECHA_CONFIRMADA";
@@ -55,11 +56,25 @@ const localDateTime = (value: unknown, endOfDay = false) => {
     : `${raw.replace(" ", "T")}${/[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw) ? "" : "-03:00"}`;
   return Number.isFinite(Date.parse(normalized)) ? normalized : undefined;
 };
-export const plainText = (value: unknown) => text(value).replace(/<[^>]*>/g, " ")
+export const plainText = (value: unknown) => text(value)
+  .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+  .replace(/<[^>]*>/g, " ")
   .replace(/&#(x[0-9a-f]+|\d+);/gi, (_match, digits: string) => {
     const point = Number.parseInt(digits[0].toLowerCase() === "x" ? digits.slice(1) : digits, digits[0].toLowerCase() === "x" ? 16 : 10);
     return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : "";
   }).replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
+
+// Some imported summaries keep escaped markup, bare CSS rules or inline script as visible text.
+export const summaryText = (value: unknown) => {
+  const cleaned = text(value)
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/@media[^{}]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/gi, " ")
+    .replace(/\{"@context"[\s\S]*?\}(?=\s|$)/g, " ")
+    .replace(/\b(?:function\s*[\w$]*\s*\([^)]*\)|\(?\s*[^(){};]*\)?\s*=>)\s*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, " ")
+    .replace(/\b(?:var|let|const)\s+[\w$]+\s*=[^;{}]{0,200};/g, " ")
+    .replace(/[\w.#:@-][^{}\n]{0,160}\{[^{}]*:[^{}]*\}/g, " ");
+  return htmlToText(htmlToText(cleaned)).replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+};
 
 export function enrollmentState(metadata: TrainingMetadata | null, sourceStatus = "", normalizedStatus = "", now = new Date()): EnrollmentState {
   if (["CLOSED", "EXPIRED", "REMOVED_FROM_SOURCE"].includes(normalizedStatus)) return "CERRADA";

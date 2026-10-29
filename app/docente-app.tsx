@@ -25,7 +25,7 @@ import { designationRoleFromTitle, isEligibleForPersonalizedHome, isEligibleMatc
 import { isGeneralNotice } from "@/lib/notice-classification";
 import type { MatchResult } from "@/lib/matching";
 import { safeDate } from "@/lib/safe-date";
-import { canScheduleTrainingReminder, openingCountdown, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
+import { canScheduleTrainingReminder, openingCountdown, parseTrainingMetadata, summaryText, trainingReminderKey } from "@/lib/training";
 import { calendarDayDistance, compareHomePriority, homePriority, homeTrainingEnrollmentRank, registrationState } from "@/lib/home-dashboard";
 import { DESIGNATION_STATUSES, designationFacts } from "@/lib/designations";
 import { TUCUMAN_CIRCUITS } from "@/lib/circuits";
@@ -1042,7 +1042,7 @@ function PublicationList({ items, sync, loading, savedMap, reminderMap, matchRes
     return <Card as="article" key={item.id} className={`dt-publication-card flex flex-col rounded-3xl p-4 shadow-[0_8px_30px_rgba(20,64,52,.04)] ${item.kind === "vacante" ? "min-h-[190px]" : "min-h-[230px]"}`}>
       <div className="mb-3 flex items-start justify-between gap-3"><div className="flex flex-wrap gap-2"><StatusBadge>{publicationLabel(item)}</StatusBadge>{training && <StatusBadge tone="info">{item.source}</StatusBadge>}<StatusBadge tone={statusTone}>{!unverified && trainingState === "ABIERTA" ? "🟢 " : ""}{statusText}</StatusBadge><MatchBadge result={compatibility} /></div>{!training && <button onClick={() => onSave(item, !saved)} aria-label={saved ? "Quitar de guardados" : "Guardar publicación"} className={`grid size-10 shrink-0 place-items-center rounded-xl ${saved ? "bg-[#fff3dd] text-[#a46c20]" : "bg-[#f1f5f2] text-[#6d837a]"}`}><Star className={`size-5 ${saved ? "fill-current" : ""}`} /></button>}</div>
       {metadata?.registrationOpensAt && (trainingState === "PROXIMAMENTE" || trainingState === "ABRE_HOY") && <div className="mb-4 rounded-2xl bg-[#fff4d6] p-4 text-[#6f4c00]"><strong className="block text-lg">{unverified || metadata.dateStatus === "tentative" ? "Fecha prevista · confirmar en fuente" : openingCountdown(metadata.registrationOpensAt, new Date(), metadata.registrationHasTime)}</strong><span className="text-sm">Abre: {dateLabel(metadata.registrationOpensAt, Boolean(metadata.registrationHasTime))}{metadata.registrationHasTime ? " hs" : ""}</span></div>}
-      <button onClick={() => onOpen(item)} className="text-left"><h2 className="line-clamp-2 text-lg font-bold leading-snug hover:underline">{item.title}</h2><p className="mt-2 line-clamp-2 text-sm leading-relaxed text-[#657b73]">{item.summary || `Información publicada por ${item.source}.`}</p></button>
+      <button onClick={() => onOpen(item)} className="text-left"><h2 className="line-clamp-2 text-lg font-bold leading-snug hover:underline">{item.title}</h2><p className="mt-2 line-clamp-2 text-sm leading-relaxed text-[#657b73]">{summaryText(item.summary) || `Información publicada por ${item.source}.`}</p></button>
       {simeCode && <p className="mt-2 text-xs font-bold text-[#315d7a]">ID de trámite: {simeCode}</p>}
       <OfficialPublicationSummary item={item} />
       {training ? <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-[#61766f]">{item.character && <span><strong>Modalidad:</strong> {item.character}</span>}{item.starts_at && <span><strong>Inicio:</strong> {dateLabel(item.starts_at)}</span>}{metadata?.registrationClosesAt && <span><strong>Inscripción hasta:</strong> {dateLabel(metadata.registrationClosesAt, true)}</span>}{item.location && <span className="col-span-2"><strong>Lugar:</strong> {item.location}</span>}</div> : <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#61766f]">{item.character && <span>{item.character}</span>}{item.junta && <span>{item.junta}</span>}{item.shift && <span>Turno {item.shift}</span>}{item.ends_at && <span className="ml-auto flex items-center gap-1 font-semibold text-[#9a641f]"><Clock3 className="size-4" />{unverified ? `Cierre informado: ${dateLabel(item.ends_at, true)}` : fromNow(item.ends_at)}</span>}</div>}
@@ -1469,7 +1469,7 @@ function PublicationSheet({ publication, sync, saved, tracking, match, onClose, 
           <OfficialPublicationDetails item={publication} />
           <div className="rounded-2xl border border-[#dce8e1] bg-white p-5">
             <h3 className="font-bold">{publication.kind === "junta" ? "Contenido disponible en DocenteTuc" : publication.kind === "vacante" ? "Datos publicados por SIME" : "Descripción"}</h3>
-            <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-[#5f756d]">{publication.summary || "No fue informada por la fuente oficial."}</p>
+            <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-[#5f756d]">{summaryText(publication.summary) || "No fue informada por la fuente oficial."}</p>
           </div>
           {info && <>
             <InfoList title="Servicios y trámites" values={info.services} />
