@@ -12,9 +12,9 @@
 --   migrations/0008_personal_matching_circuits.sql
 --   migrations/0009_reliability_lifecycle.sql
 --   migrations/0029_import_gateway_identity.sql
--- Replace REPLACE_WITH_CREATED_D1_UUID with the UUID returned by D1 creation.
+-- Replace bee24175-2591-4fe3-a4ed-deb7f680f615 with the UUID returned by D1 creation.
 INSERT INTO import_gateway_identity (id, database_name, database_id)
-VALUES (1, 'docentetuc-notices-canary-1-2', 'REPLACE_WITH_CREATED_D1_UUID');
+VALUES (1, 'docentetuc-notices-canary-1-2', 'bee24175-2591-4fe3-a4ed-deb7f680f615');
 
 INSERT INTO publications (id, source, external_id, kind, category, title, summary, level, area, junta, location, shift,
   character, circuit, source_circuit_raw, circuit_inference_source, starts_at, ends_at, status, official_url, metadata,

@@ -7,8 +7,8 @@
   "routes": [],
   "vars": {
     "NOTICES_ENABLED": "false",
-    "NOTICES_DATABASE_NAME": "docentetuc-fdci-canary-1-1",
-    "NOTICES_DATABASE_ID": "713a8c37-d123-43ce-9f9e-7789e60e3d21"
+    "NOTICES_DATABASE_NAME": "docentetuc-notices-canary-1-2",
+    "NOTICES_DATABASE_ID": "bee24175-2591-4fe3-a4ed-deb7f680f615"
   },
   "triggers": { "crons": [] },
   "observability": {
@@ -17,7 +17,7 @@
   },
   "d1_databases": [{
     "binding": "DB",
-    "database_name": "docentetuc-fdci-canary-1-1",
-    "database_id": "713a8c37-d123-43ce-9f9e-7789e60e3d21"
+    "database_name": "docentetuc-notices-canary-1-2",
+    "database_id": "bee24175-2591-4fe3-a4ed-deb7f680f615"
   }]
 }
