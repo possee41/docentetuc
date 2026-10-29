@@ -2,6 +2,8 @@ import { OFFICIAL_JUNTAS, type JuntaId } from "./juntas.ts";
 import type { BoardView } from "./board-view.ts";
 
 export const BOARD_PAGE_SIZE = 50;
+// Padrones needs the whole list to group and rank it, so it ships in larger pages.
+export const PADRON_PAGE_SIZE = 200;
 export type BoardPageView = Extract<BoardView, "padrones" | "comunicados" | "llamados">;
 export type BoardPageMode = "current" | "references";
 
@@ -38,6 +40,6 @@ export function boardPageQuery(view: BoardPageView, junta: JuntaId | "todas", mo
     conditions.push("(title LIKE ? OR summary LIKE ?)");
     binds.push(`%${search}%`, `%${search}%`);
   }
-  return { sql: `SELECT * FROM publications WHERE ${conditions.join(" AND ")} ORDER BY id LIMIT ${BOARD_PAGE_SIZE + 1}`,
+  return { sql: `SELECT * FROM publications WHERE ${conditions.join(" AND ")} ORDER BY id LIMIT ${(view === "padrones" ? PADRON_PAGE_SIZE : BOARD_PAGE_SIZE) + 1}`,
     binds, needsNow: view === "llamados" && mode === "current" };
 }

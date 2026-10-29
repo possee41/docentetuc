@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { APP_PUBLICATIONS_QUERY } from "./app-publications-query.ts";
-import { boardPageQuery, BOARD_PAGE_SIZE } from "./board-page.ts";
+import { boardPageQuery, BOARD_PAGE_SIZE, PADRON_PAGE_SIZE } from "./board-page.ts";
 import { boardItems } from "./board-view.ts";
 import type { Publication } from "./types.ts";
 
@@ -22,10 +22,10 @@ test("Juntas pages reach documents beyond the global catalog and filter by Junta
   for (;;) {
     const query = boardPageQuery("padrones", "inicial-primaria");
     const rows = db.prepare(query.sql).all(cursor, ...query.binds) as { id: string }[];
-    assert.ok(rows.length <= BOARD_PAGE_SIZE + 1);
-    const page = rows.slice(0, BOARD_PAGE_SIZE);
+    assert.ok(rows.length <= PADRON_PAGE_SIZE + 1);
+    const page = rows.slice(0, PADRON_PAGE_SIZE);
     count += page.length;
-    if (rows.length <= BOARD_PAGE_SIZE) break;
+    if (rows.length <= PADRON_PAGE_SIZE) break;
     cursor = page.at(-1)!.id;
   }
   assert.equal(count, 1600);

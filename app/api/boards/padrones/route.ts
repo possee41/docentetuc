@@ -1,6 +1,6 @@
 import { getD1 } from "@/db";
 import type { Publication } from "@/lib/types";
-import { boardPageQuery, BOARD_PAGE_SIZE } from "@/lib/board-page";
+import { boardPageQuery, PADRON_PAGE_SIZE } from "@/lib/board-page";
 import type { JuntaId } from "@/lib/juntas";
 
 export const dynamic = "force-dynamic";
@@ -16,8 +16,8 @@ export async function GET(request: Request) {
   catch { return Response.json({ error: "Junta inválida." }, { status: 400 }); }
   try {
     const rows = await getD1().prepare(query.sql).bind(cursor, ...query.binds).all<Publication>();
-    const items = rows.results.slice(0, BOARD_PAGE_SIZE);
-    return Response.json({ items, nextCursor: rows.results.length > BOARD_PAGE_SIZE ? items.at(-1)?.id : null },
+    const items = rows.results.slice(0, PADRON_PAGE_SIZE);
+    return Response.json({ items, nextCursor: rows.results.length > PADRON_PAGE_SIZE ? items.at(-1)?.id : null },
       { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("[api/boards/padrones] GET failed", error);

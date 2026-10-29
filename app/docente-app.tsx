@@ -663,17 +663,20 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
     const controller = new AbortController();
     const load = async () => {
       setLoading(true); setError("");
+      const found: Publication[] = [], seen = new Set<string>();
       try {
-        const found: Publication[] = [];
         let cursor = "";
         // ponytail: 20k-document safety cap; add server-side year cursors if the corpus outgrows it.
         for (let page = 0; page < 100; page++) {
-          const response = await fetch(`/api/boards/padrones?cursor=${encodeURIComponent(cursor)}&junta=${encodeURIComponent(junta)}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
+          // Junta is filtered locally: download the list once instead of refetching it per filter.
+          const response = await fetch(`/api/boards/padrones?cursor=${encodeURIComponent(cursor)}&junta=todas`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
           if (!response.ok) throw new Error("No pudimos consultar los padrones.");
           const result = await response.json() as { items: Publication[]; nextCursor: string | null };
           if (!Array.isArray(result.items) || result.nextCursor && result.nextCursor === cursor) throw new Error("La consulta de padrones devolvió una página inválida.");
-          found.push(...result.items);
-          if (!result.nextCursor) { if (!controller.signal.aborted) setRows(found); return; }
+          for (const item of result.items) if (!seen.has(item.id)) { seen.add(item.id); found.push(item); }
+          if (controller.signal.aborted) return;
+          setRows([...found]);
+          if (!result.nextCursor) return;
           cursor = result.nextCursor;
         }
         throw new Error("La consulta de padrones requiere más páginas de las previstas.");
@@ -685,12 +688,14 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
     };
     void load();
     return () => controller.abort();
-  }, [retry, junta]);
-  const selection = padronSelection(padronDocuments(rows));
+  }, [retry]);
+  const documents = useMemo(() => padronDocuments(rows), [rows]);
+  const selection = useMemo(() => padronSelection(documents), [documents]);
   const chosen = tab === "history" ? selection.history : tab === "undetermined" ? selection.undetermined : selection.current;
-  const visible = chosen.filter(item => (junta === "todas" || matchesJunta(item, junta)) &&
-    (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query))));
-  const groups = groupPadrones(visible);
+  const visible = useMemo(() => chosen.filter(item => (junta === "todas" || matchesJunta(item, junta)) &&
+    (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query)))), [chosen, junta, query]);
+  const groups = useMemo(() => groupPadrones(visible), [visible]);
+  const retryPanel = <Button variant="outline" onClick={() => setRetry(value => value + 1)} className="mt-3 min-h-10 rounded-xl">Reintentar</Button>;
   return <section className="space-y-4 pb-16 md:pb-0">
     <VisualSectionBanner kind="padrones" title={`Padrones ${selection.year}`} description={selection.year < selection.currentYear ? `Último padrón disponible: ${selection.year}` : "Listados y puntajes oficiales por Junta"} />
     <div className="flex flex-wrap gap-2" role="group" aria-label="Período de padrones">
@@ -699,8 +704,12 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
     </div>
     <div className="max-w-lg"><Label htmlFor="padron-junta">Junta</Label><Select value={junta} onValueChange={(value) => setJunta((value || "todas") as typeof junta)}><SelectTrigger id="padron-junta" className="mt-1 h-11 rounded-xl border-[#c8e1f1] bg-white"><SelectValue placeholder="Todas las juntas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map(item => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
     <p className="rounded-xl border border-[#c8e1f1] bg-white p-3 text-sm text-[#315d7a]">Solo se asigna un año cuando el título oficial identifica el padrón o su vigencia. La fecha de descarga no determina el año.</p>
-    {loading ? <p role="status" className="rounded-xl bg-white p-4">Consultando padrones publicados…</p> : error ? <div role="alert" className="rounded-xl border border-amber-200 bg-white p-4"><p>{error}</p><Button variant="outline" onClick={() => setRetry(value => value + 1)} className="mt-3 min-h-10 rounded-xl">Reintentar</Button></div>
-      : groups.length ? <div className="grid gap-3 md:grid-cols-2">{groups.map(group => {
+    {!rows.length && loading && <p role="status" className="rounded-xl bg-white p-4">Consultando padrones publicados…</p>}
+    {!rows.length && !loading && error && <div role="alert" className="rounded-xl border border-amber-200 bg-white p-4"><p>{error}</p>{retryPanel}</div>}
+    {(rows.length > 0 || !loading && !error) && <>
+      {error && <div role="alert" className="rounded-xl border border-amber-200 bg-white p-4"><p>Mostramos los padrones ya recibidos. {error}</p>{retryPanel}</div>}
+      {loading && <p role="status" className="text-xs font-semibold text-[var(--text-muted)]">Cargando el resto de los padrones…</p>}
+      {groups.length ? <div className="grid gap-3 md:grid-cols-2">{groups.map(group => {
         const item = group[0], facts = padronTitleFacts(item.title);
         return <Card as="article" key={item.id} className="rounded-2xl p-4">
           <p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"} · {facts.type} · {padronYear(item) ?? "Año no determinado"}</p>
@@ -712,6 +721,7 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
           </div>
         </Card>;
       })}</div> : <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-white p-5">No hay padrones verificados para esta selección. Consultá el historial o el portal oficial.</div>}
+    </>}
     <a href="https://padrones.educaciontuc.gov.ar/" target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-[#075f9b] underline">Consultar portal oficial de Juntas <ExternalLink className="size-4" /></a>
   </section>;
 }
