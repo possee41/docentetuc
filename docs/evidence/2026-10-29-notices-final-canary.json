@@ -1,0 +1,128 @@
+{
+  "sourceCommit": "42358e0",
+  "worker": "docentetuc-notices-1-2-canary",
+  "databaseId": "bee24175-2591-4fe3-a4ed-deb7f680f615",
+  "runId": "notices-8211da0d-cedd-4948-9886-5d6af5f3dbf8",
+  "bundleSha256": "eccf8e542a0eceb2eaceb586fecf6f0e45872fba5eade9f066924124a3e5eb59",
+  "correctedClosedVersion": "b33fafac-c011-4373-8f88-41673479c836",
+  "enabledVersion": "b7f8c6b5-a6f0-4b88-a9e3-7f3dae5bc394",
+  "finalClosedVersions": [
+    {
+      "version_id": "8c6ca7ba-0e42-4573-b63f-adeab6e152a7",
+      "percentage": 100
+    }
+  ],
+  "materialization": {
+    "startedAt": "2026-10-29T19:23:41.769Z",
+    "completedAt": "2026-10-29T19:23:44.166Z",
+    "authenticatedRequests": 1,
+    "limit": 4,
+    "unauthorizedHttp": 401,
+    "http": 200,
+    "ack": {
+      "ok": true,
+      "considered": 4,
+      "inserted": 4,
+      "processed": 4
+    },
+    "effectiveVersionVerified": false
+  },
+  "counts": {
+    "before": {
+      "notifications": 3,
+      "queue": 1
+    },
+    "after": {
+      "notifications": 6,
+      "queue": 2,
+      "new_notifications": 3,
+      "new_queue": 1,
+      "training_pending": 0,
+      "designation_pending": 0,
+      "saved_pending": 0,
+      "manual_pending": 0,
+      "subscriptions": 0,
+      "notification_duplicates": 0,
+      "queue_duplicates": 0
+    }
+  },
+  "oldRowsPreserved": true,
+  "noDuplicateRecords": true,
+  "cpuAnalytics": {
+    "http": 200,
+    "from": "2026-10-29T19:23:41.000Z",
+    "to": "2026-10-29T19:23:45.000Z",
+    "errorCodes": [],
+    "accountType": "account",
+    "rows": [
+      {
+        "dimensions": {
+          "datetime": "2026-10-29T19:23:43Z",
+          "scriptVersion": "b7f8c6b5-a6f0-4b88-a9e3-7f3dae5bc394",
+          "status": "success"
+        },
+        "quantiles": {
+          "cpuTimeP50": 18385,
+          "cpuTimeP99": 18385
+        },
+        "sum": {
+          "errors": 0,
+          "requests": 1,
+          "subrequests": 0
+        }
+      }
+    ]
+  },
+  "d1Analytics": {
+    "http": 200,
+    "from": "2026-10-29T19:23:41.000Z",
+    "to": "2026-10-29T19:23:45.000Z",
+    "errorCodes": [],
+    "rows": [
+      {
+        "count": 6,
+        "dimensions": {
+          "datetime": "2026-10-29T19:23:44Z",
+          "error": ""
+        },
+        "sum": {
+          "queryDurationMs": 1.6758,
+          "rowsRead": 12,
+          "rowsReturned": 0,
+          "rowsWritten": 18
+        }
+      },
+      {
+        "count": 6,
+        "dimensions": {
+          "datetime": "2026-10-29T19:23:43Z",
+          "error": ""
+        },
+        "sum": {
+          "queryDurationMs": 2.779,
+          "rowsRead": 22,
+          "rowsReturned": 2,
+          "rowsWritten": 8
+        }
+      }
+    ],
+    "total": {
+      "queries": 12,
+      "rowsRead": 34,
+      "rowsWritten": 26,
+      "rowsReturned": 2,
+      "errors": 0
+    }
+  },
+  "closure": {
+    "http": 503,
+    "enabled": "false",
+    "secretRemoved": true,
+    "secretCount": 0,
+    "versionTraceVerified": false,
+    "deployment": "bc96fb21-c1f8-4a5c-b973-4d545d24b83c"
+  },
+  "productionUnchanged": true,
+  "simeGatewayUnchanged": true,
+  "conclusion": "FUNCTIONAL_PASS_PRODUCTION_BLOCKED_CPU"
+}
