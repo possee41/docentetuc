@@ -6,7 +6,7 @@ export function resolveReminderTarget(config = {}) {
   let url;
   try { url = new URL(config.NOTICES_IMPORT_URL || ""); } catch { throw new Error("NOTICES_URL_INVALID"); }
   if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash ||
-      !/^docentetuc-notices-1-2\.[a-z0-9-]+\.workers\.dev$/.test(url.hostname) ||
+      !/^docentetuc-notices-1-2(-canary)?\.[a-z0-9-]+\.workers\.dev$/.test(url.hostname) ||
       url.pathname !== "/api/internal/notices/reminders") throw new Error("NOTICES_URL_INVALID");
   const secret = config.NOTICES_IMPORT_SECRET || "";
   if (!/^[A-Za-z0-9_-]{32,}$/.test(secret)) throw new Error("NOTICES_SECRET_INVALID");
