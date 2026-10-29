@@ -101,6 +101,53 @@ test("las opciones por entorno son acotadas y fallan cerradas", () => {
   assert.equal(resolveGatewayConfig({ ...canary, SYNC_SOURCE: "sime", SIME_IMPORT_SECRET: token }).source, "sime");
 });
 
+test("el cursor no avanza si el gateway no confirma el lote", async () => {
+  const calls = [];
+  const failing = async (input, init = {}) => {
+    if (!init.method || init.method === "GET") return Response.json({ items: [], nextCursor: null });
+    const payload = JSON.parse(init.body);
+    calls.push(payload);
+    if (payload.mode !== "batch") return Response.json({ ok: true });
+    return calls.filter((call) => call.mode === "batch").length === 2
+      ? Response.json({ error: "sin confirmación" }, { status: 503 })
+      : Response.json({ ok: true, received: 1, created: 1, updated: 0, unchanged: 0, queries: 1, rowsRead: 1, rowsWritten: 1 });
+  };
+  await assert.rejects(run({ juntas: [1], limit: 3 }, source({ ids: [101, 102, 103] }), { fetch: failing }),
+    /SIME_RECEIVER_HTTP_503/);
+  assert.equal(calls.some((call) => call.mode === "finish"), false);
+  assert.equal(calls.some((call) => call.mode === "error"), true);
+});
+
+test("un ACK incompleto no cuenta como confirmación ni permite seguir escribiendo", async () => {
+  const calls = [];
+  const invalid = async (input, init = {}) => {
+    if (!init.method || init.method === "GET") return Response.json({ items: [], nextCursor: null });
+    const payload = JSON.parse(init.body);
+    calls.push(payload);
+    if (payload.mode !== "batch") return Response.json({ ok: true });
+    return Response.json({ ok: true, received: 1, created: 0, updated: 0, unchanged: 0, queries: 1, rowsRead: 1, rowsWritten: 0 });
+  };
+  await assert.rejects(run({ juntas: [1], limit: 3 }, source({ ids: [101, 102] }), { fetch: invalid }),
+    /SIME_RECEIVER_ACK_INVALID/);
+  assert.equal(calls.filter((call) => call.mode === "batch").length, 1);
+  assert.equal(calls.some((call) => call.mode === "finish"), false);
+});
+
+test("producción exige habilitación explícita y el SHA aprobado", () => {
+  const production = { SYNC_SOURCE: "sime", IMPORT_GATEWAY_ORIGIN: "https://docentetuc-import-1-2.example.workers.dev/",
+    IMPORT_GATEWAY_DATABASE_ID: "baaf5886-0123-4948-96da-aa7106424549", IMPORT_GATEWAY_DATABASE_NAME: "docentetuc-db",
+    SIME_IMPORT_SECRET: token };
+  const approved = "a".repeat(40);
+  assert.throws(() => resolveGatewayConfig({ ...production, IMPORT_GATEWAY_TARGET: "production" }, approved),
+    /GATEWAY_PRODUCTION_NOT_APPROVED/);
+  assert.throws(() => resolveGatewayConfig({ ...production, IMPORT_GATEWAY_TARGET: "production",
+    IMPORT_GATEWAY_PRODUCTION_ENABLED: "true" }, "b".repeat(40)), /GATEWAY_PRODUCTION_NOT_APPROVED/);
+  assert.throws(() => resolveGatewayConfig({ ...production, IMPORT_GATEWAY_PRODUCTION_ENABLED: "true",
+    IMPORT_GATEWAY_APPROVED_SHA: approved }, approved), /GATEWAY_TARGET_FORBIDDEN/);
+  assert.equal(resolveGatewayConfig({ ...production, IMPORT_GATEWAY_TARGET: "production",
+    IMPORT_GATEWAY_PRODUCTION_ENABLED: "true", IMPORT_GATEWAY_APPROVED_SHA: approved }, approved).source, "sime");
+});
+
 test("el workflow sigue siendo manual, solo SIME y con destino canary por defecto", () => {
   const workflow = readFileSync(new URL("../.github/workflows/sime-import.yml", import.meta.url), "utf8");
   assert.match(workflow, /^\s{2}workflow_dispatch:/m);
