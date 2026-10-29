@@ -1,0 +1,44 @@
+name: Notices reminders via Worker
+on:
+  # Manual only until Codex validates the first bounded run and approves a schedule.
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Recordatorios procesados en esta corrida (1-10)'
+        type: string
+        default: '10'
+permissions:
+  contents: read
+concurrency:
+  group: notices-reminders
+  cancel-in-progress: false
+jobs:
+  reminders:
+    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/feat/1.2-sync-integration'
+    runs-on: ubuntu-latest
+    environment: notices-pilot
+    timeout-minutes: 5
+    steps:
+      - name: Verify approved revision
+        env:
+          NOTICES_REF: ${{ vars.NOTICES_REF }}
+        run: |
+          [[ "$NOTICES_REF" =~ ^[a-f0-9]{40}$ ]] || { echo 'NOTICES_REF must be an approved commit SHA'; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.NOTICES_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify checked-out revision
+        env:
+          NOTICES_REF: ${{ vars.NOTICES_REF }}
+        run: test "$(git rev-parse HEAD)" = "$NOTICES_REF"
+      - name: Materialize bounded reminders
+        env:
+          NOTICES_IMPORT_URL: ${{ vars.NOTICES_IMPORT_URL }}
+          NOTICES_IMPORT_SECRET: ${{ secrets.NOTICES_IMPORT_SECRET }}
+          NOTICES_LIMIT: ${{ inputs.limit }}
+        run: node --experimental-strip-types scripts/reminders-worker.mjs

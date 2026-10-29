@@ -1,0 +1,19 @@
+{
+  "name": "docentetuc-notices-1-2",
+  "main": "workers/notices-receiver.mjs",
+  "compatibility_date": "2026-05-15",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [],
+  "vars": {
+    "NOTICES_ENABLED": "false",
+    "NOTICES_DATABASE_NAME": "docentetuc-db",
+    "NOTICES_DATABASE_ID": "baaf5886-0123-4948-96da-aa7106424549"
+  },
+  "triggers": { "crons": [] },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "docentetuc-db",
+    "database_id": "baaf5886-0123-4948-96da-aa7106424549"
+  }]
+}
