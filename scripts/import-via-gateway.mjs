@@ -2,7 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { runFdciImport } from "./import-fdci.mjs";
-import { runSimeImport } from "./import-sime.mjs";
+import { runSimeImport, parseSimeOptions } from "./import-sime.mjs";
 import { runPublicSourceImport } from "./import-public-sources.mjs";
 import { runJuntasCheckpoint } from "./import-juntas-checkpoint.mjs";
 import { createJuntasGatewayDb } from "./juntas-gateway-db.mjs";
@@ -59,7 +59,8 @@ export async function runGatewayImport(target, config, sourceFetch = fetch, rece
         slug: config.FDCI_COURSE_SLUG || "", commissionId: config.FDCI_COMMISSION_ID || "" } : undefined,
       scope, fetcher: (url, init) => String(url).startsWith(target.origin) ? receiverFetch(url, init) : sourceFetch(url, init) });
   }
-  if (target.source === "sime") return runSimeImport({ endpoint: target.endpoint, token: target.secret, sourceFetch, receiverFetch });
+  if (target.source === "sime") return runSimeImport({ endpoint: target.endpoint, token: target.secret,
+    sourceFetch, receiverFetch, ...parseSimeOptions(config) });
   if (target.source === "juntas") {
     const root = config.JUNTA_ROOT_ID;
     const sources = root ? JUNTA_EXTERNAL_SOURCES.filter(([id]) => id === root) : JUNTA_EXTERNAL_SOURCES;

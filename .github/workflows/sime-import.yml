@@ -1,8 +1,31 @@
 name: SIME external import pilot
 on:
-  # Programación propuesta, DESACTIVADA hasta validar gateway, corte legacy y cuotas:
+  # Manual only. Scheduling stays disabled until gateway, legacy drain and quotas
+  # are validated; the first productive pass must stay bounded.
   # schedule: [{ cron: '12 * * * *' }]
   workflow_dispatch:
+    inputs:
+      target:
+        description: 'Destino del gateway: canary (por defecto) o production'
+        type: choice
+        options: [canary, production]
+        default: canary
+      confirm_production:
+        description: 'Habilitación explícita de producción (obligatoria con target=production)'
+        type: boolean
+        default: false
+      juntas:
+        description: 'Juntas a recorrer (ids 1-4 separados por coma)'
+        type: string
+        default: '1,2,3,4'
+      limit:
+        description: 'Máximo de registros enviados en esta corrida (1-1000)'
+        type: string
+        default: '50'
+      resume_after:
+        description: 'Reanudar después de este id (sime:<n>); vacío para empezar de cero'
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -15,6 +38,15 @@ jobs:
     environment: sime-pilot
     timeout-minutes: 15
     steps:
+      - name: Verify destination
+        env:
+          TARGET: ${{ inputs.target }}
+          CONFIRM_PRODUCTION: ${{ inputs.confirm_production }}
+        run: |
+          [[ "$TARGET" == 'canary' || "$TARGET" == 'production' ]] || { echo 'target must be canary or production'; exit 1; }
+          if [[ "$TARGET" == 'production' && "$CONFIRM_PRODUCTION" != 'true' ]]; then
+            echo 'production requires confirm_production=true'; exit 1
+          fi
       - name: Verify approved revision
         env:
           IMPORT_REF: ${{ vars.SIME_IMPORT_REF }}
@@ -38,8 +70,14 @@ jobs:
         env:
           IMPORT_GATEWAY_ENABLED: 'true'
           SYNC_SOURCE: sime
+          IMPORT_GATEWAY_TARGET: ${{ inputs.target }}
+          IMPORT_GATEWAY_PRODUCTION_ENABLED: ${{ inputs.confirm_production && 'true' || 'false' }}
+          IMPORT_GATEWAY_APPROVED_SHA: ${{ vars.SIME_IMPORT_REF }}
           IMPORT_GATEWAY_ORIGIN: ${{ vars.IMPORT_GATEWAY_ORIGIN }}
           IMPORT_GATEWAY_DATABASE_ID: ${{ vars.IMPORT_GATEWAY_DATABASE_ID }}
           IMPORT_GATEWAY_DATABASE_NAME: ${{ vars.IMPORT_GATEWAY_DATABASE_NAME }}
+          SIME_IMPORT_JUNTAS: ${{ inputs.juntas }}
+          SIME_IMPORT_LIMIT: ${{ inputs.limit }}
+          SIME_IMPORT_RESUME_AFTER: ${{ inputs.resume_after }}
           SIME_IMPORT_SECRET: ${{ secrets.SIME_IMPORT_SECRET }}
         run: node --experimental-strip-types scripts/import-via-gateway.mjs
