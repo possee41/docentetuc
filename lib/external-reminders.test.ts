@@ -19,7 +19,8 @@ function isolated() {
   sqlite.prepare("INSERT INTO saved_publications(user_id,publication_id,agenda_reminder_at,in_agenda) VALUES('a','p3','2026-10-22T10:00:00Z',1)").run();
   const db = { prepare: (sql: string) => ({ bind: (...params: unknown[]) => ({
     all: async () => ({ results: sqlite.prepare(sql).all(...params as []) }),
-    run: async () => ({ meta: { rows_written: Number(sqlite.prepare(sql).run(...params as []).changes) } }),
+    run: async () => { const changes = Number(sqlite.prepare(sql).run(...params as []).changes);
+      return { meta: { changes, rows_written: changes } }; },
   }) }) };
   return { sqlite, db };
 }
@@ -52,6 +53,21 @@ test("interrupción tras insertar se reanuda sin duplicar el recordatorio", asyn
   assert.deepEqual(await materializeExternalReminderBatch(db, { limit: 1, now }), { considered: 1, inserted: 0, processed: 1 });
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM notifications").get()?.n, 1);
   sqlite.close();
+});
+
+test("el ACK rechaza metadatos sin changes en vez de contar rows_written", async () => {
+  const { sqlite, db } = isolated();
+  const withoutChanges = { prepare: (sql: string) => ({ bind: (...params: unknown[]) => {
+    const statement = db.prepare(sql).bind(...params);
+    return { ...statement, run: async () => {
+      const result = await statement.run();
+      return { meta: { rows_written: result.meta.rows_written } };
+    } };
+  } }) };
+  try {
+    await assert.rejects(materializeExternalReminderBatch(withoutChanges,
+      { limit: 1, now: new Date("2026-10-22T12:00:00Z") }), /EXTERNAL_REMINDER_WRITE_UNCONFIRMED/);
+  } finally { sqlite.close(); }
 });
 
 test("un recordatorio antiguo espera confirmación y no avisa tras el cierre", async () => {

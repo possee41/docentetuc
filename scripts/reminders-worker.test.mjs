@@ -37,7 +37,8 @@ function isolated() {
   const statement = (sql, params = []) => ({
     all: async () => ({ results: sqlite.prepare(sql).all(...params) }),
     first: async () => sqlite.prepare(sql).get(...params) ?? null,
-    run: async () => ({ meta: { rows_written: Number(sqlite.prepare(sql).run(...params).changes) } }),
+    run: async () => { const changes = Number(sqlite.prepare(sql).run(...params).changes);
+      return { meta: { changes, rows_written: changes } }; },
     bind: (...bound) => statement(sql, bound),
   });
   const db = { prepare: (sql) => statement(sql) };

@@ -39,6 +39,13 @@ function nextOccurrence(value, recurrence) {
   return date.toISOString();
 }
 
+function changedRows(result) {
+  // rows_written includes index writes; changes counts logical records.
+  const changes = result.meta?.changes;
+  if (!Number.isSafeInteger(changes) || changes < 0) throw new Error("EXTERNAL_REMINDER_WRITE_UNCONFIRMED");
+  return changes;
+}
+
 export async function materializeExternalReminderBatch(db, { limit = 10, now = new Date() } = {}) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 10 || !(now instanceof Date) || !Number.isFinite(now.getTime()))
     throw new Error("EXTERNAL_REMINDERS_INVALID");
@@ -56,8 +63,8 @@ export async function materializeExternalReminderBatch(db, { limit = 10, now = n
       const done = await db.prepare(`UPDATE ${source.table} SET ${source.flag}=1${source.touch ? ",updated_at=CURRENT_TIMESTAMP" : ""} WHERE ${source.where}
         AND EXISTS (SELECT 1 FROM notifications WHERE user_id=? AND dedupe_key=?)`)
         .bind(...args, row.user_id, key).run();
-      inserted += Number(notice.meta?.rows_written || 0);
-      processed += Number(done.meta?.rows_written || 0);
+      inserted += changedRows(notice);
+      processed += changedRows(done);
     }
     remaining -= (due.results || []).length;
   }
@@ -68,7 +75,7 @@ export async function materializeExternalReminderBatch(db, { limit = 10, now = n
       const queued = await db.prepare(`INSERT OR IGNORE INTO manual_event_push_queue (user_id,event_id,title,occurrence_at)
         SELECT user_id,id,title,starts_at FROM manual_events WHERE id=? AND starts_at=? AND reminder_at=? AND reminder_notified=0`)
         .bind(row.id, row.starts_at, row.reminder_at).run();
-      inserted += Number(queued.meta?.rows_written || 0);
+      inserted += changedRows(queued);
       let completed;
       if (["daily", "weekly", "monthly"].includes(row.recurrence) && row.reminder_minutes != null) {
         const starts = nextOccurrence(row.starts_at, row.recurrence);
@@ -83,7 +90,7 @@ export async function materializeExternalReminderBatch(db, { limit = 10, now = n
           AND EXISTS (SELECT 1 FROM manual_event_push_queue WHERE event_id=? AND occurrence_at=?)`)
           .bind(row.id, row.starts_at, row.reminder_at, row.id, row.starts_at).run();
       }
-      processed += Number(completed.meta?.rows_written || 0);
+      processed += changedRows(completed);
     }
     remaining -= (due.results || []).length;
   }
