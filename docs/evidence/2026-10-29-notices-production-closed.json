@@ -1,0 +1,71 @@
+{
+  "sourceCommit": "e21678b",
+  "optimizedCodeCommit": "89f617e",
+  "at": "2026-10-29T21:11:46.053Z",
+  "worker": "docentetuc-notices-1-2",
+  "version": "b8c376ce-e23b-4c51-b3f4-81e3c28ce481",
+  "deployment": "dadd734c-784c-4bda-a4fa-8b6ce27978cb",
+  "url": "https://docentetuc-notices-1-2.possee41.workers.dev",
+  "databaseName": "docentetuc-db",
+  "databaseId": "baaf5886-0123-4948-96da-aa7106424549",
+  "enabled": "false",
+  "secretCount": 0,
+  "crons": [],
+  "customDomains": 0,
+  "httpStatus": 503,
+  "responseBody": {
+    "error": "No configurado."
+  },
+  "rejectedBeforeD1ByGuard": true,
+  "countsBefore": {
+    "publications": 6829,
+    "profiles": 207,
+    "training_reminders": 0,
+    "designation_tracking": 0,
+    "saved_publications": 4,
+    "manual_events": 1,
+    "notifications": 4712,
+    "manual_event_push_queue": 1,
+    "training_pending": 0,
+    "designation_pending": 0,
+    "saved_pending": 4,
+    "manual_pending": 0
+  },
+  "countsAfter": {
+    "publications": 6829,
+    "profiles": 207,
+    "training_reminders": 0,
+    "designation_tracking": 0,
+    "saved_publications": 4,
+    "manual_events": 1,
+    "notifications": 4712,
+    "manual_event_push_queue": 1,
+    "training_pending": 0,
+    "designation_pending": 0,
+    "saved_pending": 4,
+    "manual_pending": 0
+  },
+  "countsUnchanged": true,
+  "newNotifications": 0,
+  "newQueueEntries": 0,
+  "materializationRequests": 0,
+  "d1WriteOperations": 0,
+  "verificationRowsWritten": 0,
+  "bundleSha256": "eeb76b3304e3bd6bffeea865c2bf83bf887b4723a8ca05879f0764ec0bdf6a1f",
+  "productionUnchanged": true,
+  "production": {
+    "id": "1fcae53a-95a8-4e14-87a1-e2b1174411d0",
+    "versions": [
+      {
+        "version_id": "3ac6a189-ad4a-463e-b97c-814766c25fb8",
+        "percentage": 0
+      },
+      {
+        "version_id": "be5c16fc-6690-4fb4-ba3b-b3cb8bb83330",
+        "percentage": 100
+      }
+    ]
+  },
+  "simeGatewayUnchanged": true,
+  "simeGatewayClosed": true
+}
