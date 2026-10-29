@@ -39,6 +39,8 @@ import { licenseForms } from "@/lib/license-forms";
 import { canRecommendCurrentPublication, publicationLifecycle } from "@/lib/publication-lifecycle";
 import { designationEmptyState, hasDesignationProfilePreferences } from "@/lib/designation-state";
 import { AppHeader, BottomNavigation, Card, CompatibilityBadge, EmptyState, FilterChip, StatusBadge } from "@/components/docentetuc-ui";
+import { privateAccessState } from "@/lib/private-access-state";
+import type { InstallationSecurity, PrivateAccessStatus } from "@/lib/private-access-state";
 import { Agenda, ManualEventDialog } from "@/components/teacher-agenda";
 import { HomeNewsCarousel } from "@/components/home-banner-context";
 import { PublicProfileSection } from "@/components/public-profile-section";
@@ -64,7 +66,6 @@ import { OfficialPublicationDetails, OfficialPublicationSummary } from "@/compon
 import type { AdminNotice } from "@/lib/admin-notices";
 
 type Theme = "light" | "dark";
-type InstallationSecurity = "protected" | "linked" | "recovery_required" | "unavailable";
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
 const viewTitles: Record<View, [string, string]> = {
@@ -127,7 +128,8 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const privateLoadSequence = useRef(0);
   const publicLoadProblem = useRef("");
   const privateLoadProblem = useRef("");
-  const [privateReady, setPrivateReady] = useState(false);
+  const [privateAccess, setPrivateAccess] = useState<PrivateAccessStatus>("checking");
+  const privateReady = privateAccess === "ready";
   const [accountPhoto, setAccountPhoto] = useState<{ authenticated: boolean; image: string | null }>({ authenticated: false, image: null });
   const [installationSecurity, setInstallationSecurity] = useState<InstallationSecurity>("unavailable");
   const [installationBootstrapComplete, setInstallationBootstrapComplete] = useState(false);
@@ -286,21 +288,24 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
 
   const load = useCallback(async (showLoading = true) => {
     const requestId = ++privateLoadSequence.current;
+    setPrivateAccess(current => current === "ready" ? "ready" : "checking");
+    privateLoadProblem.current = "";
+    refreshLoadError();
     if (showLoading) setLoading(true);
     try {
       const response = await fetch("/api/app", { cache: "no-store", headers: apiHeaders(), signal: AbortSignal.timeout(15000) });
       if (requestId !== privateLoadSequence.current) return;
-      if (response.status === 401) { privateData.current = null; privateLoadProblem.current = import.meta.env.DEV ? "No se pudo verificar esta instalación en la D1 local. Si pertenece a otra base de prueba, podés iniciar una nueva desde Cuentas y accesos; sus datos no se borran." : "No se pudo verificar esta instalación o su cuenta. Sus datos privados se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."; setPrivateReady(false); setData(publicData.current); refreshLoadError(); return; }
+      if (response.status === 401) { privateData.current = null; privateLoadProblem.current = import.meta.env.DEV ? "No se pudo verificar esta instalación en la D1 local. Si pertenece a otra base de prueba, podés iniciar una nueva desde Cuentas y accesos; sus datos no se borran." : "No se pudo verificar esta instalación o su cuenta. Sus datos privados se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."; setPrivateAccess("unauthorized"); setData(publicData.current); refreshLoadError(); return; }
       if (!response.ok) throw new Error("No se pudo cargar la información");
       const result = await response.json() as PrivateAppData;
       if (requestId !== privateLoadSequence.current) return;
       result.designations ||= []; result.manualEvents ||= []; result.personalPublications ||= []; if (result.profile) result.profile.roles ||= [];
       privateData.current = result;
       privateLoadProblem.current = "";
-      setPrivateReady(true);
+      setPrivateAccess("ready");
       setData(combineAppData(publicData.current, result));
       refreshLoadError();
-    } catch { if (requestId === privateLoadSequence.current) { privateData.current = null; privateLoadProblem.current = "No pudimos cargar los datos privados en este momento. La información pública sigue disponible; intentá nuevamente."; setPrivateReady(false); setData(publicData.current); refreshLoadError(); } }
+    } catch { if (requestId === privateLoadSequence.current) { privateData.current = null; privateLoadProblem.current = "No pudimos cargar los datos privados en este momento. La información pública sigue disponible; intentá nuevamente."; setPrivateAccess("error"); setData(publicData.current); refreshLoadError(); } }
     finally { if (requestId === privateLoadSequence.current) setLoading(false); }
   }, [refreshLoadError]);
 
@@ -517,7 +522,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     setView(target); setQuery(term); setDesignationQuery(""); setFilter(filterForNavigation(target, trainingFilterRef.current));
   };
   const openDesignationOfficial = (item: Publication) => { if (hasOfficialTopic(item, "INSCRIPCION_SIME")) localStorage.setItem("docentetuc-pending-designation", item.id); window.open(item.official_url, "_blank", "noopener,noreferrer"); };
-  const recoveryRequired = installationBootstrapComplete && installationSecurity === "recovery_required";
+  const accessState = privateAccessState(installationBootstrapComplete, installationSecurity, privateAccess);
   const privateView = ["agenda", "alertas", "guardados", "perfil"].includes(view);
   const sourceWarnings = data || !loading ? sourceNotices(view, trainingSource, data?.sync || []) : [];
   return (
@@ -550,8 +555,9 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
           return <li key={item.source} className="flex flex-wrap items-center gap-x-2"><span><strong>{item.label}:</strong> {state}. Último éxito: {verified}.</span><a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-bold underline">Fuente oficial <ExternalLink className="size-3" /></a></li>;
         })}</ul>
       </section>}
-      {privateView && !privateReady ? recoveryRequired ? <RecoveryRequiredNotice onOpenAccount={() => setView("cuentas")} />
-        : <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><h1 className="font-black text-[var(--text-primary)]">No podemos mostrar tus datos privados todavía</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">Verificá esta instalación o iniciá sesión con la cuenta vinculada. Tus datos permanecen conservados.</p><Button onClick={() => void load(false)} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
+      {privateView && !privateReady ? accessState === "checking" ? <section role="status" aria-live="polite" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><RefreshCw aria-hidden="true" className="mx-auto mb-3 size-6 animate-spin text-[var(--accent-text)] motion-reduce:animate-none" /><h1 className="font-bold text-[var(--text-primary)]">Comprobando sesión y acceso a tus datos…</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">Estamos preparando tu sección.</p></div></section>
+        : accessState === "recovery_required" ? <RecoveryRequiredNotice onOpenAccount={() => setView("cuentas")} />
+        : <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><h1 className="font-black text-[var(--text-primary)]">{accessState === "error" ? "No pudimos comprobar el acceso en este momento" : "No podemos mostrar tus datos privados todavía"}</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{accessState === "error" ? "Hubo un problema de conexión o del servicio. Tus datos permanecen conservados; intentá nuevamente." : "Verificá esta instalación o iniciá sesión con la cuenta vinculada. Tus datos permanecen conservados."}</p><Button onClick={() => void load(false)} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
         : loadError && !data && !["inicio", "cuentas", "busqueda", "noticias"].includes(view) ? <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><WifiOff className="mx-auto mb-3 size-8 text-[var(--accent-text)]" /><h1 className="font-black text-[var(--text-primary)]">No pudimos cargar esta sección</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{loadError}</p><Button onClick={() => { void loadPublic(); void load(false); }} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
         : view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={navigateToView} loading={loading} error={loadError} />
         : view === "busqueda" ? <GlobalPublicationSearch query={query} onQuery={setQuery} kind={searchKind} onKind={setSearchKind} onOpen={openPublication} />
@@ -566,7 +572,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
               <h2 id="accounts-access-title" className="text-xl font-black text-[var(--text-primary)]">Mis cuentas y accesos</h2>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">Google autentica tu cuenta de DocenteTuc. Los accesos externos usan sus propias credenciales y no se comparten con DocenteTuc.</p>
             </div>
-            <AccountSignInSection headers={apiHeaders} installationSecurity={installationSecurity} onLinked={() => void load(false)} onSignedOut={() => { ++privateLoadSequence.current; privateData.current = null; privateLoadProblem.current = ""; setPrivateReady(false); setData(publicData.current); refreshLoadError(); }} />
+            <AccountSignInSection headers={apiHeaders} installationSecurity={installationSecurity} onLinked={() => void load(false)} onSignedOut={() => { ++privateLoadSequence.current; privateData.current = null; privateLoadProblem.current = ""; setPrivateAccess("unauthorized"); setData(publicData.current); refreshLoadError(); }} />
           </section>
           <PlatformAccessSection />
           <DataDeletionSection profile={profile ?? null} />

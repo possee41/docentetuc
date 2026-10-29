@@ -138,10 +138,10 @@ export function ManualEventDialog({ event, initialDate, headers, onClose, onSave
   const choice = (key: "category" | "recurrence" | "reminder", label: string, options: [string,string][]) => <div className="space-y-2"><Label htmlFor={`agenda-event-${key}`}>{label}</Label>
     <Select value={form[key]} onValueChange={value => value && field(key,value as typeof form[typeof key])}><SelectTrigger id={`agenda-event-${key}`} className="min-h-11 w-full rounded-xl"><SelectValue /></SelectTrigger>
       <SelectContent>{options.map(([value,text]) => <SelectItem key={value} value={value}>{text}</SelectItem>)}</SelectContent></Select></div>;
-  return <Dialog open onOpenChange={open => !open && !pending.current && onClose()}><DialogContent className="agenda-ui-dialog z-[90] max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl">
-    <DialogHeader><DialogTitle className="flex items-center gap-2 text-[var(--text-primary)]"><CalendarDays className="size-5 shrink-0 text-[var(--accent-text)]" />{editing ? event ? "Editar evento" : "Nuevo evento" : "Detalle del evento"}</DialogTitle>
+  return <Dialog open onOpenChange={open => !open && !pending.current && onClose()}><DialogContent className="agenda-ui-dialog z-[90] flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-xl">
+    <DialogHeader className="shrink-0"><DialogTitle className="flex items-center gap-2 text-[var(--text-primary)]"><CalendarDays className="size-5 shrink-0 text-[var(--accent-text)]" />{editing ? event ? "Editar evento" : "Nuevo evento" : "Detalle del evento"}</DialogTitle>
       <DialogDescription>{editing ? "Organizá tu actividad. Los horarios se muestran en hora de Argentina." : "Esta es la información guardada en tu Agenda personal."}</DialogDescription></DialogHeader>
-    {!editing && event ? <div className="space-y-4 break-words text-[var(--text-primary)]">
+    {!editing && event ? <div className="min-h-0 space-y-4 overflow-y-auto break-words text-[var(--text-primary)]">
       <div><span className="agenda-ui-category">{event.category}</span><h2 className="mt-2 text-xl font-black">{event.title}</h2></div>
       <div className="agenda-ui-detail"><CalendarDays className="size-5 shrink-0 text-[var(--accent-text)]" /><div><strong className="block capitalize">{agendaDayLabel(agendaDay(event.starts_at))}</strong><span>{event.all_day ? "Todo el día" : `${agendaInput(event.starts_at).slice(11)} h · Argentina`}</span></div></div>
       {event.notes && <div className="space-y-1"><h3 className="text-sm font-bold text-[var(--text-secondary)]">Descripción</h3><p className="whitespace-pre-wrap text-sm leading-relaxed">{event.notes}</p></div>}
@@ -149,8 +149,8 @@ export function ManualEventDialog({ event, initialDate, headers, onClose, onSave
       <p className="flex items-center gap-2 text-sm text-[var(--text-secondary)]"><Repeat2 className="size-4" />{repeatLabels[event.recurrence || "none"]}</p>
       {error && <p role="alert" className="agenda-ui-error">{error}</p>}
       <DialogFooter><Button variant="outline" onClick={onClose}>Cerrar</Button><Button onClick={() => setEditing(true)} className="min-h-11 bg-[#0878be] text-white"><Pencil className="size-4" />Editar evento</Button></DialogFooter>
-    </div> : <form onSubmit={e => {e.preventDefault();void save();}} noValidate className="space-y-4">
-      <fieldset disabled={busy} className="space-y-4 disabled:opacity-70">
+    </div> : <form onSubmit={e => {e.preventDefault();void save();}} noValidate className="flex min-h-0 flex-col gap-4">
+      <div data-agenda-fields className="min-h-0 overflow-y-auto pr-1"><fieldset disabled={busy} className="space-y-4 disabled:opacity-70">
         <div className="space-y-2"><Label htmlFor="agenda-event-title">Título</Label><Input id="agenda-event-title" value={form.title} onChange={e => field("title",e.target.value)} maxLength={160} placeholder="Ej. Reunión de padres" className="h-11 rounded-xl" required /></div>
         <div className="space-y-2"><Label htmlFor="agenda-event-notes">Descripción / notas</Label><Textarea id="agenda-event-notes" value={form.notes} onChange={e => field("notes",e.target.value)} maxLength={1000} placeholder="Detalles que quieras recordar" className="min-h-24 rounded-xl" /></div>
         <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] p-3"><Label htmlFor="agenda-event-all-day">Todo el día</Label><Switch id="agenda-event-all-day" checked={form.allDay} onCheckedChange={value => field("allDay",value)} /></div>
@@ -160,10 +160,10 @@ export function ManualEventDialog({ event, initialDate, headers, onClose, onSave
         {choice("recurrence","Repetir",Object.entries(repeatLabels))}
         {choice("reminder","Recordarme",[["none","Sin recordatorio"],["0","A la hora del evento"],["10","10 minutos antes"],["30","30 minutos antes"],["60","1 hora antes"],["1440","1 día antes"],["custom","Personalizado"]])}
         {form.reminder === "custom" && <div className="space-y-2"><Label htmlFor="agenda-event-minutes">Minutos antes</Label><Input id="agenda-event-minutes" type="number" min="1" max="43200" value={form.customMinutes} onChange={e => field("customMinutes",e.target.value)} className="h-11 rounded-xl" /></div>}
-      </fieldset>
-      <p className="text-xs leading-relaxed text-[var(--text-muted)]">El recordatorio queda configurado; su entrega depende de los avisos habilitados. Guardarlo no activa notificaciones push.</p>
-      {error && <p role="alert" className="agenda-ui-error">{error}</p>}
-      <DialogFooter className="gap-2">{event && <Button type="button" variant="ghost" disabled={busy} onClick={() => void remove()} className="min-h-11 text-[var(--danger-text)] sm:mr-auto"><Trash2 className="size-4" />Eliminar</Button>}
+      </fieldset></div>
+      <p data-agenda-reminder-help className="shrink-0 text-xs leading-relaxed text-[var(--text-muted)]">El recordatorio queda configurado; su entrega depende de los avisos habilitados. Guardarlo no activa notificaciones push.</p>
+      {error && <p role="alert" className="agenda-ui-error shrink-0">{error}</p>}
+      <DialogFooter className="shrink-0 gap-2">{event && <Button type="button" variant="ghost" disabled={busy} onClick={() => void remove()} className="min-h-11 text-[var(--danger-text)] sm:mr-auto"><Trash2 className="size-4" />Eliminar</Button>}
         <Button type="button" variant="outline" disabled={busy} onClick={onClose} className="min-h-11">Cancelar</Button><Button type="submit" disabled={busy} className="min-h-11 rounded-xl bg-[#0878be] text-white">{busy ? "Guardando…" : "Guardar evento"}</Button></DialogFooter>
     </form>}
   </DialogContent></Dialog>;

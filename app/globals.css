@@ -36,6 +36,7 @@
 .agenda-ui-empty { padding: 1.75rem 1rem; border: 1px dashed var(--border); border-radius: 1.2rem; text-align: center; background: var(--surface-primary); }
 .agenda-ui-detail { display: flex; gap: .7rem; padding: .9rem; border-radius: .9rem; background: var(--surface-secondary); }
 .agenda-ui-dialog { color: var(--text-primary); background: var(--surface-primary); overflow-wrap: anywhere; }
+[data-slot="dialog-content"].agenda-ui-dialog, [data-theme="dark"] [data-slot="dialog-content"].agenda-ui-dialog { background: var(--card); }
 .agenda-ui-dialog input,.agenda-ui-dialog textarea { max-width: 100%; min-width: 0; color: var(--text-primary); background: var(--input-background); }
 .agenda-ui-error { padding: .75rem; border: 1px solid var(--danger-border); border-radius: .75rem; color: var(--danger-text); background: var(--danger-bg); font-size: .85rem; }
 .agenda-ui button:focus-visible,.agenda-ui-select:focus-visible { outline: 3px solid #27a8f2; outline-offset: 2px; }
