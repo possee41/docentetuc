@@ -105,6 +105,9 @@ test("receptor SIME rechaza acceso sin autorización y lotes inválidos", async 
   const h = harness();
   const request = new Request(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "start" }) });
   assert.equal((await receiver.fetch(request, h.env)).status, 401);
+  const forged = new Request(endpoint, { method: "POST", headers: { "Content-Type": "application/json",
+    Authorization: `Bearer ${"x".repeat(32)}` }, body: JSON.stringify({ mode: "start" }) });
+  assert.equal((await receiver.fetch(forged, h.env)).status, 401);
   assert.equal(h.sqlite.prepare("SELECT count(*) AS n FROM sync_state").get()?.n, 0);
   const bad = new Request(endpoint, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` }, body: JSON.stringify({ mode: "batch", items: [{}] }) });
   assert.equal((await receiver.fetch(bad, h.env)).status, 400);

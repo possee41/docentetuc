@@ -16,14 +16,22 @@ const paths = { fdci: "/api/internal/fdci-import", sime: "/api/internal/sime-imp
   juntas: "/api/internal/public-source-import/juntas", cenet: "/api/internal/public-source-import/cenet",
   infd: "/api/internal/public-source-import/infd" };
 const reply = (status, code) => Response.json({ error: code }, { status, headers: { "Cache-Control": "no-store" } });
+const sourceByPath = new Map(Object.entries(paths).map(([source, path]) => [path, source]));
+const encoder = new TextEncoder();
+const secrets = new Map();
+const secretDigest = (secret) => {
+  let digest = secrets.get(secret);
+  if (!digest) { digest = crypto.subtle.digest("SHA-256", encoder.encode(secret)); if (secrets.size < 8) secrets.set(secret, digest); }
+  return digest;
+};
 
 async function authorized(header, secret) {
   const token = header?.match(/^Bearer ([A-Za-z0-9_-]{32,})$/)?.[1];
   if (!secret || !token) return false;
-  const digest = async (value) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
-  const [expected, actual] = await Promise.all([digest(secret), digest(token)]);
+  const [expected, actual] = await Promise.all([secretDigest(secret), crypto.subtle.digest("SHA-256", encoder.encode(token))]);
+  const a = new Uint8Array(expected), b = new Uint8Array(actual);
   let difference = 0;
-  for (let index = 0; index < expected.length; index++) difference |= expected[index] ^ actual[index];
+  for (let index = 0; index < a.length; index++) difference |= a[index] ^ b[index];
   return difference === 0;
 }
 
@@ -36,8 +44,7 @@ const gateway = { async fetch(request, env) {
   if (env.IMPORT_GATE_ENABLED !== "true" || !env.DB || !env.IMPORT_DATABASE_NAME || !env.IMPORT_DATABASE_ID)
     return reply(503, "IMPORT_DISABLED");
   const requestedSource = identityRequest ? url.searchParams.get("source") :
-    url.pathname === "/api/internal/juntas-checkpoint" ? "juntas" :
-      Object.keys(paths).find((source) => paths[source] === url.pathname);
+    url.pathname === "/api/internal/juntas-checkpoint" ? "juntas" : sourceByPath.get(url.pathname);
   if (env.IMPORT_GATE_ALLOWED_SOURCE && env.IMPORT_GATE_ALLOWED_SOURCE !== requestedSource)
     return reply(503, "IMPORT_DISABLED");
   const [secretName, receiver] = route;

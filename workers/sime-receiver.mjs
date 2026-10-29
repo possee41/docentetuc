@@ -4,20 +4,32 @@ const clean = (value, max) => typeof value === "string" && value.length <= max &
 const date = (value) => value === null || (clean(value, 40) && Number.isFinite(Date.parse(value)));
 const fields = { externalId: 40, category: 120, title: 500, summary: 8000, level: 300, area: 300, junta: 300,
   location: 300, shift: 150, character: 300, status: 100, metadata: 16000, contentHash: 64 };
+const fieldLimits = Object.entries(fields);
 const dates = ["startsAt", "endsAt", "sourceUpdatedAt", "sourcePublishedAt", "registrationOpenAt", "registrationCloseAt", "expiresAt"];
+const encoder = new TextEncoder(), decoder = new TextDecoder("utf-8", { fatal: true });
+// The configured secret repeats on every request; the presented token never does.
+// Caching its digest removes half the hashing from the authenticated write path.
+const secrets = new Map();
+const secretDigest = (secret) => {
+  let digest = secrets.get(secret);
+  if (!digest) { digest = crypto.subtle.digest("SHA-256", encoder.encode(secret)); if (secrets.size < 4) secrets.set(secret, digest); }
+  return digest;
+};
 
 async function authorized(header, secret) {
   const bearer = header?.match(/^Bearer ([A-Za-z0-9_-]{32,})$/)?.[1];
   if (!secret || !bearer) return false;
-  const digest = (value) => crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  const [a, b] = await Promise.all([digest(secret), digest(bearer)]);
-  return new Uint8Array(a).every((byte, index) => byte === new Uint8Array(b)[index]);
+  const [expected, actual] = await Promise.all([secretDigest(secret), crypto.subtle.digest("SHA-256", encoder.encode(bearer))]);
+  const a = new Uint8Array(expected), b = new Uint8Array(actual);
+  let difference = 0;
+  for (let index = 0; index < a.length; index++) difference |= a[index] ^ b[index];
+  return difference === 0;
 }
 
 function valid(item) {
   if (!item || typeof item !== "object" || Array.isArray(item) || !/^sime:\d+$/.test(item.id) ||
       item.externalId !== item.id.slice(5) || item.kind !== "vacante" ||
-      Object.entries(fields).some(([name, max]) => !clean(item[name], max)) ||
+      fieldLimits.some(([name, max]) => !clean(item[name], max)) ||
       !item.title || !/^[a-f0-9]{64}$/.test(item.contentHash) || !dates.every((name) => date(item[name])) ||
       !["ACTIVE", "UPCOMING", "CLOSED", "EXPIRED", "UNKNOWN"].includes(item.normalizedStatus)) return false;
   try {
@@ -54,7 +66,8 @@ async function store(db, items) {
     item.level,item.area,item.junta,item.location,item.shift,item.character,item.startsAt,item.endsAt,item.status,item.officialUrl,
     item.metadata,item.contentHash,item.sourceUpdatedAt,item.sourcePublishedAt,item.registrationOpenAt,item.registrationCloseAt,
     item.expiresAt,item.status,item.normalizedStatus,now,now));
-  const results = statements.length ? await db.batch(statements) : [];
+  // One statement is already atomic and needs no batch wrapper.
+  const results = statements.length === 1 ? [await statements[0].run()] : statements.length ? await db.batch(statements) : [];
   const written = results.map((result) => Number(result.meta?.rows_written || 0) > 0);
   return { received: items.length, created: changed.filter((item, index) => written[index] && !previous.has(item.id)).length,
     updated: changed.filter((item, index) => written[index] && previous.has(item.id)).length,
@@ -79,7 +92,7 @@ async function body(request) {
   const bytes = new Uint8Array(length);
   let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-  try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); }
+  try { return JSON.parse(decoder.decode(bytes)); }
   catch { throw new Error("INVALID_JSON"); }
 }
 
