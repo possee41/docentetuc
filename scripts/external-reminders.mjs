@@ -50,21 +50,21 @@ export async function materializeExternalReminderBatch(db, { limit = 10, now = n
   if (!Number.isInteger(limit) || limit < 1 || limit > 10 || !(now instanceof Date) || !Number.isFinite(now.getTime()))
     throw new Error("EXTERNAL_REMINDERS_INVALID");
   let remaining = limit, inserted = 0, processed = 0;
+  const writes = [];
   for (const source of sources) {
     if (!remaining) break;
     const due = await db.prepare(source.select).bind(now.toISOString(), ...(source.confirmedTraining ? [now.toISOString()] : []), remaining).all();
     for (const row of due.results || []) {
       const key = source.key(row);
       const args = source.args(row, now.toISOString());
-      const notice = await db.prepare(`INSERT OR IGNORE INTO notifications (user_id,publication_id,type,dedupe_key,scheduled_at)
+      const notice = db.prepare(`INSERT OR IGNORE INTO notifications (user_id,publication_id,type,dedupe_key,scheduled_at)
         SELECT user_id,publication_id,?,?,? FROM ${source.table} WHERE ${source.where}`)
-        .bind(source.type, key, now.toISOString(), ...args).run();
+        .bind(source.type, key, now.toISOString(), ...args);
       // A retry can find an already inserted notice. Mark only that exact due version.
-      const done = await db.prepare(`UPDATE ${source.table} SET ${source.flag}=1${source.touch ? ",updated_at=CURRENT_TIMESTAMP" : ""} WHERE ${source.where}
+      const done = db.prepare(`UPDATE ${source.table} SET ${source.flag}=1${source.touch ? ",updated_at=CURRENT_TIMESTAMP" : ""} WHERE ${source.where}
         AND EXISTS (SELECT 1 FROM notifications WHERE user_id=? AND dedupe_key=?)`)
-        .bind(...args, row.user_id, key).run();
-      inserted += changedRows(notice);
-      processed += changedRows(done);
+        .bind(...args, row.user_id, key);
+      writes.push(notice, done);
     }
     remaining -= (due.results || []).length;
   }
@@ -72,27 +72,41 @@ export async function materializeExternalReminderBatch(db, { limit = 10, now = n
     const due = await db.prepare("SELECT id,user_id,title,starts_at,reminder_at,recurrence,reminder_minutes FROM manual_events WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?) ORDER BY reminder_at,id LIMIT ?")
       .bind(now.toISOString(), remaining).all();
     for (const row of due.results || []) {
-      const queued = await db.prepare(`INSERT OR IGNORE INTO manual_event_push_queue (user_id,event_id,title,occurrence_at)
+      const queued = db.prepare(`INSERT OR IGNORE INTO manual_event_push_queue (user_id,event_id,title,occurrence_at)
         SELECT user_id,id,title,starts_at FROM manual_events WHERE id=? AND starts_at=? AND reminder_at=? AND reminder_notified=0`)
-        .bind(row.id, row.starts_at, row.reminder_at).run();
-      inserted += changedRows(queued);
+        .bind(row.id, row.starts_at, row.reminder_at);
       let completed;
       if (["daily", "weekly", "monthly"].includes(row.recurrence) && row.reminder_minutes != null) {
         const starts = nextOccurrence(row.starts_at, row.recurrence);
         const remind = new Date(new Date(starts).getTime() - Number(row.reminder_minutes) * 60_000).toISOString();
-        completed = await db.prepare(`UPDATE manual_events SET starts_at=?,reminder_at=?,reminder_notified=0,updated_at=CURRENT_TIMESTAMP
+        completed = db.prepare(`UPDATE manual_events SET starts_at=?,reminder_at=?,reminder_notified=0,updated_at=CURRENT_TIMESTAMP
           WHERE id=? AND starts_at=? AND reminder_at=? AND reminder_notified=0
           AND EXISTS (SELECT 1 FROM manual_event_push_queue WHERE event_id=? AND occurrence_at=?)`)
-          .bind(starts, remind, row.id, row.starts_at, row.reminder_at, row.id, row.starts_at).run();
+          .bind(starts, remind, row.id, row.starts_at, row.reminder_at, row.id, row.starts_at);
       } else {
-        completed = await db.prepare(`UPDATE manual_events SET reminder_notified=1,updated_at=CURRENT_TIMESTAMP
+        completed = db.prepare(`UPDATE manual_events SET reminder_notified=1,updated_at=CURRENT_TIMESTAMP
           WHERE id=? AND starts_at=? AND reminder_at=? AND reminder_notified=0
           AND EXISTS (SELECT 1 FROM manual_event_push_queue WHERE event_id=? AND occurrence_at=?)`)
-          .bind(row.id, row.starts_at, row.reminder_at, row.id, row.starts_at).run();
+          .bind(row.id, row.starts_at, row.reminder_at, row.id, row.starts_at);
       }
-      processed += changedRows(completed);
+      writes.push(queued, completed);
     }
     remaining -= (due.results || []).length;
+  }
+  if (writes.length) {
+    // At most 20 statements. Native D1 batches atomically in one RPC; Node
+    // adapters without batch retain the existing guarded, replay-safe order.
+    let results;
+    if (typeof db.batch === "function") results = await db.batch(writes);
+    else {
+      results = [];
+      for (const statement of writes) results.push(await statement.run());
+    }
+    if (!Array.isArray(results) || results.length !== writes.length) throw new Error("EXTERNAL_REMINDER_WRITE_UNCONFIRMED");
+    for (let index = 0; index < results.length; index += 2) {
+      inserted += changedRows(results[index]);
+      processed += changedRows(results[index + 1]);
+    }
   }
   return { considered: limit - remaining, inserted, processed };
 }

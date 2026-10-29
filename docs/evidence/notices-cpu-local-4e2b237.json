@@ -1,0 +1,131 @@
+{
+  "recordedAt": "2026-10-29T19:51:40.262Z",
+  "baselineCommit": "4e2b237e3b800d0e0c75698ff8be1a46cb6adc52",
+  "baselineReminderSha256": "0a74ed198e6103ffdd255900ebb216d59c1888a019e3ea81cfae56589d520737",
+  "optimizedReminderSha256": "800c78e8e358b1a7cd8445c142350d529fab10565e718899b74f272bd294b928",
+  "method": "Captured stdout from scripts/profile-notices-local.mjs; three alternating fresh isolates per variant, two authenticated four-case requests per isolate; synthetic ephemeral D1; real handler; same instrumentation.",
+  "scenarios": [
+    {
+      "variant": "baseline",
+      "phase": "firstAuthenticated",
+      "wallMs": [
+        22,
+        24,
+        24
+      ],
+      "activeSampledMs": [
+        15.313,
+        18.342,
+        21.575
+      ],
+      "rpc": 13,
+      "queries": 13,
+      "rowsRead": 32,
+      "rowsWritten": 26,
+      "invocations": 3,
+      "medianWallMs": 24,
+      "medianActiveSampledMs": 18.342,
+      "lowResolutionProfiles": 3
+    },
+    {
+      "variant": "current",
+      "phase": "firstAuthenticated",
+      "wallMs": [
+        15,
+        16,
+        15
+      ],
+      "activeSampledMs": [
+        16.786,
+        5.894,
+        17.344
+      ],
+      "rpc": 6,
+      "queries": 13,
+      "rowsRead": 32,
+      "rowsWritten": 26,
+      "invocations": 3,
+      "medianWallMs": 15,
+      "medianActiveSampledMs": 16.786,
+      "lowResolutionProfiles": 3
+    },
+    {
+      "variant": "baseline",
+      "phase": "subsequentAuthenticated",
+      "wallMs": [
+        17,
+        17,
+        17
+      ],
+      "activeSampledMs": [
+        13.727,
+        7.916,
+        12.121
+      ],
+      "rpc": 13,
+      "queries": 13,
+      "rowsRead": 33,
+      "rowsWritten": 26,
+      "invocations": 3,
+      "medianWallMs": 17,
+      "medianActiveSampledMs": 12.121,
+      "lowResolutionProfiles": 3
+    },
+    {
+      "variant": "current",
+      "phase": "subsequentAuthenticated",
+      "wallMs": [
+        10,
+        10,
+        10
+      ],
+      "activeSampledMs": [
+        0,
+        7.475,
+        7.688
+      ],
+      "rpc": 6,
+      "queries": 13,
+      "rowsRead": 33,
+      "rowsWritten": 26,
+      "invocations": 3,
+      "medianWallMs": 10,
+      "medianActiveSampledMs": 7.475,
+      "lowResolutionProfiles": 3
+    }
+  ],
+  "ack": {
+    "ok": true,
+    "considered": 4,
+    "inserted": 4,
+    "processed": 4
+  },
+  "limits": {
+    "maxCases": 10,
+    "maxWriteStatements": 20
+  },
+  "sampledCpuLimitations": {
+    "allProfilesLowResolution": true,
+    "activeSamplesPerProfile": "0 to 5",
+    "zeroSampleIsNotZeroCpu": true,
+    "billedCloudflareCpu": false,
+    "includesDeploymentStartup": false,
+    "canProveCpuUnder10Ms": false
+  },
+  "verification": {
+    "focusedTestsPassed": 17,
+    "lintErrors": 0,
+    "remoteOperations": 0
+  },
+  "gitBefore": {
+    "branch": "feat/1.2-sync-integration",
+    "head": "4e2b237",
+    "flintWorktree": "C:/Users/joaquin/AppData/Local/Temp/opencode/docentetuc-notices-cpu",
+    "flintWorktreeHead": "4e2b237",
+    "flintWorktreeClean": true,
+    "preserved": [
+      "wrangler.push-canary.json",
+      "AGENTS.md"
+    ]
+  }
+}
