@@ -1,20 +1,32 @@
 name: Notices reminders via Worker
 on:
-  # Manual only until Codex validates the first bounded run and approves a schedule.
+  # DISABLED schedule template. Add only after explicit production authorization.
+  # schedule:
+  #   - cron: '17 * * * *'
   workflow_dispatch:
     inputs:
       limit:
-        description: 'Recordatorios procesados en esta corrida (1-10)'
-        type: string
-        default: '10'
+        description: 'Máximo de recordatorios (nunca más de dos)'
+        type: choice
+        options: ['1', '2']
+        default: '2'
+      acknowledge_failure:
+        description: 'Confirmar revisión del fallo anterior antes de otra llamada (no es un reintento automático)'
+        type: boolean
+        default: false
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: notices-reminders
   cancel-in-progress: false
 jobs:
   reminders:
-    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/feat/1.2-sync-integration'
+    if: >-
+      vars.NOTICES_AUTOMATION_ENABLED == 'true' &&
+      github.repository == 'possee41/docentetuc' &&
+      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/1.2-sync-integration') ||
+       (github.event_name == 'schedule' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)))
     runs-on: ubuntu-latest
     environment: notices-pilot
     timeout-minutes: 5
@@ -38,7 +50,10 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$NOTICES_REF"
       - name: Materialize bounded reminders
         env:
+          NOTICES_AUTOMATION_ENABLED: ${{ vars.NOTICES_AUTOMATION_ENABLED }}
           NOTICES_IMPORT_URL: ${{ vars.NOTICES_IMPORT_URL }}
           NOTICES_IMPORT_SECRET: ${{ secrets.NOTICES_IMPORT_SECRET }}
-          NOTICES_LIMIT: ${{ inputs.limit }}
+          NOTICES_LIMIT: ${{ inputs.limit || '2' }}
+          NOTICES_ACKNOWLEDGE_FAILURE: ${{ inputs.acknowledge_failure && 'true' || 'false' }}
+          GH_TOKEN: ${{ github.token }}
         run: node --experimental-strip-types scripts/reminders-worker.mjs

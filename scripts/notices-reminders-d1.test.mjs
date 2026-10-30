@@ -119,3 +119,45 @@ test("ACK cuenta registros, no escrituras de índices, con D1 real efímera", as
     assert.equal((await db.prepare("SELECT count(*) AS n FROM manual_event_push_queue").first()).n, 1);
   } finally { await mf.dispose(); }
 });
+
+test("automatización: lotes de dos y concurrencia en Workerd/D1 local, sin red", async () => {
+  const bundle = await build({ entryPoints: ["workers/notices-receiver.mjs"], bundle: true,
+    write: false, format: "esm", platform: "browser", target: "es2022" });
+  const databaseId = "11111111-1111-4111-8111-111111111111";
+  const secret = "synthetic_local_notices_secret_1234567890";
+  const mf = new Miniflare({ modules: true, script: bundle.outputFiles[0].text, d1Databases: ["DB"],
+    bindings: { NOTICES_ENABLED: "true", NOTICES_IMPORT_SECRET: secret,
+      NOTICES_DATABASE_NAME: "docentetuc-notices-canary-1-2", NOTICES_DATABASE_ID: databaseId },
+    outboundService: () => { throw new Error("REMOTE_REQUEST_FORBIDDEN"); },
+  });
+  try {
+    const db = await mf.getD1Database("DB");
+    const seed = readFileSync(new URL("./notices-canary-seed.sql", import.meta.url), "utf8")
+      .replaceAll("bee24175-2591-4fe3-a4ed-deb7f680f615", databaseId);
+    for (const text of [...migrations.map(file => readFileSync(new URL(`../${file}`, import.meta.url), "utf8")), seed])
+      for (const sql of text.replace(/^--.*$/gm, "").split(";").map(s => s.trim()).filter(Boolean)) await db.prepare(sql).run();
+    const invoke = async () => {
+      const response = await mf.dispatchFetch("http://local/api/internal/notices/reminders", { method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
+        body: JSON.stringify({ mode: "reminders", limit: 2 }),
+      });
+      assert.equal(response.status, 200);
+      return response.json();
+    };
+    const concurrent = await Promise.all([invoke(), invoke()]);
+    assert.ok(concurrent.every(r => r.considered <= 2));
+    const inserted = concurrent.reduce((n, r) => n + r.inserted, 0);
+    assert.ok(inserted >= 2 && inserted <= 4);
+    assert.equal(concurrent.reduce((n, r) => n + r.processed, 0), inserted);
+    // D1 can serialize the calls so they select different pending rows.
+    const remaining = 4 - inserted;
+    assert.deepEqual(await invoke(), { ok: true, considered: remaining, inserted: remaining, processed: remaining });
+    assert.deepEqual(await invoke(), { ok: true, considered: 0, inserted: 0, processed: 0 });
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM notifications").first()).n, 3);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM manual_event_push_queue").first()).n, 1);
+    // One pending reminder whose notice already exists: recover flag, no duplicate.
+    await db.prepare("UPDATE designation_tracking SET reminder_notified=0").run();
+    assert.deepEqual(await invoke(), { ok: true, considered: 1, inserted: 0, processed: 1 });
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM notifications").first()).n, 3);
+  } finally { await mf.dispose(); }
+});

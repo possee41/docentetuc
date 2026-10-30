@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import worker from "../workers/notices-receiver.mjs";
-import { resolveReminderTarget, runReminderStep } from "./reminders-worker.mjs";
+import { checkReminderAutomation, resolveReminderTarget, runReminderStep } from "./reminders-worker.mjs";
 
 const endpoint = "https://docentetuc-notices-1-2.example.workers.dev/api/internal/notices/reminders";
 const secret = "synthetic_notices_secret_123456789012";
@@ -111,11 +112,12 @@ test("los cursores por fila solo avanzan con el aviso confirmado", async () => {
 
 test("el runner valida destino, secreto, límite y ACK", async () => {
   const base = { NOTICES_IMPORT_URL: endpoint, NOTICES_IMPORT_SECRET: secret };
-  assert.deepEqual(resolveReminderTarget(base), { endpoint, secret, limit: 10 });
+  assert.deepEqual(resolveReminderTarget(base), { endpoint, secret, limit: 2 });
   for (const config of [{ ...base, NOTICES_IMPORT_URL: "http://docentetuc-notices-1-2.example.workers.dev/api/internal/notices/reminders" },
     { ...base, NOTICES_IMPORT_URL: "https://docentetuc-import-1-2.example.workers.dev/api/internal/notices/reminders" },
     { ...base, NOTICES_IMPORT_URL: endpoint.replace("/reminders", "/other") },
-    { ...base, NOTICES_IMPORT_SECRET: "corto" }, { ...base, NOTICES_LIMIT: "0" }, { ...base, NOTICES_LIMIT: "11" }])
+    { ...base, NOTICES_IMPORT_URL: endpoint.replace(".dev/", ".dev:8443/") },
+    { ...base, NOTICES_IMPORT_SECRET: "corto" }, { ...base, NOTICES_LIMIT: "0" }, { ...base, NOTICES_LIMIT: "3" }])
     assert.throws(() => resolveReminderTarget(config), /NOTICES_(?:URL|SECRET|LIMIT)_INVALID/);
   const target = resolveReminderTarget(base);
   assert.deepEqual(await runReminderStep(target, async () => Response.json({ ok: true, considered: 2, inserted: 2, processed: 2 })),
@@ -123,4 +125,97 @@ test("el runner valida destino, secreto, límite y ACK", async () => {
   await assert.rejects(runReminderStep(target, async () => Response.json({ error: "x" }, { status: 503 })), /NOTICES_HTTP_503/);
   await assert.rejects(runReminderStep(target, async () => Response.json({ ok: true, considered: 2 })), /NOTICES_ACK_INVALID/);
   await assert.rejects(runReminderStep(target, async () => { throw new Error("offline"); }), /NOTICES_NETWORK_ERROR/);
+});
+
+test("runner limita a dos, no sigue redirecciones ni reintenta una respuesta ambigua", async () => {
+  const target = resolveReminderTarget({ NOTICES_IMPORT_URL: endpoint, NOTICES_IMPORT_SECRET: secret });
+  for (const ack of [
+    { ok: true, considered: 3, inserted: 3, processed: 3 },
+    { ok: true, considered: 2, inserted: -1, processed: 2 },
+    { ok: true, considered: 2, inserted: 2, processed: 1 },
+    { ok: true, considered: 2, inserted: 3, processed: 2 },
+  ]) await assert.rejects(runReminderStep(target, async () => Response.json(ack)), /NOTICES_(ACK_INVALID|BATCH_UNCONFIRMED)/);
+  for (const response of [() => { throw new Error("ACK_LOST_WITH_SECRET"); },
+    () => new Response("{", { status: 200 }),
+    () => Response.json({}, { status: 503 })]) {
+    let calls = 0;
+    await assert.rejects(runReminderStep(target, async (_url, options) => {
+      calls++;
+      assert.equal(options.redirect, "error");
+      assert.deepEqual(JSON.parse(options.body), { mode: "reminders", limit: 2 });
+      return response();
+    }), /NOTICES_(NETWORK_ERROR|ACK_INVALID|HTTP_503)/);
+    assert.equal(calls, 1);
+  }
+  // Even a harmless lost race requires review; never trigger an automatic retry.
+  await assert.rejects(runReminderStep(target, async () => Response.json({ ok: true, considered: 2, inserted: 0, processed: 0 })),
+    /NOTICES_BATCH_UNCONFIRMED/);
+});
+
+test("apagado y bloqueo tras fallo/ambigüedad antes de contactar al Worker", async () => {
+  const config = { NOTICES_AUTOMATION_ENABLED: "true", GITHUB_REPOSITORY: "possee41/docentetuc",
+    GITHUB_RUN_ID: "30", GITHUB_RUN_NUMBER: "3", GITHUB_RUN_ATTEMPT: "1", GH_TOKEN: "synthetic_read_only",
+    GITHUB_EVENT_NAME: "schedule" };
+  const history = (run) => async (_url, options) => {
+    assert.equal(options.redirect, "error");
+    return Response.json({ workflow_runs: [run] });
+  };
+  const success = { run_number: 2, status: "completed", conclusion: "success" };
+  let calls = 0;
+  await assert.rejects(checkReminderAutomation({ ...config, NOTICES_AUTOMATION_ENABLED: "false" }, async () => { calls++; }), /AUTOMATION_DISABLED/);
+  assert.equal(calls, 0);
+  await checkReminderAutomation(config, history(success));
+  for (const conclusion of ["failure", "cancelled", "timed_out", null])
+    await assert.rejects(checkReminderAutomation(config, history({ ...success, conclusion })), /PREVIOUS_RUN_REQUIRES_REVIEW/);
+  await assert.rejects(checkReminderAutomation(config, history({ ...success, status: "in_progress", conclusion: null })), /PREVIOUS_RUN_ACTIVE/);
+  await assert.rejects(checkReminderAutomation(config, async () => Response.json({}, { status: 403 })), /HISTORY_UNAVAILABLE/);
+  await assert.rejects(checkReminderAutomation(config, async () => Response.json({})), /HISTORY_INVALID/);
+  await assert.rejects(checkReminderAutomation(config, async () => { throw new Error("secret"); }), /HISTORY_UNAVAILABLE/);
+  await assert.rejects(checkReminderAutomation({ ...config, GITHUB_RUN_ATTEMPT: "2" }, history(success)), /RETRY_REQUIRES_REVIEW/);
+  await assert.rejects(checkReminderAutomation(config, async () => Response.json({ workflow_runs: [] })), /PREVIOUS_RUN_REQUIRES_REVIEW/);
+  await checkReminderAutomation({ ...config, GITHUB_EVENT_NAME: "workflow_dispatch", NOTICES_ACKNOWLEDGE_FAILURE: "true" },
+    history({ ...success, conclusion: "failure" }));
+  // A scheduled execution cannot clear the latch, even with a stale reset variable.
+  await assert.rejects(checkReminderAutomation({ ...config, NOTICES_ACKNOWLEDGE_FAILURE: "true" },
+    history({ ...success, conclusion: "failure" })), /PREVIOUS_RUN_REQUIRES_REVIEW/);
+});
+
+test("lotes de 0, 1, 2 y más de dos; concurrencia y deduplicación con D1 sintética", async () => {
+  for (const n of [0, 1, 2, 4]) {
+    const { sqlite, env } = isolated();
+    sqlite.exec("DELETE FROM training_reminders; DELETE FROM saved_publications; DELETE FROM manual_events; DELETE FROM designation_tracking;");
+    for (let i = 0; i < n; i++) sqlite.prepare("INSERT INTO designation_tracking(id,user_id,publication_id,reminder_at) VALUES(?,?,?,'2020-01-01T00:00:00Z')").run(`d${i}`, "synthetic-user", `p${i}`);
+    const fetcher = (url, options) => worker.fetch(new Request(url, options), env);
+    const target = resolveReminderTarget({ NOTICES_IMPORT_URL: endpoint, NOTICES_IMPORT_SECRET: secret });
+    const first = await runReminderStep(target, fetcher);
+    assert.deepEqual(first, { considered: Math.min(n, 2), inserted: Math.min(n, 2), processed: Math.min(n, 2) });
+    const subsequent = await Promise.allSettled([runReminderStep(target, fetcher), runReminderStep(target, fetcher)]);
+    // A lost race can return an unconfirmed ACK; automation must stop, not retry.
+    assert.ok(subsequent.every(r => r.status === "fulfilled" || /BATCH_UNCONFIRMED/.test(r.reason.message)));
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM notifications").get().n, n);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM designation_tracking WHERE reminder_notified=1").get().n, n);
+    assert.deepEqual(await runReminderStep(target, fetcher), { considered: 0, inserted: 0, processed: 0 });
+    // Disabled Worker short-circuits before touching D1 (including identity).
+    const disabled = { ...env, NOTICES_ENABLED: "false", DB: { prepare() { throw new Error("D1_MUST_NOT_BE_USED"); } } };
+    assert.equal((await worker.fetch(request({ mode: "reminders", limit: 2 }), disabled)).status, 503);
+    sqlite.close();
+  }
+});
+
+test("workflow serializado, apagado por defecto, sin schedule ni credenciales Cloudflare", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/notices-reminders.yml", import.meta.url), "utf8");
+  const active = workflow.replace(/^\s*#.*$/gm, "");
+  assert.doesNotMatch(active, /^\s*schedule:/m);
+  assert.match(active, /group: notices-reminders\s+cancel-in-progress: false/);
+  assert.match(active, /vars.NOTICES_AUTOMATION_ENABLED == 'true'/);
+  assert.match(active, /options: \['1', '2'\]/);
+  assert.match(active, /NOTICES_LIMIT: \$\{\{ inputs.limit \|\| '2' \}\}/);
+  assert.match(active, /actions: read/);
+  assert.doesNotMatch(active, /actions: write|CLOUDFLARE|D1_EDIT|retry/i);
+  for (const name of ["production", "canary"]) {
+    const config = JSON.parse(readFileSync(new URL(`../wrangler.1.2-notices-${name}.jsonc`, import.meta.url), "utf8"));
+    assert.equal(config.vars.NOTICES_ENABLED, "false");
+    assert.deepEqual(config.triggers.crons, []);
+    assert.deepEqual(config.routes, []);
+  }
 });
