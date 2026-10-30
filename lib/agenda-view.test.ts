@@ -61,4 +61,6 @@ test("tarjetas de publicaciones preservan fecha personal, notas y recordatorio g
   assert.equal(entries.length,2); const p = entries.find(e=>e.publication)!;
   assert.equal(p.starts_at,saved.agenda_at); assert.equal(p.notes,"Notas propias");
   assert.equal(p.category,"Capacitación"); assert.equal(p.reminderAt,saved.agenda_reminder_at);
+  const fromSummary = agendaEntries([{...publication, summary:"<p>Texto &amp; enlace</p><script>no ejecutar</script>"}],new Map([["p1",{...saved,agenda_notes:""}]]),[]);
+  assert.equal(fromSummary[0].notes,"Texto & enlace");
 });

@@ -1,6 +1,7 @@
 import type { ManualEvent, Publication, Saved } from "./types.ts";
 import { eventDate, officialMetadata } from "./official-publication.ts";
-import { parseTrainingMetadata, summaryText } from "./training.ts";
+import { parseTrainingMetadata } from "./training.ts";
+import { htmlToText } from "./public-documents.ts";
 
 export const agendaZone = "America/Argentina/Buenos_Aires";
 export const agendaDay = (value: string | Date) => /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? String(value)
@@ -40,7 +41,7 @@ export function agendaEntries(publications: Publication[], savedMap: Map<string,
     if (!saved?.in_agenda || officialMetadata(publication)?.canonicalId || !date || !Number.isFinite(Date.parse(date))) continue;
     entries.push({ id: `publication:${publication.id}`, title: publication.title,
       category: publication.kind === "vacante" ? "Designación" : publication.kind === "capacitacion" ? "Capacitación" : publication.category,
-      starts_at: date, notes: saved.agenda_notes || summaryText(publication.summary), reminderAt: saved.agenda_reminder_at || null,
+      starts_at: date, notes: saved.agenda_notes || htmlToText(publication.summary || ""), reminderAt: saved.agenda_reminder_at || null,
       reminderProcessed: Boolean(saved.agenda_reminder_notified), allDay: /^\d{4}-\d{2}-\d{2}$/.test(date), manual: null, publication });
   }
   return entries.sort((a,b) => Date.parse(a.starts_at) - Date.parse(b.starts_at) || a.id.localeCompare(b.id));
