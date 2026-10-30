@@ -1,0 +1,157 @@
+{
+  "base": "24012c54af3f0303b6adb73e9d6611739fc90387",
+  "productionVersion": "a0402a88-6648-4b98-9494-5d24e53d1168",
+  "seoCommit": "bbca2df0af7d584ac43c544a5837b7243b3d8432",
+  "seoFiles": [
+    "app/layout.tsx",
+    "app/page.tsx",
+    "app/manifest.ts",
+    "app/privacidad/page.tsx",
+    "app/eliminar-datos/page.tsx",
+    "lib/site-identity.ts"
+  ],
+  "unchangedProductionFiles": 566,
+  "agendaFilesUnchanged": true,
+  "previousArtifactEntryHashVerified": true,
+  "configMirrorsLive": true,
+  "entrySha256": "fb89ff70cb4ae521ab8db18340209cea4d69ee84a35ebeded73206278a31cace",
+  "oldVersion": "a0402a88-6648-4b98-9494-5d24e53d1168",
+  "verifiedAt": "2026-10-30T03:39:13.447Z",
+  "version": "9d392144-cc34-462d-9529-7f241ae9312d",
+  "deployment": "9e234861-20ce-4638-aa16-286c3ca60e9b",
+  "activatedAt": "2026-10-30T03:36:46.796595Z",
+  "traffic": [
+    {
+      "version_id": "9d392144-cc34-462d-9529-7f241ae9312d",
+      "percentage": 100
+    }
+  ],
+  "d1Counts": [
+    {
+      "publications": 6829,
+      "profiles": 209,
+      "training_reminders": 0,
+      "designation_tracking": 0,
+      "saved_publications": 4,
+      "manual_events": 1,
+      "notifications": 4712,
+      "manual_event_push_queue": 1,
+      "training_pending": 0,
+      "designation_pending": 0,
+      "saved_pending": 4,
+      "manual_pending": 0
+    }
+  ],
+  "d1QueryRowsWritten": 0,
+  "userConfirmedDeletionOfFourManualEvents": true,
+  "remainingCountsUnchanged": true,
+  "cronUnchanged": true,
+  "otherWorkersUnchanged": true,
+  "checks": [
+    {
+      "path": "/",
+      "status": 200
+    },
+    {
+      "path": "/privacidad",
+      "status": 200
+    },
+    {
+      "path": "/eliminar-datos",
+      "status": 200
+    },
+    {
+      "path": "/robots.txt",
+      "status": 200
+    },
+    {
+      "path": "/sitemap.xml",
+      "status": 200
+    },
+    {
+      "path": "/manifest.webmanifest",
+      "status": 200
+    },
+    {
+      "path": "/?section=agenda",
+      "status": 200
+    },
+    {
+      "path": "/api/public-app",
+      "status": 200
+    },
+    {
+      "path": "/api/news?home=1",
+      "status": 200
+    },
+    {
+      "path": "/api/app",
+      "status": 401
+    },
+    {
+      "path": "/api/admin/data",
+      "status": 401
+    }
+  ],
+  "seo": {
+    "title": "DocenteTuc | Información y herramientas para docentes de Tucumán",
+    "description": "Aplicación gratuita para docentes de Tucumán. Consultá designaciones, capacitaciones, padrones y noticias, y organizá tu agenda en un solo lugar.",
+    "canonical": "https://docentetuc.com.ar/",
+    "openGraph": true,
+    "twitter": true,
+    "webSiteNodes": 1,
+    "ssrPublicIdentity": true,
+    "noPrivateFieldsInStructuredData": true
+  },
+  "sitemap": [
+    "https://docentetuc.com.ar/",
+    "https://docentetuc.com.ar/privacidad",
+    "https://docentetuc.com.ar/eliminar-datos"
+  ],
+  "publicPublicationCount": 400,
+  "assetHashVerified": true,
+  "bindingsAndSettingsUnchanged": true,
+  "domainsUnchanged": true,
+  "d1Before": [
+    {
+      "publications": 6829,
+      "profiles": 209,
+      "training_reminders": 0,
+      "designation_tracking": 0,
+      "saved_publications": 4,
+      "manual_events": 5,
+      "notifications": 4712,
+      "manual_event_push_queue": 1,
+      "training_pending": 0,
+      "designation_pending": 0,
+      "saved_pending": 4,
+      "manual_pending": 4
+    }
+  ],
+  "d1After": [
+    {
+      "publications": 6829,
+      "profiles": 209,
+      "training_reminders": 0,
+      "designation_tracking": 0,
+      "saved_publications": 4,
+      "manual_events": 1,
+      "notifications": 4712,
+      "manual_event_push_queue": 1,
+      "training_pending": 0,
+      "designation_pending": 0,
+      "saved_pending": 4,
+      "manual_pending": 0
+    }
+  ],
+  "d1DifferenceExplanation": "User explicitly confirmed deleting four manual Agenda events during deployment preparation. No D1 mutation was executed by this operation.",
+  "notices": {
+    "unchanged": true,
+    "http": 503
+  },
+  "gateway": {
+    "unchanged": true,
+    "http": 503
+  },
+  "rollback": false
+}
