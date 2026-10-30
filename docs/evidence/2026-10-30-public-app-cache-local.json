@@ -1,0 +1,28 @@
+{
+  "date": "2026-10-30",
+  "baseCommit": "7869fbaf51f73aebeeb8284b8dd26cb99d9c14da",
+  "environment": "local Workerd/Miniflare, native Cache API, ephemeral synthetic D1",
+  "endpoint": "GET /api/public-app",
+  "command": "node --test scripts/public-app-cache-d1.test.mjs",
+  "syntheticPublications": 7200,
+  "tests": { "cacheIncludingParent": 7, "existingCatalog": 1, "failed": 0 },
+  "checks": { "typescript": "passed", "targetedLint": "passed", "build": "passed" },
+  "before": {
+    "mode": "cache disabled, same D1 query and payload",
+    "requests": 5, "queries": 10, "rowsRead": 114610, "rowsWritten": 0,
+    "medianHandlerWallMs": 12, "medianClientWallMs": 15.408699999999953
+  },
+  "after": {
+    "mode": "1 MISS, 4 HIT",
+    "requests": 5, "queries": 2, "rowsRead": 22922, "rowsWritten": 0,
+    "medianHandlerWallMs": 1, "medianClientWallMs": 3.827299999999923
+  },
+  "cpu": null,
+  "cpuNote": "No CPU sampled or billed CPU available; wall time is not CPU",
+  "workerInvocationsSaved": 0,
+  "expiryTest": { "ttlSeconds": 60, "applicationClockControlled": true, "realRemoteExpiryTested": false },
+  "remoteReads": false,
+  "remoteWrites": false,
+  "deployment": false,
+  "unrelatedLocalChangesPreserved": true
+}
