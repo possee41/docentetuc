@@ -87,7 +87,6 @@ export function Agenda({ publications, savedMap, manualEvents, focusAt, onOpen, 
         <Button type="button" variant="ghost" size="icon" aria-label={mode === "month" ? "Mes siguiente" : "Semana siguiente"} onClick={() => mode === "month" ? changeMonth(1) : choose(shiftAgendaDay(selected,7))}><ChevronRight className="size-5" /></Button></div>
       <div className="agenda-ui-calendar-grid">{mode === "month" ? <>{["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"].map(d => <span key={d} className="agenda-ui-weekday py-2">{d}</span>)}
         {agendaMonthDays(month).map((day,i) => day ? dayButton(day) : <span key={`blank:${i}`} />)}</> : week.map(d => dayButton(d,true))}</div>
-      <p className="mt-3 text-center text-xs text-[var(--text-muted)]">Borde celeste: hoy · Fondo azul: seleccionado · Número pequeño: eventos</p>
     </section>}
     {mode === "month" && <section aria-label="Eventos del día seleccionado" className="space-y-3"><div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-bold capitalize">{agendaDayLabel(selected)}</h2><span className="text-xs font-semibold text-[var(--text-muted)]">{selectedEvents.length} {selectedEvents.length === 1 ? "evento" : "eventos"}</span></div>
       {selectedEvents.length ? selectedEvents.map(e => card(e,selected)) : empty("Este día está libre", "Elegí otra fecha o agregá una actividad para este día.")}</section>}

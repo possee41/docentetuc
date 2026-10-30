@@ -22,10 +22,8 @@
   scroll-margin-block: 5rem;
 }
 .agenda-ui-calendar--classroom .agenda-ui-calendar-grid { padding: .3rem; border: 1px solid rgb(255 255 255 / .65); border-radius: 1rem; background: rgb(255 255 255 / .52); }
-.agenda-ui-calendar--classroom > p { padding: .35rem; border-radius: .65rem; background: rgb(255 255 255 / .8); }
 [data-theme="dark"] .agenda-ui-calendar--classroom { background-color: #102e4b; background-image: linear-gradient(#102e4b 20%,rgb(16 46 75 / .98) 38%,rgb(4 23 43 / .8) 72%),url("/assets/docentetuc/agenda-classroom.webp"); }
 [data-theme="dark"] .agenda-ui-calendar--classroom .agenda-ui-calendar-grid { border-color: rgb(158 210 244 / .16); background: rgb(8 41 74 / .52); }
-[data-theme="dark"] .agenda-ui-calendar--classroom > p { background: rgb(8 41 74 / .9); }
 @media (min-width:640px) {
   .agenda-ui-calendar--classroom { background-image: linear-gradient(rgb(255 255 255 / .28),rgb(255 255 255 / .28)),url("/assets/docentetuc/agenda-classroom.webp"); background-size: 100% 100%,cover; background-position: center,center 60%; }
   [data-theme="dark"] .agenda-ui-calendar--classroom { background-image: linear-gradient(rgb(4 23 43 / .8),rgb(4 23 43 / .8)),url("/assets/docentetuc/agenda-classroom.webp"); }

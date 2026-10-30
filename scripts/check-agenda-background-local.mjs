@@ -51,6 +51,7 @@ try {
       await page.goto(`${origin}/?section=agenda`);
       const calendar = page.locator(".agenda-ui-calendar--classroom");
       await calendar.waitFor();
+      assert.equal(await page.getByText("Borde celeste: hoy · Fondo azul: seleccionado · Número pequeño: eventos", { exact: true }).count(), 0);
       const image = await page.evaluate(async () => {
         const image = new Image(); image.src = "/assets/docentetuc/agenda-classroom.webp";
         await image.decode(); return { width: image.naturalWidth, height: image.naturalHeight };
