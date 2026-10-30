@@ -1,0 +1,174 @@
+{
+  "baseSource": "24012c54af3f0303b6adb73e9d6611739fc90387",
+  "approvedCommits": [
+    "aa120af",
+    "ffdb973"
+  ],
+  "compatibilityCommit": "5cec572",
+  "runtimeFiles": [
+    "app/docente-app.tsx",
+    "app/globals.css",
+    "components/teacher-agenda.tsx",
+    "lib/agenda-view.ts",
+    "lib/private-access-state.ts"
+  ],
+  "postBuildUnchangedBaseFiles": 566,
+  "entrySha256": "4c753f3679131856d73e93517f0661df8c0cc068394c562d514b4927662fd2b6",
+  "oldVersion": "be5c16fc-6690-4fb4-ba3b-b3cb8bb83330",
+  "newVersion": "a0402a88-6648-4b98-9494-5d24e53d1168",
+  "deployment": "b840b2a2-3a92-4f68-9e66-919e43f173c4",
+  "traffic": [
+    {
+      "version_id": "a0402a88-6648-4b98-9494-5d24e53d1168",
+      "percentage": 100
+    }
+  ],
+  "activatedAt": "2026-10-30T01:39:37.142523Z",
+  "verifiedAt": "2026-10-30T01:53:55.111Z",
+  "publicChecks": [
+    {
+      "path": "/",
+      "status": 200
+    },
+    {
+      "path": "/?section=agenda",
+      "status": 200
+    },
+    {
+      "path": "/api/public-app",
+      "status": 200
+    },
+    {
+      "path": "/api/news?home=1",
+      "status": 200
+    },
+    {
+      "path": "/api/app",
+      "status": 401
+    },
+    {
+      "path": "/api/admin/data",
+      "status": 401
+    }
+  ],
+  "assetHashVerified": true,
+  "d1": {
+    "name": "docentetuc-db",
+    "id": "baaf5886-0123-4948-96da-aa7106424549",
+    "before": [
+      {
+        "publications": 6829,
+        "profiles": 209,
+        "training_reminders": 0,
+        "designation_tracking": 0,
+        "saved_publications": 4,
+        "manual_events": 4,
+        "notifications": 4712,
+        "manual_event_push_queue": 1,
+        "training_pending": 0,
+        "designation_pending": 0,
+        "saved_pending": 4,
+        "manual_pending": 3
+      }
+    ],
+    "after": [
+      {
+        "publications": 6829,
+        "profiles": 209,
+        "training_reminders": 0,
+        "designation_tracking": 0,
+        "saved_publications": 4,
+        "manual_events": 4,
+        "notifications": 4712,
+        "manual_event_push_queue": 1,
+        "training_pending": 0,
+        "designation_pending": 0,
+        "saved_pending": 4,
+        "manual_pending": 3
+      }
+    ],
+    "countsUnchanged": true
+  },
+  "cron": [
+    "1 * * * *",
+    "*/5 * * * *"
+  ],
+  "cronUnchanged": true,
+  "bindingsAndSecretNamesUnchanged": true,
+  "auxiliaries": {
+    "notices": {
+      "unchanged": true,
+      "http": 503,
+      "version": "b8c376ce-e23b-4c51-b3f4-81e3c28ce481"
+    },
+    "gateway": {
+      "unchanged": true,
+      "http": 503,
+      "version": "7e5e4589-5f42-44ec-84b0-6b097e2021f5"
+    }
+  },
+  "browser": {
+    "transport": "Node HTTP forwarding of unmodified production responses; no cookies copied",
+    "http": [
+      {
+        "path": "/api/auth/status",
+        "status": 200
+      },
+      {
+        "path": "/api/installations/credential",
+        "status": 409
+      },
+      {
+        "path": "/api/app",
+        "status": 401
+      },
+      {
+        "path": "/api/public-app",
+        "status": 200
+      },
+      {
+        "path": "/api/news",
+        "status": 200
+      },
+      {
+        "path": "/api/notices",
+        "status": 200
+      },
+      {
+        "path": "/api/news",
+        "status": 200
+      }
+    ],
+    "errors": [],
+    "googleSessionVerified": false,
+    "ok": true,
+    "directTransport": "Two direct browser navigations timed out; not counted as a successful normal-browser validation",
+    "existingPrivateEventsVerifiedInProduction": false
+  },
+  "analytics": {
+    "start": "2026-10-30T01:39:33.484Z",
+    "end": "2026-10-30T01:44:40.304Z",
+    "http": 200,
+    "available": true,
+    "errors": [],
+    "rows": [
+      {
+        "version": "be5c16fc-6690-4fb4-ba3b-b3cb8bb83330",
+        "status": "success",
+        "requests": 1,
+        "errors": 0,
+        "cpuP50Ms": 85.667,
+        "cpuP99Ms": 85.667
+      },
+      {
+        "version": "a0402a88-6648-4b98-9494-5d24e53d1168",
+        "status": "success",
+        "requests": 14,
+        "errors": 0,
+        "cpuP50Ms": 23.538,
+        "cpuP99Ms": 171.16
+      }
+    ]
+  },
+  "rollbackExecuted": false
+}
