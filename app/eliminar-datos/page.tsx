@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "https://docentetuc.com.ar/eliminar-datos" },
   title: "Solicitar eliminación de datos | DocenteTuc",
   description: "Cómo solicitar la eliminación de tus datos personales de DocenteTuc sin instalar la aplicación.",
 };

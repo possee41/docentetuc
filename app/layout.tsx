@@ -1,12 +1,14 @@
 import type { Metadata, Viewport } from "next";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_OPEN_GRAPH, SITE_TITLE, SITE_URL } from "@/lib/site-identity";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DocenteTuc",
-  description: "Información pública docente de Tucumán, organizada en un solo lugar.",
-  other: {
-    "codex-preview": "development",
-  },
+  metadataBase: new URL(SITE_URL),
+  applicationName: SITE_NAME,
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  openGraph: SITE_OPEN_GRAPH,
+  twitter: { card: "summary", title: SITE_TITLE, description: SITE_DESCRIPTION, images: [`${SITE_URL}/icon-512.png`] },
   icons: {
     icon: "/favicon.png",
     shortcut: "/favicon.png",
