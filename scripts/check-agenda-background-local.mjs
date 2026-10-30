@@ -9,7 +9,8 @@ const require = createRequire(import.meta.url);
 let playwright;
 try { playwright = require("playwright"); }
 catch { playwright = require(join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
-const origin = "http://localhost:5173", output = resolve(".wrangler/agenda-background-review");
+const interactions = process.argv.includes("--interactions");
+const origin = "http://localhost:5173", output = resolve(interactions ? ".wrangler/agenda-hover-review" : ".wrangler/agenda-background-review");
 mkdirSync(output, { recursive: true });
 const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const other = `${today.slice(0, 8)}${String(Number(today.slice(-2)) < 15 ? Number(today.slice(-2)) + 1 : Number(today.slice(-2)) - 1).padStart(2, "0")}`;
@@ -21,8 +22,8 @@ const browser = await playwright.chromium.launch({ channel: "msedge", headless: 
 const results = [];
 try {
   for (const [device, viewport] of [["mobile", { width: 390, height: 844 }], ["desktop", { width: 1440, height: 1000 }]]) {
-    for (const theme of ["light", "dark"]) for (const populated of [true, false]) {
-      const context = await browser.newContext({ viewport, serviceWorkers: "block", timezoneId: "America/Argentina/Buenos_Aires" });
+    for (const theme of ["light", "dark"]) for (const populated of interactions ? [true] : [true, false]) {
+      const context = await browser.newContext({ viewport, isMobile: device === "mobile", hasTouch: device === "mobile", serviceWorkers: "block", timezoneId: "America/Argentina/Buenos_Aires" });
       await context.addInitScript(({ theme }) => {
         localStorage.setItem("docentetuc-theme", theme);
         localStorage.setItem("docentetuc-device-id", "11111111-1111-4111-8111-111111111111");
@@ -82,6 +83,53 @@ try {
       const name = `${device}-${theme}-${populated ? "events" : "empty"}`;
       await page.screenshot({ path: join(output, `${name}-app.png`), animations: "disabled" });
       await calendar.screenshot({ path: join(output, `${name}-calendar.png`), animations: "disabled" });
+      if (interactions) {
+        const normalLabel = await page.locator(".agenda-ui-day:not(.is-selected):not(.is-today)").first().getAttribute("aria-label");
+        const normal = page.getByRole("button", { name: normalLabel, exact: true });
+        const styles = locator => locator.evaluate(e => {
+          const s = getComputedStyle(e); return { background: s.backgroundColor, border: s.borderTopColor,
+            color: s.color, outline: s.outlineStyle, outlineWidth: s.outlineWidth, shadow: s.boxShadow };
+        });
+        const expected = theme === "dark" ? "rgb(25, 77, 115)" : "rgb(199, 234, 255)";
+        if (device === "desktop") {
+          await normal.hover(); await page.waitForTimeout(180);
+          assert.equal((await styles(normal)).background, expected);
+          await calendar.screenshot({ path: join(output, `${device}-${theme}-hover.png`) });
+          const todayButton = page.locator('.agenda-ui-day[aria-current="date"]');
+          await todayButton.hover(); await page.waitForTimeout(180);
+          const todayStyle = await styles(todayButton);
+          assert.equal(todayStyle.background, expected); assert.match(todayStyle.shadow, /39, 168, 242/);
+          assert.equal(await todayButton.locator(".agenda-ui-count").innerText(), "1");
+          await calendar.screenshot({ path: join(output, `${device}-${theme}-today-hover.png`) });
+          await target.hover(); await page.waitForTimeout(180);
+          assert.equal((await styles(target)).background, "rgb(8, 120, 190)");
+          assert.equal((await styles(target)).color, "rgb(255, 255, 255)");
+          await calendar.screenshot({ path: join(output, `${device}-${theme}-selected-hover.png`) });
+        } else {
+          // Check :active with a held pointer, then selection with a native touch tap.
+          // Chromium touch emulation does not reliably expose :active mid-gesture.
+          const bounds = await normal.boundingBox();
+          await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2); await page.mouse.down();
+          await page.waitForTimeout(180);
+          assert.equal((await styles(normal)).background, expected);
+          await calendar.screenshot({ path: join(output, `${device}-${theme}-pressed.png`) });
+          await page.mouse.up();
+          await target.tap(); await page.waitForTimeout(180);
+          assert.equal(await target.getAttribute("aria-pressed"), "true");
+          await normal.tap(); await page.waitForTimeout(180);
+          assert.equal(await normal.getAttribute("aria-pressed"), "true");
+          assert.equal((await styles(normal)).background, "rgb(8, 120, 190)");
+          await calendar.screenshot({ path: join(output, `${device}-${theme}-touch.png`) });
+        }
+        // Real Tab navigation, not a forced CSS class or synthetic focus style.
+        await page.mouse.move(0, 0);
+        await page.locator('[aria-label="Mes anterior"]').focus(); await page.keyboard.press("Tab"); await page.keyboard.press("Tab");
+        const focused = page.locator(".agenda-ui-day:focus-visible"); await focused.waitFor();
+        assert.equal((await styles(focused)).outline, "solid"); assert.equal((await styles(focused)).outlineWidth, "3px");
+        await calendar.screenshot({ path: join(output, `${device}-${theme}-keyboard.png`) });
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        assert.equal(await focused.evaluate(e => getComputedStyle(e).transitionDuration), "0s");
+      }
       // Scoped decoration must disappear from Week and Agenda; navigation still works.
       await page.locator(".agenda-ui-tabs").getByRole("button", { name: "Semana", exact: true }).click();
       assert.equal(await page.locator(".agenda-ui-calendar--classroom").count(), 0);

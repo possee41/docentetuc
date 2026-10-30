@@ -40,6 +40,18 @@
 .agenda-ui-day.is-selected .agenda-ui-weekday { color: white; }
 .agenda-ui-count { display: inline-flex; align-items: center; justify-content: center; min-width: 1.1rem; padding: .02rem .24rem; border-radius: .5rem; background: var(--accent-soft); color: var(--accent-text); font-size: .63rem; line-height: 1rem; font-weight: 800; }
 .agenda-ui-day.is-selected .agenda-ui-count { color: white; background: rgb(255 255 255 / .2); }
+/* Opaque interaction colors remain legible over the month illustration. */
+.agenda-ui-calendar--classroom { --agenda-day-hover-bg: #c7eaff; --agenda-day-hover-border: #0878be; --agenda-day-focus: #075985; }
+[data-theme="dark"] .agenda-ui-calendar--classroom { --agenda-day-hover-bg: #194d73; --agenda-day-hover-border: #70c7ff; --agenda-day-focus: #7dd3fc; }
+.agenda-ui-calendar--classroom .agenda-ui-day { -webkit-tap-highlight-color: rgb(39 168 242 / .3); transition: background-color .14s ease,border-color .14s ease,box-shadow .14s ease; }
+.agenda-ui-calendar--classroom .agenda-ui-day:not(.is-selected):is(:active,:focus-visible) { background: var(--agenda-day-hover-bg); border-color: var(--agenda-day-hover-border); }
+.agenda-ui-calendar--classroom .agenda-ui-day.is-today { box-shadow: inset 0 0 0 1px #27a8f2; }
+.agenda-ui-calendar--classroom .agenda-ui-day:focus-visible { outline: 3px solid var(--agenda-day-focus); outline-offset: 2px; }
+@media (hover:hover) and (pointer:fine) {
+  .agenda-ui-calendar--classroom .agenda-ui-day:not(.is-selected):hover { background: var(--agenda-day-hover-bg); border-color: var(--agenda-day-hover-border); }
+  .agenda-ui-calendar--classroom .agenda-ui-day.is-selected:hover { background: #0878be; color: white; box-shadow: inset 0 0 0 2px #b7e3ff; }
+}
+@media (prefers-reduced-motion:reduce) { .agenda-ui-calendar--classroom .agenda-ui-day { transition: none; } }
 .agenda-ui-group-heading { padding: .4rem .6rem; border-left: 3px solid var(--border); font-size: .8rem; font-weight: 800; text-transform: capitalize; color: var(--text-secondary); }
 .agenda-ui-group-heading.is-selected { border-color: #27a8f2; background: var(--accent-soft); color: var(--accent-text); border-radius: 0 .6rem .6rem 0; }
 .agenda-ui-card { display: flex; align-items: flex-start; gap: .8rem; width: 100%; min-width: 0; padding: 1rem; text-align: left; border: 1px solid var(--border); border-radius: 1.2rem; color: var(--text-primary); background: var(--surface-primary); box-shadow: 0 3px 12px rgb(6 43 85 / .03); }
