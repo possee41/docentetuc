@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { privateNotifications, readPrivateNotification } from "../lib/private-notifications.ts";
 
 const require = createRequire(import.meta.url);
 const { Miniflare } = require("../node_modules/.pnpm/miniflare@4.20260515.0/node_modules/miniflare");
@@ -12,8 +15,152 @@ const migrations = [
   "migrations/0002_designations.sql", "migrations/0003_information_agenda.sql",
   "migrations/0004_agenda_reminders.sql", "migrations/0006_manual_events.sql",
   "migrations/0007_manual_event_recurrence.sql", "migrations/0008_personal_matching_circuits.sql",
-  "migrations/0009_reliability_lifecycle.sql", "migrations/0029_import_gateway_identity.sql",
+  "migrations/0009_reliability_lifecycle.sql", "migrations/0029_import_gateway_identity.sql", "migrations/0030_manual_internal_notices.sql",
 ];
+
+test("avisos manuales privados: elegibilidad, dueño, ACK, dedupe y rollback D1 real", async () => {
+  const source = `import worker from './workers/notices-receiver.mjs';
+    export default {async fetch(request,env){
+      const metrics={rpc:0,queries:0,rowsRead:0,rowsWritten:0};
+      const record=r=>{metrics.rowsRead+=r.meta.rows_read;metrics.rowsWritten+=r.meta.rows_written;return r;};
+      const wrap=stmt=>({raw:stmt,bind(...args){return wrap(stmt.bind(...args));},
+        async all(){metrics.rpc++;metrics.queries++;return record(await stmt.all());},
+        async first(){return (await this.all()).results[0]||null;}});
+      const db={prepare:sql=>wrap(env.DB.prepare(sql)),async batch(statements){
+        metrics.rpc++;metrics.queries+=statements.length;
+        const raw=statements.map(s=>s.raw);
+        if(request.headers.get('x-test-write-failure'))raw[Number(request.headers.get('x-test-write-failure'))-1]=env.DB.prepare('UPDATE missing_manual_test_table SET flag=1');
+        return (await env.DB.batch(raw)).map(record);
+      }};
+      const response=await worker.fetch(request,{...env,DB:db});
+      return Response.json({http:response.status,ack:await response.json(),metrics});
+    }};`;
+  const bundle = await build({ stdin: { contents: source, resolveDir: process.cwd(), loader: "ts" }, bundle: true,
+    write: false, format: "esm", platform: "browser", target: "es2022" });
+  const mf = new Miniflare({ modules: true, script: bundle.outputFiles[0].text, d1Databases: ["DB"],
+    bindings: { NOTICES_ENABLED: "true", NOTICES_IMPORT_SECRET: "synthetic_local_manual_notice_1234567890",
+      NOTICES_DATABASE_NAME: "local-manual-notices", NOTICES_DATABASE_ID: "11111111-1111-4111-8111-111111111111" },
+    outboundService: () => { throw Error("REMOTE_REQUEST_FORBIDDEN"); },
+  });
+  try {
+    const db = await mf.getD1Database("DB");
+    for (const file of migrations) {
+      if (file.endsWith("0030_manual_internal_notices.sql")) {
+        await db.prepare("INSERT INTO manual_events(id,user_id,title,starts_at,reminder_at,reminder_notified) VALUES('completed','owner-a','Histórico','2030-01-01T12:00:00Z','2000-01-01T00:00:00Z',1)").run();
+        await db.prepare("INSERT INTO manual_event_push_queue(user_id,event_id,title,occurrence_at) VALUES('owner-a','completed','Histórico sin backfill','2030-01-01T12:00:00Z')").run();
+      }
+      for (const sql of readFileSync(new URL(`../${file}`, import.meta.url), "utf8")
+        .replace(/^--.*$/gm, "").split(";").map(s => s.trim()).filter(Boolean)) await db.prepare(sql).run();
+    }
+    await db.prepare("INSERT INTO import_gateway_identity(id,database_name,database_id) VALUES(1,'local-manual-notices','11111111-1111-4111-8111-111111111111')").run();
+    const add = async (id, owner, at, notified = 0) => db.prepare(`INSERT INTO manual_events(id,user_id,title,starts_at,reminder_at,reminder_notified)
+      VALUES(?,?,?,'2030-01-01T12:00:00Z',?,?)`).bind(id, owner, `Evento privado sintético ${id}`, at, notified).run();
+    const invoke = async failure => {
+      const started = performance.now();
+      const r = await mf.dispatchFetch("http://local/api/internal/notices/reminders", { method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer synthetic_local_manual_notice_1234567890", ...(failure ? { "x-test-write-failure": String(failure) } : {}) },
+        body: JSON.stringify({ mode: "reminders", limit: 2 }) });
+      return { ...await r.json(), elapsedMs: performance.now() - started };
+    };
+    await add("future", "owner-a", "2099-01-01T00:00:00Z");
+    await add("none", "owner-a", null);
+    assert.deepEqual((await invoke()).ack, { ok: true, considered: 0, inserted: 0, processed: 0 });
+    assert.equal((await privateNotifications(db, "owner-a")).results.length, 0);
+    await add("due-a", "owner-a", "2000-01-01T00:00:00Z");
+    for (const failure of [1, 2]) {
+      assert.equal((await invoke(failure)).http, 503);
+      assert.equal((await db.prepare("SELECT reminder_notified AS n FROM manual_events WHERE id='due-a'").first()).n, 0);
+      assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM manual_event_push_queue WHERE event_id='due-a'").first()).n, 0);
+    }
+    const first = await invoke();
+    assert.deepEqual(first.ack, { ok: true, considered: 1, inserted: 1, processed: 1 });
+    let owned = (await privateNotifications(db, "owner-a")).results;
+    assert.equal(owned.length, 1); assert.equal(owned[0].manual_event_id, "due-a"); assert.ok(owned[0].id < 0);
+    assert.equal((await privateNotifications(db, "owner-b")).results.length, 0);
+    await readPrivateNotification(db, "owner-b", owned[0].id);
+    assert.equal((await privateNotifications(db, "owner-a")).results[0].read, 0);
+    if (process.env.MANUAL_NOTICE_UI === "1") await checkManualNoticeUI(db, "owner-a");
+    await readPrivateNotification(db, "owner-a", owned[0].id);
+    assert.equal((await privateNotifications(db, "owner-a")).results[0].read, 1);
+    assert.deepEqual((await invoke()).ack, { ok: true, considered: 0, inserted: 0, processed: 0 });
+    // Replay a confirmed notice with its flag interrupted: only the flag advances.
+    await db.prepare("UPDATE manual_events SET reminder_notified=0 WHERE id='due-a'").run();
+    assert.deepEqual((await invoke()).ack, { ok: true, considered: 1, inserted: 0, processed: 1 });
+    await add("due-b", "owner-b", "2000-01-01T00:00:00Z"); await add("due-c", "owner-a", "2000-01-01T00:00:00Z"); await add("due-d", "owner-a", "2000-01-01T00:00:00Z");
+    const two = await invoke(); assert.deepEqual(two.ack, { ok: true, considered: 2, inserted: 2, processed: 2 });
+    assert.equal(two.metrics.rpc, 6); assert.equal(two.metrics.queries, 9);
+    assert.equal((await db.prepare("SELECT reminder_notified AS n FROM manual_events WHERE id='due-d'").first()).n, 0);
+    assert.equal((await privateNotifications(db, "owner-a")).results.length, 2);
+    assert.equal((await privateNotifications(db, "owner-b")).results.length, 1);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM publications").first()).n, 0, "no private data in public catalog");
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM notifications").first()).n, 0, "manual notices reuse queue storage");
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM manual_event_push_queue WHERE internal_notice=1").first()).n, 3);
+    // An interrupted legacy queue row is promoted only while its event is still pending.
+    await db.prepare("UPDATE manual_events SET reminder_notified=1 WHERE id='due-d'").run();
+    await db.prepare("UPDATE manual_events SET reminder_notified=0 WHERE id='completed'").run();
+    assert.deepEqual((await invoke()).ack, { ok: true, considered: 1, inserted: 1, processed: 1 });
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM manual_event_push_queue WHERE event_id='completed'").first()).n, 1);
+    const manual = (await privateNotifications(db, "owner-a")).results.find(n => n.manual_event_id === "completed");
+    await db.prepare("INSERT INTO publications(id,source,external_id,kind,category,title,status,official_url,content_hash) VALUES('public-test','synthetic','public-test','informacion','Prueba','Publicación sintética','sin verificar','','test-hash')").run();
+    await db.prepare("INSERT INTO notifications(id,user_id,publication_id,type,dedupe_key) VALUES(?,'owner-a','public-test','AGENDA_RECORDATORIO','public-test')").bind(-manual.id).run();
+    await readPrivateNotification(db, "owner-a", manual.id);
+    assert.equal((await db.prepare("SELECT read FROM notifications WHERE id=?").bind(-manual.id).first()).read, 0, "negative IDs must not mark the native notification with the same absolute ID");
+    await readPrivateNotification(db, "owner-b", -manual.id);
+    assert.equal((await db.prepare("SELECT read FROM notifications WHERE id=?").bind(-manual.id).first()).read, 0);
+    await readPrivateNotification(db, "owner-a", -manual.id);
+    assert.equal((await db.prepare("SELECT read FROM notifications WHERE id=?").bind(-manual.id).first()).read, 1);
+    assert.ok((await privateNotifications(db, "owner-a")).results.some(n => n.publication_id === "public-test"));
+    console.log(JSON.stringify({ localD1: true, one: first, two, cpuTimeMs: null, note: "elapsedMs is wall time, not CPU; one row backs notice and push queue" }));
+  } finally { await mf.dispose(); }
+});
+
+async function checkManualNoticeUI(db, owner) {
+  let playwright;
+  try { playwright = require("playwright"); }
+  catch { playwright = require(join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+  const browser = await playwright.chromium.launch({ channel: "msedge", headless: true, args: ["--disable-background-networking"] });
+  try {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "block" });
+    await context.addInitScript(() => localStorage.setItem("docentetuc-device-id", "11111111-1111-4111-8111-111111111111"));
+    const blank = { profile: null, publications: [], personalPublications: [], saved: [], notifications: [], reminders: [], designations: [], manualEvents: [], sync: [] };
+    await context.route("**/*", async route => {
+      const r = route.request(), u = new URL(r.url());
+      if (u.origin !== "http://localhost:5173") return route.abort();
+      if (!u.pathname.startsWith("/api/")) return route.continue();
+      let body;
+      if (u.pathname === "/api/installations/credential") body = { status: "ready", deviceId: "11111111-1111-4111-8111-111111111111" };
+      else if (u.pathname === "/api/app" && r.method() === "POST") {
+        const payload = r.postDataJSON(); assert.equal(payload.action, "read_notification");
+        await readPrivateNotification(db, owner, payload.id); body = { ok: true };
+      } else {
+        assert.equal(r.method(), "GET");
+        if (u.pathname === "/api/app") body = { ...blank, notifications: (await privateNotifications(db, owner)).results,
+          manualEvents: (await db.prepare("SELECT * FROM manual_events WHERE user_id=?").bind(owner).all()).results };
+        else if (u.pathname === "/api/public-app") body = blank;
+        else if (u.pathname === "/api/auth/status") body = { authenticated: true, image: null };
+        else if (u.pathname === "/api/auth/link") body = { linked: false };
+        else if (u.pathname === "/api/push") body = { supported: false, subscribed: false };
+        else if (["/api/news", "/api/notices"].includes(u.pathname)) body = { items: [] };
+        else if (u.pathname === "/api/ai") body = { configured: false };
+        else throw Error("UNEXPECTED_LOCAL_API");
+      }
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    });
+    const page = await context.newPage(), errors = [];
+    page.on("pageerror", e => errors.push(e.message));
+    await page.goto("http://localhost:5173/?section=alertas");
+    const card = page.getByRole("button").filter({ hasText: "Evento privado sintético due-a" });
+    await card.waitFor(); assert.equal(await card.count(), 1);
+    await card.scrollIntoViewIfNeeded(); await page.screenshot({ path: ".wrangler/manual-notice-alerts.png" });
+    const readResponse = page.waitForResponse(r => r.url().endsWith("/api/app") && r.request().method() === "POST");
+    await card.click(); await readResponse;
+    await page.getByRole("heading", { name: "Detalle del evento", exact: true }).waitFor();
+    assert.equal((await privateNotifications(db, owner)).results[0].read, 1);
+    await page.waitForTimeout(300); // Capture the settled existing dialog, not its enter transition.
+    await page.screenshot({ path: ".wrangler/manual-notice-detail.png" }); assert.deepEqual(errors, []);
+    console.log(JSON.stringify({ localUI: true, notificationVisibleWithoutProfile: true, opensExistingDetail: true, ownerReadConfirmed: true, remoteAccess: false }));
+  } finally { await browser.close(); }
+}
 
 test("ACK cuenta registros, no escrituras de índices, con D1 real efímera", async () => {
   const source = `

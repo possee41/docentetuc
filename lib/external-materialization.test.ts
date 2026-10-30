@@ -25,7 +25,7 @@ function fixture(profiles = 0) {
     CREATE TABLE manual_events(id TEXT,user_id TEXT,title TEXT,starts_at TEXT,reminder_at TEXT,
       reminder_notified INTEGER DEFAULT 0,recurrence TEXT,reminder_minutes INTEGER,updated_at TEXT);
     CREATE TABLE manual_event_push_queue(id INTEGER PRIMARY KEY,user_id TEXT,event_id TEXT,title TEXT,
-      occurrence_at TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,UNIQUE(event_id,occurrence_at));`);
+      occurrence_at TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,internal_notice INTEGER DEFAULT 0,internal_read INTEGER DEFAULT 0,UNIQUE(event_id,occurrence_at));`);
   sqlite.exec(readFileSync(new URL("../migrations/0025_external_publication_events.sql", import.meta.url), "utf8"));
   sqlite.exec(readFileSync(new URL("../migrations/0028_external_notice_cycle.sql", import.meta.url), "utf8"));
   const add = sqlite.prepare("INSERT INTO profiles(user_id,notify_new_trainings,training_notify_scope) VALUES(?,1,'all')");

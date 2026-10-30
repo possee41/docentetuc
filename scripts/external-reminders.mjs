@@ -72,8 +72,12 @@ export async function materializeExternalReminderBatch(db, { limit = 10, now = n
     const due = await db.prepare("SELECT id,user_id,title,starts_at,reminder_at,recurrence,reminder_minutes FROM manual_events WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?) ORDER BY reminder_at,id LIMIT ?")
       .bind(now.toISOString(), remaining).all();
     for (const row of due.results || []) {
-      const queued = db.prepare(`INSERT OR IGNORE INTO manual_event_push_queue (user_id,event_id,title,occurrence_at)
-        SELECT user_id,id,title,starts_at FROM manual_events WHERE id=? AND starts_at=? AND reminder_at=? AND reminder_notified=0`)
+      // The same private row backs the internal notice and the future push.
+      // A still-pending pre-migration row may be promoted; completed events are never selected.
+      const queued = db.prepare(`INSERT INTO manual_event_push_queue (user_id,event_id,title,occurrence_at,internal_notice)
+        SELECT user_id,id,title,starts_at,1 FROM manual_events WHERE id=? AND starts_at=? AND reminder_at=? AND reminder_notified=0
+        ON CONFLICT(event_id,occurrence_at) DO UPDATE SET internal_notice=1
+        WHERE manual_event_push_queue.user_id=excluded.user_id AND manual_event_push_queue.internal_notice=0`)
         .bind(row.id, row.starts_at, row.reminder_at);
       let completed;
       if (["daily", "weekly", "monthly"].includes(row.recurrence) && row.reminder_minutes != null) {
@@ -81,12 +85,12 @@ export async function materializeExternalReminderBatch(db, { limit = 10, now = n
         const remind = new Date(new Date(starts).getTime() - Number(row.reminder_minutes) * 60_000).toISOString();
         completed = db.prepare(`UPDATE manual_events SET starts_at=?,reminder_at=?,reminder_notified=0,updated_at=CURRENT_TIMESTAMP
           WHERE id=? AND starts_at=? AND reminder_at=? AND reminder_notified=0
-          AND EXISTS (SELECT 1 FROM manual_event_push_queue WHERE event_id=? AND occurrence_at=?)`)
+          AND EXISTS (SELECT 1 FROM manual_event_push_queue WHERE event_id=? AND occurrence_at=? AND user_id=manual_events.user_id AND internal_notice=1)`)
           .bind(starts, remind, row.id, row.starts_at, row.reminder_at, row.id, row.starts_at);
       } else {
         completed = db.prepare(`UPDATE manual_events SET reminder_notified=1,updated_at=CURRENT_TIMESTAMP
           WHERE id=? AND starts_at=? AND reminder_at=? AND reminder_notified=0
-          AND EXISTS (SELECT 1 FROM manual_event_push_queue WHERE event_id=? AND occurrence_at=?)`)
+          AND EXISTS (SELECT 1 FROM manual_event_push_queue WHERE event_id=? AND occurrence_at=? AND user_id=manual_events.user_id AND internal_notice=1)`)
           .bind(row.id, row.starts_at, row.reminder_at, row.id, row.starts_at);
       }
       writes.push(queued, completed);

@@ -8,6 +8,7 @@ import { getAuthenticatedAccount } from "@/lib/auth-session";
 import { isSameOriginMutation } from "@/lib/auth-identity";
 import { PERSONAL_PUBLICATIONS_QUERY } from "@/lib/personal-publications";
 import { sourceHealth } from "@/lib/source-health";
+import { privateNotifications, readPrivateNotification } from "@/lib/private-notifications";
 import type { SyncStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
       db.prepare("SELECT * FROM profiles WHERE user_id=?").bind(user.userId).first(),
       account ? db.prepare("SELECT display_name, avatar_id, bio FROM public_profiles WHERE user_id=?").bind(account.accountId).first() : Promise.resolve(null),
       db.prepare("SELECT publication_id, in_agenda, followed, agenda_at, agenda_notes, agenda_reminder_at, agenda_reminder_notified, saved_at FROM saved_publications WHERE user_id=?").bind(user.userId).all(),
-      db.prepare("SELECT n.*, p.title, p.kind FROM notifications n JOIN publications p ON p.id=n.publication_id WHERE n.user_id=? ORDER BY n.created_at DESC LIMIT 100").bind(user.userId).all(),
+      privateNotifications(db, user.userId),
       db.prepare("SELECT id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified FROM training_reminders WHERE user_id=? ORDER BY opens_at").bind(user.userId).all(),
       db.prepare("SELECT id, publication_id, status, role, subject, school, address, locality, applied_at, appointment_at, shift, board, documentation, order_number, notes, official_url, reminder_at, reminder_notified, created_at, updated_at FROM designation_tracking WHERE user_id=? ORDER BY COALESCE(appointment_at, applied_at, updated_at) DESC").bind(user.userId).all(),
       db.prepare("SELECT id, title, notes, category, starts_at, all_day, recurrence, reminder_minutes, reminder_at, reminder_notified, created_at, updated_at FROM manual_events WHERE user_id=? ORDER BY starts_at").bind(user.userId).all(),
@@ -143,7 +144,8 @@ export async function POST(request: Request) {
     } else if (action === "delete_event") {
       await db.prepare("DELETE FROM manual_events WHERE id=? AND user_id=?").bind(value(body.id, 100), user.userId).run();
     } else if (action === "read_notification") {
-      await db.prepare("UPDATE notifications SET read=1 WHERE id=? AND user_id=? AND read=0").bind(Number(body.id), user.userId).run();
+      if (!Number.isSafeInteger(Number(body.id)) || Number(body.id) === 0) return Response.json({ error: "Aviso inválido." }, { status: 400 });
+      await readPrivateNotification(db, user.userId, Number(body.id));
     } else return Response.json({ error: "Acción no admitida." }, { status: 400 });
     return Response.json({ ok: true });
   } catch (error) {
