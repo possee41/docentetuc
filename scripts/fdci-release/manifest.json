@@ -1,0 +1,57 @@
+{
+  "sourceCommit": "87b8efcf0d69537c1ba8730cd1ecebd4039198ac",
+  "bundleSha256": "fc754359ccc26dbfc916880ec6573477e2d3426cdd47daf6bbe43a2e58c1c6d5",
+  "bytes": 41543,
+  "inputs": [
+    {
+      "path": "lib/circuits.ts",
+      "sha256": "28a3b3be8f01a374ed44ec8b8dcc61329883f146523bfbf3df4584ae83981fab"
+    },
+    {
+      "path": "lib/publication-lifecycle.ts",
+      "sha256": "24f4c18a35a8d08bfec34aecb55944122179519f6e88c63105f359f24317ffc5"
+    },
+    {
+      "path": "lib/sync-diff.ts",
+      "sha256": "c237d8f939d1c3bbf000ad6466d2610cd30a38ff0bbc3796abbdfc89cdfb24ca"
+    },
+    {
+      "path": "lib/home-dashboard.ts",
+      "sha256": "aeea0e7bf595b5c85e4d1a3e72356e4f93b7c415bc92aa977c3dcc2b1dee862f"
+    },
+    {
+      "path": "lib/public-documents.ts",
+      "sha256": "7940c9d0c2473e756406666134ef932e7377808ad4c8a98675518afb714ec748"
+    },
+    {
+      "path": "lib/training.ts",
+      "sha256": "3a39019101d8a30ff2ab89b3209950bbaa855bbb72cab051398ef5b163a2e0a6"
+    },
+    {
+      "path": "lib/fdci-import.ts",
+      "sha256": "8d46f5aee49190d79c52ee942da28c3d4ce0db584cf219bdd992beb81cb22607"
+    },
+    {
+      "path": "scripts/import-fdci.mjs",
+      "sha256": "fa54f9626d7ae65b350879cf502064a9cd04eef62d7945a0abe713522c59c86b"
+    },
+    {
+      "path": "scripts/fdci-incremental.mjs",
+      "sha256": "7c5c506384436cd33411cb68afbb7b177c74962551903c024726fab6a6e49144"
+    },
+    {
+      "path": "scripts/import-via-gateway.mjs",
+      "sha256": "05c454ce58f802249aa2d2d4a1ef2e0ddc30eb27513eb81e8d37480c7b796e80"
+    },
+    {
+      "path": "scripts/import-gate.mjs",
+      "sha256": "8ba5c9980ae1d3176ab4f4a03075d18e0ce2cacc21baf05e46dfadb38a68368b"
+    }
+  ],
+  "changes": [
+    "Only FDCI dispatcher retained; other sources fail closed",
+    "Workflow independent identity; disabled variable gate; default-branch manual dispatch",
+    "No app files, shared modules or existing workflows modified",
+    "Imported module CLI entrypoints removed; exactly one CLI remains"
+  ]
+}
