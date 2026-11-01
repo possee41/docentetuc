@@ -56,7 +56,7 @@ test("solo publica noticias vigentes con fuente principal activa; detalle no exp
     assert.equal(await publicNewsDetail(database, "withdrawn", now), null);
     const detail = await publicNewsDetail(database, "current", now);
     assert.equal(detail?.sources[0].url, "https://example.invalid/current");
-    assert.deepEqual(Object.keys(detail!).sort(), ["body", "featured", "id", "image", "primarySource", "publishedAt", "relevance", "sources", "summary", "title", "topic", "validFrom", "validUntil"].sort());
+    assert.deepEqual(Object.keys(detail!).sort(), ["body", "category", "featured", "id", "image", "primarySource", "publishedAt", "relevance", "sources", "summary", "title", "topic", "validFrom", "validUntil"].sort());
     assert.ok(!JSON.stringify(detail).includes("actor_user_id"));
   } finally { raw.close(); }
 });
@@ -78,6 +78,54 @@ test("filtra tema, relevancia, texto editorial y pagina sin duplicar", async () 
     assert.deepEqual(filtered.items.map((entry) => entry.id), ["item-00"]);
     assert.deepEqual((await listPublicNews(database, new URLSearchParams("q=sin-coincidencia"), now)).items, []);
     await assert.rejects(listPublicNews(database, new URLSearchParams("page=1000"), now), RangeError);
+  } finally { raw.close(); }
+});
+
+test("filtra por categoría en el servidor y conserva tema, fuente y validación", async () => {
+  const { raw, database } = fixture();
+  try {
+    add(raw, "oficial-uno", { sourceType: "official", topic: "Comunicados" });
+    add(raw, "oficial-dos", { sourceType: "official", topic: "Juntas" });
+    add(raw, "publica", { sourceType: "public", topic: "Educación" });
+    add(raw, "periodistica", { sourceType: "media", topic: "Educación" });
+    add(raw, "gremial", { sourceType: "union", topic: "Actualidad gremial" });
+    const all = await listPublicNews(database, new URLSearchParams(), now);
+    assert.deepEqual(Object.fromEntries(all.items.map((entry) => [entry.id, entry.category])), {
+      "oficial-uno": "oficial", "oficial-dos": "oficial", publica: "educativa",
+      periodistica: "educativa", gremial: "gremial" });
+    const oficial = await listPublicNews(database, new URLSearchParams("category=oficial"), now);
+    assert.deepEqual(oficial.items.map((entry) => entry.id).sort(), ["oficial-dos", "oficial-uno"]);
+    assert.ok(oficial.items.every((entry) => entry.category === "oficial"));
+    assert.deepEqual(oficial.topics, ["Comunicados", "Juntas"]);
+    const educativa = await listPublicNews(database, new URLSearchParams("category=educativa"), now);
+    assert.deepEqual(educativa.items.map((entry) => entry.id).sort(), ["periodistica", "publica"]);
+    const gremial = await listPublicNews(database, new URLSearchParams("category=gremial"), now);
+    assert.deepEqual(gremial.items.map((entry) => entry.id), ["gremial"]);
+    assert.equal(gremial.items[0].primarySource.type, "union");
+    assert.deepEqual((await listPublicNews(database, new URLSearchParams("category=oficial&topic=Juntas"), now))
+      .items.map((entry) => entry.id), ["oficial-dos"]);
+    assert.equal((await publicNewsDetail(database, "gremial", now))?.category, "gremial");
+    await assert.rejects(listPublicNews(database, new URLSearchParams("category=otra"), now), RangeError);
+    await assert.rejects(listPublicNews(database, new URLSearchParams("category=Oficial"), now), RangeError);
+  } finally { raw.close(); }
+});
+
+test("la categoría filtra antes de paginar y no mezcla noticias de otra categoría", async () => {
+  const { raw, database } = fixture();
+  try {
+    for (let index = 0; index < 13; index++) add(raw, `oficial-${String(index).padStart(2, "0")}`, { sourceType: "official" });
+    add(raw, "gremial-a", { sourceType: "union" });
+    add(raw, "gremial-b", { sourceType: "union" });
+    const first = await listPublicNews(database, new URLSearchParams("category=oficial"), now);
+    assert.equal(first.items.length, 12);
+    assert.equal(first.nextPage, 1);
+    assert.ok(first.items.every((entry) => entry.category === "oficial"));
+    const second = await listPublicNews(database, new URLSearchParams("category=oficial&page=1"), now);
+    assert.equal(second.items.length, 1);
+    assert.equal(second.nextPage, null);
+    assert.equal(new Set([...first.items, ...second.items].map((entry) => entry.id)).size, 13);
+    assert.deepEqual((await listPublicNews(database, new URLSearchParams("category=gremial"), now))
+      .items.map((entry) => entry.id).sort(), ["gremial-a", "gremial-b"]);
   } finally { raw.close(); }
 });
 
@@ -214,4 +262,11 @@ test("Noticias usa URL propia, menú e Inicio sin ocupar la navegación inferior
   assert.match(component, /newsDetail: true/);
   assert.match(component, /window\.addEventListener\("popstate", onPop\)/);
   assert.doesNotMatch(component, /dangerouslySetInnerHTML/);
+  assert.match(component, /"Gremiales"/);
+  assert.match(component, /aria-pressed=\{category === option\.value\}/);
+  assert.match(component, /relevance, category, page/);
+  assert.match(component, /Información gremial\./);
+  assert.match(component, /No es un comunicado oficial/);
+  assert.match(component, /Cobertura educativa\./);
+  assert.match(component, /Las categorías agrupan por tipo de fuente/);
 });
