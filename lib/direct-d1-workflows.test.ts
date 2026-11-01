@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const secrets = { fdci: "FDCI_IMPORT_SECRET", sime: "SIME_IMPORT_SECRET", juntas: "JUNTAS_IMPORT_SECRET",
+const secrets: Record<string, string> = { fdci: "FDCI_IMPORT_SECRET", sime: "SIME_IMPORT_SECRET", juntas: "JUNTAS_IMPORT_SECRET",
   cenet: "CENET_IMPORT_SECRET", infd: "INFD_IMPORT_SECRET" };
 
 test("los cinco importadores siguen manuales y usan únicamente el gateway autenticado", () => {

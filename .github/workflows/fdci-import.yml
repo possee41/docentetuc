@@ -1,8 +1,10 @@
 name: FDCI external import
 on:
-  # Programación propuesta, DESACTIVADA hasta validar gateway, corte legacy y cuotas.
-  # Al habilitarla, el job exige FDCI_AUTOMATION_ENABLED=true y usa scope=active:
-  # schedule: [{ cron: '17 * * * *' }]
+  # Programación propuesta, DESACTIVADA. Frecuencia inicial cada 2 horas:
+  # cubre ventanas de inscripción y cambios de cupo con 12 corridas diarias.
+  # Al habilitarla, el job exige FDCI_AUTOMATION_ENABLED=true, usa scope=active
+  # y abre una compuerta autolimitada que expira aunque el runner no la cierre.
+  # schedule: [{ cron: '17 */2 * * *' }]
   workflow_dispatch:
     inputs:
       scope:
@@ -61,6 +63,15 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$IMPORT_REF"
           git merge-base --is-ancestor d321e7225e7dc75ff76a0e612525386855e05e08 HEAD
+      - name: Open self-expiring FDCI gate
+        timeout-minutes: 2
+        env:
+          IMPORT_GATEWAY_ENABLED: 'true'
+          SYNC_SOURCE: fdci
+          IMPORT_GATEWAY_ORIGIN: ${{ vars.IMPORT_GATEWAY_ORIGIN }}
+          FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
+          IMPORT_GATE_TTL_SECONDS: '600'
+        run: node --experimental-strip-types scripts/import-gate.mjs open
       - name: Import public FDCI data through isolated gateway
         env:
           IMPORT_GATEWAY_ENABLED: 'true'
@@ -73,4 +84,29 @@ jobs:
           FDCI_COURSE_SLUG: ${{ inputs.course_slug }}
           FDCI_COMMISSION_ID: ${{ inputs.commission_id }}
           FDCI_SCOPE: ${{ github.event_name == 'schedule' && 'active' || inputs.scope }}
-        run: node --experimental-strip-types scripts/import-via-gateway.mjs
+        run: |
+          set -o pipefail
+          node --experimental-strip-types scripts/import-via-gateway.mjs | tee fdci-import.json
+      - name: Close FDCI gate
+        if: always()
+        timeout-minutes: 2
+        env:
+          IMPORT_GATEWAY_ENABLED: 'true'
+          SYNC_SOURCE: fdci
+          IMPORT_GATEWAY_ORIGIN: ${{ vars.IMPORT_GATEWAY_ORIGIN }}
+          FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
+        run: node --experimental-strip-types scripts/import-gate.mjs close
+      - name: Record FDCI result
+        if: always()
+        run: |
+          {
+            echo "### FDCI import"
+            echo "- event: ${{ github.event_name }}"
+            echo "- date: $(date -u +%FT%TZ)"
+            if [ -f fdci-import.json ]; then
+              node -e 'const r=JSON.parse(require("fs").readFileSync("fdci-import.json","utf8"));const n=(v)=>"number"==typeof v?v:"?";console.log([`- discovered: ${n(r.discovered)}`,`- created: ${n(r.created)}`,`- updated: ${n(r.updated)}`,`- unchanged: ${n(r.unchanged)}`,`- rejected: ${n(r.rejected)}`].join("\n"))'
+            else
+              echo "- sin resultado: la compuerta o la importación fallaron"
+            fi
+            echo "- complete sweep claimed: no"
+          } >> "$GITHUB_STEP_SUMMARY"
