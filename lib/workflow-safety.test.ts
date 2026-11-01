@@ -14,6 +14,16 @@ test("los cinco importadores siguen manuales y sin calendario activo", () => {
   }
 });
 
+test("FDCI deja preparada la programación acotada sin activarla", () => {
+  const yaml = readFileSync(new URL("../.github/workflows/fdci-import.yml", import.meta.url), "utf8");
+  assert.match(yaml, /# schedule: \[\{ cron: '17 \* \* \* \*' \}\]/);
+  assert.match(yaml, /vars\.FDCI_AUTOMATION_ENABLED == 'true'/);
+  assert.match(yaml, /github\.event\.repository\.default_branch/);
+  assert.match(yaml, /github\.event_name == 'schedule' && 'active' \|\| inputs\.scope/);
+  assert.doesNotMatch(yaml, /FDCI_SCOPE: \$\{\{ inputs\.scope \}\}/);
+  assert.match(yaml, /group: fdci-import/);
+});
+
 test("el build Linux se dispara solo en la rama aislada, sin secretos ni despliegue", () => {
   const yaml = readFileSync(new URL("../.github/workflows/build-1.2-linux.yml", import.meta.url), "utf8");
   assert.match(yaml, /^  push:\r?\n    branches: \[feat\/1\.2-sync-integration\]/m);
