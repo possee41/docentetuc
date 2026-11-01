@@ -7,11 +7,16 @@
   "rules": [{ "type": "ESModule", "globs": ["**/*.js", "**/*.mjs"] }],
   "assets": { "directory": "dist/client" },
   "workers_dev": true,
+  "keep_vars": true,
+  "routes": [
+    { "pattern": "canary.docentetuc.com.ar", "custom_domain": true }
+  ],
   "vars": {
     "AI_PROVIDER": "gemini",
     "AI_WEB_SEARCH_ENABLED": "0",
     "PUSH_DISPATCH_MODE": "disabled",
-    "LEGACY_SYNC_PAUSED": "true"
+    "LEGACY_SYNC_PAUSED": "true",
+    "BETTER_AUTH_URL": "https://canary.docentetuc.com.ar"
   },
   "triggers": { "crons": [] },
   "d1_databases": [{
