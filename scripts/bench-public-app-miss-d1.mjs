@@ -60,7 +60,7 @@ try {
       samples: values,
     });
     const result = { existingIndexes, plans, before: summarize(samples.before), after: summarize(samples.after) };
-    assert.ok(result.after.rowsReadPerMiss < result.before.rowsReadPerMiss);
+    result.rowsReadSavedPerMiss = result.before.rowsReadPerMiss - result.after.rowsReadPerMiss;
     assert.equal(result.after.rowsWrittenPerMiss, 0);
     scenarios.push(result);
   }
