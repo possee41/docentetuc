@@ -6,10 +6,11 @@ type Row = Record<string, unknown>;
 const SOURCES = ["SIME", "Comunicados", "Padrones", "Llamados abiertos", "Capacitación Docente", "INFoD / AulaS-TIC", "CeNET / INET"];
 
 export async function adminDashboard(database: CommunityDatabase, now = new Date()) {
-  const [users, rows, sync] = await Promise.all([
+  const [users, rows, sync, news] = await Promise.all([
     database.prepare('SELECT COUNT(*) AS count FROM "user"').bind().first<{ count: number }>(),
     database.prepare("SELECT id, kind, source, category, metadata, starts_at, ends_at, updated_at, source_published_at, removed_at, normalized_status FROM publications WHERE removed_at IS NULL").bind().all<BoardPublication & { source: string }>(),
     adminSyncStatus(database),
+    adminNewsSummary(database),
   ]);
   const counts = { users: Number(users?.count || 0), sime: 0, acts: 0, calls: 0, communiques: 0, padrones: 0, fdci: 0, infod: 0, cenet: 0 };
   for (const row of rows.results || []) {
@@ -38,7 +39,7 @@ export async function adminDashboard(database: CommunityDatabase, now = new Date
   };
   counts.acts = boardCounts.acts.current;
   counts.calls = boardCounts.calls.current;
-  return { counts, boardCounts, sync };
+  return { counts, boardCounts, sync, news };
 }
 
 export async function adminSyncStatus(database: CommunityDatabase) {
@@ -130,6 +131,24 @@ export async function adminNotificationStatus(database: CommunityDatabase, setti
     lastAttemptAt: (rows.results || []).map((row) => row.lastAttemptAt).filter(Boolean).sort().at(-1) || null,
     lastAcceptedAt: (rows.results || []).map((row) => row.lastAcceptedAt).filter(Boolean).sort().at(-1) || null,
     lastJobRunAt: null };
+}
+
+export async function adminNewsSummary(database: CommunityDatabase) {
+  try {
+    const [counts, sources] = await Promise.all([
+      database.prepare("SELECT status, COUNT(*) AS count FROM news_items GROUP BY status").bind()
+        .all<{ status: string; count: number }>(),
+      database.prepare("SELECT source_type, COUNT(*) AS count FROM news_sources GROUP BY source_type").bind()
+        .all<{ source_type: string; count: number }>(),
+    ]);
+    return {
+      counts: Object.fromEntries((counts.results || []).map((row) => [String(row.status), Number(row.count)])),
+      sources: (sources.results || []).map((row) => ({ type: String(row.source_type), count: Number(row.count) })),
+    };
+  } catch (error) {
+    if (error instanceof Error && /no such table/i.test(error.message)) return { counts: {}, sources: [] };
+    throw error;
+  }
 }
 
 export function adminConfiguration(settings: Record<string, string | undefined>, databaseAvailable: boolean) {

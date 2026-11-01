@@ -256,3 +256,25 @@ export async function mutateNewsAdmin(database: CommunityDatabase, actorId: stri
   await applyBatch(database, statements);
   return { id: item.id, updatedAt: now, warning };
 }
+
+export async function listNewsSources(database: CommunityDatabase) {
+  try {
+    const [rows, names] = await Promise.all([
+      database.prepare("SELECT source_type, COUNT(*) AS source_count, COUNT(DISTINCT source_name) AS name_count FROM news_sources GROUP BY source_type ORDER BY source_type")
+        .bind().all<Row>(),
+      database.prepare("SELECT source_type, source_name, COUNT(*) AS count FROM news_sources GROUP BY source_type, source_name ORDER BY source_type, source_name")
+        .bind().all<Row>(),
+    ]);
+    const result = new Map<string, { type: string; total: number; distinctNames: number; names: { name: string; count: number }[] }>();
+    for (const row of rows.results || []) result.set(String(row.source_type), {
+      type: String(row.source_type), total: Number(row.source_count), distinctNames: Number(row.name_count), names: [] });
+    for (const row of names.results || []) {
+      const entry = result.get(String(row.source_type));
+      if (entry) entry.names.push({ name: String(row.source_name), count: Number(row.count) });
+    }
+    return [...result.values()];
+  } catch (error) {
+    if (error instanceof Error && /no such table/i.test(error.message)) return [];
+    throw error;
+  }
+}

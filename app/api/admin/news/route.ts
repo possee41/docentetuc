@@ -2,7 +2,7 @@ import { authorizedAdmin, adminResponseHeaders } from "@/lib/admin-route";
 import { isSameOriginMutation } from "@/lib/auth-identity";
 import { communityErrorResponse } from "@/lib/community";
 import { jsonObject } from "@/lib/community-route";
-import { listNewsAdmin, mutateNewsAdmin, newsAdminDetail, searchNewsOrigins } from "@/lib/news-admin";
+import { listNewsAdmin, mutateNewsAdmin, newsAdminDetail, searchNewsOrigins, listNewsSources } from "@/lib/news-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +11,7 @@ export async function GET(request: Request) {
     const { database } = await authorizedAdmin(request);
     const params = new URL(request.url).searchParams;
     const result = params.has("id") ? await newsAdminDetail(database, params.get("id") || "")
+      : params.has("sources") ? await listNewsSources(database)
       : params.has("publicationQuery") ? await searchNewsOrigins(database, params.get("publicationQuery") || "")
       : await listNewsAdmin(database, params);
     return Response.json(result, { headers: adminResponseHeaders });
