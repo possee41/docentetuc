@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { isNewsRelevance, isNewsSourceType, isNewsStatus, isNewsWindow, normalizeNewsImage, normalizeNewsSourceUrl } from "./news-editorial.ts";
+import { isNewsCategory, isNewsRelevance, isNewsSourceType, isNewsStatus, isNewsWindow, newsCategory, normalizeNewsImage, normalizeNewsSourceUrl } from "./news-editorial.ts";
 
 const migration = readFileSync(new URL("../migrations/0021_news_editorial.sql", import.meta.url), "utf8");
 const mediaMigration = readFileSync(new URL("../migrations/0022_news_media_content.sql", import.meta.url), "utf8");
@@ -151,4 +151,15 @@ test("fondos de categoría propios tienen procedencia y no se asocian a artícul
     assert.match(svg, /^<svg /);
     assert.doesNotMatch(svg, /<script|<image|foreignObject|href=|onload=/i);
   }
+});
+
+test("la categoría pública se deriva del tipo de fuente sin confundir gremial con oficial", () => {
+  assert.equal(newsCategory("official"), "oficial");
+  assert.equal(newsCategory("union"), "gremial");
+  assert.equal(newsCategory("public"), "educativa");
+  assert.equal(newsCategory("media"), "educativa");
+  assert.equal(newsCategory(null), "educativa");
+  assert.equal(newsCategory("otra"), "educativa");
+  for (const category of ["oficial", "educativa", "gremial"]) assert.ok(isNewsCategory(category));
+  for (const invalid of ["", "oficiales", "gremiales", "all", null, 1]) assert.ok(!isNewsCategory(invalid));
 });

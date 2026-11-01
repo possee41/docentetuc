@@ -1,5 +1,6 @@
 import type { CommunityDatabase } from "./community.ts";
-import { isNewsRelevance, normalizeNewsImage, normalizeNewsSourceUrl } from "./news-editorial.ts";
+import { isNewsCategory, isNewsRelevance, newsCategory, normalizeNewsImage, normalizeNewsSourceUrl,
+  type NewsCategory } from "./news-editorial.ts";
 import { publicNewsImage, type PublicNewsImage } from "./news-image.ts";
 
 export type PublicNewsSource = {
@@ -9,6 +10,7 @@ export type PublicNewsSource = {
 export type PublicNewsItem = {
   id: string; title: string; summary: string; topic: string | null;
   relevance: "informativa" | "importante" | "urgente"; featured: boolean;
+  category: NewsCategory;
   publishedAt: string; validFrom: string | null; validUntil: string | null;
   image: PublicNewsImage;
   primarySource: PublicNewsSource;
@@ -42,13 +44,18 @@ const columns = `n.id,n.editorial_title AS title,n.editorial_summary AS summary,
   main.source_name AS sourceName,main.source_title AS sourceTitle,main.url AS sourceUrl,
   main.source_type AS sourceType,main.source_published_at AS sourcePublishedAt`;
 const visibleAt = (now: Date) => [now.toISOString(), now.toISOString(), now.toISOString()];
+// Category filters are applied in SQL so pagination and totals stay correct.
+const categorySourceTypes: Record<NewsCategory, PublicNewsSource["type"][]> = {
+  oficial: ["official"], educativa: ["public", "media"], gremial: ["union"],
+};
 const source = (row: SourceRow): PublicNewsSource => ({ name: row.name, title: row.title, url: row.url,
   type: row.type, publishedAt: row.publishedAt, withdrawn: Boolean(row.removedAt) });
 const item = (row: NewsRow): PublicNewsItem => {
   const image = normalizeNewsImage(row);
   return { id: row.id, title: row.title, summary: row.summary, topic: row.topic,
-    relevance: row.relevance, featured: Boolean(row.featured), publishedAt: row.publishedAt, validFrom: row.validFrom,
-    validUntil: row.validUntil, image: publicNewsImage(image ?? null, row.topic, row.sourceType),
+    relevance: row.relevance, featured: Boolean(row.featured), category: newsCategory(row.sourceType),
+    publishedAt: row.publishedAt, validFrom: row.validFrom, validUntil: row.validUntil,
+    image: publicNewsImage(image ?? null, row.topic, row.sourceType),
     primarySource: source({ name: row.sourceName, title: row.sourceTitle,
       url: row.sourceUrl, type: row.sourceType, publishedAt: row.sourcePublishedAt, removedAt: null }) };
 };
@@ -57,8 +64,10 @@ export async function listPublicNews(database: CommunityDatabase, params: URLSea
   const home = params.get("home") === "1", latest = params.get("latest") === "1", pageText = params.get("page") || "0";
   if (!/^\d{1,3}$/.test(pageText) || Number(pageText) > 100) throw new RangeError("Página inválida.");
   const page = Number(pageText), q = (params.get("q") || "").trim(), topic = (params.get("topic") || "").trim();
-  const relevance = params.get("relevance") || "";
+  const relevance = params.get("relevance") || "", categoryText = params.get("category") || "";
   if (q.length > 100 || topic.length > 80 || relevance && !isNewsRelevance(relevance)) throw new RangeError("Filtro inválido.");
+  if (categoryText && !isNewsCategory(categoryText)) throw new RangeError("Filtro inválido.");
+  const category = isNewsCategory(categoryText) ? categoryText : null;
   const values: unknown[] = visibleAt(now);
   let where = publicWhere;
   if (home) {
@@ -79,15 +88,23 @@ export async function listPublicNews(database: CommunityDatabase, params: URLSea
   }
   if (topic) { where += " AND n.topic=?"; values.push(topic); }
   if (relevance) { where += " AND n.relevance=?"; values.push(relevance); }
+  if (category) {
+    const types = categorySourceTypes[category];
+    where += ` AND main.source_type IN (${types.map(() => "?").join(",")})`;
+    values.push(...types);
+  }
   if (q) { where += " AND (n.editorial_title LIKE ? OR n.editorial_summary LIKE ?)"; values.push(`%${q}%`, `%${q}%`); }
+  // Topics reflect the selected category so the selector never offers an empty combination.
+  const topicFilter = category ? ` AND main.source_type IN (${categorySourceTypes[category].map(() => "?").join(",")})` : "";
+  const topicValues = category ? [...visibleAt(now), ...categorySourceTypes[category]] : visibleAt(now);
   const [rows, topics] = await Promise.all([
     database.prepare(`SELECT ${columns} ${publicFrom} WHERE ${where}
       ORDER BY CASE WHEN n.relevance='urgente' THEN 0 ELSE 1 END,
       n.featured DESC,n.published_at DESC,n.id DESC LIMIT ? OFFSET ?`)
       .bind(...values, NEWS_PAGE_SIZE + 1, page * NEWS_PAGE_SIZE).all<NewsRow>(),
-    database.prepare(`SELECT DISTINCT n.topic ${publicFrom} WHERE ${publicWhere}
+    database.prepare(`SELECT DISTINCT n.topic ${publicFrom} WHERE ${publicWhere}${topicFilter}
       AND n.topic IS NOT NULL AND trim(n.topic)<>'' ORDER BY n.topic LIMIT 40`)
-      .bind(...visibleAt(now)).all<{ topic: string }>(),
+      .bind(...topicValues).all<{ topic: string }>(),
   ]);
   const results = rows.results || [];
   return { items: results.slice(0, NEWS_PAGE_SIZE).map(item), nextPage: results.length > NEWS_PAGE_SIZE ? page + 1 : null,

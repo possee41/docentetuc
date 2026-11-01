@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { ArrowLeft, ArrowRight, ExternalLink, ListFilter, RefreshCw } from "lucide-react";
 import { sectionUrl } from "@/lib/app-navigation";
+import type { NewsCategory } from "@/lib/news-editorial";
 import type { PublicNewsItem, PublicNewsSource } from "@/lib/public-news";
 
 type NewsPage = { items: PublicNewsItem[]; nextPage: number | null; topics: string[] };
@@ -11,6 +12,14 @@ type NewsDetail = PublicNewsItem & { body: string | null; sources: PublicNewsSou
 const sourceLabels: Record<PublicNewsSource["type"], string> = {
   official: "Fuente oficial", public: "Fuente pública", union: "Fuente gremial", media: "Fuente periodística",
 };
+const categoryLabels: Record<NewsCategory, string> = { oficial: "Oficial", educativa: "Educativa", gremial: "Gremial" };
+const categoryFilters = [{ value: "", label: "Todas" }, { value: "oficial", label: "Oficiales" },
+  { value: "educativa", label: "Educativas" }, { value: "gremial", label: "Gremiales" }] as const;
+const categoryBadge = (category: NewsCategory) => category === "gremial" ? "rounded bg-amber-700 px-2 py-0.5 text-white"
+  : category === "oficial" ? "rounded border border-[var(--accent-text)] px-2 py-0.5 text-[var(--accent-text)]"
+  : "rounded border border-[var(--border)] px-2 py-0.5 text-[var(--text-secondary)]";
+// Union information is never presented as an official communiqué.
+const categoryName = (category: NewsCategory) => category === "gremial" ? "Información gremial" : categoryLabels[category];
 const date = (value: string) => new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Tucuman", day: "numeric", month: "long", year: "numeric" }).format(new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00-03:00` : value));
 const dateTime = (value: string) => new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Tucuman", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 const pageFromParams = (params: URLSearchParams) => Math.min(100, Math.max(0, Number.parseInt(params.get("page") || "0", 10) || 0));
@@ -40,6 +49,7 @@ function NewsCard({ item, onOpen, wide = false }: { item: PublicNewsItem; onOpen
     {item.image && <div className="order-3 mt-4 lg:order-1 lg:mt-0"><NewsImage key={item.image.url} image={item.image} /></div>}
     <div className="order-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-bold uppercase tracking-wide lg:order-2">
       <span className={urgent ? "rounded bg-red-700 px-2 py-1 text-white" : "text-[var(--accent-text)]"}>{urgent ? "Urgente" : item.relevance === "importante" ? "Importante" : "Actualidad"}</span>
+      <span className={categoryBadge(item.category)}>{categoryName(item.category)}</span>
       {item.featured && <span className="text-[var(--text-muted)]">Destacada</span>}
       <span className="text-[var(--text-muted)]">{date(item.publishedAt)}</span>
     </div>
@@ -70,7 +80,7 @@ export function HomeLatestNews() {
     <div className="grid gap-4 md:grid-cols-3">{items.map((item) => <article key={item.id} className="min-w-0 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)]">
       <a href={`${sectionUrl("noticias")}&news=${encodeURIComponent(item.id)}`} className="block h-full text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-text)]">
         {item.image && <div className="relative aspect-video overflow-hidden"><Image src={item.image.url} alt={item.image.alt} fill unoptimized sizes="(max-width: 768px) 100vw, 33vw" className="object-cover" /></div>}
-        <div className="space-y-2 p-4"><p className="text-xs font-bold text-[var(--text-muted)]">{sourceLabels[item.primarySource.type]} · {item.primarySource.name} · {date(item.primarySource.publishedAt || item.publishedAt)}</p>
+        <div className="space-y-2 p-4"><p className="text-xs font-bold text-[var(--text-muted)]">{item.category === "gremial" ? "Información gremial" : sourceLabels[item.primarySource.type]} · {item.primarySource.name} · {date(item.primarySource.publishedAt || item.publishedAt)}</p>
           <h3 className="line-clamp-2 text-lg font-black leading-snug text-[var(--text-primary)]">{item.title}</h3>
           <p className="line-clamp-3 text-sm text-[var(--text-secondary)]">{item.summary}</p>
           {item.image?.kind === "illustration" && <p className="text-xs text-[var(--text-muted)]">Imagen ilustrativa</p>}</div>
@@ -84,6 +94,7 @@ export function PublicNewsSection() {
   const [query, setQuery] = useState("");
   const [topic, setTopic] = useState("");
   const [relevance, setRelevance] = useState("");
+  const [category, setCategory] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [page, setPage] = useState(0);
   const [ready, setReady] = useState(false);
@@ -96,7 +107,7 @@ export function PublicNewsSection() {
     let active = true;
     const onPop = () => { const params = new URLSearchParams(location.search);
       setDetailId(params.get("news")); setQuery(params.get("q") || ""); setDebouncedQuery(params.get("q") || ""); setTopic(params.get("topic") || "");
-      setRelevance(params.get("relevance") || ""); setPage(pageFromParams(params)); };
+      setRelevance(params.get("relevance") || ""); setCategory(params.get("category") || ""); setPage(pageFromParams(params)); };
     queueMicrotask(() => { if (active) { onPop(); setReady(true); } });
     window.addEventListener("popstate", onPop);
     return () => { active = false; window.removeEventListener("popstate", onPop); };
@@ -105,17 +116,17 @@ export function PublicNewsSection() {
   useEffect(() => {
     if (!ready) return;
     const params = new URLSearchParams(location.search);
-    for (const [key, value] of [["q", debouncedQuery], ["topic", topic], ["relevance", relevance], ["page", page ? String(page) : ""]]) {
+    for (const [key, value] of [["q", debouncedQuery], ["topic", topic], ["relevance", relevance], ["category", category], ["page", page ? String(page) : ""]]) {
       if (value) params.set(key, value); else params.delete(key);
     }
     history.replaceState(history.state, "", `${location.pathname}?${params}`);
-  }, [ready, debouncedQuery, topic, relevance, page]);
+  }, [ready, debouncedQuery, topic, relevance, category, page]);
   useEffect(() => {
     if (!ready) return;
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000);
     let active = true;
     queueMicrotask(() => { if (active) { setLoading(true); setError(""); } });
-    const params = new URLSearchParams({ q: debouncedQuery, topic, relevance, page: String(page) });
+    const params = new URLSearchParams({ q: debouncedQuery, topic, relevance, category, page: String(page) });
     const url = detailId ? `/api/news?id=${encodeURIComponent(detailId)}` : `/api/news?${params}`;
     void getNews<NewsDetail | NewsPage>(url, controller.signal).then((result) => {
       if (!active) return;
@@ -123,12 +134,13 @@ export function PublicNewsSection() {
     }).catch(() => { if (active) { setError("No pudimos cargar las noticias. Intentá nuevamente."); if (detailId) setDetail(null); else setList((old) => ({ ...old, items: [] })); } })
       .finally(() => { clearTimeout(timer); if (active) setLoading(false); });
     return () => { active = false; clearTimeout(timer); controller.abort(); };
-  }, [ready, detailId, debouncedQuery, topic, relevance, page, retry]);
+  }, [ready, detailId, debouncedQuery, topic, relevance, category, page, retry]);
 
   const filter = (key: string, value: string) => {
     if (key === "q") setQuery(value);
     if (key === "topic") setTopic(value);
     if (key === "relevance") setRelevance(value);
+    if (key === "category") setCategory(value);
     setPage(0);
   };
   const open = (id: string) => { const url = new URL(location.href); url.searchParams.set("news", id);
@@ -150,7 +162,11 @@ export function PublicNewsSection() {
           <header className="border-b border-[var(--border)] pb-6">
             <p className="text-sm font-black uppercase tracking-widest text-[var(--accent-text)]">{detail.relevance === "urgente" ? <span className="rounded bg-red-700 px-2 py-1 text-white">Urgente</span> : detail.relevance === "importante" ? "Importante" : "Actualidad"}{detail.topic ? ` · ${detail.topic}` : ""}</p>
             <h1 className="mt-4 max-w-4xl break-words text-3xl font-black leading-tight tracking-tight text-[var(--text-primary)] sm:text-5xl">{detail.title}</h1>
+            <p className="mt-3 flex flex-wrap items-center gap-2 text-xs font-black uppercase tracking-wide"><span className={categoryBadge(detail.category)}>{categoryName(detail.category)}</span><span className="text-[var(--text-muted)]">{sourceLabels[detail.primarySource.type]} · {detail.primarySource.name}</span></p>
             <p className="mt-4 text-sm text-[var(--text-muted)]">Publicada el {date(detail.publishedAt)}{detail.validUntil ? ` · Vigente hasta el ${dateTime(detail.validUntil)}` : ""}</p>
+            {detail.category === "gremial" && <div className="mt-5 border-l-4 border-amber-600 pl-4 text-sm leading-relaxed text-[var(--text-secondary)]">
+              <p><strong className="text-[var(--text-primary)]">Información gremial.</strong> Proviene de una organización sindical docente (como ATEP) y expresa su posición. No es un comunicado oficial de un organismo estatal ni una publicación de DocenteTuc.</p>
+            </div>}
           </header>
           <div className="grid gap-8 pt-7 lg:grid-cols-[minmax(0,1fr)_18rem]">
             <div className="min-w-0">
@@ -174,6 +190,9 @@ export function PublicNewsSection() {
         </article>}
     </> : <>
       <div><p className="text-sm font-black uppercase tracking-widest text-[var(--accent-text)]">Actualidad docente</p><h1 className="mt-1 text-2xl font-black text-[var(--text-primary)]">Noticias</h1><p className="mt-1 text-sm text-[var(--text-secondary)]">Novedades revisadas por el equipo editorial de DocenteTuc.</p></div>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar noticias por categoría">
+        {categoryFilters.map((option) => <button key={option.value || "todas"} type="button" aria-pressed={category === option.value} onClick={() => filter("category", option.value)} className={`min-h-11 rounded-full border px-4 text-sm font-bold ${category === option.value ? "border-[var(--accent-text)] bg-[var(--accent-text)] text-[var(--text-on-accent)]" : "border-[var(--border)] bg-[var(--surface-primary)] text-[var(--text-primary)]"}`}>{option.label}</button>)}
+      </div>
       <div className="grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-3 lg:grid-cols-3 lg:p-4">
         <div className="flex min-w-0 items-end gap-2"><label className="min-w-0 flex-1 text-sm font-bold text-[var(--text-primary)]">Buscar noticia<input value={query} maxLength={100} onChange={(event) => filter("q", event.target.value)} placeholder="Título o resumen" className="mt-1 min-h-11 w-full min-w-0 rounded-xl border border-[var(--border)] bg-[var(--surface-primary)] px-3 text-[var(--text-primary)]" /></label>
           <button type="button" aria-controls="news-filters" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)} className={`inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl border px-3 text-sm font-bold lg:hidden ${topic || relevance ? "border-[var(--accent-text)] bg-[var(--accent-soft)] text-[var(--accent-text)]" : "border-[var(--border)] text-[var(--text-primary)]"}`}><ListFilter className="size-4" />Filtros{topic || relevance ? ` (${Number(Boolean(topic)) + Number(Boolean(relevance))})` : ""}</button></div>
@@ -188,7 +207,7 @@ export function PublicNewsSection() {
           {featuredItems.length > 0 && <section aria-label="Noticias destacadas"><h2 className="mb-2 text-lg font-black text-[var(--text-primary)]">Destacadas</h2><div className="grid gap-x-8 lg:grid-cols-2">{featuredItems.map((entry, index) => <NewsCard key={entry.id} item={entry} onOpen={() => open(entry.id)} wide={index === 0 && Boolean(entry.image)} />)}</div></section>}
           {otherItems.length > 0 && <section aria-label="Noticias recientes"><h2 className="mb-2 text-lg font-black text-[var(--text-primary)]">Más noticias</h2><div className="grid gap-x-8 lg:grid-cols-2">{otherItems.map((entry) => <NewsCard key={entry.id} item={entry} onOpen={() => open(entry.id)} />)}</div></section>}
         </div>
-          : <p className="rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-5 text-[var(--text-secondary)]">No hay noticias publicadas para estos filtros.</p>}
+          : <p className="rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-5 text-[var(--text-secondary)]">{category || topic || relevance || debouncedQuery ? "No hay noticias publicadas para estos filtros." : "Todavía no hay noticias publicadas. Cuando el equipo editorial publique novedades, van a aparecer en esta sección."}</p>}
       {!loading && !error && <div className="flex items-center justify-between gap-3"><button type="button" disabled={page === 0} onClick={() => setPage(page - 1)} className="min-h-11 rounded-xl border border-[var(--border)] bg-[var(--surface-primary)] px-4 font-bold disabled:opacity-50">Anterior</button><span className="text-sm text-[var(--text-muted)]">Página {page + 1}</span><button type="button" disabled={list.nextPage === null} onClick={() => setPage(page + 1)} className="min-h-11 rounded-xl border border-[var(--border)] bg-[var(--surface-primary)] px-4 font-bold disabled:opacity-50">Siguiente</button></div>}
     </>}
   </section>;
