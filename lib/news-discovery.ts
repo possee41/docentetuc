@@ -7,7 +7,7 @@ export const NEWS_FEEDS = [
   { key: "atep", name: "ATEP Tucumán", type: "union", topic: "Actualidad gremial", url: "https://atep-delosdocentestucumanos.blogspot.com/feeds/posts/default?alt=atom&max-results=10", host: "atep-delosdocentestucumanos.blogspot.com", format: "atom" },
 ] as const;
 
-type Feed = typeof NEWS_FEEDS[number];
+export type Feed = typeof NEWS_FEEDS[number];
 export type DiscoveredArticle = { feed: Feed; title: string; url: string; publishedAt: string; updatedAt: string; fingerprint: string };
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const uuid = (text: string) => {
@@ -31,10 +31,12 @@ const canonical = (value: string, host: string) => {
   return url.hostname === host && url.pathname !== "/" ? normalized : null;
 };
 
-export function parseNewsFeed(xml: string, feed: Feed, now = new Date()): DiscoveredArticle[] {
+export const NEWS_DISCOVERY_MAX_ARTICLES = 20;
+
+export function parseNewsFeed(xml: string, feed: Feed, now = new Date(), maxArticles = NEWS_DISCOVERY_MAX_ARTICLES): DiscoveredArticle[] {
   if (xml.length > 300_000) throw new Error("NEWS_FEED_TOO_LARGE");
   const root = feed.format === "rss" ? "item" : "entry";
-  const blocks = [...xml.matchAll(new RegExp(`<${root}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${root}>`, "gi"))].slice(0, 20);
+  const blocks = [...xml.matchAll(new RegExp(`<${root}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${root}>`, "gi"))].slice(0, maxArticles);
   if (!blocks.length) throw new Error("NEWS_FEED_EMPTY");
   const seen = new Set<string>(), articles: DiscoveredArticle[] = [];
   for (const [, block] of blocks) {
@@ -63,6 +65,7 @@ export async function fetchNewsFeed(feed: Feed, fetcher: typeof fetch = fetch, n
 }
 
 export async function importNewsCandidates(database: CommunityDatabase, articles: DiscoveredArticle[], now = new Date()) {
+  if (articles.length > 50) throw new Error("NEWS_TOO_MANY_ARTICLES");
   let created = 0, updated = 0, unchanged = 0;
   for (const article of articles) {
     const url = canonical(article.url, article.feed.host);

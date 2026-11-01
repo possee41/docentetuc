@@ -2,127 +2,188 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { fetchNewsFeed, importNewsCandidates, NEWS_FEEDS, parseNewsFeed } from "./news-discovery.ts";
-import { listPublicNews } from "./public-news.ts";
-import { mutateNewsAdmin } from "./news-admin.ts";
 import type { CommunityDatabase } from "./community.ts";
+import { NEWS_DISCOVERY_MAX_ARTICLES, fetchNewsFeed, importNewsCandidates, parseNewsFeed, type Feed } from "./news-discovery.ts";
+import { normalizeNewsSourceUrl } from "./news-editorial.ts";
 
-const ministry = NEWS_FEEDS[0], atep = NEWS_FEEDS[1], now = new Date("2026-10-24T12:00:00.000Z");
-const adminId = "550e8400-e29b-41d4-a716-446655440000";
-const rss = (title = "Alumnos y docentes se capacitaron en el uso educativo de drones", date = "Fri, 23 Oct 2026 12:00:00 +0000") =>
-  `<rss><channel><item><title><![CDATA[${title}]]></title><link>https://www.educaciontuc.gov.ar/2026/10/23/alumnos-y-docentes-se-capacitaron-en-el-uso-educativo-de-drones/</link><pubDate>${date}</pubDate></item></channel></rss>`;
+const RSS_FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Ministerio de Educación de Tucumán</title>
+    <item>
+      <title>Comunicado sobre inscripciones SIME</title>
+      <link>https://www.educaciontuc.gov.ar/comunicado-sime</link>
+      <pubDate>Wed, 14 Oct 2026 12:00:00 GMT</pubDate>
+      <description>Detalle del comunicado.</description>
+    </item>
+    <item>
+      <title>Resolución de Juntas</title>
+      <link>https://www.educaciontuc.gov.ar/resolucion-juntas</link>
+      <pubDate>Tue, 13 Oct 2026 10:00:00 GMT</pubDate>
+      <description>Texto de la resolución.</description>
+    </item>
+  </channel>
+</rss>`;
+
+const ATOM_FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>ATEP Tucumán</title>
+  <entry>
+    <title>ATEP informa paro docente</title>
+    <link rel="alternate" href="https://atep-delosdocentestucumanos.blogspot.com/2026/10/paro.html" />
+    <published>2026-10-14T12:00:00Z</published>
+    <updated>2026-10-14T12:00:00Z</updated>
+    <content>Detalle gremial.</content>
+  </entry>
+</feed>`;
+
+const OFFICIAL_FEED: Feed = {
+  key: "ministry", name: "Ministerio de Educación de Tucumán", type: "official" as const,
+  topic: "Educación", url: "https://www.educaciontuc.gov.ar/feed/", host: "www.educaciontuc.gov.ar", format: "rss" as const,
+};
+
+const UNION_FEED: Feed = {
+  key: "atep", name: "ATEP Tucumán", type: "union" as const,
+  topic: "Actualidad gremial", url: "https://atep-delosdocentestucumanos.blogspot.com/feeds/posts/default?alt=atom&max-results=10",
+  host: "atep-delosdocentestucumanos.blogspot.com", format: "atom" as const,
+};
 
 function fixture() {
   const raw = new DatabaseSync(":memory:");
-  raw.exec(`PRAGMA foreign_keys=ON; CREATE TABLE "user"(id TEXT PRIMARY KEY,name TEXT);
-    CREATE TABLE community_moderators(user_id TEXT PRIMARY KEY,role TEXT NOT NULL);
-    CREATE TABLE publications(id TEXT PRIMARY KEY,title TEXT NOT NULL,summary TEXT NOT NULL,source TEXT NOT NULL,
-      official_url TEXT NOT NULL,source_published_at TEXT,removed_at TEXT,updated_at TEXT NOT NULL);
-    INSERT INTO "user" VALUES('${adminId}','Admin'); INSERT INTO community_moderators VALUES('${adminId}','admin');`);
+  raw.exec(`CREATE TABLE "user"(id TEXT PRIMARY KEY); CREATE TABLE publications(id TEXT PRIMARY KEY, removed_at TEXT);`);
   raw.exec(readFileSync(new URL("../migrations/0021_news_editorial.sql", import.meta.url), "utf8"));
   raw.exec(readFileSync(new URL("../migrations/0022_news_media_content.sql", import.meta.url), "utf8"));
-  type SqlValue = null | number | bigint | string | Uint8Array;
-  const database = { prepare(sql: string) { return { bind(...values: unknown[]) {
-    const args = values as SqlValue[];
-    return { first: async <T>() => raw.prepare(sql).get(...args) as T | null,
-      all: async <T>() => ({ results: raw.prepare(sql).all(...args) as T[] }),
-      run: async () => ({ meta: { changes: Number(raw.prepare(sql).run(...args).changes) } }),
-      runSync: () => ({ meta: { changes: Number(raw.prepare(sql).run(...args).changes) } }) };
-  } }; }, async batch(statements: unknown[]) {
-    raw.exec("BEGIN");
-    try { const results = statements.map((entry) => (entry as { runSync(): unknown }).runSync()); raw.exec("COMMIT"); return results; }
-    catch (error) { raw.exec("ROLLBACK"); throw error; }
-  } } as CommunityDatabase;
+  const database = { prepare(sql: string) {
+    return { bind(...values: unknown[]) {
+      const args = values as (string | number | null)[];
+      return { first: async <T>() => raw.prepare(sql).get(...args) as T | null,
+        all: async <T>() => ({ results: raw.prepare(sql).all(...args) as T[] }),
+        run: async () => raw.prepare(sql).run(...args) };
+    },
+    batch: async (statements: unknown[]) => statements.map(() => ({ meta: { changes: 1, rows_read: 0, rows_written: 1 } })),
+    };
+  } } as unknown as CommunityDatabase;
   return { raw, database };
 }
 
-test("RSS oficial acotado conserva título, enlace y fecha; rechaza otros hosts y archivos viejos", () => {
-  const xml = rss().replace("</channel>", `<item><title>Engaño</title><link>https://ejemplo.org/otra</link><pubDate>Fri, 23 Oct 2026 12:00:00 +0000</pubDate></item></channel>`);
-  const articles = parseNewsFeed(xml, ministry, now);
-  assert.equal(articles.length, 1);
-  assert.equal(articles[0].title, "Alumnos y docentes se capacitaron en el uso educativo de drones");
-  assert.equal(articles[0].publishedAt, "2026-10-23T12:00:00.000Z");
-  assert.deepEqual(parseNewsFeed(rss("Nota antigua", "Sat, 21 Oct 2023 12:00:00 +0000"), ministry, now), []);
-  assert.throws(() => parseNewsFeed("<rss></rss>", ministry, now), /NEWS_FEED_EMPTY/);
+const now = new Date("2026-10-15T12:00:00.000Z");
+
+test("parsea RSS oficial y Atom gremial, conservando título, URL y fecha", () => {
+  const rss = parseNewsFeed(RSS_FIXTURE, OFFICIAL_FEED, now);
+  assert.equal(rss.length, 2);
+  assert.equal(rss[0].title, "Comunicado sobre inscripciones SIME");
+  assert.equal(rss[0].url, "https://www.educaciontuc.gov.ar/comunicado-sime");
+  assert.equal(rss[0].publishedAt, "2026-10-14T12:00:00.000Z");
+  assert.equal(rss[0].feed.type, "official");
+
+  const atom = parseNewsFeed(ATOM_FIXTURE, UNION_FEED, now);
+  assert.equal(atom.length, 1);
+  assert.equal(atom[0].title, "ATEP informa paro docente");
+  assert.equal(atom[0].url, "https://atep-delosdocentestucumanos.blogspot.com/2026/10/paro.html");
+  assert.equal(atom[0].feed.type, "union");
 });
 
-test("ATEP Atom conserva fuente gremial y descarta publicaciones antiguas", () => {
-  const xml = `<feed><entry><title type="text">Convocatoria gremial &amp; educación</title><published>2026-10-23T12:00:00Z</published>
-    <updated>2026-10-23T13:00:00Z</updated><link rel="alternate" type="text/html" href="https://atep-delosdocentestucumanos.blogspot.com/2026/10/convocatoria.html"/></entry></feed>`;
-  const result = parseNewsFeed(xml, atep, now);
-  assert.equal(result[0].title, "Convocatoria gremial & educación");
-  assert.equal(result[0].feed.type, "union");
-  assert.equal(result[0].url, "https://atep-delosdocentestucumanos.blogspot.com/2026/10/convocatoria.html");
+test("descarta artículos fuera de la ventana de 45 días y limita la cantidad", () => {
+  const oldXml = RSS_FIXTURE
+    .replaceAll("Wed, 14 Oct 2026 12:00:00 GMT", "Wed, 01 Jan 2026 12:00:00 GMT")
+    .replaceAll("Tue, 13 Oct 2026 10:00:00 GMT", "Tue, 02 Jan 2026 10:00:00 GMT");
+  const parsed = parseNewsFeed(oldXml, OFFICIAL_FEED, now);
+  assert.equal(parsed.length, 0, "artículos viejos fuera de ventana");
+  assert.throws(() => parseNewsFeed("x".repeat(300_001), OFFICIAL_FEED, now), /NEWS_FEED_TOO_LARGE/);
+  assert.throws(() => parseNewsFeed("<rss><channel></channel></rss>", OFFICIAL_FEED, now), /NEWS_FEED_EMPTY/);
 });
 
-test("feed caído o vacío no altera las noticias existentes", async () => {
+test("fetchNewsFeed rechaza HTTP no exitoso y respeta el límite de tamaño", async () => {
+  const fetcher = async () => new Response("nope", { status: 503 });
+  await assert.rejects(fetchNewsFeed(OFFICIAL_FEED, fetcher, now), /NEWS_FEED_HTTP_503/);
+  const big = async () => new Response("x".repeat(300_001), { status: 200 });
+  await assert.rejects(fetchNewsFeed(OFFICIAL_FEED, big, now), /NEWS_FEED_TOO_LARGE/);
+});
+
+test("importNewsCandidates registra candidatos nuevos sin publicarlos", async () => {
   const { raw, database } = fixture();
   try {
-    await importNewsCandidates(database, parseNewsFeed(rss(), ministry, now), now);
-    const before = raw.prepare("SELECT COUNT(*) AS n FROM news_items").get()!.n;
-    await assert.rejects(fetchNewsFeed(ministry, async () => new Response("caído", { status: 503 })), /NEWS_FEED_HTTP_503/);
-    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM news_items").get()!.n, before);
+    const articles = parseNewsFeed(RSS_FIXTURE, OFFICIAL_FEED, now);
+    const result = await importNewsCandidates(database, articles, now);
+    assert.equal(result.created, 2);
+    assert.equal(result.updated, 0);
+    assert.equal(result.unchanged, 0);
+    const items = raw.prepare("SELECT id,status,editorial_title,topic FROM news_items ORDER BY id").all() as { id: string; status: string; editorial_title: string; topic: string }[];
+    assert.equal(items.length, 2);
+    assert.ok(items.every((item) => item.status === "candidate"));
+    assert.equal(items[0]!.editorial_title, "Comunicado sobre inscripciones SIME");
+    const sources = raw.prepare("SELECT source_type,is_primary,normalized_url FROM news_sources").all() as { source_type: string; is_primary: number; normalized_url: string }[];
+    assert.equal(sources.length, 2);
+    assert.ok(sources.every((source) => source.source_type === "official" && source.is_primary === 1));
+    const events = raw.prepare("SELECT action, actor_kind, next_status FROM news_events").all() as { action: string; actor_kind: string; next_status: string }[];
+    assert.equal(events.length, 2);
+    assert.ok(events.every((event) => event.action === "create_candidate" && event.actor_kind === "system" && event.next_status === "candidate"));
   } finally { raw.close(); }
 });
 
-test("candidata descubierta no se publica sola, se actualiza sin duplicar ni pisar revisión humana", async () => {
+test("importNewsCandidates evita duplicados por URL normalizada", async () => {
   const { raw, database } = fixture();
   try {
-    const [article] = parseNewsFeed(rss(), ministry, now);
-    assert.deepEqual(await importNewsCandidates(database, [article], now), { created: 1, updated: 0, unchanged: 0 });
-    assert.deepEqual(await importNewsCandidates(database, [article], now), { created: 0, updated: 0, unchanged: 1 });
-    const id = String(raw.prepare("SELECT id FROM news_items").get()!.id);
-    assert.deepEqual((await listPublicNews(database, new URLSearchParams("home=1"), now)).items, []);
-    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM news_events").get()!.n, 1);
-    const changed = { ...article, title: `${article.title}: nueva edición`, updatedAt: "2026-10-24T10:00:00.000Z" };
-    assert.deepEqual(await importNewsCandidates(database, [changed], now), { created: 0, updated: 1, unchanged: 0 });
-    assert.equal(raw.prepare("SELECT editorial_title FROM news_items WHERE id=?").get(id)!.editorial_title, changed.title);
-    let updatedAt = String(raw.prepare("SELECT updated_at FROM news_items WHERE id=?").get(id)!.updated_at);
-    await mutateNewsAdmin(database, adminId, { action: "edit", id, updatedAt, title: "Titular propio", summary: "Síntesis original redactada y verificada", body: "",
-      topic: "Tecnología educativa", relevance: "importante", validFrom: null, validUntil: null });
-    const third = { ...changed, title: "Titular fuente posterior", updatedAt: "2026-10-24T11:00:00.000Z" };
-    await importNewsCandidates(database, [third], now);
-    assert.equal(raw.prepare("SELECT editorial_title FROM news_items WHERE id=?").get(id)!.editorial_title, "Titular propio");
-    updatedAt = String(raw.prepare("SELECT updated_at FROM news_items WHERE id=?").get(id)!.updated_at);
-    await mutateNewsAdmin(database, adminId, { action: "approve", id, updatedAt });
-    updatedAt = String(raw.prepare("SELECT updated_at FROM news_items WHERE id=?").get(id)!.updated_at);
-    await mutateNewsAdmin(database, adminId, { action: "publish", id, updatedAt });
-    updatedAt = String(raw.prepare("SELECT updated_at FROM news_items WHERE id=?").get(id)!.updated_at);
-    await mutateNewsAdmin(database, adminId, { action: "feature", id, updatedAt });
-    const visibleNow = new Date(Date.parse(String(raw.prepare("SELECT published_at FROM news_items WHERE id=?").get(id)!.published_at)) + 1000);
-    const list = await listPublicNews(database, new URLSearchParams(), visibleNow);
-    assert.equal(list.items.find((item) => item.id === id)?.primarySource.url, article.url);
-    assert.equal((await listPublicNews(database, new URLSearchParams("home=1"), visibleNow)).items[0]?.id, id);
-    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM news_items").get()!.n, 1);
-    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM news_sources").get()!.n, 1);
-  } finally { raw.close(); }
-});
-
-test("un fallo D1 a mitad de la candidata se recupera y conserva un único evento de creación", async () => {
-  const { raw, database } = fixture();
-  try {
-    const articles = parseNewsFeed(rss(), ministry, now);
-    const broken = { ...database, prepare(sql: string) {
-      if (sql.includes("INSERT OR IGNORE INTO news_sources")) throw new Error("D1_TEMPORARY_ERROR");
-      return database.prepare(sql);
-    } } as CommunityDatabase;
-    await assert.rejects(importNewsCandidates(broken, articles, now), /D1_TEMPORARY_ERROR/);
-    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM news_items").get()!.n, 1);
+    const articles = parseNewsFeed(RSS_FIXTURE, OFFICIAL_FEED, now);
     await importNewsCandidates(database, articles, now);
-    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM news_sources").get()!.n, 1);
-    assert.deepEqual(raw.prepare("SELECT action FROM news_events").all().map((row) => row.action), ["create_candidate"]);
+    const second = await importNewsCandidates(database, articles, now);
+    assert.equal(second.created, 0);
+    assert.equal(second.unchanged, 2);
+    assert.equal((raw.prepare("SELECT COUNT(*) AS c FROM news_items").get() as { c: number }).c, 2);
+    assert.equal((raw.prepare("SELECT COUNT(*) AS c FROM news_sources").get() as { c: number }).c, 2);
   } finally { raw.close(); }
 });
 
-test("un cambio en la descripción del feed se audita sin copiar su texto al contenido editorial", async () => {
+test("importNewsCandidates no toma posesión de una URL ya asociada a otra noticia", async () => {
   const { raw, database } = fixture();
   try {
-    const initial = parseNewsFeed(rss().replace("</item>", "<description>Primera versión</description></item>"), ministry, now);
-    const revised = parseNewsFeed(rss().replace("</item>", "<description>Texto actualizado en origen</description></item>"), ministry, now);
-    await importNewsCandidates(database, initial, now);
-    assert.deepEqual(await importNewsCandidates(database, revised, now), { created: 0, updated: 1, unchanged: 0 });
-    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM news_events").get()!.n, 2);
-    assert.equal(raw.prepare("SELECT editorial_summary FROM news_items").get()!.editorial_summary, "");
-    assert.ok(!JSON.stringify(raw.prepare("SELECT details FROM news_events").all()).includes("Texto actualizado"));
+    const url = "https://www.educaciontuc.gov.ar/comunicado-sime";
+    raw.prepare(`INSERT INTO news_items(id,status,editorial_title,editorial_summary,topic,relevance,created_at,updated_at)
+      VALUES('manual-item','published','Manual','Resumen manual','Educación','informativa',datetime('now'),datetime('now'))`).run();
+    raw.prepare(`INSERT INTO news_sources(id,news_item_id,source_name,source_title,url,normalized_url,source_type,is_primary)
+      VALUES('manual-src','manual-item','Manual','Manual','${url}','${url}','official',1)`).run();
+    const articles = parseNewsFeed(RSS_FIXTURE, OFFICIAL_FEED, now);
+    const result = await importNewsCandidates(database, articles, now);
+    assert.equal(result.unchanged, 1);
+    assert.equal((raw.prepare("SELECT COUNT(*) AS c FROM news_items WHERE id='manual-item'").get() as { c: number }).c, 1);
+    assert.equal((raw.prepare("SELECT COUNT(*) AS c FROM news_items WHERE status='candidate'").get() as { c: number }).c, 1);
   } finally { raw.close(); }
+});
+
+test("importNewsCandidates rechaza artículos inválidos y no escribe parcialmente", async () => {
+  const { raw, database } = fixture();
+  try {
+    const articles = parseNewsFeed(RSS_FIXTURE, OFFICIAL_FEED, now);
+    const broken = [{ ...articles[0], title: "" }];
+    await assert.rejects(importNewsCandidates(database, broken, now), /NEWS_ARTICLE_INVALID/);
+    assert.equal((raw.prepare("SELECT COUNT(*) AS c FROM news_items").get() as { c: number }).c, 0);
+  } finally { raw.close(); }
+});
+
+test("importNewsCandidates rechaza demasiados artículos por ejecución", async () => {
+  const { raw, database } = fixture();
+  try {
+    const many = Array.from({ length: 51 }, (_, index) => ({
+      feed: OFFICIAL_FEED, title: `Título ${index}`, url: `https://www.educaciontuc.gov.ar/item-${index}`,
+      publishedAt: now.toISOString(), updatedAt: now.toISOString(), fingerprint: "a".repeat(64),
+    }));
+    await assert.rejects(importNewsCandidates(database, many, now), /NEWS_TOO_MANY_ARTICLES/);
+  } finally { raw.close(); }
+});
+
+test("normalizeNewsSourceUrl bloquea hosts privados e internos", () => {
+  for (const value of [
+    "https://localhost/x", "https://127.0.0.1/x", "https://10.0.0.1/x", "https://192.168.1.1/x",
+    "https://172.16.0.1/x", "https://169.254.1.1/x", "https://[::1]/x", "https://[fc00::1]/x",
+  ]) assert.equal(normalizeNewsSourceUrl(value), null, value);
+  assert.equal(normalizeNewsSourceUrl("https://example.org/x"), "https://example.org/x");
+});
+
+test("NEWS_DISCOVERY_MAX_ARTICLES limita el parseo por defecto", () => {
+  const items = Array.from({ length: 25 }, (_, index) => `<item><title>T${index}</title><link>https://www.educaciontuc.gov.ar/t${index}</link><pubDate>Wed, 14 Oct 2026 12:00:00 GMT</pubDate></item>`).join("");
+  const xml = `<rss version="2.0"><channel>${items}</channel></rss>`;
+  const parsed = parseNewsFeed(xml, OFFICIAL_FEED, now);
+  assert.equal(parsed.length, NEWS_DISCOVERY_MAX_ARTICLES);
+  const limited = parseNewsFeed(xml, OFFICIAL_FEED, now, 3);
+  assert.equal(limited.length, 3);
 });

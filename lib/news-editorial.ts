@@ -36,10 +36,27 @@ export function normalizeNewsSourceUrl(value: unknown): string | null {
   try {
     const url = new URL(value);
     if (url.protocol !== "https:" || !url.hostname || url.username || url.password) return null;
+    if (isPrivateOrLoopbackHost(url.hostname)) return null;
     url.hash = "";
     const normalized = url.toString();
     return normalized.length <= 2048 ? normalized : null;
   } catch { return null; }
+}
+
+// Prevent SSRF: feeds or admins must never target loopback, link-local or RFC1918 addresses.
+function isPrivateOrLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host === "0.0.0.0" || host === "::" || host === "::1") return true;
+  if (/^f[cd][0-9a-f]{2}:/i.test(host) || /^fe[89ab][0-9a-f]:/i.test(host)) return true;
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
+    if (a === 0 || a === 127 || a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+  }
+  return false;
 }
 
 export type NewsImage = { url: string; alt: string; credit: string; sourceUrl: string; rightsNote: string; rightsUrl: string };
