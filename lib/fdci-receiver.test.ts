@@ -62,6 +62,28 @@ function leasedDb() {
   return { sqlite, db, env, send };
 }
 
+test("gateway autentica una vez; el endpoint independiente no acepta cabeceras de confianza falsas", async () => {
+  const { env } = leasedDb();
+  const [item] = await prepareFdciImports([course], [commission]);
+  const uniqueSecret = "synthetic_digest_count_secret_1234567890";
+  env.FDCI_IMPORT_SECRET = uniqueSecret;
+  const digest = crypto.subtle.digest;
+  let count = 0;
+  crypto.subtle.digest = ((...args: Parameters<typeof digest>) => { count++; return digest.apply(crypto.subtle, args); }) as typeof digest;
+  try {
+    const req = () => new Request(endpoint, { method: "POST", headers: { authorization: `Bearer ${uniqueSecret}`,
+      "content-type": "application/json", "x-import-gate-owner": "run-a" }, body: JSON.stringify({ mode: "batch", items: [item] }) });
+    assert.equal((await gateway.fetch(req(), env)).status, 200);
+    assert.equal(count, 2, "solo expected+actual del gateway en la primera petición");
+    count = 0;
+    assert.equal((await gateway.fetch(req(), env)).status, 200);
+    assert.equal(count, 1, "digest esperado reutilizado, sin repetir autenticación en el receptor");
+    const forged = req();
+    forged.headers.delete("authorization"); forged.headers.set("x-gateway-authenticated", "true");
+    assert.equal((await worker.fetch(forged, env)).status, 401);
+  } finally { crypto.subtle.digest = digest; }
+});
+
 test("concesión: importa una vez y repetir no produce ninguna escritura", async () => {
   const { sqlite, send } = leasedDb();
   const [item] = await prepareFdciImports([course], [commission]);

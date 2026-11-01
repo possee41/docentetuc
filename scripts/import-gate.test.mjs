@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { callGate, resolveGateConfig, runFdciGatewayJob } from "./import-gate.mjs";
 import { fdciSafety, safeImportError } from "./import-via-gateway.mjs";
+import { fdciCheckpoint } from "../workers/fdci-checkpoint.mjs";
+import { fdciLocalFixture } from "./fdci-local-fixture.mjs";
 
 const secret = "synthetic_fdci_gateway_secret_123456789";
 const base = { SYNC_SOURCE: "fdci", IMPORT_GATEWAY_ORIGIN: "https://docentetuc-import-canary-1-2.possee41.workers.dev",
@@ -55,6 +57,8 @@ const commission = { id: 9001, capacitacion_id: 42, fecha_apertura_preinscripcio
 
 function fixture(options = {}) {
   const calls = [], ids = new Map();
+  const { sqlite, db } = fdciLocalFixture();
+  sqlite.exec("INSERT INTO import_gate_lease VALUES(1,'fdci','2099-01-01T00:00:00Z','2026-01-01T00:00:00Z','test-run')");
   let writes = 0;
   const receiver = async (url, init = {}) => {
     if (String(url).includes("import-identity")) {
@@ -62,6 +66,7 @@ function fixture(options = {}) {
       return Response.json({ name: base.IMPORT_GATEWAY_DATABASE_NAME, id: base.IMPORT_GATEWAY_DATABASE_ID });
     }
     const body = JSON.parse(init.body);
+    if (String(url).endsWith("fdci-checkpoint")) return fdciCheckpoint(body, db, "test-run");
     if (body.action) {
       calls.push(body.action);
       if (options.openAmbiguous && body.action === "open") throw new Error("private token must never appear");
@@ -199,10 +204,12 @@ test("límites duros y exclusiones dejan PARTIAL sin tocar históricos", async (
   const f = fixture({ commissions: records });
   const result = await runFdciGatewayJob({ ...jobConfig, FDCI_MAX_PUBLICATIONS: "1" }, "", f.source, f.receiver);
   assert.equal(result.status, "PARTIAL");
-  assert.equal(result.created, 1);
-  assert.equal(result.skipped, 2);
-  assert.equal(result.deferred, 1);
-  assert.deepEqual([...f.ids.keys()], ["fdci:commission:9001"]);
+  assert.equal(result.created, 0);
+  assert.equal(result.skipped, 1);
+  assert.equal(result.deferred, 3);
+  assert.equal(f.ids.size, 0);
+  for (let i = 0; i < 3; i++) await runFdciGatewayJob({ ...jobConfig, FDCI_MAX_PUBLICATIONS: "1" }, "", f.source, f.receiver);
+  assert.deepEqual([...f.ids.keys()], ["fdci:commission:9001", "fdci:commission:9004"]);
   assert.equal(result.closed, true);
   const exhausted = fixture();
   const limited = await runFdciGatewayJob({ ...jobConfig, FDCI_MAX_REQUESTS: "2" }, "", exhausted.source, exhausted.receiver);

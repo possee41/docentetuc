@@ -188,3 +188,18 @@ test("una ejecución antigua no puede importar ni cerrar durante una concesión 
   assert.equal((await importBatch(env, secret, "new-run")).status, 400);
   assert.equal((await importBatch(env, simeSecret, "new-run")).status, 401);
 });
+
+test("checkpoint FDCI exige lease y secreto de fuente; sin migración falla cerrado y nunca acepta SQL", async () => {
+  const { env } = localEnv();
+  assert.equal((await post(env, "/api/internal/fdci-checkpoint", { op: "get" })).status, 503);
+  await open(env);
+  const request = (body: unknown, token = secret) => new Request(url("/api/internal/fdci-checkpoint"), {
+    method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "x-import-gate-owner": "test-run" },
+    body: JSON.stringify(body) });
+  assert.equal((await gateway.fetch(request({ op: "get" }, simeSecret), env)).status, 401);
+  assert.equal((await gateway.fetch(request({ op: "exec", sql: "DROP TABLE publications" }), env)).status, 400);
+  const absent = await gateway.fetch(request({ op: "get" }), env);
+  assert.equal(absent.status, 503);
+  assert.equal((await absent.json()).error, "CHECKPOINT_UNAVAILABLE");
+  assert.equal((await gateway.fetch(request({ op: "get" }), { ...env, IMPORT_GATE_LEASE_REQUIRED: "false" })).status, 503);
+});

@@ -1,7 +1,7 @@
 // Small, source-specific HTTP imports. The runner never receives a Cloudflare API token.
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { runFdciImport } from "./import-fdci.mjs";
+import { runIncrementalFdci } from "./fdci-incremental.mjs";
 import { runSimeImport, parseSimeOptions } from "./import-sime.mjs";
 import { runPublicSourceImport } from "./import-public-sources.mjs";
 import { runJuntasCheckpoint } from "./import-juntas-checkpoint.mjs";
@@ -74,8 +74,7 @@ export async function runGatewayImport(target, config, sourceFetch = fetch, rece
       return sourceFetch(url, { ...init, redirect: "error" });
     };
     try {
-      return { ...await runFdciImport({ endpoint: target.endpoint, token: target.secret, scope: "active", safety,
-        owner: safety.owner, fetcher }), sourceRequests: requests, elapsedMs: Date.now() - started };
+      return { ...await runIncrementalFdci(target, safety, fetcher), sourceRequests: requests, elapsedMs: Date.now() - started };
     } catch (error) {
       error.result = { ...error.result, sourceRequests: requests, elapsedMs: Date.now() - started };
       throw error;
@@ -125,8 +124,12 @@ export function safeImportError(error) {
   for (const [key, value] of Object.entries(error?.diagnostics?.rejectedReasons || {}))
     if (/^(?:record|identity|hash|status|circuit|circuitConfidence|url|metadata|metadataOrUrl|receiverHttp400|protectedExistingRecord|text:(?:category|title|summary|level|area|location|character|status|metadata|contentHash|circuit|sourceCircuitRaw|circuitInferenceSource)|date:(?:startsAt|endsAt|sourceUpdatedAt|registrationOpenAt|registrationCloseAt|expiresAt))$/.test(key) &&
         Number.isSafeInteger(value) && value > 0) rejectedReasons[key] = value;
+  const cursor = error?.result?.cursor;
+  const safeCursor = cursor && Number.isSafeInteger(cursor.revision) && Number.isSafeInteger(cursor.cycle) &&
+    [cursor.after_key, cursor.upper_key].every(k => k === "" || typeof k === "string" && /^\d{12}:\d{12}$/.test(k))
+    ? { revision: cursor.revision, cycle: cursor.cycle, after_key: cursor.after_key, upper_key: cursor.upper_key } : undefined;
   return { status: ["FDCI_PARTIAL_SOURCE", "FDCI_SELECTION_INCOMPLETE", "FDCI_PROBE_REQUEST_LIMIT", "HTTP_429", "FDCI_EMPTY_RESPONSE"].includes(code)
-    ? "PARTIAL" : "ERROR", code, ...result, sourceErrors, rejectedReasons, completed: false };
+    ? "PARTIAL" : "ERROR", code, ...result, ...(safeCursor ? { cursor: safeCursor } : {}), sourceErrors, rejectedReasons, completed: false };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

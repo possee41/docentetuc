@@ -8,6 +8,7 @@ const TEXT_FIELDS = {
   contentHash: 64, circuit: 20, sourceCircuitRaw: 300, circuitInferenceSource: 30,
 };
 const DATES = ["startsAt", "endsAt", "sourceUpdatedAt", "registrationOpenAt", "registrationCloseAt", "expiresAt"];
+const textFields = Object.entries(TEXT_FIELDS);
 const UPSERT = `INSERT INTO publications
   (id, source, external_id, kind, category, title, summary, level, area, location, character,
    circuit, source_circuit_raw, circuit_inference_source, circuit_confidence,
@@ -28,6 +29,10 @@ const UPSERT = `INSERT INTO publications
     last_seen_at=excluded.last_seen_at, last_changed_at=excluded.last_changed_at, updated_at=CURRENT_TIMESTAMP
   WHERE publications.source='${SOURCE}' AND
     (publications.content_hash<>excluded.content_hash OR publications.removed_at IS NOT NULL)`;
+const FENCED_UPSERT = UPSERT.replace(/VALUES \(([^\n]+)\)/, `SELECT $1 WHERE EXISTS (
+    SELECT 1 FROM import_gate_lease WHERE id=1 AND source='fdci' AND opened_by=?
+      AND julianday(expires_at)>julianday('now'))`)
+  .replace("WHERE publications.source=", "WHERE publications.normalized_status<>'UNKNOWN' AND publications.source=");
 
 const reply = (body, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 const text = (value, max) => typeof value === "string" && value.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value);
@@ -47,7 +52,7 @@ async function authorized(header, secret) {
 function valid(item) {
   if (!item || typeof item !== "object" || Array.isArray(item)) return false;
   if (!/^fdci:(?:course|commission):[A-Za-z0-9_-]{1,80}$/.test(item.id) ||
-      Object.entries(TEXT_FIELDS).some(([key, max]) => !text(item[key], max)) ||
+      textFields.some(([key, max]) => !text(item[key], max)) ||
       !item.externalId || !item.title || item.id.split(":").at(-1) !== item.externalId ||
       !/^[a-f0-9]{64}$/.test(item.contentHash) ||
       !DATES.every((key) => date(item[key])) ||
@@ -97,10 +102,7 @@ async function store(db, items, owner) {
   const now = new Date().toISOString();
   // Fence the write itself: a request admitted before expiry cannot write after
   // another execution acquires the lease. No additional table or round trip.
-  const sql = owner ? UPSERT.replace(/VALUES \(([^\n]+)\)/, `SELECT $1 WHERE EXISTS (
-    SELECT 1 FROM import_gate_lease WHERE id=1 AND source='fdci' AND opened_by=?
-      AND julianday(expires_at)>julianday('now'))`)
-    .replace("WHERE publications.source=", "WHERE publications.normalized_status<>'UNKNOWN' AND publications.source=") : UPSERT;
+  const sql = owner ? FENCED_UPSERT : UPSERT;
   const statements = changes.map((item) => db.prepare(sql).bind(
     item.id, item.externalId, item.category, item.title, item.summary, item.level, item.area,
     item.location, item.character, item.circuit, item.sourceCircuitRaw, item.circuitInferenceSource,
@@ -123,36 +125,43 @@ async function store(db, items, owner) {
   };
 }
 
-const worker = {
-  async fetch(request, env) {
-    if (new URL(request.url).pathname !== "/api/internal/fdci-import") return reply({ error: "No encontrado." }, 404);
-    if (request.method !== "POST") return reply({ error: "Método no permitido." }, 405);
-    if (!env.FDCI_IMPORT_SECRET || !env.DB) return reply({ error: "Receptor no configurado." }, 503);
-    if (!await authorized(request.headers.get("authorization"), env.FDCI_IMPORT_SECRET)) return reply({ error: "No autorizado." }, 401);
-    // This gate stays off until legacy FDCI has been disabled and its in-flight runs have drained.
-    if (env.FDCI_EXTERNAL_ENABLED !== "true") return reply({ error: "Importación no habilitada." }, 503);
-    if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) return reply({ error: "Se requiere JSON." }, 415);
-    if (Number(request.headers.get("content-length") || 0) > MAX_BYTES) return reply({ error: "Lote demasiado grande." }, 413);
-    let payload;
-    try { payload = await readBody(request); }
-    catch (error) { return reply({ error: error?.message === "TOO_LARGE" ? "Lote demasiado grande." : "JSON inválido." }, error?.message === "TOO_LARGE" ? 413 : 400); }
-    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return reply({ error: "Operación inválida." }, 400);
-    try {
-      const items = payload.items;
-      if (payload.mode !== "batch" || !Array.isArray(items) || items.length < 1 || items.length > MAX_ITEMS || !items.every(valid) ||
-          new Set(items.map((item) => item.id)).size !== items.length) return reply({ error: "Lote inválido." }, 400);
-      const owner = env.IMPORT_GATE_LEASE_REQUIRED === "true" ? request.headers.get("x-import-gate-owner") : null;
-      if (env.IMPORT_GATE_LEASE_REQUIRED === "true" && (!owner || !/^[A-Za-z0-9_:-]{1,100}$/.test(owner))) return reply({ error: "GATE_OWNER_INVALID" }, 409);
-      if (owner && (items.length !== 1 || items.some((item) => item.id === "fdci:commission:6375" ||
-          !item.id.startsWith("fdci:commission:") || item.normalizedStatus === "UNKNOWN"))) return reply({ error: "PROTECTED_RECORD" }, 422);
-      return reply({ ok: true, ...await store(env.DB, items, owner) });
-    } catch (error) {
-      if (error?.message === "SOURCE_CONFLICT") return reply({ error: "Conflicto de fuente." }, 409);
-      if (error?.message === "PROTECTED_RECORD") return reply({ error: "PROTECTED_RECORD" }, 422);
-      if (error?.message === "LEASE_OR_CONCURRENT_CHANGE") return reply({ error: "LEASE_OR_CONCURRENT_CHANGE" }, 409);
-      return reply({ error: "No se pudo guardar el lote." }, 503);
-    }
-  },
-};
+// Internal module entry only: the gateway has already authenticated this exact
+// request. It is not selected by any header, URL or payload supplied by HTTP.
+export async function receiveAuthenticatedFdci(request, env) {
+  if (new URL(request.url).pathname !== "/api/internal/fdci-import") return reply({ error: "No encontrado." }, 404);
+  if (request.method !== "POST") return reply({ error: "Método no permitido." }, 405);
+  if (!env.FDCI_IMPORT_SECRET || !env.DB) return reply({ error: "Receptor no configurado." }, 503);
+  // This gate stays off until legacy FDCI has been disabled and its in-flight runs have drained.
+  if (env.FDCI_EXTERNAL_ENABLED !== "true") return reply({ error: "Importación no habilitada." }, 503);
+  if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) return reply({ error: "Se requiere JSON." }, 415);
+  if (Number(request.headers.get("content-length") || 0) > MAX_BYTES) return reply({ error: "Lote demasiado grande." }, 413);
+  let payload;
+  try { payload = await readBody(request); }
+  catch (error) { return reply({ error: error?.message === "TOO_LARGE" ? "Lote demasiado grande." : "JSON inválido." }, error?.message === "TOO_LARGE" ? 413 : 400); }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return reply({ error: "Operación inválida." }, 400);
+  try {
+    const items = payload.items;
+    if (payload.mode !== "batch" || !Array.isArray(items) || items.length < 1 || items.length > MAX_ITEMS || !items.every(valid) ||
+        new Set(items.map((item) => item.id)).size !== items.length) return reply({ error: "Lote inválido." }, 400);
+    const owner = env.IMPORT_GATE_LEASE_REQUIRED === "true" ? request.headers.get("x-import-gate-owner") : null;
+    if (env.IMPORT_GATE_LEASE_REQUIRED === "true" && (!owner || !/^[A-Za-z0-9_:-]{1,100}$/.test(owner))) return reply({ error: "GATE_OWNER_INVALID" }, 409);
+    if (owner && (items.length !== 1 || items.some((item) => item.id === "fdci:commission:6375" ||
+        !item.id.startsWith("fdci:commission:") || item.normalizedStatus === "UNKNOWN"))) return reply({ error: "PROTECTED_RECORD" }, 422);
+    return reply({ ok: true, ...await store(env.DB, items, owner) });
+  } catch (error) {
+    if (error?.message === "SOURCE_CONFLICT") return reply({ error: "Conflicto de fuente." }, 409);
+    if (error?.message === "PROTECTED_RECORD") return reply({ error: "PROTECTED_RECORD" }, 422);
+    if (error?.message === "LEASE_OR_CONCURRENT_CHANGE") return reply({ error: "LEASE_OR_CONCURRENT_CHANGE" }, 409);
+    return reply({ error: "No se pudo guardar el lote." }, 503);
+  }
+}
+
+const worker = { async fetch(request, env) {
+  if (new URL(request.url).pathname !== "/api/internal/fdci-import") return reply({ error: "No encontrado." }, 404);
+  if (request.method !== "POST") return reply({ error: "Método no permitido." }, 405);
+  if (!env.FDCI_IMPORT_SECRET || !env.DB) return reply({ error: "Receptor no configurado." }, 503);
+  if (!await authorized(request.headers.get("authorization"), env.FDCI_IMPORT_SECRET)) return reply({ error: "No autorizado." }, 401);
+  return receiveAuthenticatedFdci(request, env);
+} };
 
 export default worker;

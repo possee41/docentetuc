@@ -97,7 +97,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       process.once("SIGTERM", abort); process.once("SIGINT", abort);
       const result = await runFdciGatewayJob(process.env, revision, fetch, fetch, controller.signal);
       console.log(JSON.stringify(result));
-      if (result.status !== "OK" || result.closed !== true) process.exitCode = 1;
+      if (result.closed !== true || !(result.status === "OK" || result.status === "PARTIAL" && result.progressPending === true && result.failed === false)) process.exitCode = 1;
     } else console.log(JSON.stringify(await callGate(action, process.env, fetch, revision)));
   } catch (error) {
     console.error("GATE_CALL_FAILED", error instanceof Error && /^[A-Z_0-9]+$/.test(error.message)

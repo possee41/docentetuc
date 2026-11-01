@@ -90,6 +90,8 @@ jobs:
           for (const key of ['discovered','created','updated','unchanged','rejected','skipped','deferred','uncertain','sourceRequests','elapsedMs'])
             console.log('- ' + key + ': ' + (Number.isSafeInteger(r[key]) && r[key] >= 0 ? r[key] : 'unavailable'));
           for (const key of ['code','closeCode']) if (/^[A-Z_0-9]+$/.test(r[key] || '')) console.log('- ' + key + ': ' + r[key]);
+          if (r.cursor && Number.isSafeInteger(r.cursor.cycle) && Number.isSafeInteger(r.cursor.revision)) console.log('- cycle/revision: ' + r.cursor.cycle + '/' + r.cursor.revision);
+          console.log('- cycleComplete: ' + (r.cycleComplete === true));
           console.log('- cleanup: ' + process.env.CLEANUP_OUTCOME);
           console.log('- complete sweep claimed: no');
           NODE

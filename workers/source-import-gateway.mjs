@@ -1,11 +1,13 @@
 // Independent, disabled-by-default import gateway. Node sends publications, never SQL.
-import fdci from "./fdci-receiver.mjs";
+import fdci, { receiveAuthenticatedFdci } from "./fdci-receiver.mjs";
 import sime from "./sime-receiver.mjs";
 import publicSources from "./public-source-receiver.mjs";
 import juntasCheckpoint from "./juntas-checkpoint-gateway.mjs";
+import { fdciCheckpoint } from "./fdci-checkpoint.mjs";
 
 const routes = new Map([
   ["/api/internal/fdci-import", ["FDCI_IMPORT_SECRET", fdci]],
+  ["/api/internal/fdci-checkpoint", ["FDCI_IMPORT_SECRET", null]],
   ["/api/internal/sime-import", ["SIME_IMPORT_SECRET", sime]],
   ["/api/internal/public-source-import/juntas", ["JUNTAS_IMPORT_SECRET", publicSources]],
   ["/api/internal/juntas-checkpoint", ["JUNTAS_IMPORT_SECRET", juntasCheckpoint]],
@@ -145,7 +147,8 @@ const gateway = { async fetch(request, env) {
   // import still needs an unexpired lease created by an authenticated runner.
   if (env.IMPORT_GATE_ENABLED !== "true" && !leaseMode(env)) return reply(503, "IMPORT_DISABLED");
   const requestedSource = identityRequest ? url.searchParams.get("source") :
-    url.pathname === "/api/internal/juntas-checkpoint" ? "juntas" : sourceByPath.get(url.pathname);
+    url.pathname === "/api/internal/juntas-checkpoint" ? "juntas" :
+    url.pathname === "/api/internal/fdci-checkpoint" ? "fdci" : sourceByPath.get(url.pathname);
   if (env.IMPORT_GATE_ALLOWED_SOURCE && env.IMPORT_GATE_ALLOWED_SOURCE !== requestedSource)
     return reply(503, "IMPORT_DISABLED");
   const [secretName, receiver] = route;
@@ -155,12 +158,19 @@ const gateway = { async fetch(request, env) {
   if (checked.error) return checked.error;
   if (identityRequest) return Response.json({ name: checked.identity.database_name, id: checked.identity.database_id },
     { headers: noStore });
+  let owner;
   if (leaseMode(env)) {
     const lease = await readLease(env);
     if (!leaseValid(lease, requestedSource)) return reply(503, "IMPORT_DISABLED");
-    const owner = request.headers.get("x-import-gate-owner");
+    owner = request.headers.get("x-import-gate-owner");
     if (!validOwner(owner) || lease.opened_by !== owner) return reply(409, "GATE_OWNER_MISMATCH");
   }
-  return receiver.fetch(request, env);
+  if (url.pathname === "/api/internal/fdci-checkpoint") {
+    if (!leaseMode(env)) return reply(503, "IMPORT_DISABLED");
+    if (request.method !== "POST") return reply(405, "METHOD_NOT_ALLOWED");
+    const parsed = await leaseBody(request);
+    return parsed.error || fdciCheckpoint(parsed.payload, env.DB, owner);
+  }
+  return receiver === fdci ? receiveAuthenticatedFdci(request, env) : receiver.fetch(request, env);
 } };
 export default gateway;
