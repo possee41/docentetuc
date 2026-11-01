@@ -6,10 +6,10 @@ It does not change the web, existing workflows, source modules, Workers or D1.
 - Source revision: `87b8efcf0d69537c1ba8730cd1ecebd4039198ac`.
 - `import-gate.mjs`: readable ESM bundle, Node 22+, built with existing esbuild
   0.27.3; no npm install, external packages, credentials or environment files.
-- `manifest.json`: original input hashes and bundle SHA-256. Only FDCI dispatch
+- `manifest.json`: original input hashes and bundle SHA-256. Imported-module CLI entrypoints are removed; exactly one CLI remains. Only FDCI dispatch
   is retained; other sources fail closed. FDCI authentication, matching of the
   approved SHA, owner, 600-second lease, incremental cursor and ACK logic are reused.
-- Packaging regression: 10/10 existing gate/job tests passed against the bundle,
+- Packaging regression: 10/10 existing gate/job tests plus two CLI checks passed against the bundle,
   using synthetic source responses and local SQLite. No live import performed.
 
 ## Disabled publication
@@ -52,3 +52,6 @@ configuration (enabled=false, lease_required=false, allowed_source=fdci,
 fdci_external=false), verify 503 open/import/checkpoint, drain admitted requests,
 check no live leases and retire only the FDCI secret. No automatic D1 restore.
 This release does not change or execute that procedure.
+
+Local CLI regression check: `node --test scripts/fdci-release/verify.test.mjs`.
+It uses only synthetic configuration and an in-process mock; no network.

@@ -1,7 +1,7 @@
 {
   "sourceCommit": "87b8efcf0d69537c1ba8730cd1ecebd4039198ac",
-  "bundleSha256": "f585b455b4850f77c8c3923f8de8c0632e28b4c76deab22333711e840c9807af",
-  "bytes": 51986,
+  "bundleSha256": "fc754359ccc26dbfc916880ec6573477e2d3426cdd47daf6bbe43a2e58c1c6d5",
+  "bytes": 41543,
   "inputs": [
     {
       "path": "lib/circuits.ts",
@@ -51,6 +51,7 @@
   "changes": [
     "Only FDCI dispatcher retained; other sources fail closed",
     "Workflow independent identity; disabled variable gate; default-branch manual dispatch",
-    "No app files, shared modules or existing workflows modified"
+    "No app files, shared modules or existing workflows modified",
+    "Imported module CLI entrypoints removed; exactly one CLI remains"
   ]
 }
