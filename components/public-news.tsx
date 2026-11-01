@@ -167,6 +167,9 @@ export function PublicNewsSection() {
             {detail.category === "gremial" && <div className="mt-5 border-l-4 border-amber-600 pl-4 text-sm leading-relaxed text-[var(--text-secondary)]">
               <p><strong className="text-[var(--text-primary)]">Información gremial.</strong> Proviene de una organización sindical docente (como ATEP) y expresa su posición. No es un comunicado oficial de un organismo estatal ni una publicación de DocenteTuc.</p>
             </div>}
+            {detail.category === "educativa" && <div className="mt-5 border-l-4 border-[var(--border)] pl-4 text-sm leading-relaxed text-[var(--text-secondary)]">
+              <p><strong className="text-[var(--text-primary)]">Cobertura educativa.</strong> Proviene de fuentes públicas o periodísticas. No es un comunicado oficial de un organismo estatal ni una publicación de DocenteTuc.</p>
+            </div>}
           </header>
           <div className="grid gap-8 pt-7 lg:grid-cols-[minmax(0,1fr)_18rem]">
             <div className="min-w-0">
@@ -193,6 +196,7 @@ export function PublicNewsSection() {
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar noticias por categoría">
         {categoryFilters.map((option) => <button key={option.value || "todas"} type="button" aria-pressed={category === option.value} onClick={() => filter("category", option.value)} className={`min-h-11 rounded-full border px-4 text-sm font-bold ${category === option.value ? "border-[var(--accent-text)] bg-[var(--accent-text)] text-[var(--text-on-accent)]" : "border-[var(--border)] bg-[var(--surface-primary)] text-[var(--text-primary)]"}`}>{option.label}</button>)}
       </div>
+      <p className="text-xs leading-relaxed text-[var(--text-muted)]">Las categorías agrupan por tipo de fuente: Oficiales (organismos públicos), Educativas (cobertura de fuentes públicas y periodísticas) y Gremiales (organizaciones sindicales). No implican aval oficial de DocenteTuc.</p>
       <div className="grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-3 lg:grid-cols-3 lg:p-4">
         <div className="flex min-w-0 items-end gap-2"><label className="min-w-0 flex-1 text-sm font-bold text-[var(--text-primary)]">Buscar noticia<input value={query} maxLength={100} onChange={(event) => filter("q", event.target.value)} placeholder="Título o resumen" className="mt-1 min-h-11 w-full min-w-0 rounded-xl border border-[var(--border)] bg-[var(--surface-primary)] px-3 text-[var(--text-primary)]" /></label>
           <button type="button" aria-controls="news-filters" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)} className={`inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl border px-3 text-sm font-bold lg:hidden ${topic || relevance ? "border-[var(--accent-text)] bg-[var(--accent-soft)] text-[var(--accent-text)]" : "border-[var(--border)] text-[var(--text-primary)]"}`}><ListFilter className="size-4" />Filtros{topic || relevance ? ` (${Number(Boolean(topic)) + Number(Boolean(relevance))})` : ""}</button></div>

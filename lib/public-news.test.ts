@@ -267,4 +267,6 @@ test("Noticias usa URL propia, menú e Inicio sin ocupar la navegación inferior
   assert.match(component, /relevance, category, page/);
   assert.match(component, /Información gremial\./);
   assert.match(component, /No es un comunicado oficial/);
+  assert.match(component, /Cobertura educativa\./);
+  assert.match(component, /Las categorías agrupan por tipo de fuente/);
 });
