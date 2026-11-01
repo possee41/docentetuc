@@ -4,10 +4,12 @@
   "compatibility_date": "2026-05-15",
   "workers_dev": true,
   "preview_urls": false,
+  "keep_vars": true,
   "routes": [],
   "vars": {
     "IMPORT_GATE_ENABLED": "false",
-    "IMPORT_GATE_ALLOWED_SOURCE": "sime",
+    "IMPORT_GATE_LEASE_REQUIRED": "false",
+    "IMPORT_GATE_ALLOWED_SOURCE": "fdci",
     "FDCI_EXTERNAL_ENABLED": "false",
     "IMPORT_DATABASE_NAME": "docentetuc-db",
     "IMPORT_DATABASE_ID": "baaf5886-0123-4948-96da-aa7106424549"
