@@ -44,12 +44,16 @@ test("FDCI exige destino, SHA separado y límites fijos sin exponer secretos al 
   assert.match(yaml, /IMPORT_GATEWAY_APPROVED_SHA: \$\{\{ vars\.FDCI_IMPORT_APPROVED_SHA \}\}/);
   assert.match(yaml, /test "\$IMPORT_REF" = "\$APPROVED_SHA"/);
   assert.match(yaml, /FDCI_MAX_REQUESTS: '6'/);
-  assert.match(yaml, /FDCI_MAX_PUBLICATIONS: '5'/);
+  assert.match(yaml, /FDCI_MAX_PUBLICATIONS: '2'/);
   assert.match(yaml, /FDCI_PAUSE_MS: '400'/);
   assert.doesNotMatch(yaml, /options:.*full|d321e722/);
   assert.ok(yaml.indexOf("scripts/import-gate.mjs preflight") < yaml.indexOf("scripts/import-gate.mjs run"));
   const jobEnv = yaml.slice(yaml.indexOf("    env:"), yaml.indexOf("    steps:"));
   assert.doesNotMatch(jobEnv, /secrets\./);
+  assert.match(yaml, /persist-credentials: false/);
+  assert.match(yaml, /group: fdci-import\r?\n  cancel-in-progress: false/);
+  assert.match(yaml, /if: always\(\) && steps.preflight.outcome == 'success' && steps.dispatch.outcome != 'skipped'/);
+  assert.match(yaml, /IMPORT_GATE_RUN_ID: \$\{\{ github.run_id \}\}-\$\{\{ github.run_attempt \}\}/);
 });
 
 test("el build Linux se dispara solo en la rama aislada, sin secretos ni despliegue", () => {

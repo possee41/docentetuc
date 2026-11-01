@@ -43,7 +43,7 @@ function fixture(commissionCount = 30, courseCount = 1) {
     return response;
   };
   const target = resolveGatewayConfig(config);
-  const run = () => runGatewayImport(target, config, source, receiver);
+  const run = (overrides = {}) => runGatewayImport(target, { ...config, ...overrides }, source, receiver);
   return { sqlite, db, env, courses, commissions, controls, source, receiver, target, run, sourceCalls: () => sourceCalls,
     state: () => sqlite.prepare("SELECT * FROM fdci_import_checkpoint").get(),
     count: () => sqlite.prepare("SELECT COUNT(*) AS n FROM publications").get().n };
@@ -59,6 +59,27 @@ async function cycle(f, maxRuns = 40) {
   } while (!results.at(-1).cycleComplete);
   return results;
 }
+
+test("lote del workflow: dos comisiones por ejecución y ciclo siguiente sin cambios", async () => {
+  const f = fixture(5, 5);
+  for (let cycleNumber = 0; cycleNumber < 2; cycleNumber++) {
+    const results = [];
+    do {
+      results.push(await f.run({ FDCI_MAX_PUBLICATIONS: "2" }));
+      const result = results.at(-1);
+      assert.ok(result.examined <= 2);
+      assert.ok(result.batches <= 2);
+      assert.ok(result.sourceRequests <= 6);
+      assert.ok(results.length <= 3);
+    } while (!results.at(-1).cycleComplete);
+    assert.equal(results.length, 3);
+    assert.equal(results.reduce((n, r) => n + r.examined, 0), 5);
+    assert.equal(results.reduce((n, r) => n + r.created + r.updated, 0), cycleNumber === 0 ? 5 : 0);
+    assert.equal(results.reduce((n, r) => n + r.unchanged, 0), cycleNumber === 0 ? 0 : 5);
+    assert.equal(f.count(), 5);
+    assert.equal(f.state().cycle, cycleNumber + 2);
+  }
+});
 
 test("30 comisiones: seis lotes de cinco, sin omisiones; siguiente ciclo sin escrituras de publicaciones", async () => {
   const f = fixture();

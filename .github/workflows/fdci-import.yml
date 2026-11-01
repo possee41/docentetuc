@@ -32,7 +32,8 @@ jobs:
       IMPORT_GATE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
       FDCI_SCOPE: active
       FDCI_MAX_REQUESTS: '6'
-      FDCI_MAX_PUBLICATIONS: '5'
+      # The runner caps examined commissions too; retain the production pilot bound.
+      FDCI_MAX_PUBLICATIONS: '2'
       FDCI_PAUSE_MS: '400'
     steps:
       - name: Verify separately approved revision
