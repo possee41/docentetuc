@@ -1,12 +1,14 @@
 {
   "name": "docentetuc-import-canary-1-2",
-  "main": "workers/source-import-gateway.mjs",
+  "main": "workers/source-import-canary.mjs",
   "compatibility_date": "2026-05-15",
   "workers_dev": true,
+  "version_metadata": { "binding": "VERSION_METADATA" },
   "observability": { "enabled": true, "logs": { "invocation_logs": true, "head_sampling_rate": 1 } },
   "vars": {
     "IMPORT_GATE_ENABLED": "false",
-    "IMPORT_GATE_ALLOWED_SOURCE": "juntas",
+    "IMPORT_GATE_LEASE_REQUIRED": "false",
+    "IMPORT_GATE_ALLOWED_SOURCE": "fdci",
     "FDCI_EXTERNAL_ENABLED": "true",
     "IMPORT_DATABASE_NAME": "docentetuc-web-canary-1-2",
     "IMPORT_DATABASE_ID": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"

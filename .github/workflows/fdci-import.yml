@@ -71,6 +71,7 @@ jobs:
           IMPORT_GATEWAY_ORIGIN: ${{ vars.IMPORT_GATEWAY_ORIGIN }}
           FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
           IMPORT_GATE_TTL_SECONDS: '600'
+          IMPORT_GATE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: node --experimental-strip-types scripts/import-gate.mjs open
       - name: Import public FDCI data through isolated gateway
         env:
@@ -95,6 +96,7 @@ jobs:
           SYNC_SOURCE: fdci
           IMPORT_GATEWAY_ORIGIN: ${{ vars.IMPORT_GATEWAY_ORIGIN }}
           FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
+          IMPORT_GATE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: node --experimental-strip-types scripts/import-gate.mjs close
       - name: Record FDCI result
         if: always()

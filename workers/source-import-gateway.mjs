@@ -44,7 +44,7 @@ const leaseMode = (env) => env.IMPORT_GATE_LEASE_REQUIRED === "true";
 const configured = (env) => Boolean(env.DB && env.IMPORT_DATABASE_NAME && env.IMPORT_DATABASE_ID);
 
 async function readLease(env) {
-  try { return await env.DB.prepare("SELECT source,expires_at FROM import_gate_lease WHERE id=1").first(); }
+  try { return await env.DB.prepare("SELECT source,expires_at,opened_at,opened_by FROM import_gate_lease WHERE id=1").first(); }
   catch { return undefined; }
 }
 
@@ -70,22 +70,31 @@ async function handleLease(request, env) {
   try { payload = await request.json(); }
   catch { return reply(400, "GATE_REQUEST_INVALID"); }
   const source = payload?.source, action = payload?.action;
+  const owner = payload?.owner;
   const secretName = paths[source] ? routes.get(paths[source])[0] : null;
   if (!secretName || (action !== "open" && action !== "close")) return reply(400, "GATE_REQUEST_INVALID");
+  if (typeof owner !== "string" || !/^[A-Za-z0-9_:-]{1,100}$/.test(owner)) return reply(400, "GATE_OWNER_INVALID");
+  if (env.IMPORT_GATE_ALLOWED_SOURCE && env.IMPORT_GATE_ALLOWED_SOURCE !== source) return reply(503, "IMPORT_DISABLED");
   if (!await authorized(request.headers.get("authorization"), env[secretName])) return reply(401, "UNAUTHORIZED");
   const expected = { name: env.IMPORT_DATABASE_NAME, id: env.IMPORT_DATABASE_ID };
   const checked = await verifyIdentity(env, expected);
   if (checked.error) return checked.error;
 
   const existing = await readLease(env);
-  if (existing && existing.source !== source) {
-    // An unexpired lease held by another source blocks every open/close attempt.
-    if (leaseValid(existing, existing.source) || action === "close") return reply(409, "GATE_BUSY");
-  }
+  if (existing === undefined) return reply(503, "GATE_UNAVAILABLE");
   if (action === "close") {
-    try { await env.DB.prepare("DELETE FROM import_gate_lease WHERE id=1").run(); }
+    try {
+      await env.DB.prepare("DELETE FROM import_gate_lease WHERE id=1 AND source=? AND opened_by=?").bind(source, owner).run();
+      const remaining = await readLease(env);
+      if (remaining === undefined) return reply(503, "GATE_UNAVAILABLE");
+      if (remaining !== null) return reply(409, "GATE_BUSY");
+    }
     catch { return reply(503, "GATE_UNAVAILABLE"); }
-    return Response.json({ ok: true, source, closed: true }, { headers: noStore });
+    return Response.json({ ok: true, source, owner, closed: true }, { headers: noStore });
+  }
+  if (existing && leaseValid(existing, existing.source)) {
+    if (existing.source !== source || existing.opened_by !== owner) return reply(409, "GATE_BUSY");
+    return Response.json({ ok: true, source, owner, openedAt: existing.opened_at, expiresAt: existing.expires_at }, { headers: noStore });
   }
   const requested = Number(payload?.ttlSeconds);
   const ttl = Math.min(LEASE_MAX_SECONDS, Math.max(LEASE_MIN_SECONDS,
@@ -93,12 +102,14 @@ async function handleLease(request, env) {
   const openedAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
   try {
-    await env.DB.prepare(`INSERT INTO import_gate_lease (id,source,expires_at,opened_at,opened_by)
+    const result = await env.DB.prepare(`INSERT INTO import_gate_lease (id,source,expires_at,opened_at,opened_by)
       VALUES (1,?,?,?,?) ON CONFLICT(id) DO UPDATE SET source=excluded.source,expires_at=excluded.expires_at,
-      opened_at=excluded.opened_at,opened_by=excluded.opened_by`)
-      .bind(source, expiresAt, openedAt, "runner").run();
+      opened_at=excluded.opened_at,opened_by=excluded.opened_by
+      WHERE julianday(import_gate_lease.expires_at)<=julianday(?)`)
+      .bind(source, expiresAt, openedAt, owner, openedAt).run();
+    if (Number(result.meta?.changes) !== 1) return reply(409, "GATE_BUSY");
   } catch { return reply(503, "GATE_UNAVAILABLE"); }
-  return Response.json({ ok: true, source, openedAt, expiresAt }, { headers: noStore });
+  return Response.json({ ok: true, source, owner, openedAt, expiresAt }, { headers: noStore });
 }
 
 const gateway = { async fetch(request, env) {

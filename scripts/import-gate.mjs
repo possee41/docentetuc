@@ -18,7 +18,9 @@ export function resolveGateConfig(config) {
   const secret = config[`${source.toUpperCase()}_IMPORT_SECRET`];
   if (!/^[A-Za-z0-9_-]{32,}$/.test(secret || "")) throw new Error("GATE_SECRET_INVALID");
   const ttlSeconds = Number(config.IMPORT_GATE_TTL_SECONDS || 600);
-  return { source, endpoint: new URL("/api/internal/import-gate", origin).toString(), secret, ttlSeconds };
+  const owner = config.IMPORT_GATE_RUN_ID || (config.GITHUB_RUN_ID ? `${config.GITHUB_RUN_ID}-${config.GITHUB_RUN_ATTEMPT || "1"}` : "");
+  if (!/^[A-Za-z0-9_:-]{1,100}$/.test(owner)) throw new Error("GATE_RUN_ID_REQUIRED");
+  return { source, endpoint: new URL("/api/internal/import-gate", origin).toString(), secret, ttlSeconds, owner };
 }
 
 export async function callGate(action, config, fetcher = fetch) {
@@ -28,15 +30,16 @@ export async function callGate(action, config, fetcher = fetch) {
   try {
     response = await fetcher(target.endpoint, { method: "POST",
       headers: { authorization: `Bearer ${target.secret}`, "content-type": "application/json" },
-      body: JSON.stringify({ source: target.source, action, ttlSeconds: target.ttlSeconds }),
+      body: JSON.stringify({ source: target.source, action, ttlSeconds: target.ttlSeconds, owner: target.owner }),
       signal: AbortSignal.timeout(20_000) });
   } catch { throw new Error("GATE_UNAVAILABLE"); }
   if (!response.ok) throw new Error(`GATE_HTTP_${response.status}`);
   let body;
   try { body = await response.json(); } catch { throw new Error("GATE_RESPONSE_INVALID"); }
-  if (action === "open" && (body?.ok !== true || !body?.expiresAt || Date.parse(body.expiresAt) <= Date.now()))
+  if (body?.source !== target.source || body?.owner !== target.owner) throw new Error("GATE_RESPONSE_INVALID");
+  if (action === "open" && (body?.ok !== true || !Number.isFinite(Date.parse(body?.expiresAt)) || Date.parse(body.expiresAt) <= Date.now()))
     throw new Error("GATE_RESPONSE_INVALID");
-  if (action === "close" && body?.ok !== true) throw new Error("GATE_RESPONSE_INVALID");
+  if (action === "close" && (body?.ok !== true || body?.closed !== true)) throw new Error("GATE_RESPONSE_INVALID");
   return { source: target.source, action, expiresAt: body.expiresAt || null };
 }
 

@@ -4,7 +4,7 @@ import { callGate, resolveGateConfig } from "./import-gate.mjs";
 
 const secret = "synthetic_fdci_gateway_secret_123456789";
 const base = { SYNC_SOURCE: "fdci", IMPORT_GATEWAY_ORIGIN: "https://docentetuc-import-canary-1-2.possee41.workers.dev",
-  FDCI_IMPORT_SECRET: secret };
+  FDCI_IMPORT_SECRET: secret, IMPORT_GATE_RUN_ID: "test-run" };
 
 test("acepta solo orígenes de gateway aislados y secretos válidos", () => {
   assert.equal(resolveGateConfig({ ...base }).source, "fdci");
@@ -23,8 +23,8 @@ test("abre y cierra con el secreto de la fuente, sin aceptar respuestas dudosas"
     calls.push({ url, body: JSON.parse(init.body), auth: init.headers.authorization });
     const body = JSON.parse(init.body);
     return new Response(JSON.stringify(body.action === "open"
-      ? { ok: true, expiresAt: new Date(Date.now() + 600_000).toISOString() }
-      : { ok: true, closed: true }), { status: 200 });
+      ? { ok: true, source: "fdci", owner: "test-run", expiresAt: new Date(Date.now() + 600_000).toISOString() }
+      : { ok: true, source: "fdci", owner: "test-run", closed: true }), { status: 200 });
   };
   const opened = await callGate("open", { ...base, IMPORT_GATE_TTL_SECONDS: "600" }, fetcher);
   assert.equal(opened.action, "open");
