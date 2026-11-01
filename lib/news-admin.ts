@@ -273,7 +273,8 @@ export async function listNewsSources(database: CommunityDatabase) {
       if (entry) entry.names.push({ name: String(row.source_name), count: Number(row.count) });
     }
     return [...result.values()];
-  } catch {
-    return [];
+  } catch (error) {
+    if (error instanceof Error && /no such table/i.test(error.message)) return [];
+    throw error;
   }
 }

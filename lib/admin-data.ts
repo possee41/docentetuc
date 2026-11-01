@@ -145,8 +145,9 @@ export async function adminNewsSummary(database: CommunityDatabase) {
       counts: Object.fromEntries((counts.results || []).map((row) => [String(row.status), Number(row.count)])),
       sources: (sources.results || []).map((row) => ({ type: String(row.source_type), count: Number(row.count) })),
     };
-  } catch {
-    return { counts: {}, sources: [] };
+  } catch (error) {
+    if (error instanceof Error && /no such table/i.test(error.message)) return { counts: {}, sources: [] };
+    throw error;
   }
 }
 
