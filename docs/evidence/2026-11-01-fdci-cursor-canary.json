@@ -1,0 +1,1839 @@
+{
+  "baseCommit": "3eed7206f7e8934843be69d770eee5f6a0bca235",
+  "runId": "cursor-752686dd-abbd-47b0-a772-ae3024529312",
+  "started": "2026-11-01T07:32:13.590Z",
+  "finished": "2026-11-01T07:34:28.115Z",
+  "worker": "docentetuc-import-canary-1-2",
+  "database": {
+    "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756",
+    "name": "docentetuc-web-canary-1-2"
+  },
+  "bundleSha256": "b9d9458052003bea7e67c5670ebca2c086d8417fad711f3bbb71c01a6af27b5f",
+  "sourceMode": "synthetic",
+  "physicalOfficialRequests": 0,
+  "backup": {
+    "at": "2026-11-01T07:26:26.271Z",
+    "worker": "docentetuc-import-canary-1-2",
+    "database": {
+      "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756",
+      "name": "docentetuc-web-canary-1-2"
+    },
+    "file": ".wrangler/backups/fdci-cursor-canary-pre0032/database.sql",
+    "bytes": 52072,
+    "sha256": "b0344e5217482182f0b0d985fc65450ed3c6bbead9c4c03b664cba0587e0deff",
+    "ignored": true,
+    "restrictedAcl": true,
+    "localRestoreVerified": true,
+    "applicationTablesVerified": 48,
+    "publications": 9,
+    "foreignKeyErrors": 0
+  },
+  "migration": {
+    "at": "2026-11-01T07:27:00.628Z",
+    "worker": "docentetuc-import-canary-1-2",
+    "database": {
+      "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756",
+      "name": "docentetuc-web-canary-1-2"
+    },
+    "migration": "migrations/0032_fdci_import_checkpoint.sql",
+    "migrationSha256": "77c64860e29d2a09db2fb2407e41d50e4715dbb09146ef757b39a506d19643d6",
+    "backupSha256": "b0344e5217482182f0b0d985fc65450ed3c6bbead9c4c03b664cba0587e0deff",
+    "ddl": [
+      {
+        "success": true,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 2,
+        "durationMs": 0.3852
+      },
+      {
+        "success": true,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 1,
+        "durationMs": 0.0721
+      }
+    ],
+    "schema": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "revision",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "cycle",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "1",
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "after_key",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "''",
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "upper_key",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "''",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "failures",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "last_error_code",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "last_cycle_status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "last_completed_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "state": {
+      "id": 1,
+      "revision": 0,
+      "cycle": 1,
+      "after_key": "",
+      "upper_key": "",
+      "failures": 0,
+      "last_error_code": null,
+      "last_cycle_status": null,
+      "last_completed_at": null
+    },
+    "publicationsPreserved": true,
+    "syncPreserved": true,
+    "ledgerModified": false
+  },
+  "armed": {
+    "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+    "deployment": "9ddf2bbb-3d34-4115-a057-ab9bbed787b6",
+    "secretNames": [
+      "FDCI_IMPORT_SECRET",
+      "JUNTAS_IMPORT_SECRET",
+      "SIME_IMPORT_SECRET"
+    ],
+    "limits": null,
+    "usageModel": "standard"
+  },
+  "stages": [
+    {
+      "stage": 1,
+      "pid": 18196,
+      "ack": {
+        "status": "PARTIAL",
+        "discovered": 3,
+        "examined": 2,
+        "created": 2,
+        "updated": 0,
+        "unchanged": 0,
+        "rejected": 0,
+        "skipped": 0,
+        "batches": 2,
+        "coursesFetched": 1,
+        "coursesAvailable": 1,
+        "commissionsExamined": 2,
+        "completed": false,
+        "cycleComplete": false,
+        "cursor": {
+          "id": 1,
+          "revision": 3,
+          "cycle": 1,
+          "after_key": "000000089001:000980000003",
+          "upper_key": "000000089001:000980000004",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        },
+        "sourceErrors": {},
+        "errors": [],
+        "failed": false,
+        "progressPending": true,
+        "deferred": 1,
+        "sourceRequests": 3,
+        "elapsedMs": 3858,
+        "closed": true
+      },
+      "before": {
+        "id": 1,
+        "revision": 1,
+        "cycle": 1,
+        "after_key": "",
+        "upper_key": "000000089001:000980000004",
+        "failures": 0,
+        "last_error_code": null,
+        "last_cycle_status": null,
+        "last_completed_at": null
+      },
+      "after": {
+        "id": 1,
+        "revision": 3,
+        "cycle": 1,
+        "after_key": "000000089001:000980000003",
+        "upper_key": "000000089001:000980000004",
+        "failures": 0,
+        "last_error_code": null,
+        "last_cycle_status": null,
+        "last_completed_at": null
+      },
+      "simulatedSourceRequests": 3,
+      "d1": {
+        "rpc": 26,
+        "queries": 26,
+        "rowsRead": 32,
+        "rowsWritten": 16
+      },
+      "publicationD1": {
+        "rpc": 8,
+        "queries": 8,
+        "rowsRead": 10,
+        "rowsWritten": 12
+      }
+    },
+    {
+      "stage": 2,
+      "pid": 27200,
+      "ack": {
+        "status": "OK",
+        "discovered": 5,
+        "examined": 1,
+        "created": 1,
+        "updated": 0,
+        "unchanged": 0,
+        "rejected": 0,
+        "skipped": 0,
+        "batches": 1,
+        "coursesFetched": 1,
+        "coursesAvailable": 1,
+        "commissionsExamined": 1,
+        "completed": false,
+        "cycleComplete": true,
+        "cursor": {
+          "id": 1,
+          "revision": 5,
+          "cycle": 2,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:22.845Z"
+        },
+        "sourceErrors": {},
+        "errors": [],
+        "failed": false,
+        "progressPending": false,
+        "deferred": 0,
+        "sourceRequests": 3,
+        "elapsedMs": 3093,
+        "closed": true
+      },
+      "before": {
+        "id": 1,
+        "revision": 3,
+        "cycle": 1,
+        "after_key": "000000089001:000980000003",
+        "upper_key": "000000089001:000980000004",
+        "failures": 0,
+        "last_error_code": null,
+        "last_cycle_status": null,
+        "last_completed_at": null
+      },
+      "after": {
+        "id": 1,
+        "revision": 5,
+        "cycle": 2,
+        "after_key": "",
+        "upper_key": "",
+        "failures": 0,
+        "last_error_code": null,
+        "last_cycle_status": "OK",
+        "last_completed_at": "2026-11-01T07:33:22.845Z"
+      },
+      "simulatedSourceRequests": 3,
+      "d1": {
+        "rpc": 22,
+        "queries": 22,
+        "rowsRead": 27,
+        "rowsWritten": 10
+      },
+      "publicationD1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 5,
+        "rowsWritten": 6
+      }
+    },
+    {
+      "stage": 3,
+      "pid": 25672,
+      "ack": {
+        "status": "OK",
+        "discovered": 5,
+        "examined": 5,
+        "created": 2,
+        "updated": 2,
+        "unchanged": 1,
+        "rejected": 0,
+        "skipped": 0,
+        "batches": 5,
+        "coursesFetched": 1,
+        "coursesAvailable": 1,
+        "commissionsExamined": 5,
+        "completed": false,
+        "cycleComplete": true,
+        "cursor": {
+          "id": 1,
+          "revision": 12,
+          "cycle": 3,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:55.843Z"
+        },
+        "sourceErrors": {},
+        "errors": [],
+        "failed": false,
+        "progressPending": false,
+        "deferred": 0,
+        "sourceRequests": 3,
+        "elapsedMs": 9070,
+        "closed": true
+      },
+      "before": {
+        "id": 1,
+        "revision": 5,
+        "cycle": 2,
+        "after_key": "",
+        "upper_key": "",
+        "failures": 0,
+        "last_error_code": null,
+        "last_cycle_status": "OK",
+        "last_completed_at": "2026-11-01T07:33:22.845Z"
+      },
+      "after": {
+        "id": 1,
+        "revision": 12,
+        "cycle": 3,
+        "after_key": "",
+        "upper_key": "",
+        "failures": 0,
+        "last_error_code": null,
+        "last_cycle_status": "OK",
+        "last_completed_at": "2026-11-01T07:33:55.843Z"
+      },
+      "simulatedSourceRequests": 3,
+      "d1": {
+        "rpc": 52,
+        "queries": 52,
+        "rowsRead": 74,
+        "rowsWritten": 27
+      },
+      "publicationD1": {
+        "rpc": 19,
+        "queries": 19,
+        "rowsRead": 27,
+        "rowsWritten": 18
+      }
+    }
+  ],
+  "http": [
+    {
+      "step": "cursor-auth-reject",
+      "at": "2026-11-01T07:32:23.601Z",
+      "path": "/api/internal/import-gate",
+      "status": 401,
+      "body": {
+        "error": "UNAUTHORIZED"
+      },
+      "d1": {
+        "rpc": 0,
+        "queries": 0,
+        "rowsRead": 0,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a539348d889845d6-EZE",
+      "clientWallMs": 137.86000000000058
+    },
+    {
+      "step": "cursor-invalid-source",
+      "at": "2026-11-01T07:32:23.739Z",
+      "path": "/api/internal/import-gate",
+      "status": 400,
+      "body": {
+        "error": "GATE_REQUEST_INVALID"
+      },
+      "d1": {
+        "rpc": 0,
+        "queries": 0,
+        "rowsRead": 0,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a539348e2c673f3a-EZE",
+      "clientWallMs": 88.8173999999999
+    },
+    {
+      "step": "cursor-no-lease",
+      "at": "2026-11-01T07:32:23.829Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 503,
+      "body": {
+        "error": "IMPORT_DISABLED"
+      },
+      "d1": {
+        "rpc": 2,
+        "queries": 2,
+        "rowsRead": 2,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a539348e797a45d6-EZE",
+      "clientWallMs": 372.46570000000065
+    },
+    {
+      "step": "cursor-open-1",
+      "at": "2026-11-01T07:32:24.202Z",
+      "path": "/api/internal/import-gate",
+      "status": 409,
+      "body": {
+        "error": "GATE_BUSY"
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53934911fb88bea-EZE",
+      "clientWallMs": 802.0151999999998
+    },
+    {
+      "step": "cursor-open-0",
+      "at": "2026-11-01T07:32:24.202Z",
+      "path": "/api/internal/import-gate",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "cursor-752686dd-abbd-47b0-a772-ae3024529312-a",
+        "openedAt": "2026-11-01T07:32:24.122Z",
+        "expiresAt": "2026-11-01T07:42:24.122Z"
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a5393490bea93f3a-EZE",
+      "clientWallMs": 803.2211000000007
+    },
+    {
+      "step": "cursor-loser-close",
+      "at": "2026-11-01T07:32:25.005Z",
+      "path": "/api/internal/import-gate",
+      "status": 409,
+      "body": {
+        "error": "GATE_BUSY"
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 4,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a5393495d9db45d6-EZE",
+      "clientWallMs": 671.8223000000016
+    },
+    {
+      "step": "cursor-old-owner",
+      "at": "2026-11-01T07:32:25.677Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 409,
+      "body": {
+        "error": "GATE_OWNER_MISMATCH"
+      },
+      "d1": {
+        "rpc": 2,
+        "queries": 2,
+        "rowsRead": 2,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a5393499ff483f3a-EZE",
+      "clientWallMs": 359.305699999999
+    },
+    {
+      "step": "cursor-sime-disabled",
+      "at": "2026-11-01T07:32:26.037Z",
+      "path": "/api/internal/import-gate",
+      "status": 503,
+      "body": {
+        "error": "IMPORT_DISABLED"
+      },
+      "d1": {
+        "rpc": 0,
+        "queries": 0,
+        "rowsRead": 0,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a539349c383645d6-EZE",
+      "clientWallMs": 38.70929999999862
+    },
+    {
+      "step": "cursor-cas-0",
+      "at": "2026-11-01T07:32:26.343Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 409,
+      "body": {
+        "error": "CHECKPOINT_CONFLICT"
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 4,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a539349e29fa45d6-EZE",
+      "clientWallMs": 530.7145
+    },
+    {
+      "step": "cursor-cas-1",
+      "at": "2026-11-01T07:32:26.343Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 1,
+          "cycle": 1,
+          "after_key": "",
+          "upper_key": "000000089001:000980000004",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a539349e2a823f3a-EZE",
+      "clientWallMs": 532.2078000000001
+    },
+    {
+      "step": "cursor-security-close",
+      "at": "2026-11-01T07:32:27.129Z",
+      "path": "/api/internal/import-gate",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "cursor-752686dd-abbd-47b0-a772-ae3024529312-a",
+        "closed": true
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 4,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53934a31e7f45d6-EZE",
+      "clientWallMs": 689.8593000000001
+    },
+    {
+      "step": "cursor-between-runs",
+      "at": "2026-11-01T07:32:27.819Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 503,
+      "body": {
+        "error": "IMPORT_DISABLED"
+      },
+      "d1": {
+        "rpc": 2,
+        "queries": 2,
+        "rowsRead": 2,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53934a75aad45d6-EZE",
+      "clientWallMs": 353.7017999999989
+    },
+    {
+      "step": "cursor-s1-01",
+      "at": "2026-11-01T07:32:50.927Z",
+      "path": "/api/internal/import-identity",
+      "status": 200,
+      "body": {
+        "name": "docentetuc-web-canary-1-2",
+        "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+      },
+      "d1": {
+        "rpc": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53935385b35db70-EZE",
+      "clientWallMs": 314.1343
+    },
+    {
+      "step": "cursor-s1-02",
+      "at": "2026-11-01T07:32:51.242Z",
+      "path": "/api/internal/import-gate",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "cursor-752686dd-abbd-47b0-a772-ae3024529312-s1",
+        "openedAt": "2026-11-01T07:32:51.160Z",
+        "expiresAt": "2026-11-01T07:42:51.160Z"
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a5393539bc02db70-EZE",
+      "clientWallMs": 532.2531999999999
+    },
+    {
+      "step": "cursor-s1-03",
+      "at": "2026-11-01T07:32:51.774Z",
+      "path": "/api/internal/import-identity",
+      "status": 200,
+      "body": {
+        "name": "docentetuc-web-canary-1-2",
+        "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+      },
+      "d1": {
+        "rpc": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a539353d1e5ddb70-EZE",
+      "clientWallMs": 210.664
+    },
+    {
+      "step": "cursor-s1-04",
+      "at": "2026-11-01T07:32:51.986Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 1,
+          "cycle": 1,
+          "after_key": "",
+          "upper_key": "000000089001:000980000004",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a539353e6f2edb70-EZE",
+      "clientWallMs": 530.4833000000001
+    },
+    {
+      "step": "cursor-s1-05",
+      "at": "2026-11-01T07:32:53.331Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 1,
+        "updated": 0,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 3,
+        "rowsWritten": 6
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 5,
+        "rowsWritten": 6
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a5393546dce0db70-EZE",
+      "clientWallMs": 718.7493
+    },
+    {
+      "step": "cursor-s1-06",
+      "at": "2026-11-01T07:32:54.050Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 2,
+          "cycle": 1,
+          "after_key": "000000089001:000980000002",
+          "upper_key": "000000089001:000980000004",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a539354b5ffcdb70-EZE",
+      "clientWallMs": 545.435
+    },
+    {
+      "step": "cursor-s1-07",
+      "at": "2026-11-01T07:32:54.596Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 1,
+        "updated": 0,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 3,
+        "rowsWritten": 6
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 5,
+        "rowsWritten": 6
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a539354eba61db70-EZE",
+      "clientWallMs": 693.8222999999998
+    },
+    {
+      "step": "cursor-s1-08",
+      "at": "2026-11-01T07:32:55.290Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 3,
+          "cycle": 1,
+          "after_key": "000000089001:000980000003",
+          "upper_key": "000000089001:000980000004",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53935531d55db70-EZE",
+      "clientWallMs": 552.3681000000006
+    },
+    {
+      "step": "cursor-s1-09",
+      "at": "2026-11-01T07:32:55.843Z",
+      "path": "/api/internal/import-gate",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "cursor-752686dd-abbd-47b0-a772-ae3024529312-s1",
+        "closed": true
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 4,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53935567fbedb70-EZE",
+      "clientWallMs": 674.0835000000006
+    },
+    {
+      "step": "cursor-s2-01",
+      "at": "2026-11-01T07:33:19.050Z",
+      "path": "/api/internal/import-identity",
+      "status": 200,
+      "body": {
+        "name": "docentetuc-web-canary-1-2",
+        "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+      },
+      "d1": {
+        "rpc": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53935e829b2c155-EZE",
+      "clientWallMs": 299.3991
+    },
+    {
+      "step": "cursor-s2-02",
+      "at": "2026-11-01T07:33:19.350Z",
+      "path": "/api/internal/import-gate",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "cursor-752686dd-abbd-47b0-a772-ae3024529312-s2",
+        "openedAt": "2026-11-01T07:33:19.272Z",
+        "expiresAt": "2026-11-01T07:43:19.272Z"
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53935e97acac155-EZE",
+      "clientWallMs": 728.7389000000001
+    },
+    {
+      "step": "cursor-s2-03",
+      "at": "2026-11-01T07:33:20.079Z",
+      "path": "/api/internal/import-identity",
+      "status": 200,
+      "body": {
+        "name": "docentetuc-web-canary-1-2",
+        "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+      },
+      "d1": {
+        "rpc": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53935edfe6ac155-EZE",
+      "clientWallMs": 204.17259999999987
+    },
+    {
+      "step": "cursor-s2-04",
+      "at": "2026-11-01T07:33:20.284Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 3,
+          "cycle": 1,
+          "after_key": "000000089001:000980000003",
+          "upper_key": "000000089001:000980000004",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53935ef4f70c155-EZE",
+      "clientWallMs": 502.45069999999987
+    },
+    {
+      "step": "cursor-s2-05",
+      "at": "2026-11-01T07:33:21.612Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 1,
+        "updated": 0,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 3,
+        "rowsWritten": 6
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 5,
+        "rowsWritten": 6
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53935f79e4bc155-EZE",
+      "clientWallMs": 707.4877000000001
+    },
+    {
+      "step": "cursor-s2-06",
+      "at": "2026-11-01T07:33:22.319Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 4,
+          "cycle": 1,
+          "after_key": "000000089001:000980000004",
+          "upper_key": "000000089001:000980000004",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53935fc1a62c155-EZE",
+      "clientWallMs": 532.1102000000001
+    },
+    {
+      "step": "cursor-s2-07",
+      "at": "2026-11-01T07:33:22.852Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 5,
+          "cycle": 2,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:22.845Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53935ff5cd5c155-EZE",
+      "clientWallMs": 524.1012999999998
+    },
+    {
+      "step": "cursor-s2-08",
+      "at": "2026-11-01T07:33:23.376Z",
+      "path": "/api/internal/import-gate",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "cursor-752686dd-abbd-47b0-a772-ae3024529312-s2",
+        "closed": true
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 4,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936029f77c155-EZE",
+      "clientWallMs": 678.1817999999994
+    },
+    {
+      "step": "cursor-s3-01",
+      "at": "2026-11-01T07:33:46.265Z",
+      "path": "/api/internal/import-identity",
+      "status": 200,
+      "body": {
+        "name": "docentetuc-web-canary-1-2",
+        "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+      },
+      "d1": {
+        "rpc": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936923c51d841-EZE",
+      "clientWallMs": 303.76340000000005
+    },
+    {
+      "step": "cursor-s3-02",
+      "at": "2026-11-01T07:33:46.570Z",
+      "path": "/api/internal/import-gate",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "cursor-752686dd-abbd-47b0-a772-ae3024529312-s3",
+        "openedAt": "2026-11-01T07:33:46.486Z",
+        "expiresAt": "2026-11-01T07:43:46.486Z"
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936939d9fd841-EZE",
+      "clientWallMs": 528.1917000000001
+    },
+    {
+      "step": "cursor-s3-03",
+      "at": "2026-11-01T07:33:47.098Z",
+      "path": "/api/internal/import-identity",
+      "status": 200,
+      "body": {
+        "name": "docentetuc-web-canary-1-2",
+        "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+      },
+      "d1": {
+        "rpc": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a5393696d8a1d841-EZE",
+      "clientWallMs": 205.4380000000001
+    },
+    {
+      "step": "cursor-s3-04",
+      "at": "2026-11-01T07:33:47.304Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 5,
+          "cycle": 2,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:22.845Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a539369829c2d841-EZE",
+      "clientWallMs": 511.0372
+    },
+    {
+      "step": "cursor-s3-05",
+      "at": "2026-11-01T07:33:48.228Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 6,
+          "cycle": 2,
+          "after_key": "",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:22.845Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a539369dfec0d841-EZE",
+      "clientWallMs": 532.1731999999997
+    },
+    {
+      "step": "cursor-s3-06",
+      "at": "2026-11-01T07:33:49.165Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 1,
+        "updated": 0,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 3,
+        "rowsWritten": 6
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 5,
+        "rowsWritten": 6
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936a3dc19d841-EZE",
+      "clientWallMs": 979.1151
+    },
+    {
+      "step": "cursor-s3-07",
+      "at": "2026-11-01T07:33:50.145Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 7,
+          "cycle": 2,
+          "after_key": "000000089001:000980000001",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:22.845Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936a9e993d841-EZE",
+      "clientWallMs": 522.7307000000001
+    },
+    {
+      "step": "cursor-s3-08",
+      "at": "2026-11-01T07:33:50.668Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 1,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 5,
+        "rowsWritten": 3
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 7,
+        "rowsWritten": 3
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936ad2c3fd841-EZE",
+      "clientWallMs": 698.0380999999998
+    },
+    {
+      "step": "cursor-s3-09",
+      "at": "2026-11-01T07:33:51.366Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 8,
+          "cycle": 2,
+          "after_key": "000000089001:000980000002",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:22.845Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936b18829d841-EZE",
+      "clientWallMs": 522.3207000000002
+    },
+    {
+      "step": "cursor-s3-10",
+      "at": "2026-11-01T07:33:51.889Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 1,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 5,
+        "rowsWritten": 3
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 7,
+        "rowsWritten": 3
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936b4db43d841-EZE",
+      "clientWallMs": 694.6370000000006
+    },
+    {
+      "step": "cursor-s3-11",
+      "at": "2026-11-01T07:33:52.584Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 9,
+          "cycle": 2,
+          "after_key": "000000089001:000980000003",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:22.845Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936b91f49d841-EZE",
+      "clientWallMs": 517.3816999999999
+    },
+    {
+      "step": "cursor-s3-12",
+      "at": "2026-11-01T07:33:53.102Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936bc6a64d841-EZE",
+      "clientWallMs": 511.7534999999998
+    },
+    {
+      "step": "cursor-s3-13",
+      "at": "2026-11-01T07:33:53.614Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 10,
+          "cycle": 2,
+          "after_key": "000000089001:000980000004",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:22.845Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936bf9d2cd841-EZE",
+      "clientWallMs": 534.6770999999999
+    },
+    {
+      "step": "cursor-s3-14",
+      "at": "2026-11-01T07:33:54.149Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 1,
+        "updated": 0,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 3,
+        "rowsWritten": 6
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 5,
+        "rowsWritten": 6
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936c2f85fd841-EZE",
+      "clientWallMs": 1170.9856
+    },
+    {
+      "step": "cursor-s3-15",
+      "at": "2026-11-01T07:33:55.320Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 11,
+          "cycle": 2,
+          "after_key": "000000089001:000980000005",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:22.845Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936ca3f22d841-EZE",
+      "clientWallMs": 515.5445
+    },
+    {
+      "step": "cursor-s3-16",
+      "at": "2026-11-01T07:33:55.836Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 12,
+          "cycle": 3,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:55.843Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936cd8a42d841-EZE",
+      "clientWallMs": 538.0931999999993
+    },
+    {
+      "step": "cursor-s3-17",
+      "at": "2026-11-01T07:33:56.374Z",
+      "path": "/api/internal/import-gate",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "cursor-752686dd-abbd-47b0-a772-ae3024529312-s3",
+        "closed": true
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 4,
+        "rowsWritten": 1
+      },
+      "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+      "ray": "a53936d0dd33d841-EZE",
+      "clientWallMs": 680.4938000000002
+    },
+    {
+      "step": "final-closed",
+      "at": "2026-11-01T07:34:24.797Z",
+      "path": "/api/internal/fdci-import",
+      "status": 503,
+      "body": {
+        "error": "IMPORT_DISABLED"
+      },
+      "d1": {
+        "rpc": 0,
+        "queries": 0,
+        "rowsRead": 0,
+        "rowsWritten": 0
+      },
+      "version": "875aafbc-a936-4a9a-8643-56b2050242ec",
+      "ray": "a5393784cc9ba23d-GRU",
+      "clientWallMs": 428.96179999999003
+    },
+    {
+      "step": "final-secret-removed",
+      "at": "2026-11-01T07:34:26.591Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 503,
+      "body": {
+        "error": "IMPORT_DISABLED"
+      },
+      "d1": {
+        "rpc": 0,
+        "queries": 0,
+        "rowsRead": 0,
+        "rowsWritten": 0
+      },
+      "version": "875aafbc-a936-4a9a-8643-56b2050242ec",
+      "ray": "a539378dcd85a23d-GRU",
+      "clientWallMs": 80.95610000001034
+    }
+  ],
+  "httpD1": {
+    "rpc": 126,
+    "queries": 126,
+    "rowsRead": 162,
+    "rowsWritten": 56
+  },
+  "metricsSnapshots": [
+    {
+      "label": "security",
+      "at": "2026-11-01T07:32:48.984Z",
+      "available": true,
+      "http": 200,
+      "rows": [
+        {
+          "at": "2026-11-01T07:32:23Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 1,
+          "errors": 0,
+          "cpuP50Ms": 2.08,
+          "cpuP90Ms": 2.08,
+          "cpuP99Ms": 2.08
+        }
+      ],
+      "overall": [
+        {
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 2,
+          "errors": 0,
+          "cpuP50Ms": 2.08,
+          "cpuP90Ms": 2.559,
+          "cpuP99Ms": 2.559
+        }
+      ]
+    },
+    {
+      "label": "stage-1",
+      "at": "2026-11-01T07:33:17.715Z",
+      "available": true,
+      "http": 200,
+      "rows": [
+        {
+          "at": "2026-11-01T07:32:27Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 1,
+          "errors": 0,
+          "cpuP50Ms": 0.984,
+          "cpuP90Ms": 0.984,
+          "cpuP99Ms": 0.984
+        },
+        {
+          "at": "2026-11-01T07:32:25Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 4,
+          "errors": 0,
+          "cpuP50Ms": 1.251,
+          "cpuP90Ms": 2.253,
+          "cpuP99Ms": 2.253
+        },
+        {
+          "at": "2026-11-01T07:32:23Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 5,
+          "errors": 0,
+          "cpuP50Ms": 2.08,
+          "cpuP90Ms": 2.589,
+          "cpuP99Ms": 2.589
+        },
+        {
+          "at": "2026-11-01T07:32:24Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 1,
+          "errors": 0,
+          "cpuP50Ms": 2.263,
+          "cpuP90Ms": 2.263,
+          "cpuP99Ms": 2.263
+        },
+        {
+          "at": "2026-11-01T07:32:26Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 1,
+          "errors": 0,
+          "cpuP50Ms": 2.119,
+          "cpuP90Ms": 2.119,
+          "cpuP99Ms": 2.119
+        }
+      ],
+      "overall": [
+        {
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 12,
+          "errors": 0,
+          "cpuP50Ms": 1.833,
+          "cpuP90Ms": 2.559,
+          "cpuP99Ms": 2.589
+        }
+      ]
+    },
+    {
+      "label": "stage-2",
+      "at": "2026-11-01T07:33:45.482Z",
+      "available": true,
+      "http": 200,
+      "rows": [
+        {
+          "at": "2026-11-01T07:32:54Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 2,
+          "errors": 0,
+          "cpuP50Ms": 1.81,
+          "cpuP90Ms": 2.663,
+          "cpuP99Ms": 2.663
+        },
+        {
+          "at": "2026-11-01T07:32:52Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 1,
+          "errors": 0,
+          "cpuP50Ms": 4.964,
+          "cpuP90Ms": 4.964,
+          "cpuP99Ms": 4.964
+        },
+        {
+          "at": "2026-11-01T07:32:27Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 1,
+          "errors": 0,
+          "cpuP50Ms": 0.984,
+          "cpuP90Ms": 0.984,
+          "cpuP99Ms": 0.984
+        },
+        {
+          "at": "2026-11-01T07:32:55Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 1,
+          "errors": 0,
+          "cpuP50Ms": 2.344,
+          "cpuP90Ms": 2.344,
+          "cpuP99Ms": 2.344
+        },
+        {
+          "at": "2026-11-01T07:32:51Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 2,
+          "errors": 0,
+          "cpuP50Ms": 1.051,
+          "cpuP90Ms": 3.499,
+          "cpuP99Ms": 3.499
+        },
+        {
+          "at": "2026-11-01T07:32:50Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 2,
+          "errors": 0,
+          "cpuP50Ms": 2.437,
+          "cpuP90Ms": 3.02,
+          "cpuP99Ms": 3.02
+        },
+        {
+          "at": "2026-11-01T07:32:25Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 4,
+          "errors": 0,
+          "cpuP50Ms": 1.251,
+          "cpuP90Ms": 2.253,
+          "cpuP99Ms": 2.253
+        },
+        {
+          "at": "2026-11-01T07:32:23Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 5,
+          "errors": 0,
+          "cpuP50Ms": 2.08,
+          "cpuP90Ms": 2.589,
+          "cpuP99Ms": 2.589
+        },
+        {
+          "at": "2026-11-01T07:32:24Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 1,
+          "errors": 0,
+          "cpuP50Ms": 2.263,
+          "cpuP90Ms": 2.263,
+          "cpuP99Ms": 2.263
+        },
+        {
+          "at": "2026-11-01T07:32:26Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 1,
+          "errors": 0,
+          "cpuP50Ms": 2.119,
+          "cpuP90Ms": 2.119,
+          "cpuP99Ms": 2.119
+        },
+        {
+          "at": "2026-11-01T07:32:53Z",
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 1,
+          "errors": 0,
+          "cpuP50Ms": 2.232,
+          "cpuP90Ms": 2.232,
+          "cpuP99Ms": 2.232
+        }
+      ],
+      "overall": [
+        {
+          "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+          "status": "success",
+          "requests": 21,
+          "errors": 0,
+          "cpuP50Ms": 2.232,
+          "cpuP90Ms": 3.02,
+          "cpuP99Ms": 4.964
+        }
+      ]
+    },
+    {
+      "label": "stage-3",
+      "at": "2026-11-01T07:34:18.131Z",
+      "available": false,
+      "http": 200,
+      "errorCodes": [
+        "budget"
+      ]
+    }
+  ],
+  "finalAnalytics": {
+    "at": "2026-11-01T07:36:56.764Z",
+    "start": "2026-11-01T07:32:13.590Z",
+    "end": "2026-11-01T07:34:28.115Z",
+    "http": 200,
+    "available": true,
+    "errorCodes": [],
+    "rows": [
+      {
+        "version": "66f29d7c-edae-4462-9368-93d4e4b76877",
+        "status": "success",
+        "requests": 46,
+        "errors": 0,
+        "cpuP50Ms": 1.833,
+        "cpuP90Ms": 2.663,
+        "cpuP99Ms": 4.964
+      },
+      {
+        "version": "875aafbc-a936-4a9a-8643-56b2050242ec",
+        "status": "success",
+        "requests": 2,
+        "errors": 0,
+        "cpuP50Ms": 0.487,
+        "cpuP90Ms": 0.922,
+        "cpuP99Ms": 0.922
+      }
+    ]
+  },
+  "operationalErrors": [
+    "CPU_METRICS_UNAVAILABLE",
+    "SECRET_REMOVAL_OR_FINAL_CLOSURE_UNCONFIRMED"
+  ],
+  "closureReconciliation": {
+    "reason": "Initial post-secret-removal HTTP response was from previous closed version during propagation; subsequent read-only confirmation matched final version.",
+    "at": "2026-11-01T07:36:37.448Z",
+    "deployment": "1260b044-adf2-427e-8036-d81ba1d76160",
+    "versions": [
+      {
+        "version_id": "ca5fe927-feda-4a71-b172-a66e2e996113",
+        "percentage": 100
+      }
+    ],
+    "http": 503,
+    "version": "ca5fe927-feda-4a71-b172-a66e2e996113",
+    "d1": {
+      "rpc": 0,
+      "queries": 0,
+      "rowsRead": 0,
+      "rowsWritten": 0
+    },
+    "temporaryFdciSecretAbsent": true,
+    "flags": {
+      "FDCI_EXTERNAL_ENABLED": "true",
+      "IMPORT_DATABASE_ID": "853e2f5d-89b1-46a3-9c1c-5cbd46784756",
+      "IMPORT_DATABASE_NAME": "docentetuc-web-canary-1-2",
+      "IMPORT_GATE_ALLOWED_SOURCE": "fdci",
+      "IMPORT_GATE_ENABLED": "false",
+      "IMPORT_GATE_LEASE_REQUIRED": "false"
+    }
+  },
+  "comparison": {
+    "before": 9,
+    "after": 14,
+    "distinct": 14,
+    "oldPublicationsUnchanged": true,
+    "created": [
+      "fdci:commission:980000001",
+      "fdci:commission:980000002",
+      "fdci:commission:980000003",
+      "fdci:commission:980000004",
+      "fdci:commission:980000005"
+    ],
+    "syncUnchanged": true,
+    "protectedUnchanged": true,
+    "leaseRows": 0
+  },
+  "checkpoint": {
+    "id": 1,
+    "revision": 12,
+    "cycle": 3,
+    "after_key": "",
+    "upper_key": "",
+    "failures": 0,
+    "last_error_code": null,
+    "last_cycle_status": "OK",
+    "last_completed_at": "2026-11-01T07:33:55.843Z"
+  },
+  "notExecuted": [
+    "remote-source-failure-stage-4",
+    "remote-unchanged-retry-stage-5",
+    "remote-lease-expiry"
+  ],
+  "verdict": "APTO CON CONDICIONES; production automation remains blocked"
+}
