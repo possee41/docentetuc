@@ -1,0 +1,36 @@
+{
+  "at": "2026-11-01T09:08:05.403Z",
+  "baseCommit": "f5167aec03da5dce14189b2287b4ac9c2654c609",
+  "localOnly": true,
+  "realNetworkRequests": 0,
+  "realDatabaseWrites": 0,
+  "syntheticSecretNotRecorded": true,
+  "results": [
+    {
+      "leaseRequired": "true",
+      "scenario": "unauthorized-import",
+      "http": 401,
+      "d1Calls": 0
+    },
+    {
+      "leaseRequired": "true",
+      "scenario": "authorized-open-synthetic-secret",
+      "http": 200,
+      "d1Calls": 3,
+      "writeAttempt": true
+    },
+    {
+      "leaseRequired": "false",
+      "scenario": "unauthorized-import",
+      "http": 503,
+      "d1Calls": 0
+    },
+    {
+      "leaseRequired": "false",
+      "scenario": "authorized-open-synthetic-secret",
+      "http": 503,
+      "d1Calls": 0,
+      "writeAttempt": false
+    }
+  ]
+}
