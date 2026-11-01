@@ -13,7 +13,7 @@ const paths = { fdci: "/api/internal/fdci-import", sime: "/api/internal/sime-imp
   juntas: "/api/internal/public-source-import/juntas", cenet: "/api/internal/public-source-import/cenet", infd: "/api/internal/public-source-import/infd" };
 
 export function resolveGatewayConfig(config, revision = "") {
-  const source = config.SYNC_SOURCE, path = paths[source];
+  const source = config.SYNC_SOURCE, path = typeof source === "string" && Object.hasOwn(paths, source) ? paths[source] : null;
   if (!path) throw new Error("GATEWAY_SOURCE_INVALID");
   let origin;
   try { origin = new URL(config.IMPORT_GATEWAY_ORIGIN); } catch { throw new Error("GATEWAY_CONFIG_INVALID"); }
@@ -42,7 +42,7 @@ export function resolveGatewayConfig(config, revision = "") {
 export async function verifyGatewayIdentity(target, fetcher = fetch) {
   let response;
   try { response = await fetcher(`${target.origin}/api/internal/import-identity?source=${target.source}`,
-    { headers: { Authorization: `Bearer ${target.secret}` }, signal: AbortSignal.timeout(20_000) }); }
+    { headers: { Authorization: `Bearer ${target.secret}` }, redirect: "error", signal: AbortSignal.timeout(20_000) }); }
   catch { throw new Error("GATEWAY_IDENTITY_UNAVAILABLE"); }
   if (!response.ok) throw new Error(`GATEWAY_IDENTITY_HTTP_${response.status}`);
   let body;
@@ -51,13 +51,35 @@ export async function verifyGatewayIdentity(target, fetcher = fetch) {
 }
 
 export async function runGatewayImport(target, config, sourceFetch = fetch, receiverFetch = fetch) {
+  // These are ceilings, not tunables that can silently expand the pilot.
+  const safety = target.source === "fdci" ? fdciSafety(config) : null;
   await verifyGatewayIdentity(target, receiverFetch);
   if (target.source === "fdci") {
-    const scope = config.FDCI_SCOPE || "single";
-    return runFdciImport({ endpoint: target.endpoint, token: target.secret,
-      selection: scope === "single" ? { token: config.FDCI_COURSE_TOKEN || "",
-        slug: config.FDCI_COURSE_SLUG || "", commissionId: config.FDCI_COMMISSION_ID || "" } : undefined,
-      scope, fetcher: (url, init) => String(url).startsWith(target.origin) ? receiverFetch(url, init) : sourceFetch(url, init) });
+    let requests = 0;
+    const started = Date.now();
+    const fetcher = async (url, init) => {
+      const parsed = new URL(url);
+      if (parsed.origin === target.origin) return receiverFetch(url, init);
+      if (parsed.origin !== "https://apicapacitaciones.educaciontuc.edu.ar" || ![
+        "/api/gestionCapas/getCapaActivas", "/api/gestionCapas/getRestoCapas", "/api/capa/getCupo",
+      ].includes(parsed.pathname) || parsed.search || parsed.username || parsed.password) throw new Error("FDCI_SOURCE_FORBIDDEN");
+      if (requests >= safety.maxRequests) throw new Error("FDCI_PROBE_REQUEST_LIMIT");
+      if (requests) await new Promise((resolve, reject) => {
+        const finish = () => { init?.signal?.removeEventListener("abort", abort); resolve(); };
+        const timer = setTimeout(finish, safety.pauseMs);
+        const abort = () => { clearTimeout(timer); init.signal.removeEventListener("abort", abort); reject(new Error("FDCI_CANCELLED")); };
+        if (init?.signal?.aborted) abort(); else init?.signal?.addEventListener("abort", abort, { once: true });
+      });
+      requests++;
+      return sourceFetch(url, { ...init, redirect: "error" });
+    };
+    try {
+      return { ...await runFdciImport({ endpoint: target.endpoint, token: target.secret, scope: "active", safety,
+        owner: safety.owner, fetcher }), sourceRequests: requests, elapsedMs: Date.now() - started };
+    } catch (error) {
+      error.result = { ...error.result, sourceRequests: requests, elapsedMs: Date.now() - started };
+      throw error;
+    }
   }
   if (target.source === "sime") return runSimeImport({ endpoint: target.endpoint, token: target.secret,
     sourceFetch, receiverFetch, ...parseSimeOptions(config) });
@@ -75,6 +97,38 @@ export async function runGatewayImport(target, config, sourceFetch = fetch, rece
     sourceFetch, receiverFetch });
 }
 
+export function fdciSafety(config) {
+  if (config.FDCI_SCOPE !== "active") throw new Error("FDCI_ACTIVE_SCOPE_REQUIRED");
+  const owner = config.IMPORT_GATE_RUN_ID || (config.GITHUB_RUN_ID ? `${config.GITHUB_RUN_ID}-${config.GITHUB_RUN_ATTEMPT || "1"}` : "");
+  if (!/^[A-Za-z0-9_:-]{1,100}$/.test(owner)) throw new Error("GATE_RUN_ID_REQUIRED");
+  const maxRequests = Number(config.FDCI_MAX_REQUESTS || 6);
+  const maxPublications = Number(config.FDCI_MAX_PUBLICATIONS || 5);
+  const pauseMs = Number(config.FDCI_PAUSE_MS || 400);
+  if (!Number.isInteger(maxRequests) || maxRequests < 2 || maxRequests > 6 ||
+      !Number.isInteger(maxPublications) || maxPublications < 1 || maxPublications > 5 ||
+      !Number.isInteger(pauseMs) || pauseMs < 400 || pauseMs > 1000) throw new Error("FDCI_BUDGET_INVALID");
+  return { maxRequests, maxPublications, pauseMs, owner };
+}
+
+// Never serialize arbitrary exceptions, remote bodies, headers, URLs or config.
+export function safeImportError(error) {
+  const code = /^[A-Z_0-9]+$/.test(error?.message || "") ? error.message : "GATEWAY_IMPORT_FAILED";
+  const result = {};
+  for (const key of ["discovered", "created", "updated", "unchanged", "rejected", "skipped", "deferred", "uncertain", "batches", "sourceRequests", "elapsedMs"])
+    result[key] = Number.isSafeInteger(error?.result?.[key]) && error.result[key] >= 0 ? error.result[key] : 0;
+  const sourceErrors = {};
+  for (const key of ["orphanActive", "missingTokenOrSlug", "timeoutOrNetwork", "invalidJson", "schema", "other", "activeDetailFailures", "requestLimit"])
+    if (Number.isSafeInteger(error?.diagnostics?.[key]) && error.diagnostics[key] > 0) sourceErrors[key] = error.diagnostics[key];
+  for (const [key, value] of Object.entries(error?.diagnostics?.http || {}))
+    if (/^HTTP_\d{3}$/.test(key) && Number.isSafeInteger(value) && value > 0) sourceErrors[key] = value;
+  const rejectedReasons = {};
+  for (const [key, value] of Object.entries(error?.diagnostics?.rejectedReasons || {}))
+    if (/^(?:record|identity|hash|status|circuit|circuitConfidence|url|metadata|metadataOrUrl|receiverHttp400|protectedExistingRecord|text:(?:category|title|summary|level|area|location|character|status|metadata|contentHash|circuit|sourceCircuitRaw|circuitInferenceSource)|date:(?:startsAt|endsAt|sourceUpdatedAt|registrationOpenAt|registrationCloseAt|expiresAt))$/.test(key) &&
+        Number.isSafeInteger(value) && value > 0) rejectedReasons[key] = value;
+  return { status: ["FDCI_PARTIAL_SOURCE", "FDCI_SELECTION_INCOMPLETE", "FDCI_PROBE_REQUEST_LIMIT", "HTTP_429", "FDCI_EMPTY_RESPONSE"].includes(code)
+    ? "PARTIAL" : "ERROR", code, ...result, sourceErrors, rejectedReasons, completed: false };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     if (process.env.IMPORT_GATEWAY_ENABLED !== "true") throw new Error("GATEWAY_DISABLED");
@@ -84,8 +138,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log(JSON.stringify({ source: target.source, ...await runGatewayImport(target, process.env) }));
   } catch (error) {
     // Do not print response bodies, URLs, authorization headers or tokens.
-    console.error("GATEWAY_IMPORT_FAILED", error instanceof Error && /^[A-Z_0-9]+$/.test(error.message)
-      ? error.message : "GATEWAY_IMPORT_FAILED");
+    console.log(JSON.stringify(safeImportError(error)));
     process.exitCode = 1;
   }
 }

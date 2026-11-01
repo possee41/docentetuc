@@ -46,8 +46,9 @@ const open = (env: TestEnv, source = "fdci", ttlSeconds = 600, token = secret) =
   post(env, "/api/internal/import-gate", { source, action: "open", ttlSeconds, owner: "test-run" }, token);
 const close = (env: TestEnv, source = "fdci", token = secret) =>
   post(env, "/api/internal/import-gate", { source, action: "close", owner: "test-run" }, token);
-const importBatch = (env: TestEnv, token = secret) => post(env, "/api/internal/fdci-import",
-  { mode: "batch", items: [] }, token);
+const importBatch = (env: TestEnv, token = secret, owner = "test-run") => gateway.fetch(new Request(url("/api/internal/fdci-import"), {
+  method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "x-import-gate-owner": owner },
+  body: JSON.stringify({ mode: "batch", items: [] }) }), env);
 const identity = (env: TestEnv) => gateway.fetch(new Request(url("/api/internal/import-identity?source=fdci"),
   { headers: { authorization: `Bearer ${secret}` } }), env);
 
@@ -161,4 +162,29 @@ test("el wrapper canary rechaza otra D1 y no consulta D1 cuando está cerrado", 
   const response = await canary.fetch(request, env);
   assert.equal(response.status, 503);
   assert.deepEqual(JSON.parse(response.headers.get("X-Canary-Metrics")!), { rpc: 0, queries: 0, rowsRead: 0, rowsWritten: 0 });
+});
+
+test("fuentes heredadas, tipos inválidos y JSON grande fallan sin acceso D1", async () => {
+  const { env } = localEnv();
+  env.DB.prepare = () => { throw new Error("D1_MUST_NOT_BE_CALLED"); };
+  for (const source of ["constructor", "toString", "__proto__", null, {}, ["fdci"]]) {
+    assert.equal((await post(env, "/api/internal/import-gate", { source, action: "open", owner: "test-run" })).status, 400);
+  }
+  const large = new Request(url("/api/internal/import-gate"), { method: "POST",
+    headers: { "content-type": "application/json" }, body: JSON.stringify({ source: "fdci", extra: "a".repeat(1100) }) });
+  assert.equal((await gateway.fetch(large, env)).status, 413, "límite real sin Content-Length");
+  assert.equal((await gateway.fetch(new Request(url("/api/internal/import-gate"), { method: "POST", body: "{}" }), env)).status, 415);
+});
+
+test("una ejecución antigua no puede importar ni cerrar durante una concesión nueva", async () => {
+  const { env, sqlite } = localEnv();
+  await open(env);
+  assert.equal((await importBatch(env, secret, "otro-run")).status, 409);
+  assert.equal((await importBatch(env, secret, "")).status, 409);
+  sqlite.exec("UPDATE import_gate_lease SET expires_at='2000-01-01T00:00:00Z'");
+  assert.equal((await post(env, "/api/internal/import-gate", { source: "fdci", action: "open", owner: "new-run" })).status, 200);
+  assert.equal((await importBatch(env)).status, 409);
+  assert.equal((await close(env)).status, 409);
+  assert.equal((await importBatch(env, secret, "new-run")).status, 400);
+  assert.equal((await importBatch(env, simeSecret, "new-run")).status, 401);
 });

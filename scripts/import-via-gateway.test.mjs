@@ -45,6 +45,20 @@ test("runner rejects production, unrelated hosts and incomplete configuration", 
   assert.equal(resolveGatewayConfig({ ...local, SYNC_SOURCE: "juntas", JUNTAS_IMPORT_SECRET: secret }).source, "juntas");
 });
 
+test("production needs explicit authorization and the exact independently approved revision", () => {
+  const sha = "a".repeat(40);
+  const production = { ...local, IMPORT_GATEWAY_TARGET: "production", IMPORT_GATEWAY_PRODUCTION_ENABLED: "true",
+    IMPORT_GATEWAY_APPROVED_SHA: sha, IMPORT_GATEWAY_DATABASE_ID: "baaf5886-0123-4948-96da-aa7106424549",
+    IMPORT_GATEWAY_DATABASE_NAME: "docentetuc-db", IMPORT_GATEWAY_ORIGIN: "https://docentetuc-import-1-2.possee41.workers.dev" };
+  assert.equal(resolveGatewayConfig(production, sha).name, "docentetuc-db");
+  for (const config of [{ ...production, IMPORT_GATEWAY_PRODUCTION_ENABLED: "" },
+    { ...production, IMPORT_GATEWAY_APPROVED_SHA: "" }, { ...production, IMPORT_GATEWAY_DATABASE_ID: local.IMPORT_GATEWAY_DATABASE_ID }])
+    assert.throws(() => resolveGatewayConfig(config, sha), /GATEWAY_PRODUCTION_NOT_APPROVED/);
+  assert.throws(() => resolveGatewayConfig(production, "b".repeat(40)), /GATEWAY_PRODUCTION_NOT_APPROVED/);
+  for (const source of ["constructor", "__proto__", "toString"])
+    assert.throws(() => resolveGatewayConfig({ ...local, SYNC_SOURCE: source }), /GATEWAY_SOURCE_INVALID/);
+});
+
 test("the other three gateway routes remain source-specific", () => {
   for (const source of ["fdci", "cenet", "infd"]) {
     const target = resolveGatewayConfig({ ...local, SYNC_SOURCE: source, [`${source.toUpperCase()}_IMPORT_SECRET`]: secret });

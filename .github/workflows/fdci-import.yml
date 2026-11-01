@@ -1,30 +1,8 @@
 name: FDCI external import
 on:
-  # Programación propuesta, DESACTIVADA. Frecuencia inicial cada 2 horas:
-  # cubre ventanas de inscripción y cambios de cupo con 12 corridas diarias.
-  # Al habilitarla, el job exige FDCI_AUTOMATION_ENABLED=true, usa scope=active
-  # y abre una compuerta autolimitada que expira aunque el runner no la cierre.
+  # Proposed schedule, DISABLED; requires new approval and a fixed authorized SHA.
   # schedule: [{ cron: '17 */2 * * *' }]
   workflow_dispatch:
-    inputs:
-      scope:
-        description: 'Una comisión, comisiones activas o barrido completo'
-        required: true
-        type: choice
-        default: single
-        options: [single, active, full]
-      course_token:
-        description: 'Token público del curso FDCI'
-        required: false
-        type: string
-      course_slug:
-        description: 'Slug público del curso FDCI'
-        required: false
-        type: string
-      commission_id:
-        description: 'ID público de una comisión a importar'
-        required: false
-        type: string
 permissions:
   contents: read
 concurrency:
@@ -32,8 +10,6 @@ concurrency:
   cancel-in-progress: false
 jobs:
   import:
-    # Manual runs stay on the isolated branch. A future scheduled run must come
-    # from the default branch and remain opt-in through FDCI_AUTOMATION_ENABLED.
     if: >-
       github.repository == 'possee41/docentetuc' &&
       ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/1.2-sync-integration') ||
@@ -42,13 +18,31 @@ jobs:
         vars.FDCI_AUTOMATION_ENABLED == 'true'))
     runs-on: ubuntu-latest
     environment: fdci-pilot
-    timeout-minutes: 10
+    timeout-minutes: 12
+    env:
+      IMPORT_GATEWAY_ENABLED: 'true'
+      SYNC_SOURCE: fdci
+      IMPORT_GATEWAY_TARGET: ${{ vars.IMPORT_GATEWAY_TARGET }}
+      IMPORT_GATEWAY_PRODUCTION_ENABLED: ${{ vars.IMPORT_GATEWAY_PRODUCTION_ENABLED }}
+      IMPORT_GATEWAY_APPROVED_SHA: ${{ vars.FDCI_IMPORT_APPROVED_SHA }}
+      IMPORT_GATEWAY_ORIGIN: ${{ vars.IMPORT_GATEWAY_ORIGIN }}
+      IMPORT_GATEWAY_DATABASE_ID: ${{ vars.IMPORT_GATEWAY_DATABASE_ID }}
+      IMPORT_GATEWAY_DATABASE_NAME: ${{ vars.IMPORT_GATEWAY_DATABASE_NAME }}
+      IMPORT_GATE_TTL_SECONDS: '600'
+      IMPORT_GATE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      FDCI_SCOPE: active
+      FDCI_MAX_REQUESTS: '6'
+      FDCI_MAX_PUBLICATIONS: '5'
+      FDCI_PAUSE_MS: '400'
     steps:
-      - name: Verify approved import revision
+      - name: Verify separately approved revision
         env:
           IMPORT_REF: ${{ vars.FDCI_IMPORT_REF }}
+          APPROVED_SHA: ${{ vars.FDCI_IMPORT_APPROVED_SHA }}
         run: |
-          [[ "$IMPORT_REF" =~ ^[a-f0-9]{40}$ ]] || { echo 'FDCI_IMPORT_REF must be an approved commit SHA'; exit 1; }
+          [[ "$IMPORT_REF" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          test "$IMPORT_REF" = "$APPROVED_SHA"
+          [[ "$IMPORT_GATEWAY_TARGET" == canary || "$IMPORT_GATEWAY_TARGET" == production ]] || exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ vars.FDCI_IMPORT_REF }}
@@ -57,58 +51,45 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify production ancestry
+      - name: Verify checked out revision
         env:
           IMPORT_REF: ${{ vars.FDCI_IMPORT_REF }}
-        run: |
-          test "$(git rev-parse HEAD)" = "$IMPORT_REF"
-          git merge-base --is-ancestor d321e7225e7dc75ff76a0e612525386855e05e08 HEAD
-      - name: Open self-expiring FDCI gate
-        timeout-minutes: 2
+        run: test "$(git rev-parse HEAD)" = "$IMPORT_REF"
+      - name: Validate destination and identity before opening
+        id: preflight
         env:
-          IMPORT_GATEWAY_ENABLED: 'true'
-          SYNC_SOURCE: fdci
-          IMPORT_GATEWAY_ORIGIN: ${{ vars.IMPORT_GATEWAY_ORIGIN }}
           FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
-          IMPORT_GATE_TTL_SECONDS: '600'
-          IMPORT_GATE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-        run: node --experimental-strip-types scripts/import-gate.mjs open
-      - name: Import public FDCI data through isolated gateway
+        run: node --experimental-strip-types scripts/import-gate.mjs preflight
+      - name: Open, import and close with one owner
+        id: dispatch
+        timeout-minutes: 5
         env:
-          IMPORT_GATEWAY_ENABLED: 'true'
-          SYNC_SOURCE: fdci
-          IMPORT_GATEWAY_ORIGIN: ${{ vars.IMPORT_GATEWAY_ORIGIN }}
-          IMPORT_GATEWAY_DATABASE_ID: ${{ vars.IMPORT_GATEWAY_DATABASE_ID }}
-          IMPORT_GATEWAY_DATABASE_NAME: ${{ vars.IMPORT_GATEWAY_DATABASE_NAME }}
           FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
-          FDCI_COURSE_TOKEN: ${{ inputs.course_token }}
-          FDCI_COURSE_SLUG: ${{ inputs.course_slug }}
-          FDCI_COMMISSION_ID: ${{ inputs.commission_id }}
-          FDCI_SCOPE: ${{ github.event_name == 'schedule' && 'active' || inputs.scope }}
+        # Reuses scripts/import-via-gateway.mjs; no direct D1 credentials.
         run: |
           set -o pipefail
-          node --experimental-strip-types scripts/import-via-gateway.mjs | tee fdci-import.json
-      - name: Close FDCI gate
-        if: always()
+          node --experimental-strip-types scripts/import-gate.mjs run | tee fdci-import.json
+      - name: Close FDCI gate after interruption or failure
+        id: cleanup
+        if: always() && steps.preflight.outcome == 'success' && steps.dispatch.outcome != 'skipped'
         timeout-minutes: 2
         env:
-          IMPORT_GATEWAY_ENABLED: 'true'
-          SYNC_SOURCE: fdci
-          IMPORT_GATEWAY_ORIGIN: ${{ vars.IMPORT_GATEWAY_ORIGIN }}
           FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
-          IMPORT_GATE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: node --experimental-strip-types scripts/import-gate.mjs close
       - name: Record FDCI result
         if: always()
+        env:
+          CLEANUP_OUTCOME: ${{ steps.cleanup.outcome }}
         run: |
-          {
-            echo "### FDCI import"
-            echo "- event: ${{ github.event_name }}"
-            echo "- date: $(date -u +%FT%TZ)"
-            if [ -f fdci-import.json ]; then
-              node -e 'const r=JSON.parse(require("fs").readFileSync("fdci-import.json","utf8"));const n=(v)=>"number"==typeof v?v:"?";console.log([`- discovered: ${n(r.discovered)}`,`- created: ${n(r.created)}`,`- updated: ${n(r.updated)}`,`- unchanged: ${n(r.unchanged)}`,`- rejected: ${n(r.rejected)}`].join("\n"))'
-            else
-              echo "- sin resultado: la compuerta o la importación fallaron"
-            fi
-            echo "- complete sweep claimed: no"
-          } >> "$GITHUB_STEP_SUMMARY"
+          node --input-type=module <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          import { readFileSync } from 'node:fs';
+          let r = {};
+          try { r = JSON.parse(readFileSync('fdci-import.json', 'utf8')); } catch {}
+          console.log('### FDCI import');
+          console.log('- status: ' + (['OK','PARTIAL','ERROR'].includes(r.status) ? r.status : 'NO_RESULT'));
+          for (const key of ['discovered','created','updated','unchanged','rejected','skipped','deferred','uncertain','sourceRequests','elapsedMs'])
+            console.log('- ' + key + ': ' + (Number.isSafeInteger(r[key]) && r[key] >= 0 ? r[key] : 'unavailable'));
+          for (const key of ['code','closeCode']) if (/^[A-Z_0-9]+$/.test(r[key] || '')) console.log('- ' + key + ': ' + r[key]);
+          console.log('- cleanup: ' + process.env.CLEANUP_OUTCOME);
+          console.log('- complete sweep claimed: no');
+          NODE

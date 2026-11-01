@@ -5,6 +5,7 @@ import worker from "../workers/fdci-receiver.mjs";
 import { prepareFdciImports } from "./fdci-import.ts";
 import { runFdciImport } from "../scripts/import-fdci.mjs";
 import { enrollmentState, parseTrainingMetadata } from "./training.ts";
+import gateway from "../workers/source-import-gateway.mjs";
 
 const secret = "synthetic_receiver_secret_1234567890";
 const endpoint = "https://receiver.example/api/internal/fdci-import";
@@ -26,7 +27,7 @@ function localDb() {
     last_changed_at TEXT NOT NULL DEFAULT '', first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE sync_state (source TEXT PRIMARY KEY, synced_at TEXT NOT NULL, item_count INTEGER NOT NULL DEFAULT 0);`);
-  const prepare = (sql: string) => ({ bind: (...values: unknown[]) => ({
+  const prepare = (sql: string) => ({ first: async () => sqlite.prepare(sql).get() ?? null, bind: (...values: unknown[]) => ({
     all: async () => {
       const results = sqlite.prepare(sql).all(...values as []) as Record<string, unknown>[];
       return { results, meta: { rows_read: results.length } };
@@ -43,6 +44,66 @@ function localDb() {
   } } as unknown as D1Database;
   return { sqlite, db };
 }
+
+function leasedDb() {
+  const { sqlite, db } = localDb();
+  sqlite.exec(`CREATE TABLE import_gateway_identity (id INTEGER PRIMARY KEY, database_name TEXT, database_id TEXT);
+    INSERT INTO import_gateway_identity VALUES(1,'synthetic-canary','synthetic-id');
+    CREATE TABLE import_gate_lease(id INTEGER PRIMARY KEY,source TEXT,expires_at TEXT,opened_at TEXT,opened_by TEXT);
+    INSERT INTO import_gate_lease VALUES(1,'fdci','2099-01-01T00:00:00Z','2026-01-01T00:00:00Z','run-a');`);
+  const env = { DB: db, FDCI_IMPORT_SECRET: secret, FDCI_EXTERNAL_ENABLED: "true", IMPORT_GATE_ENABLED: "false",
+    IMPORT_GATE_LEASE_REQUIRED: "true", IMPORT_GATE_ALLOWED_SOURCE: "fdci",
+    IMPORT_DATABASE_NAME: "synthetic-canary", IMPORT_DATABASE_ID: "synthetic-id" };
+  const send = (item: unknown, owner = "run-a") => {
+    const req = request({ mode: "batch", items: [item] });
+    req.headers.set("x-import-gate-owner", owner);
+    return gateway.fetch(req, env);
+  };
+  return { sqlite, db, env, send };
+}
+
+test("concesión: importa una vez y repetir no produce ninguna escritura", async () => {
+  const { sqlite, send } = leasedDb();
+  const [item] = await prepareFdciImports([course], [commission]);
+  const first = await send(item);
+  assert.equal(first.status, 200);
+  assert.equal((await first.json()).created, 1);
+  const before = sqlite.prepare("SELECT total_changes() AS n").get()?.n;
+  const repeated = await send(item);
+  assert.equal(repeated.status, 200);
+  assert.equal((await repeated.json()).rowsWritten, 0);
+  assert.equal(sqlite.prepare("SELECT total_changes() AS n").get()?.n, before);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sync_state").get()?.n, 0);
+});
+
+test("la escritura SQL rechaza al propietario anterior tras cambio o expiración durante la petición", async () => {
+  for (const change of ["opened_by='run-b'", "expires_at='2000-01-01T00:00:00Z'"]) {
+    const { sqlite, db, send } = leasedDb();
+    const [item] = await prepareFdciImports([course], [commission]);
+    const batch = db.batch.bind(db);
+    db.batch = ((statements: D1PreparedStatement[]) => {
+      sqlite.exec(`UPDATE import_gate_lease SET ${change}`);
+      return batch(statements);
+    }) as typeof db.batch;
+    const response = await send(item);
+    assert.equal(response.status, 409);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM publications").get()?.n, 0);
+  }
+});
+
+test("concesión: nunca reconcilia 6375, UNKNOWN entrante ni UNKNOWN histórico", async () => {
+  const { sqlite, send } = leasedDb();
+  const [item] = await prepareFdciImports([course], [commission]);
+  const [protectedItem] = await prepareFdciImports([course], [{ ...commission, id: 6375 }]);
+  assert.equal((await send(protectedItem)).status, 422);
+  assert.equal((await send({ ...item, normalizedStatus: "UNKNOWN" })).status, 422);
+  assert.equal((await send(item)).status, 200);
+  sqlite.exec("UPDATE publications SET normalized_status='UNKNOWN'");
+  const before = sqlite.prepare("SELECT total_changes() AS n").get()?.n;
+  assert.equal((await send({ ...item, title: "No cambiar", contentHash: "a".repeat(64) })).status, 422);
+  assert.equal(sqlite.prepare("SELECT total_changes() AS n").get()?.n, before);
+  assert.equal(sqlite.prepare("SELECT normalized_status FROM publications").get()?.normalized_status, "UNKNOWN");
+});
 
 function request(body: unknown, authorized = true) {
   return new Request(endpoint, { method: "POST", headers: { "Content-Type": "application/json", ...(authorized ? { Authorization: `Bearer ${secret}` } : {}) }, body: JSON.stringify(body) });

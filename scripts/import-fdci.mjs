@@ -9,8 +9,12 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function requestJson(url, options = {}, fetcher = fetch) {
   for (let attempt = 0; attempt < 3; attempt++) {
     let response;
-    try { response = await fetcher(url, { ...options, signal: AbortSignal.timeout(20_000) }); }
-    catch (error) { if (attempt === 2) throw error; await pause(300 * 2 ** attempt); continue; }
+    try { response = await fetcher(url, { ...options, signal: options.signal
+      ? AbortSignal.any([options.signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000) }); }
+    catch (error) {
+      if (attempt === 2 || options.signal?.aborted || ["FDCI_PROBE_REQUEST_LIMIT", "FDCI_CANCELLED", "FDCI_SOURCE_FORBIDDEN"].includes(error?.message)) throw error;
+      await pause(300 * 2 ** attempt); continue;
+    }
     if (response.ok) return response.json();
     if (![500, 502, 503, 504].includes(response.status) || attempt === 2) throw new Error(`HTTP_${response.status}`);
     await pause(300 * 2 ** attempt);
@@ -71,13 +75,24 @@ export async function collectFdci(fetcher = fetch, selection, scope = "full") {
     commissionsExamined: new Set(commissions.map((item) => String(item.id))).size, activeCommissions: active.length };
 }
 
-export async function sendFdci(url, token, payload, fetcher = fetch) {
-  const result = await requestJson(url, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) }, fetcher);
-  if (result?.ok !== true) throw new Error("IMPORT_ACK_INVALID");
+export async function sendFdci(url, token, payload, fetcher = fetch, owner = "") {
+  // A lost response may follow a committed write. Never retry mutations blindly.
+  let response;
+  try {
+    response = await fetcher(url, { method: "POST", redirect: "error", signal: AbortSignal.timeout(20_000),
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json",
+        ...(owner ? { "x-import-gate-owner": owner } : {}) }, body: JSON.stringify(payload) });
+  } catch { throw new Error("IMPORT_RESULT_UNCERTAIN"); }
+  if (!response.ok) throw new Error(response.status >= 500 ? "IMPORT_RESULT_UNCERTAIN" : `HTTP_${response.status}`);
+  let result;
+  try { result = await response.json(); } catch { throw new Error("IMPORT_RESULT_UNCERTAIN"); }
+  if (result?.ok !== true || result.received !== payload.items.length ||
+      ![result.created, result.updated, result.unchanged].every((n) => Number.isSafeInteger(n) && n >= 0) ||
+      result.created + result.updated + result.unchanged !== result.received) throw new Error("IMPORT_ACK_INVALID");
   return result;
 }
 
-export async function runFdciImport({ endpoint, token, fetcher = fetch, collect = collectFdci, selection = /** @type {{token: string, slug: string, commissionId: string} | undefined} */ (undefined), scope = "single" }) {
+export async function runFdciImport({ endpoint, token, fetcher = fetch, collect = collectFdci, selection = /** @type {{token: string, slug: string, commissionId: string} | undefined} */ (undefined), scope = "single", safety = /** @type {{maxPublications: number} | undefined} */ (undefined), owner = "" }) {
   let target;
   try { target = new URL(endpoint); } catch { throw new Error("IMPORT_CONFIGURATION_INVALID"); }
   if ((target.protocol !== "https:" && !(target.protocol === "http:" && target.hostname === "127.0.0.1")) || !/^[A-Za-z0-9_-]{32,}$/.test(token)) throw new Error("IMPORT_CONFIGURATION_INVALID");
@@ -86,37 +101,55 @@ export async function runFdciImport({ endpoint, token, fetcher = fetch, collect 
   let created = 0, updated = 0, unchanged = 0, batches = 0, rejected = 0;
   const rejectedReasons = {}, rejectedStatuses = {};
   const count = (target, key) => { target[key] = (target[key] || 0) + 1; };
-  const { items, failures, diagnostics, coursesFetched, coursesAvailable, commissionsExamined, activeCommissions } = await collect(fetcher, selection, scope);
-  if (!Array.isArray(items) || (scope === "single" && !items.length)) throw new Error("FDCI_EMPTY_RESPONSE");
-  if (failures && scope !== "full" || (scope === "single" && (items.length !== 1 || items[0].id !== `fdci:commission:${selection.commissionId}`))) throw new Error("FDCI_SELECTION_INCOMPLETE");
-  // One row per invocation keeps the receiver well below its five-row hard limit.
-  for (const item of items) {
-    if (scope === "full" && !validFdciImport(item, (reason) => count(rejectedReasons, reason))) {
-      rejected++; count(rejectedStatuses, item.normalizedStatus || "UNKNOWN"); continue;
-    }
-    let result;
-    try { result = await sendFdci(endpoint, token, { mode: "batch", items: [item] }, fetcher); }
-    catch (error) {
-      // A rejected public record cannot prevent later healthy records from arriving.
-      // Authentication, D1, and transient server failures still stop the run.
-      if (scope === "full" && error instanceof Error && error.message === "HTTP_400") {
-        rejected++; count(rejectedReasons, "receiverHttp400"); count(rejectedStatuses, item.normalizedStatus || "UNKNOWN"); continue;
-      }
+  let discovered = 0, skipped = 0, deferred = 0, uncertain = 0;
+  const snapshot = () => ({ discovered, created, updated, unchanged, rejected, skipped, deferred, uncertain, batches, completed: false });
+  try {
+    const { items, failures, diagnostics, coursesFetched, coursesAvailable, commissionsExamined, activeCommissions } = await collect(fetcher, selection, scope);
+    discovered = items?.length || 0;
+    if (!Array.isArray(items) || (scope === "single" && !items.length)) throw new Error("FDCI_EMPTY_RESPONSE");
+    if (failures && scope !== "full" || (scope === "single" && (items.length !== 1 || items[0].id !== `fdci:commission:${selection.commissionId}`))) {
+      const error = new Error("FDCI_SELECTION_INCOMPLETE");
+      error.diagnostics = diagnostics;
       throw error;
     }
-    if (!result.ok || result.received !== 1) throw new Error("IMPORT_ACK_INVALID");
-    created += result.created; updated += result.updated; unchanged += result.unchanged; batches++;
-  }
-  // A bad historical detail must not block healthy new courses. The run stays partial:
-  // no source-wide success or absence reconciliation may follow it.
-  if (failures || rejected) {
-    const error = new Error("FDCI_PARTIAL_SOURCE");
-    error.failures = failures + rejected;
-    error.diagnostics = { ...diagnostics, rejected, rejectedReasons, rejectedStatuses };
-    error.result = { coursesFetched, coursesAvailable, commissionsExamined, activeCommissions, discovered: items.length, created, updated, unchanged, rejected, batches };
+    // One row per invocation keeps the receiver well below its five-row hard limit.
+    for (const item of items) {
+      if (safety && (item.id === "fdci:commission:6375" || !item.id.startsWith("fdci:commission:") || item.normalizedStatus === "UNKNOWN")) {
+        skipped++; continue;
+      }
+      if (safety && batches + rejected >= safety.maxPublications) { deferred++; continue; }
+      if ((safety || scope === "full") && !validFdciImport(item, (reason) => count(rejectedReasons, reason))) {
+        rejected++; count(rejectedStatuses, item.normalizedStatus || "UNKNOWN"); continue;
+      }
+      let result;
+      try { result = await sendFdci(endpoint, token, { mode: "batch", items: [item] }, fetcher, owner); }
+      catch (error) {
+        // A rejected public record cannot prevent later healthy records from arriving.
+        // Authentication, D1, and transient server failures still stop the run.
+        if ((scope === "full" || safety) && error instanceof Error && ["HTTP_400", "HTTP_422"].includes(error.message)) {
+          rejected++; count(rejectedReasons, error.message === "HTTP_422" ? "protectedExistingRecord" : "receiverHttp400"); count(rejectedStatuses, item.normalizedStatus || "UNKNOWN"); continue;
+        }
+        if (["IMPORT_RESULT_UNCERTAIN", "IMPORT_ACK_INVALID"].includes(error?.message)) uncertain++;
+        throw error;
+      }
+      if (!result.ok || result.received !== 1) throw new Error("IMPORT_ACK_INVALID");
+      created += result.created; updated += result.updated; unchanged += result.unchanged; batches++;
+    }
+    // A bad historical detail must not block healthy new courses. The run stays partial:
+    // no source-wide success or absence reconciliation may follow it.
+    if (failures || rejected || skipped || deferred) {
+      const error = new Error("FDCI_PARTIAL_SOURCE");
+      error.failures = failures + rejected;
+      error.diagnostics = { ...diagnostics, rejected, rejectedReasons, rejectedStatuses };
+      error.result = { ...snapshot(), coursesFetched, coursesAvailable, commissionsExamined, activeCommissions };
+      throw error;
+    }
+    return { ...snapshot(), coursesFetched, coursesAvailable, commissionsExamined, activeCommissions, completed: scope === "full" };
+  } catch (error) {
+    error.result ||= snapshot();
+    error.diagnostics ||= { rejectedReasons, rejectedStatuses };
     throw error;
   }
-  return { coursesFetched, coursesAvailable, commissionsExamined, activeCommissions, discovered: items.length, created, updated, unchanged, batches, completed: scope === "full" };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -19,21 +19,37 @@ test("FDCI deja preparada la programación acotada sin activarla", () => {
   assert.match(yaml, /# schedule: \[\{ cron: '17 \*\/2 \* \* \*' \}\]/);
   assert.match(yaml, /vars\.FDCI_AUTOMATION_ENABLED == 'true'/);
   assert.match(yaml, /github\.event\.repository\.default_branch/);
-  assert.match(yaml, /github\.event_name == 'schedule' && 'active' \|\| inputs\.scope/);
+  assert.match(yaml, /FDCI_SCOPE: active/);
   assert.doesNotMatch(yaml, /FDCI_SCOPE: \$\{\{ inputs\.scope \}\}/);
   assert.match(yaml, /group: fdci-import/);
 });
 
 test("FDCI abre una compuerta autolimitada y la cierra incluso ante fallos", () => {
   const yaml = readFileSync(new URL("../.github/workflows/fdci-import.yml", import.meta.url), "utf8");
-  assert.match(yaml, /scripts\/import-gate\.mjs open/);
+  assert.match(yaml, /scripts\/import-gate\.mjs preflight/);
+  assert.match(yaml, /scripts\/import-gate\.mjs run/);
   assert.match(yaml, /scripts\/import-gate\.mjs close/);
   assert.match(yaml, /IMPORT_GATE_TTL_SECONDS: '600'/);
   assert.match(yaml, /if: always\(\)/);
   assert.match(yaml, /set -o pipefail/);
   assert.match(yaml, /tee fdci-import\.json/);
   assert.match(yaml, /complete sweep claimed: no/);
-  assert.match(yaml, /timeout-minutes: 10/);
+  assert.match(yaml, /timeout-minutes: 12/);
+});
+
+test("FDCI exige destino, SHA separado y límites fijos sin exponer secretos al checkout", () => {
+  const yaml = readFileSync(new URL("../.github/workflows/fdci-import.yml", import.meta.url), "utf8");
+  assert.match(yaml, /IMPORT_GATEWAY_TARGET: \$\{\{ vars\.IMPORT_GATEWAY_TARGET \}\}/);
+  assert.match(yaml, /IMPORT_GATEWAY_PRODUCTION_ENABLED: \$\{\{ vars\.IMPORT_GATEWAY_PRODUCTION_ENABLED \}\}/);
+  assert.match(yaml, /IMPORT_GATEWAY_APPROVED_SHA: \$\{\{ vars\.FDCI_IMPORT_APPROVED_SHA \}\}/);
+  assert.match(yaml, /test "\$IMPORT_REF" = "\$APPROVED_SHA"/);
+  assert.match(yaml, /FDCI_MAX_REQUESTS: '6'/);
+  assert.match(yaml, /FDCI_MAX_PUBLICATIONS: '5'/);
+  assert.match(yaml, /FDCI_PAUSE_MS: '400'/);
+  assert.doesNotMatch(yaml, /options:.*full|d321e722/);
+  assert.ok(yaml.indexOf("scripts/import-gate.mjs preflight") < yaml.indexOf("scripts/import-gate.mjs run"));
+  const jobEnv = yaml.slice(yaml.indexOf("    env:"), yaml.indexOf("    steps:"));
+  assert.doesNotMatch(jobEnv, /secrets\./);
 });
 
 test("el build Linux se dispara solo en la rama aislada, sin secretos ni despliegue", () => {

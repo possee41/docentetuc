@@ -42,6 +42,26 @@ async function authorized(header, secret) {
 // it, the gateway refuses imports once the stored deadline passes.
 const leaseMode = (env) => env.IMPORT_GATE_LEASE_REQUIRED === "true";
 const configured = (env) => Boolean(env.DB && env.IMPORT_DATABASE_NAME && env.IMPORT_DATABASE_ID);
+const validOwner = (value) => typeof value === "string" && /^[A-Za-z0-9_:-]{1,100}$/.test(value);
+
+async function leaseBody(request) {
+  if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) return { error: reply(415, "GATE_JSON_REQUIRED") };
+  if (Number(request.headers.get("content-length") || 0) > 1024) return { error: reply(413, "GATE_REQUEST_TOO_LARGE") };
+  const reader = request.body?.getReader();
+  if (!reader) return { error: reply(400, "GATE_REQUEST_INVALID") };
+  let body = "", size = 0;
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 1024) { await reader.cancel(); return { error: reply(413, "GATE_REQUEST_TOO_LARGE") }; }
+      body += decoder.decode(value, { stream: true });
+    }
+    return { payload: JSON.parse(body + decoder.decode()) };
+  } catch { return { error: reply(400, "GATE_REQUEST_INVALID") }; }
+}
 
 async function readLease(env) {
   try { return await env.DB.prepare("SELECT source,expires_at,opened_at,opened_by FROM import_gate_lease WHERE id=1").first(); }
@@ -66,14 +86,14 @@ async function verifyIdentity(env, expected) {
 async function handleLease(request, env) {
   if (request.method !== "POST") return reply(405, "METHOD_NOT_ALLOWED");
   if (!leaseMode(env) || !configured(env)) return reply(503, "IMPORT_DISABLED");
-  let payload;
-  try { payload = await request.json(); }
-  catch { return reply(400, "GATE_REQUEST_INVALID"); }
+  const parsed = await leaseBody(request);
+  if (parsed.error) return parsed.error;
+  const payload = parsed.payload;
   const source = payload?.source, action = payload?.action;
   const owner = payload?.owner;
-  const secretName = paths[source] ? routes.get(paths[source])[0] : null;
+  const secretName = typeof source === "string" && Object.hasOwn(paths, source) ? routes.get(paths[source])[0] : null;
   if (!secretName || (action !== "open" && action !== "close")) return reply(400, "GATE_REQUEST_INVALID");
-  if (typeof owner !== "string" || !/^[A-Za-z0-9_:-]{1,100}$/.test(owner)) return reply(400, "GATE_OWNER_INVALID");
+  if (!validOwner(owner)) return reply(400, "GATE_OWNER_INVALID");
   if (env.IMPORT_GATE_ALLOWED_SOURCE && env.IMPORT_GATE_ALLOWED_SOURCE !== source) return reply(503, "IMPORT_DISABLED");
   if (!await authorized(request.headers.get("authorization"), env[secretName])) return reply(401, "UNAUTHORIZED");
   const expected = { name: env.IMPORT_DATABASE_NAME, id: env.IMPORT_DATABASE_ID };
@@ -117,7 +137,8 @@ const gateway = { async fetch(request, env) {
   if (url.pathname === GATE_PATH) return handleLease(request, env);
   const identityRequest = url.pathname === "/api/internal/import-identity" && request.method === "GET";
   if (url.search && url.pathname !== "/api/internal/sime-import" && !identityRequest) return reply(404, "NOT_FOUND");
-  const route = identityRequest ? routes.get(paths[url.searchParams.get("source")]) : routes.get(url.pathname);
+  const source = url.searchParams.get("source");
+  const route = identityRequest ? (Object.hasOwn(paths, source) ? routes.get(paths[source]) : null) : routes.get(url.pathname);
   if (!route) return reply(404, "NOT_FOUND");
   if (!configured(env)) return reply(503, "IMPORT_DISABLED");
   // Lease mode arms the endpoint without leaving a permanent open gate: each
@@ -134,7 +155,12 @@ const gateway = { async fetch(request, env) {
   if (checked.error) return checked.error;
   if (identityRequest) return Response.json({ name: checked.identity.database_name, id: checked.identity.database_id },
     { headers: noStore });
-  if (leaseMode(env) && !leaseValid(await readLease(env), requestedSource)) return reply(503, "IMPORT_DISABLED");
+  if (leaseMode(env)) {
+    const lease = await readLease(env);
+    if (!leaseValid(lease, requestedSource)) return reply(503, "IMPORT_DISABLED");
+    const owner = request.headers.get("x-import-gate-owner");
+    if (!validOwner(owner) || lease.opened_by !== owner) return reply(409, "GATE_OWNER_MISMATCH");
+  }
   return receiver.fetch(request, env);
 } };
 export default gateway;

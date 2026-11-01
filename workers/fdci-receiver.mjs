@@ -84,25 +84,34 @@ async function readBody(request) {
   catch { throw new Error("INVALID_JSON"); }
 }
 
-async function store(db, items) {
+async function store(db, items, owner) {
   const ids = items.map((item) => item.id);
-  const existing = await db.prepare(`SELECT id, source, content_hash, removed_at FROM publications WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
+  const existing = await db.prepare(`SELECT id, source, content_hash, removed_at, normalized_status FROM publications WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
   if (existing.results.some((row) => row.source !== SOURCE)) throw new Error("SOURCE_CONFLICT");
+  if (owner && existing.results.some((row) => row.normalized_status === "UNKNOWN")) throw new Error("PROTECTED_RECORD");
   const previous = new Map(existing.results.map((row) => [row.id, row]));
   const changes = items.filter((item) => {
     const prior = previous.get(item.id);
     return !prior || prior.content_hash !== item.contentHash || prior.removed_at !== null;
   });
   const now = new Date().toISOString();
-  const statements = changes.map((item) => db.prepare(UPSERT).bind(
+  // Fence the write itself: a request admitted before expiry cannot write after
+  // another execution acquires the lease. No additional table or round trip.
+  const sql = owner ? UPSERT.replace(/VALUES \(([^\n]+)\)/, `SELECT $1 WHERE EXISTS (
+    SELECT 1 FROM import_gate_lease WHERE id=1 AND source='fdci' AND opened_by=?
+      AND julianday(expires_at)>julianday('now'))`)
+    .replace("WHERE publications.source=", "WHERE publications.normalized_status<>'UNKNOWN' AND publications.source=") : UPSERT;
+  const statements = changes.map((item) => db.prepare(sql).bind(
     item.id, item.externalId, item.category, item.title, item.summary, item.level, item.area,
     item.location, item.character, item.circuit, item.sourceCircuitRaw, item.circuitInferenceSource,
     item.circuitConfidence, item.startsAt, item.endsAt, item.status, item.officialUrl,
     item.metadata, item.contentHash, item.sourceUpdatedAt, item.registrationOpenAt,
     item.registrationCloseAt, item.expiresAt, item.status, item.normalizedStatus, now, now,
+    ...(owner ? [owner] : []),
   ));
   const written = statements.length ? await db.batch(statements) : [];
   const applied = written.map((result) => Number(result.meta?.rows_written || 0) > 0);
+  if (owner && applied.some((changed) => !changed)) throw new Error("LEASE_OR_CONCURRENT_CHANGE");
   return {
     received: items.length,
     created: changes.filter((item, index) => applied[index] && !previous.has(item.id)).length,
@@ -132,9 +141,15 @@ const worker = {
       const items = payload.items;
       if (payload.mode !== "batch" || !Array.isArray(items) || items.length < 1 || items.length > MAX_ITEMS || !items.every(valid) ||
           new Set(items.map((item) => item.id)).size !== items.length) return reply({ error: "Lote inválido." }, 400);
-      return reply({ ok: true, ...await store(env.DB, items) });
+      const owner = env.IMPORT_GATE_LEASE_REQUIRED === "true" ? request.headers.get("x-import-gate-owner") : null;
+      if (env.IMPORT_GATE_LEASE_REQUIRED === "true" && (!owner || !/^[A-Za-z0-9_:-]{1,100}$/.test(owner))) return reply({ error: "GATE_OWNER_INVALID" }, 409);
+      if (owner && (items.length !== 1 || items.some((item) => item.id === "fdci:commission:6375" ||
+          !item.id.startsWith("fdci:commission:") || item.normalizedStatus === "UNKNOWN"))) return reply({ error: "PROTECTED_RECORD" }, 422);
+      return reply({ ok: true, ...await store(env.DB, items, owner) });
     } catch (error) {
       if (error?.message === "SOURCE_CONFLICT") return reply({ error: "Conflicto de fuente." }, 409);
+      if (error?.message === "PROTECTED_RECORD") return reply({ error: "PROTECTED_RECORD" }, 422);
+      if (error?.message === "LEASE_OR_CONCURRENT_CHANGE") return reply({ error: "LEASE_OR_CONCURRENT_CHANGE" }, 409);
       return reply({ error: "No se pudo guardar el lote." }, 503);
     }
   },
