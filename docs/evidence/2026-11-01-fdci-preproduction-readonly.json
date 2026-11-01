@@ -1,0 +1,233 @@
+{
+  "at": "2026-11-01T03:13:06.321Z",
+  "readOnly": true,
+  "resources": [
+    {
+      "worker": "docentetuc-import-canary-1-2",
+      "database": {
+        "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756",
+        "name": "docentetuc-web-canary-1-2"
+      },
+      "databaseVerified": true,
+      "identity": [
+        {
+          "database_name": "docentetuc-web-canary-1-2",
+          "database_id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+        }
+      ],
+      "leaseColumns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "source",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "expires_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "opened_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "opened_by",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "leaseDDL": [
+        {
+          "sql": "CREATE TABLE import_gate_lease (\n  id INTEGER PRIMARY KEY CHECK (id = 1),\n  source TEXT NOT NULL,\n  expires_at TEXT NOT NULL,\n  opened_at TEXT NOT NULL,\n  opened_by TEXT NOT NULL\n)"
+        }
+      ],
+      "leaseState": [
+        {
+          "rows": 0,
+          "live": 0
+        }
+      ],
+      "settings": {
+        "d1": [
+          {
+            "name": "DB",
+            "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+          }
+        ],
+        "vars": {
+          "FDCI_EXTERNAL_ENABLED": "true",
+          "IMPORT_DATABASE_ID": "853e2f5d-89b1-46a3-9c1c-5cbd46784756",
+          "IMPORT_DATABASE_NAME": "docentetuc-web-canary-1-2",
+          "IMPORT_GATE_ALLOWED_SOURCE": "fdci",
+          "IMPORT_GATE_ENABLED": "false",
+          "IMPORT_GATE_LEASE_REQUIRED": "false"
+        },
+        "secretNames": [
+          "JUNTAS_IMPORT_SECRET",
+          "SIME_IMPORT_SECRET"
+        ]
+      },
+      "active": {
+        "id": "3a306ba0-189d-4266-ada1-11222036726e",
+        "versions": [
+          {
+            "version_id": "9f8b3d16-573a-41a6-907e-f53dbdff12b7",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-11-01T02:59:24.414238Z"
+      },
+      "crons": [],
+      "unauthenticatedGetHttp": 503,
+      "errors": []
+    },
+    {
+      "worker": "docentetuc-import-1-2",
+      "database": {
+        "id": "baaf5886-0123-4948-96da-aa7106424549",
+        "name": "docentetuc-db"
+      },
+      "databaseVerified": true,
+      "identity": [
+        {
+          "database_name": "docentetuc-db",
+          "database_id": "baaf5886-0123-4948-96da-aa7106424549"
+        }
+      ],
+      "leaseColumns": [],
+      "leaseDDL": [],
+      "migrations": [
+        {
+          "name": "0002_designations.sql"
+        },
+        {
+          "name": "0003_information_agenda.sql"
+        },
+        {
+          "name": "0004_agenda_reminders.sql"
+        },
+        {
+          "name": "0005_training_match_threshold.sql"
+        },
+        {
+          "name": "0006_manual_events.sql"
+        },
+        {
+          "name": "0007_manual_event_recurrence.sql"
+        },
+        {
+          "name": "0008_personal_matching_circuits.sql"
+        },
+        {
+          "name": "0009_reliability_lifecycle.sql"
+        },
+        {
+          "name": "0010_data_freshness.sql"
+        },
+        {
+          "name": "0011_board_crawl.sql"
+        },
+        {
+          "name": "0012_public_profiles.sql"
+        },
+        {
+          "name": "0013_auth_identity.sql"
+        },
+        {
+          "name": "0014_account_data_identity.sql"
+        },
+        {
+          "name": "0015_community.sql"
+        },
+        {
+          "name": "0016_community_saved_posts.sql"
+        },
+        {
+          "name": "0017_installation_credentials.sql"
+        },
+        {
+          "name": "0018_community_admin.sql"
+        },
+        {
+          "name": "0019_admin_notices.sql"
+        },
+        {
+          "name": "0020_community_pre_moderation.sql"
+        },
+        {
+          "name": "0021_news_editorial.sql"
+        },
+        {
+          "name": "0022_news_media_content.sql"
+        },
+        {
+          "name": "0025_external_publication_events.sql"
+        },
+        {
+          "name": "0026_juntas_incremental.sql"
+        },
+        {
+          "name": "0027_personal_catalog_index.sql"
+        },
+        {
+          "name": "0028_external_notice_cycle.sql"
+        },
+        {
+          "name": "0029_import_gateway_identity.sql"
+        }
+      ],
+      "settings": {
+        "d1": [
+          {
+            "name": "DB",
+            "id": "baaf5886-0123-4948-96da-aa7106424549"
+          }
+        ],
+        "vars": {
+          "FDCI_EXTERNAL_ENABLED": "false",
+          "IMPORT_DATABASE_ID": "baaf5886-0123-4948-96da-aa7106424549",
+          "IMPORT_DATABASE_NAME": "docentetuc-db",
+          "IMPORT_GATE_ALLOWED_SOURCE": "sime",
+          "IMPORT_GATE_ENABLED": "false"
+        },
+        "secretNames": [
+          "SIME_IMPORT_SECRET"
+        ]
+      },
+      "active": {
+        "id": "97f59a96-a67d-4ce3-869b-444e0a868a62",
+        "versions": [
+          {
+            "version_id": "cbeeb117-0fe7-4631-a8b7-ee85809481c9",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-11-01T02:27:02.999784Z"
+      },
+      "crons": [],
+      "unauthenticatedGetHttp": 503,
+      "errors": []
+    }
+  ]
+}
