@@ -44,7 +44,7 @@ export function normalizeNewsSourceUrl(value: unknown): string | null {
 }
 
 // Prevent SSRF: feeds or admins must never target loopback, link-local or RFC1918 addresses.
-function isPrivateOrLoopbackHost(hostname: string): boolean {
+export function isPrivateOrLoopbackHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (host === "localhost" || host.endsWith(".localhost") || host === "0.0.0.0" || host === "::" || host === "::1") return true;
   if (/^f[cd][0-9a-f]{2}:/i.test(host) || /^fe[89ab][0-9a-f]:/i.test(host)) return true;

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import type { CommunityDatabase } from "./community.ts";
-import { NEWS_DISCOVERY_MAX_ARTICLES, fetchNewsFeed, importNewsCandidates, parseNewsFeed, type Feed } from "./news-discovery.ts";
+import { NEWS_DISCOVERY_MAX_ARTICLES, NEWS_FEED_MAX_BYTES, fetchNewsFeed, importNewsCandidates, parseNewsFeed, type Feed } from "./news-discovery.ts";
 import { normalizeNewsSourceUrl } from "./news-editorial.ts";
 
 const RSS_FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
@@ -93,6 +93,27 @@ test("descarta artículos fuera de la ventana de 45 días y limita la cantidad",
   assert.throws(() => parseNewsFeed("<rss><channel></channel></rss>", OFFICIAL_FEED, now), /NEWS_FEED_EMPTY/);
 });
 
+test("fetchNewsFeed bloquea redirecciones y valida tipo de contenido", async () => {
+  const redirecting = async () => new Response("", { status: 302, headers: { Location: "https://evil.example/x" } });
+  await assert.rejects(fetchNewsFeed(OFFICIAL_FEED, redirecting, now), /NEWS_FEED_HTTP_302/);
+
+  const badType = async () => new Response("<rss/>", { status: 200, headers: { "content-type": "text/html" } });
+  await assert.rejects(fetchNewsFeed(OFFICIAL_FEED, badType, now), /NEWS_FEED_CONTENT_TYPE_INVALID/);
+
+  const ok = async () => new Response(RSS_FIXTURE, { status: 200, headers: { "content-type": "application/rss+xml" } });
+  const articles = await fetchNewsFeed(OFFICIAL_FEED, ok, now);
+  assert.equal(articles.length, 2);
+});
+
+test("fetchNewsFeed cancela la lectura cuando el cuerpo supera 300 KB", async () => {
+  const huge = async () => new Response("x".repeat(NEWS_FEED_MAX_BYTES + 100), { status: 200, headers: { "content-type": "application/xml" } });
+  await assert.rejects(fetchNewsFeed(OFFICIAL_FEED, huge, now), /NEWS_FEED_TOO_LARGE/);
+});
+
+test("fetchNewsFeed rechaza hosts privados en la URL del feed", async () => {
+  const privateFeed = { ...OFFICIAL_FEED, url: "https://127.0.0.1/feed/", host: "127.0.0.1" } as unknown as Feed;
+  await assert.rejects(fetchNewsFeed(privateFeed, async () => new Response(RSS_FIXTURE, { status: 200 }), now), /NEWS_FEED_HOST_BLOCKED/);
+});
 test("fetchNewsFeed rechaza HTTP no exitoso y respeta el límite de tamaño", async () => {
   const fetcher = async () => new Response("nope", { status: 503 });
   await assert.rejects(fetchNewsFeed(OFFICIAL_FEED, fetcher, now), /NEWS_FEED_HTTP_503/);

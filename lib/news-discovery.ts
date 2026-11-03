@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { CommunityDatabase } from "./community.ts";
-import { normalizeNewsSourceUrl } from "./news-editorial.ts";
+import { isPrivateOrLoopbackHost, normalizeNewsSourceUrl } from "./news-editorial.ts";
 
 export const NEWS_FEEDS = [
   { key: "ministry", name: "Ministerio de Educación de Tucumán", type: "official", topic: "Educación", url: "https://www.educaciontuc.gov.ar/feed/", host: "www.educaciontuc.gov.ar", format: "rss" },
@@ -57,15 +57,53 @@ export function parseNewsFeed(xml: string, feed: Feed, now = new Date(), maxArti
   return articles;
 }
 
+export const NEWS_FEED_MAX_BYTES = 300_000;
+
 export async function fetchNewsFeed(feed: Feed, fetcher: typeof fetch = fetch, now = new Date()) {
-  const response = await fetcher(feed.url, { signal: AbortSignal.timeout(15_000), headers: { Accept: "application/rss+xml, application/atom+xml, application/xml" } });
+  let host: string;
+  try { host = new URL(feed.url).hostname; } catch { throw new Error("NEWS_FEED_URL_INVALID"); }
+  if (isPrivateOrLoopbackHost(host)) throw new Error("NEWS_FEED_HOST_BLOCKED");
+  const response = await fetcher(feed.url, {
+    signal: AbortSignal.timeout(15_000),
+    redirect: "error",
+    headers: { Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml" },
+  });
   if (!response.ok) throw new Error(`NEWS_FEED_HTTP_${response.status}`);
-  const xml = await response.text();
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType && !/xml|rss|atom|text\/plain/i.test(contentType)) throw new Error("NEWS_FEED_CONTENT_TYPE_INVALID");
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const xml = await response.text();
+    if (xml.length > NEWS_FEED_MAX_BYTES) throw new Error("NEWS_FEED_TOO_LARGE");
+    return parseNewsFeed(xml, feed, now);
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > NEWS_FEED_MAX_BYTES) { await reader.cancel(); throw new Error("NEWS_FEED_TOO_LARGE"); }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  const xml = new TextDecoder().decode(concatBytes(chunks));
+  if (xml.length > NEWS_FEED_MAX_BYTES) throw new Error("NEWS_FEED_TOO_LARGE");
   return parseNewsFeed(xml, feed, now);
 }
 
-export async function importNewsCandidates(database: CommunityDatabase, articles: DiscoveredArticle[], now = new Date()) {
-  if (articles.length > 50) throw new Error("NEWS_TOO_MANY_ARTICLES");
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength; }
+  return result;
+}
+
+export async function importNewsCandidates(database: CommunityDatabase, articles: DiscoveredArticle[], now = new Date(), maxCandidates = 20) {
+  if (articles.length > maxCandidates) throw new Error("NEWS_TOO_MANY_ARTICLES");
   let created = 0, updated = 0, unchanged = 0;
   for (const article of articles) {
     const url = canonical(article.url, article.feed.host);
