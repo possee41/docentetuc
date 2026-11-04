@@ -9,8 +9,26 @@ const reply = (value, status = 200) => Response.json(value, { status, headers: {
 export async function fdciDelta(body, db, owner) {
   if (!body || typeof body !== "object") return reply({ error: "DELTA_INVALID" }, 400);
   try {
-    const state = () => db.prepare("SELECT revision,last_staged_id,last_complete_scan_at FROM fdci_delta_state WHERE id=1").first();
+    const state = () => db.prepare("SELECT revision,last_staged_id,last_complete_scan_at,detail_after,detail_upper,detail_cycle FROM fdci_delta_state WHERE id=1").first();
     if (body.op === "state") return reply({ ok: true, state: await state() });
+    if (body.op === "snapshot") {
+      for (const key of ["after", "queuedAfter"])
+        if (body[key] !== null && (typeof body[key] !== "string" || body[key] !== "" && !validId(body[key])))
+          return reply({ error: "DELTA_INVALID" }, 400);
+      // Every page carries the revision observed BEFORE its reads. Subsequent CAS
+      // rejects mutations if another scan changed it; no extra final state request.
+      const current = await state();
+      const queued = body.queuedAfter === null ? [] : (await db.prepare(`SELECT seq,publication_id AS id,content_hash
+        FROM fdci_delta_queue WHERE publication_id>? ORDER BY publication_id LIMIT 201`).bind(body.queuedAfter).all()).results;
+      // Preserve the old 200-hash response ceiling across BOTH lists, rather
+      // than doubling serialization work when the queue is large.
+      const limit = 200 - Math.min(queued.length, 200);
+      const confirmed = body.after === null || !limit ? [] : (await db.prepare(`SELECT id,content_hash,removed_at,normalized_status
+        FROM publications WHERE source=? AND id>? AND id LIKE 'fdci:commission:%' ORDER BY id LIMIT ?`)
+        .bind(source, body.after, limit + 1).all()).results;
+      return reply({ ok: true, state: current, confirmed: confirmed.slice(0, limit), queued: queued.slice(0, 200),
+        confirmedMore: body.after !== null && (!limit || confirmed.length > limit), queuedMore: queued.length > 200 });
+    }
     if (["confirmed", "queued"].includes(body.op)) {
       if (typeof body.after !== "string" || body.after !== "" && !validId(body.after)) return reply({ error: "DELTA_INVALID" }, 400);
       const query = body.op === "confirmed"
@@ -52,7 +70,18 @@ export async function fdciDelta(body, db, owner) {
         WHERE fdci_delta_queue.content_hash<>excluded.content_hash`)
         .bind(item.id, item.contentHash, JSON.stringify(item), token, owner));
     } else if (body.op === "scan-complete") {
-      extra = ",last_complete_scan_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),last_staged_id=''";
+      const detail = body.detail;
+      if (detail !== undefined) {
+        const key = value => typeof value === "string" && (value === "" || /^\d{12}$/.test(value));
+        if (!detail || !key(detail.after) || !key(detail.upper) || detail.after > detail.upper || typeof detail.complete !== "boolean")
+          return reply({ error: "DELTA_DETAIL_INVALID" }, 400);
+        const current = await state();
+        if (!current || current.detail_upper && current.detail_upper !== detail.upper || detail.after < current.detail_after)
+          return reply({ error: "DELTA_CONFLICT" }, 409);
+        extra = `,last_staged_id='',detail_after=?,detail_upper=?,detail_cycle=detail_cycle+?,
+          last_complete_scan_at=CASE WHEN ? THEN strftime('%Y-%m-%dT%H:%M:%fZ','now') ELSE last_complete_scan_at END`;
+        args = [detail.complete ? "" : detail.after, detail.complete ? "" : detail.upper, Number(detail.complete), Number(detail.complete)];
+      } else extra = ",last_complete_scan_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),last_staged_id=''";
     } else {
       if (!validId(body.id) || !/^[a-f0-9]{64}$/.test(body.hash || "") || !Number.isSafeInteger(body.version) || body.version < 1)
         return reply({ error: "DELTA_INVALID" }, 400);

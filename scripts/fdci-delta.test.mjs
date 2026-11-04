@@ -5,6 +5,7 @@ import { deltaRequest } from "./fdci-delta.mjs";
 import { runGatewayImport } from "./import-via-gateway.mjs";
 import { runFdciAutomation } from "./fdci-automation.mjs";
 import { readFileSync } from "node:fs";
+import { sendFdci } from "./import-fdci.mjs";
 
 test("unchanged catalog uses paged hashes, no per-publication calls and no publication writes", async t => {
   const f = await deltaFixture(1000, 0); t.after(() => f.sqlite.close());
@@ -12,7 +13,7 @@ test("unchanged catalog uses paged hashes, no per-publication calls and no publi
   const r = await f.run();
   assert.equal(r.examined, 1000); assert.equal(r.queued, 0); assert.equal(r.processed, 0);
   assert.equal(f.metrics.publicationRequests, 0); assert.equal(f.queue().length, 0);
-  assert.equal(f.metrics.gatewayRequests, 10); // Two state reads, six confirmed pages, queued page and scan acknowledgement.
+  assert.equal(f.metrics.gatewayRequests, 6); // Five combined pages with lookahead, then scan acknowledgement.
   assert.equal(f.sqlite.prepare("SELECT total_changes() AS n").get().n - before, 1);
 });
 
@@ -40,6 +41,30 @@ test("a pending change reverted to confirmed D1 content is acknowledged without 
   f.data.items[2] = structuredClone(f.data.baseline[2]);
   const r = await f.run(); assert.equal(r.confirmedFromD1, 1); assert.equal(r.updated, 1);
   assert.equal(r.pending, 6); assert.equal(f.metrics.publicationRequests, 3);
+});
+
+test("an older source observation cannot overwrite a newer scan accepted during its collection", async t => {
+  const f = await deltaFixture(30, 2); t.after(() => f.sqlite.close());
+  const older = structuredClone(f.data.items);
+  await assert.rejects(f.run(async () => {
+    f.data.items[0].contentHash = "c".repeat(64); f.data.items[0].summary = "Más reciente";
+    await f.run();
+    return { items: older, failures: 0 };
+  }), /CONCURRENT_CHANGE|409/);
+  assert.equal(f.sqlite.prepare("SELECT content_hash FROM publications WHERE id=?").get(older[0].id).content_hash, "c".repeat(64));
+});
+
+test("SQL fences stale queue version/revision before publication, not only when acknowledging it", async t => {
+  const f = await deltaFixture(30, 10); t.after(() => f.sqlite.close()); await f.run();
+  const old = f.queue()[0], revision = f.state().revision, oldItem = JSON.parse(old.payload);
+  const newer = { ...oldItem, summary: "Más reciente", contentHash: "c".repeat(64) };
+  await deltaRequest(f.target, f.owner, { op: "stage", revision, items: [newer] }, f.fetcher);
+  const current = f.queue()[0];
+  await sendFdci(f.target.endpoint, f.target.secret, { mode: "batch", items: [newer],
+    delta: { version: current.version, revision: f.state().revision } }, f.fetcher, f.owner);
+  await assert.rejects(sendFdci(f.target.endpoint, f.target.secret, { mode: "batch", items: [oldItem],
+    delta: { version: old.version, revision } }, f.fetcher, f.owner), /409/);
+  assert.equal(f.sqlite.prepare("SELECT content_hash FROM publications WHERE id=?").get(old.publication_id).content_hash, newer.contentHash);
 });
 
 test("lost publication ACK retains queue; recovery trusts D1 and does not resend committed publication", async t => {
@@ -123,7 +148,7 @@ test("protected existing rows and a full queue fail closed without discarding wo
   await assert.rejects(call(), /409/); assert.equal(f.queue().length, 1000); assert.equal(f.state().revision, 0);
 });
 
-test("real collector is reused; request-budget exhaustion cannot certify or reconcile an incomplete catalogue", async t => {
+test("five active courses resume details over two runs without exceeding six official requests", async t => {
   const f = await deltaFixture(); t.after(() => f.sqlite.close());
   const config = { FDCI_SCOPE: "active", FDCI_MAX_REQUESTS: "6", FDCI_MAX_PUBLICATIONS: "2",
     FDCI_PAUSE_MS: "400", IMPORT_GATE_RUN_ID: f.owner, FDCI_DELTA_ENABLED: "true" };
@@ -139,9 +164,15 @@ test("real collector is reused; request-budget exhaustion cannot certify or reco
     const course = courses.find(c => c.token === JSON.parse(init.body).token);
     return Response.json({ comisiones: commissions.filter(c => c.capacitacion_id === course.capacitacion_id) });
   };
-  await assert.rejects(runGatewayImport(f.target, config, source, f.fetcher), /COLLECTION_INCOMPLETE/);
-  assert.equal(calls, 6); assert.equal(f.queue().length, 0); assert.equal(f.metrics.changedSqlRows, 0);
+  const first = await runGatewayImport(f.target, config, source, f.fetcher);
+  assert.equal(calls, 6); assert.equal(first.cycleComplete, false); assert.equal(first.batches, 2);
+  assert.equal(f.state().detail_after, "000000000103"); assert.equal(f.state().detail_upper, "000000000104");
   assert.equal(f.state().last_complete_scan_at, null);
+  calls = 0;
+  const second = await runGatewayImport(f.target, config, source, f.fetcher);
+  assert.ok(calls <= 6); assert.equal(second.cycleComplete, true);
+  assert.equal(f.state().detail_after, ""); assert.equal(f.state().detail_cycle, 2);
+  assert.ok(f.state().last_complete_scan_at);
 });
 
 test("opt-in automation reuses secret/SHA/lease facade, keeps two attempts, and missing CPU still halts", async t => {

@@ -33,6 +33,9 @@ const FENCED_UPSERT = UPSERT.replace(/VALUES \(([^\n]+)\)/, `SELECT $1 WHERE EXI
     SELECT 1 FROM import_gate_lease WHERE id=1 AND source='fdci' AND opened_by=?
       AND julianday(expires_at)>julianday('now'))`)
   .replace("WHERE publications.source=", "WHERE publications.normalized_status<>'UNKNOWN' AND publications.source=");
+const DELTA_UPSERT = FENCED_UPSERT.replace("ON CONFLICT(id)", `AND EXISTS (
+  SELECT 1 FROM fdci_delta_queue q JOIN fdci_delta_state s ON s.id=1
+  WHERE q.publication_id=? AND q.content_hash=? AND q.version=? AND s.revision=?) ON CONFLICT(id)`);
 
 const reply = (body, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 const text = (value, max) => typeof value === "string" && value.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value);
@@ -89,7 +92,7 @@ async function readBody(request) {
   catch { throw new Error("INVALID_JSON"); }
 }
 
-async function store(db, items, owner) {
+async function store(db, items, owner, delta) {
   const ids = items.map((item) => item.id);
   const existing = await db.prepare(`SELECT id, source, content_hash, removed_at, normalized_status FROM publications WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
   if (existing.results.some((row) => row.source !== SOURCE)) throw new Error("SOURCE_CONFLICT");
@@ -102,7 +105,7 @@ async function store(db, items, owner) {
   const now = new Date().toISOString();
   // Fence the write itself: a request admitted before expiry cannot write after
   // another execution acquires the lease. No additional table or round trip.
-  const sql = owner ? FENCED_UPSERT : UPSERT;
+  const sql = delta ? DELTA_UPSERT : owner ? FENCED_UPSERT : UPSERT;
   const statements = changes.map((item) => db.prepare(sql).bind(
     item.id, item.externalId, item.category, item.title, item.summary, item.level, item.area,
     item.location, item.character, item.circuit, item.sourceCircuitRaw, item.circuitInferenceSource,
@@ -110,6 +113,7 @@ async function store(db, items, owner) {
     item.metadata, item.contentHash, item.sourceUpdatedAt, item.registrationOpenAt,
     item.registrationCloseAt, item.expiresAt, item.status, item.normalizedStatus, now, now,
     ...(owner ? [owner] : []),
+    ...(delta ? [item.id, item.contentHash, delta.version, delta.revision] : []),
   ));
   const written = statements.length ? await db.batch(statements) : [];
   const applied = written.map((result) => Number(result.meta?.rows_written || 0) > 0);
@@ -147,7 +151,10 @@ export async function receiveAuthenticatedFdci(request, env) {
     if (env.IMPORT_GATE_LEASE_REQUIRED === "true" && (!owner || !/^[A-Za-z0-9_:-]{1,100}$/.test(owner))) return reply({ error: "GATE_OWNER_INVALID" }, 409);
     if (owner && (items.length !== 1 || items.some((item) => item.id === "fdci:commission:6375" ||
         !item.id.startsWith("fdci:commission:") || item.normalizedStatus === "UNKNOWN"))) return reply({ error: "PROTECTED_RECORD" }, 422);
-    return reply({ ok: true, ...await store(env.DB, items, owner) });
+    const delta = env.FDCI_DELTA_ENABLED === "true" ? payload.delta : null;
+    if (env.FDCI_DELTA_ENABLED === "true" && (!owner || !delta || !Number.isSafeInteger(delta.version) || delta.version < 1 ||
+        !Number.isSafeInteger(delta.revision) || delta.revision < 0)) return reply({ error: "DELTA_PROOF_REQUIRED" }, 409);
+    return reply({ ok: true, ...await store(env.DB, items, owner, delta) });
   } catch (error) {
     if (error?.message === "SOURCE_CONFLICT") return reply({ error: "Conflicto de fuente." }, 409);
     if (error?.message === "PROTECTED_RECORD") return reply({ error: "PROTECTED_RECORD" }, 422);

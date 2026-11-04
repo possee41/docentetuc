@@ -1,5 +1,6 @@
 // Node owns collection, full-record hashes and comparison. D1 owns confirmations.
-import { collectFdci, sendFdci } from "./import-fdci.mjs";
+import { sendFdci } from "./import-fdci.mjs";
+import { collectFdciDeltaSlice } from "./collect-fdci-delta.mjs";
 import { validFdciImport } from "../lib/fdci-import.ts";
 
 export async function deltaRequest(target, owner, payload, fetcher) {
@@ -17,40 +18,46 @@ export async function deltaRequest(target, owner, payload, fetcher) {
   return ack;
 }
 
-export async function runDeltaFdci(target, safety, fetcher, collect = collectFdci) {
+export async function runDeltaFdci(target, safety, fetcher, collect = collectFdciDeltaSlice) {
   if (!Number.isInteger(safety.maxPublications) || safety.maxPublications < 1 || safety.maxPublications > 2)
     throw new Error("FDCI_DELTA_LIMIT_INVALID");
   const progress = { queued: 0, processed: 0, confirmedFromD1: 0, created: 0, updated: 0, unchanged: 0, batches: 0 };
   try {
-    const collected = await collect(fetcher, undefined, "active");
-    // No disappearance handling, partial reconciliation or draining stale observations.
+    const call = payload => deltaRequest(target, safety.owner, payload, fetcher);
+    let state, after = "", queuedAfter = "";
+    const confirmed = new Map(), queued = new Map();
+    do {
+      const ack = await call({ op: "snapshot", after, queuedAfter });
+      if (!ack.state || state && ack.state.revision !== state.revision) throw new Error("FDCI_DELTA_CONCURRENT_CHANGE");
+      if (!Array.isArray(ack.confirmed) || !Array.isArray(ack.queued) || ack.confirmed.length + ack.queued.length > 200 ||
+          (ack.confirmedMore || ack.queuedMore) && ack.confirmed.length + ack.queued.length === 0)
+        throw new Error("FDCI_DELTA_ACK_INVALID");
+      state = ack.state;
+      for (const [key, map, cursor, more] of [["confirmed", confirmed, after, ack.confirmedMore], ["queued", queued, queuedAfter, ack.queuedMore]]) {
+        const rows = ack[key];
+        if (!Array.isArray(rows) || rows.length > 200 || typeof more !== "boolean" ||
+            cursor === null && (rows.length || more)) throw new Error("FDCI_DELTA_ACK_INVALID");
+        let previous = cursor || "";
+        for (const row of rows) {
+          if (typeof row.id !== "string" || row.id <= previous || map.has(row.id) ||
+              key === "queued" && (!/^[a-f0-9]{64}$/.test(row.content_hash || "") || !Number.isSafeInteger(row.seq) || row.seq < 1))
+            throw new Error("FDCI_DELTA_ACK_INVALID");
+          previous = row.id; map.set(row.id, row);
+        }
+        if (key === "confirmed") after = more ? previous : null;
+        else queuedAfter = more ? previous : null;
+      }
+    } while (after !== null || queuedAfter !== null);
+    // Observe D1 BEFORE contacting the source: a stale concurrent collector cannot
+    // adopt a newer revision after collection and overwrite newer pending content.
+    const collected = await collect(fetcher, { state, queued }, "active");
     if (collected.failures || !Array.isArray(collected.items)) throw new Error("FDCI_DELTA_COLLECTION_INCOMPLETE");
     const seen = new Set();
     for (const item of collected.items) {
       if (!validFdciImport(item) || seen.has(item.id)) throw new Error("FDCI_DELTA_COLLECTION_INVALID");
       seen.add(item.id);
     }
-    const call = payload => deltaRequest(target, safety.owner, payload, fetcher);
-    let state = (await call({ op: "state" })).state;
-    if (!state) throw new Error("FDCI_DELTA_ACK_INVALID");
-    const pageMap = async op => {
-      const map = new Map(); let after = "";
-      do {
-        const ack = await call({ op, after });
-        if (!Array.isArray(ack.rows) || ack.rows.length > 200) throw new Error("FDCI_DELTA_ACK_INVALID");
-        for (const row of ack.rows) {
-          if (typeof row.id !== "string" || row.id <= after || map.has(row.id) ||
-              op === "queued" && (!/^[a-f0-9]{64}$/.test(row.content_hash || "") || !Number.isSafeInteger(row.seq) || row.seq < 1))
-            throw new Error("FDCI_DELTA_ACK_INVALID");
-          after = row.id; map.set(row.id, row);
-        }
-        if (ack.rows.length < 200) break;
-      } while (true);
-      return map;
-    };
-    const confirmed = await pageMap("confirmed"), queued = await pageMap("queued");
     progress.examined = collected.items.length; progress.discovered = collected.items.length; progress.pending = queued.size;
-    if ((await call({ op: "state" })).state?.revision !== state.revision) throw new Error("FDCI_DELTA_CONCURRENT_CHANGE");
     const eligible = collected.items.filter(item => item.id !== "fdci:commission:6375" && item.normalizedStatus !== "UNKNOWN" &&
       confirmed.get(item.id)?.normalized_status !== "UNKNOWN");
     const changes = eligible.filter(item => queued.has(item.id)
@@ -64,11 +71,14 @@ export async function runDeltaFdci(target, safety, fetcher, collect = collectFdc
       pending += items.filter(item => !queued.has(item.id)).length;
       progress.queued += items.length; progress.pending = pending;
     }
-    state = (await call({ op: "scan-complete", revision: state.revision })).state;
+    state = (await call({ op: "scan-complete", revision: state.revision,
+      ...(collected.detail ? { detail: collected.detail } : {}) })).state;
+    const cycleComplete = collected.detail?.complete ?? true;
     const result = Object.assign(progress, { status: "OK", examined: collected.items.length, queued: changes.length,
       created: 0, updated: 0, unchanged: 0, batches: 0, confirmedFromD1: 0, processed: 0,
-      skipped: collected.items.length - eligible.length, discovered: collected.items.length, empty: !collected.items.length,
-      pending, cycleComplete: true, failed: false, completed: false });
+      skipped: collected.items.length - eligible.length, discovered: collected.activeCommissions ?? collected.items.length,
+      empty: (collected.activeCommissions ?? collected.items.length) === 0,
+      pending, cycleComplete, failed: false, completed: false });
     const changedIds = new Set(changes.map(item => item.id));
     const pendingItems = eligible.filter(item => queued.has(item.id) || changedIds.has(item.id));
     pendingItems.sort((a, b) => (queued.get(a.id)?.seq ?? Number.MAX_SAFE_INTEGER) -
@@ -88,13 +98,15 @@ export async function runDeltaFdci(target, safety, fetcher, collect = collectFdc
       if (confirmed.get(row.id)?.content_hash === row.content_hash && confirmed.get(row.id)?.removed_at === null) {
         result.confirmedFromD1++;
       } else {
-        const ack = await sendFdci(target.endpoint, target.secret, { mode: "batch", items: [item] }, fetcher, safety.owner);
+        const ack = await sendFdci(target.endpoint, target.secret, { mode: "batch", items: [item],
+          delta: { version: row.version, revision: state.revision } }, fetcher, safety.owner);
         result.created += ack.created; result.updated += ack.updated; result.unchanged += ack.unchanged; result.batches++;
       }
       state = (await call({ op: "ack", revision: state.revision, id: row.id, hash: row.content_hash, version: row.version })).state;
       result.processed++; result.pending--;
     }
-    return { ...result, cursor: state, status: result.pending ? "PARTIAL" : "OK", progressPending: result.pending > 0 };
+    return { ...result, cursor: state, status: result.pending || !cycleComplete ? "PARTIAL" : "OK",
+      progressPending: result.pending > 0 || !cycleComplete };
   } catch (error) {
     error.result = { ...progress, uncertain: /UNCERTAIN|ACK_INVALID/.test(error.message) ? 1 : 0 };
     throw error;
