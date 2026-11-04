@@ -5,6 +5,7 @@ import { isPrivateOrLoopbackHost, normalizeNewsSourceUrl } from "./news-editoria
 export const NEWS_FEEDS = [
   { key: "ministry", name: "Ministerio de Educación de Tucumán", type: "official", topic: "Educación", url: "https://www.educaciontuc.gov.ar/feed/", host: "www.educaciontuc.gov.ar", format: "rss" },
   { key: "atep", name: "ATEP Tucumán", type: "union", topic: "Actualidad gremial", url: "https://atep-delosdocentestucumanos.blogspot.com/feeds/posts/default?alt=atom&max-results=10", host: "atep-delosdocentestucumanos.blogspot.com", format: "atom" },
+  { key: "infod", name: "INFoD / AulaS-TIC", type: "official", topic: "Formación docente", url: "https://red.infd.edu.ar/feed/", host: "red.infd.edu.ar", format: "rss" },
 ] as const;
 
 export type Feed = typeof NEWS_FEEDS[number];
