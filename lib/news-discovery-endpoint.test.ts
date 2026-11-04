@@ -16,8 +16,13 @@ function fixture() {
       const args = values as (string | number | null)[];
       return { first: async <T>() => raw.prepare(sql).get(...args) as T | null,
         all: async <T>() => ({ results: raw.prepare(sql).all(...args) as T[] }),
-        run: async () => raw.prepare(sql).run(...args) };
+        run: async () => ({ meta: { changes: Number(raw.prepare(sql).run(...args).changes) } }),
+        runSync: () => ({ meta: { changes: Number(raw.prepare(sql).run(...args).changes) } }) };
     } };
+  }, async batch(statements: unknown[]) {
+    raw.exec('BEGIN');
+    try { const result = statements.map((statement) => (statement as { runSync(): { meta: { changes: number } } }).runSync()); raw.exec('COMMIT'); return result; }
+    catch (error) { raw.exec('ROLLBACK'); throw error; }
   } } as unknown as CommunityDatabase;
   return { raw, database };
 }
@@ -119,8 +124,28 @@ test("fetchNewsFeed rechaza hosts privados y URLs inseguras", async () => {
 test("feeds no autorizados no existen en NEWS_FEEDS", () => {
   const keys = NEWS_FEEDS.map((f) => f.key);
   for (const unauthorized of ["evil-feed", "custom", "rss-custom", ""]) {
-    assert.ok(!keys.includes(unauthorized), `${unauthorized} should not be authorized`);
+    assert.ok(!(keys as string[]).includes(unauthorized), `${unauthorized} should not be authorized`);
   }
+});
+
+test("fallo en batch no deja registros huérfanos ni auditorías falsas", async () => {
+  const { raw, database } = fixture();
+  try {
+    // Make batch fail by throwing on the second statement.
+    database.batch = async (statements: unknown[]) => {
+      raw.exec("BEGIN");
+      try {
+        (statements[0] as { runSync(): { meta: { changes: number } } }).runSync();
+        throw new Error("D1_WRITE_FAILED");
+      } catch (error) { raw.exec("ROLLBACK"); throw error; }
+    };
+    const articles = [{ feed: NEWS_FEEDS.find((f) => f.key === "infod")!, title: "Fallo atómico", url: "https://red.infd.edu.ar/fallo-atomico/", publishedAt: "2026-11-01T10:00:00.000Z", updatedAt: "2026-11-01T10:00:00.000Z", fingerprint: "a".repeat(64) }];
+    await assert.rejects(importNewsCandidates(database, articles, now, 5), /D1_WRITE_FAILED/);
+    // No partial data should remain.
+    assert.equal((raw.prepare("SELECT COUNT(*) AS c FROM news_items").get() as { c: number }).c, 0);
+    assert.equal((raw.prepare("SELECT COUNT(*) AS c FROM news_sources").get() as { c: number }).c, 0);
+    assert.equal((raw.prepare("SELECT COUNT(*) AS c FROM news_events").get() as { c: number }).c, 0);
+  } finally { raw.close(); }
 });
 
 test("importNewsCandidates no modifica noticias ya aprobadas o publicadas", async () => {
