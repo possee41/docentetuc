@@ -1,0 +1,72 @@
+name: News discovery (disabled)
+on:
+  # Disabled by default. Enable only after authorization and a fixed approved SHA.
+  # schedule: [{ cron: '0 */6 * * *' }]
+  workflow_dispatch:
+    inputs:
+      max_candidates:
+        description: 'Máximo de candidatas nuevas por ejecución'
+        required: false
+        type: string
+        default: '5'
+      dry_run:
+        description: 'Solo listar, sin generar SQL aplicable'
+        required: false
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: news-discovery
+  cancel-in-progress: false
+jobs:
+  discover:
+    if: >-
+      github.repository == 'possee41/docentetuc' &&
+      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/1.2-sync-integration') ||
+       (github.event_name == 'schedule' &&
+        github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+        vars.NEWS_DISCOVERY_ENABLED == 'true'))
+    runs-on: ubuntu-latest
+    environment: news-discovery
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.NEWS_DISCOVERY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify approved revision
+        env:
+          NEWS_REF: ${{ vars.NEWS_DISCOVERY_REF }}
+        run: |
+          [[ "$NEWS_REF" =~ ^[a-f0-9]{40}$ ]] || exit 1
+      - name: Run discovery (dry-run first)
+        env:
+          MAX_CANDIDATES: ${{ inputs.max_candidates || '5' }}
+          DRY_RUN: ${{ inputs.dry_run || 'true' }}
+        run: |
+          set -o pipefail
+          node --experimental-strip-types scripts/news-discovery-run.mjs \
+            --max-candidates="$MAX_CANDIDATES" \
+            --dry-run="$DRY_RUN" \
+            --output=news-discovery-candidates.sql | tee news-discovery-summary.json
+      - name: Record result
+        if: always()
+        run: |
+          node -e "
+            const fs=require('fs');
+            let s={};
+            try { s=JSON.parse(fs.readFileSync('news-discovery-summary.json','utf8')); } catch {}
+            console.log('### News discovery');
+            console.log('- status: ' + (s.dryRun ? 'DRY_RUN' : 'SQL_GENERATED'));
+            console.log('- totalDiscovered: ' + (Number.isSafeInteger(s.totalDiscovered) ? s.totalDiscovered : 'n/a'));
+            console.log('- created: ' + (s.result?.created ?? 'n/a'));
+            console.log('- unchanged: ' + (s.result?.unchanged ?? 'n/a'));
+            for (const f of (s.feeds||[])) console.log('- feed ' + f.feed + ': ' + f.status + ' (discovered=' + f.discovered + ')');
+            console.log('- auto-publish: no');
+            console.log('- notifications: no');
+          " >> "$GITHUB_STEP_SUMMARY"
