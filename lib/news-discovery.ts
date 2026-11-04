@@ -107,8 +107,8 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
 }
 
 export async function importNewsCandidates(database: CommunityDatabase, articles: DiscoveredArticle[], now = new Date(), maxCandidates = 20) {
-  if (articles.length > maxCandidates) throw new Error("NEWS_TOO_MANY_ARTICLES");
-  let created = 0, updated = 0, unchanged = 0;
+  if (articles.length > 100) throw new Error("NEWS_TOO_MANY_ARTICLES");
+  let created = 0, updated = 0, unchanged = 0, skipped = 0;
   const statements: unknown[] = [];
   const stamp = now.toISOString();
 
@@ -124,6 +124,9 @@ export async function importNewsCandidates(database: CommunityDatabase, articles
     if (existing && existing.news_item_id !== itemId) { unchanged++; continue; }
     const item = await database.prepare("SELECT status,editorial_title,updated_at FROM news_items WHERE id=?")
       .bind(itemId).first<{ status: string; editorial_title: string; updated_at: string }>();
+    // Limit new candidates: if we've already created maxCandidates, skip new ones
+    // (already-registered articles are still processed for updates).
+    if (!item && created >= maxCandidates) { skipped++; continue; }
     if (!item) {
       statements.push(database.prepare(`INSERT OR IGNORE INTO news_items(id,status,editorial_title,editorial_summary,topic,relevance,created_at,updated_at)
         VALUES(?,'candidate',?,'',?,'informativa',?,?)`).bind(itemId, article.title, article.feed.topic, stamp, stamp));
@@ -165,5 +168,4 @@ export async function importNewsCandidates(database: CommunityDatabase, articles
       throw error;
     }
   }
-  return { created, updated, unchanged };
-}
+  return { created, updated, unchanged, skipped };}

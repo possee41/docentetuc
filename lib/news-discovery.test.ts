@@ -194,7 +194,7 @@ test("importNewsCandidates rechaza artículos inválidos y no escribe parcialmen
 test("importNewsCandidates rechaza demasiados artículos por ejecución", async () => {
   const { raw, database } = fixture();
   try {
-    const many = Array.from({ length: 51 }, (_, index) => ({
+    const many = Array.from({ length: 101 }, (_, index) => ({
       feed: OFFICIAL_FEED, title: `Título ${index}`, url: `https://www.educaciontuc.gov.ar/item-${index}`,
       publishedAt: now.toISOString(), updatedAt: now.toISOString(), fingerprint: "a".repeat(64),
     }));
