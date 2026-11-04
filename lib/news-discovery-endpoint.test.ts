@@ -88,16 +88,27 @@ test("importNewsCandidates registra auditoría con actor system", async () => {
   } finally { raw.close(); }
 });
 
-test("importNewsCandidates rechaza más de maxCandidates artículos", async () => {
+test("importNewsCandidates limita nuevas candidatas a maxCandidates con 20 articulos y 5 repetidos", async () => {
   const { raw, database } = fixture();
   try {
-    const articles = Array.from({ length: 6 }, (_, i) => ({
+    // Pre-register 5 articles.
+    const knownUrls = Array.from({ length: 5 }, (_, i) => `https://red.infd.edu.ar/known-${i}/`);
+    const knownArticles = knownUrls.map((url, i) => ({
       feed: NEWS_FEEDS.find((f) => f.key === "infod")!,
-      title: `Artículo ${i}`, url: `https://red.infd.edu.ar/art-${i}/`,
-      publishedAt: "2026-11-01T10:00:00.000Z", updatedAt: "2026-11-01T10:00:00.000Z", fingerprint: "d".repeat(64),
+      title: `Conocido ${i}`, url, publishedAt: "2026-11-01T10:00:00.000Z", updatedAt: "2026-11-01T10:00:00.000Z", fingerprint: `${i + 10}`.repeat(64).slice(0, 64),
     }));
-    await assert.rejects(importNewsCandidates(database, articles, now, 5), /NEWS_TOO_MANY_ARTICLES/);
-    assert.equal((raw.prepare("SELECT COUNT(*) AS c FROM news_items").get() as { c: number }).c, 0);
+    await importNewsCandidates(database, knownArticles, now, 5);
+    assert.equal((raw.prepare("SELECT COUNT(*) AS c FROM news_items").get() as { c: number }).c, 5);
+    // Now send 20 articles: 5 known + 15 new.
+    const newUrls = Array.from({ length: 15 }, (_, i) => `https://red.infd.edu.ar/new-${i}/`);
+    const allArticles = [
+      ...knownUrls.map((url, i) => ({ feed: NEWS_FEEDS.find((f) => f.key === "infod")!, title: `Conocido ${i}`, url, publishedAt: "2026-11-01T10:00:00.000Z", updatedAt: "2026-11-01T10:00:00.000Z", fingerprint: `${i + 10}`.repeat(64).slice(0, 64) })),
+      ...newUrls.map((url, i) => ({ feed: NEWS_FEEDS.find((f) => f.key === "infod")!, title: `Nuevo ${i}`, url, publishedAt: "2026-11-01T10:00:00.000Z", updatedAt: "2026-11-01T10:00:00.000Z", fingerprint: `${i + 30}`.repeat(64).slice(0, 64) })),
+    ];
+    const result = await importNewsCandidates(database, allArticles, now, 5);
+    assert.equal(result.created, 5);
+    assert.equal(result.skipped, 10);
+    assert.equal((raw.prepare("SELECT COUNT(*) AS c FROM news_items").get() as { c: number }).c, 10);
   } finally { raw.close(); }
 });
 
@@ -121,12 +132,17 @@ test("fetchNewsFeed rechaza hosts privados y URLs inseguras", async () => {
   assert.ok(isPrivateOrLoopbackHost("10.0.0.1"));
 });
 
-test("feeds no autorizados no existen en NEWS_FEEDS", () => {
-  const keys = NEWS_FEEDS.map((f) => f.key);
-  for (const unauthorized of ["evil-feed", "custom", "rss-custom", ""]) {
-    assert.ok(!(keys as string[]).includes(unauthorized), `${unauthorized} should not be authorized`);
+test("el piloto solo permite INFoD", () => {
+  const pilotAllowed = ["infod"];
+  const selected = NEWS_FEEDS.filter((f) => pilotAllowed.includes(f.key));
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].key, "infod");
+  for (const key of ["ministry", "atep"]) {
+    const filtered = NEWS_FEEDS.filter((f) => [key].includes(f.key) && pilotAllowed.includes(f.key));
+    assert.equal(filtered.length, 0, `${key} should not be allowed in pilot`);
   }
 });
+
 
 test("fallo en batch no deja registros huérfanos ni auditorías falsas", async () => {
   const { raw, database } = fixture();
