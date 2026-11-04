@@ -22,7 +22,8 @@ export async function POST(request: Request) {
   catch { return Response.json({ error: "Esquema de noticias no disponible." }, { status: 503, headers: { "Cache-Control": "no-store" } }); }
 
   const body = await request.json().catch(() => ({})) as { maxCandidates?: number; feeds?: string[] };
-  const maxCandidates = Math.min(20, Math.max(1, Number(body.maxCandidates) || 5));
+  const rawMax = Number(body.maxCandidates);
+  const maxCandidates = Math.min(20, Math.max(1, Number.isFinite(rawMax) ? rawMax : 5));
   const feedsFilter = Array.isArray(body.feeds) ? body.feeds.filter((f) => typeof f === "string") : null;
   const selectedFeeds = feedsFilter
     ? NEWS_FEEDS.filter((f) => feedsFilter.includes(f.key))
