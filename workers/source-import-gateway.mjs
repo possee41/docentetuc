@@ -4,6 +4,7 @@ import sime from "./sime-receiver.mjs";
 import publicSources from "./public-source-receiver.mjs";
 import juntasCheckpoint from "./juntas-checkpoint-gateway.mjs";
 import { fdciCheckpoint } from "./fdci-checkpoint.mjs";
+import { automationRequest } from "./fdci-automation.mjs";
 
 const routes = new Map([
   ["/api/internal/fdci-import", ["FDCI_IMPORT_SECRET", fdci]],
@@ -96,6 +97,9 @@ async function handleLease(request, env) {
   const secretName = typeof source === "string" && Object.hasOwn(paths, source) ? routes.get(paths[source])[0] : null;
   if (!secretName || (action !== "open" && action !== "close")) return reply(400, "GATE_REQUEST_INVALID");
   if (!validOwner(owner)) return reply(400, "GATE_OWNER_INVALID");
+  if (source === "fdci" && action === "open" &&
+      payload.ttlSeconds !== undefined && (!Number.isInteger(payload.ttlSeconds) || payload.ttlSeconds < 60 || payload.ttlSeconds > 600))
+    return reply(400, "FDCI_TTL_INVALID");
   if (env.IMPORT_GATE_ALLOWED_SOURCE && env.IMPORT_GATE_ALLOWED_SOURCE !== source) return reply(503, "IMPORT_DISABLED");
   if (!await authorized(request.headers.get("authorization"), env[secretName])) return reply(401, "UNAUTHORIZED");
   const expected = { name: env.IMPORT_DATABASE_NAME, id: env.IMPORT_DATABASE_ID };
@@ -136,6 +140,8 @@ async function handleLease(request, env) {
 
 const gateway = { async fetch(request, env) {
   const url = new URL(request.url);
+  if (url.pathname.startsWith("/api/internal/fdci-automation/"))
+    return automationRequest(request, env, authorized, (next, scopedEnv) => gateway.fetch(next, scopedEnv));
   if (url.pathname === GATE_PATH) return handleLease(request, env);
   const identityRequest = url.pathname === "/api/internal/import-identity" && request.method === "GET";
   if (url.search && url.pathname !== "/api/internal/sime-import" && !identityRequest) return reply(404, "NOT_FOUND");
