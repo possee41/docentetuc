@@ -49,7 +49,7 @@ async function authorized(header, secret) {
   return difference === 0;
 }
 
-function valid(item) {
+export function validFdciPrepared(item) {
   if (!item || typeof item !== "object" || Array.isArray(item)) return false;
   if (!/^fdci:(?:course|commission):[A-Za-z0-9_-]{1,80}$/.test(item.id) ||
       textFields.some(([key, max]) => !text(item[key], max)) ||
@@ -141,7 +141,7 @@ export async function receiveAuthenticatedFdci(request, env) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return reply({ error: "Operación inválida." }, 400);
   try {
     const items = payload.items;
-    if (payload.mode !== "batch" || !Array.isArray(items) || items.length < 1 || items.length > MAX_ITEMS || !items.every(valid) ||
+    if (payload.mode !== "batch" || !Array.isArray(items) || items.length < 1 || items.length > MAX_ITEMS || !items.every(validFdciPrepared) ||
         new Set(items.map((item) => item.id)).size !== items.length) return reply({ error: "Lote inválido." }, 400);
     const owner = env.IMPORT_GATE_LEASE_REQUIRED === "true" ? request.headers.get("x-import-gate-owner") : null;
     if (env.IMPORT_GATE_LEASE_REQUIRED === "true" && (!owner || !/^[A-Za-z0-9_:-]{1,100}$/.test(owner))) return reply({ error: "GATE_OWNER_INVALID" }, 409);

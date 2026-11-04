@@ -2,7 +2,7 @@
 const prefix = "/api/internal/fdci-automation/";
 const reply = (status, error) => Response.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
 const live = row => row && Date.parse(row.lease_until) > Date.now();
-const operations = new Set(["identity", "start", "close", "finish", "import", "checkpoint"]);
+const operations = new Set(["identity", "start", "close", "finish", "import", "checkpoint", "delta"]);
 
 export async function suspendAutomation(db, owner, reason) {
   await db.batch([
@@ -19,6 +19,7 @@ export async function automationRequest(request, env, authorized, delegate) {
       env.FDCI_AUTOMATION_SECRET === env.FDCI_IMPORT_SECRET ||
       env.IMPORT_GATE_ALLOWED_SOURCE !== "fdci") return reply(503, "AUTOMATION_DISABLED");
   const url = new URL(request.url), op = url.pathname.slice(prefix.length);
+  if (op === "delta" && env.FDCI_DELTA_ENABLED !== "true") return reply(503, "DELTA_DISABLED");
   if (!operations.has(op) || url.search || request.method !== (op === "identity" ? "GET" : "POST"))
     return reply(404, "AUTOMATION_OPERATION_FORBIDDEN");
   if (!await authorized(request.headers.get("authorization"), env.FDCI_AUTOMATION_SECRET)) return reply(401, "UNAUTHORIZED");
@@ -109,7 +110,8 @@ export async function automationRequest(request, env, authorized, delegate) {
         AND julianday(lease_until)>julianday('now')`).bind(owner).run();
       if (Number(quota.meta?.changes) !== 1) { await suspendAutomation(env.DB, owner, "PUBLICATION_LIMIT"); return reply(409, "PUBLICATION_LIMIT"); }
     }
-    const response = await forward(op === "import" ? "/api/internal/fdci-import" : "/api/internal/fdci-checkpoint", body);
+    const response = await forward(op === "import" ? "/api/internal/fdci-import" :
+      op === "delta" ? "/api/internal/fdci-delta" : "/api/internal/fdci-checkpoint", body);
     if (!response.ok) await suspendAutomation(env.DB, owner, "GATEWAY_HTTP_ERROR");
     return response;
   } catch {

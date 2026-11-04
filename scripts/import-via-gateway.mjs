@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { runIncrementalFdci } from "./fdci-incremental.mjs";
+import { runDeltaFdci } from "./fdci-delta.mjs";
 import { runSimeImport, parseSimeOptions } from "./import-sime.mjs";
 import { runPublicSourceImport } from "./import-public-sources.mjs";
 import { runJuntasCheckpoint } from "./import-juntas-checkpoint.mjs";
@@ -74,7 +75,8 @@ export async function runGatewayImport(target, config, sourceFetch = fetch, rece
       return sourceFetch(url, { ...init, redirect: "error" });
     };
     try {
-      return { ...await runIncrementalFdci(target, safety, fetcher), sourceRequests: requests, elapsedMs: Date.now() - started };
+      return { ...await (config.FDCI_DELTA_ENABLED === "true" ? runDeltaFdci : runIncrementalFdci)(target, safety, fetcher),
+        sourceRequests: requests, elapsedMs: Date.now() - started };
     } catch (error) {
       error.result = { ...error.result, sourceRequests: requests, elapsedMs: Date.now() - started };
       throw error;
@@ -115,6 +117,8 @@ export function safeImportError(error) {
   const result = {};
   for (const key of ["discovered", "created", "updated", "unchanged", "rejected", "skipped", "deferred", "uncertain", "batches", "sourceRequests", "elapsedMs"])
     result[key] = Number.isSafeInteger(error?.result?.[key]) && error.result[key] >= 0 ? error.result[key] : 0;
+  for (const key of ["queued", "pending", "processed", "confirmedFromD1"])
+    if (Number.isSafeInteger(error?.result?.[key]) && error.result[key] >= 0) result[key] = error.result[key];
   const sourceErrors = {};
   for (const key of ["orphanActive", "missingTokenOrSlug", "timeoutOrNetwork", "invalidJson", "schema", "other", "activeDetailFailures", "requestLimit"])
     if (Number.isSafeInteger(error?.diagnostics?.[key]) && error.diagnostics[key] > 0) sourceErrors[key] = error.diagnostics[key];

@@ -35,7 +35,8 @@ export async function runFdciAutomation(config, revision, sourceFetch = fetch, g
     if (!/^\d{1,20}-1$/.test(owner)) throw new Error("AUTOMATION_OWNER_INVALID");
     const transport = async (url, init = {}) => {
       const path = new URL(url).pathname;
-      const paths = { "/api/internal/import-identity": "identity", "/api/internal/fdci-import": "import", "/api/internal/fdci-checkpoint": "checkpoint" };
+      const paths = { "/api/internal/import-identity": "identity", "/api/internal/fdci-import": "import", "/api/internal/fdci-checkpoint": "checkpoint",
+        "/api/internal/fdci-delta": "delta" };
       let op = paths[path];
       if (path === "/api/internal/import-gate") {
         op = JSON.parse(init.body).action === "open" ? "start" : "close";

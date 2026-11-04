@@ -5,10 +5,12 @@ import publicSources from "./public-source-receiver.mjs";
 import juntasCheckpoint from "./juntas-checkpoint-gateway.mjs";
 import { fdciCheckpoint } from "./fdci-checkpoint.mjs";
 import { automationRequest } from "./fdci-automation.mjs";
+import { fdciDelta } from "./fdci-delta.mjs";
 
 const routes = new Map([
   ["/api/internal/fdci-import", ["FDCI_IMPORT_SECRET", fdci]],
   ["/api/internal/fdci-checkpoint", ["FDCI_IMPORT_SECRET", null]],
+  ["/api/internal/fdci-delta", ["FDCI_IMPORT_SECRET", null]],
   ["/api/internal/sime-import", ["SIME_IMPORT_SECRET", sime]],
   ["/api/internal/public-source-import/juntas", ["JUNTAS_IMPORT_SECRET", publicSources]],
   ["/api/internal/juntas-checkpoint", ["JUNTAS_IMPORT_SECRET", juntasCheckpoint]],
@@ -47,9 +49,9 @@ const leaseMode = (env) => env.IMPORT_GATE_LEASE_REQUIRED === "true";
 const configured = (env) => Boolean(env.DB && env.IMPORT_DATABASE_NAME && env.IMPORT_DATABASE_ID);
 const validOwner = (value) => typeof value === "string" && /^[A-Za-z0-9_:-]{1,100}$/.test(value);
 
-async function leaseBody(request) {
+async function leaseBody(request, maxBytes = 1024) {
   if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) return { error: reply(415, "GATE_JSON_REQUIRED") };
-  if (Number(request.headers.get("content-length") || 0) > 1024) return { error: reply(413, "GATE_REQUEST_TOO_LARGE") };
+  if (Number(request.headers.get("content-length") || 0) > maxBytes) return { error: reply(413, "GATE_REQUEST_TOO_LARGE") };
   const reader = request.body?.getReader();
   if (!reader) return { error: reply(400, "GATE_REQUEST_INVALID") };
   let body = "", size = 0;
@@ -59,7 +61,7 @@ async function leaseBody(request) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > 1024) { await reader.cancel(); return { error: reply(413, "GATE_REQUEST_TOO_LARGE") }; }
+      if (size > maxBytes) { await reader.cancel(); return { error: reply(413, "GATE_REQUEST_TOO_LARGE") }; }
       body += decoder.decode(value, { stream: true });
     }
     return { payload: JSON.parse(body + decoder.decode()) };
@@ -140,6 +142,7 @@ async function handleLease(request, env) {
 
 const gateway = { async fetch(request, env) {
   const url = new URL(request.url);
+  if (url.pathname === "/api/internal/fdci-delta" && env.FDCI_DELTA_ENABLED !== "true") return reply(503, "DELTA_DISABLED");
   if (url.pathname.startsWith("/api/internal/fdci-automation/"))
     return automationRequest(request, env, authorized, (next, scopedEnv) => gateway.fetch(next, scopedEnv));
   if (url.pathname === GATE_PATH) return handleLease(request, env);
@@ -154,7 +157,7 @@ const gateway = { async fetch(request, env) {
   if (env.IMPORT_GATE_ENABLED !== "true" && !leaseMode(env)) return reply(503, "IMPORT_DISABLED");
   const requestedSource = identityRequest ? url.searchParams.get("source") :
     url.pathname === "/api/internal/juntas-checkpoint" ? "juntas" :
-    url.pathname === "/api/internal/fdci-checkpoint" ? "fdci" : sourceByPath.get(url.pathname);
+    ["/api/internal/fdci-checkpoint", "/api/internal/fdci-delta"].includes(url.pathname) ? "fdci" : sourceByPath.get(url.pathname);
   if (env.IMPORT_GATE_ALLOWED_SOURCE && env.IMPORT_GATE_ALLOWED_SOURCE !== requestedSource)
     return reply(503, "IMPORT_DISABLED");
   const [secretName, receiver] = route;
@@ -170,6 +173,12 @@ const gateway = { async fetch(request, env) {
     if (!leaseValid(lease, requestedSource)) return reply(503, "IMPORT_DISABLED");
     owner = request.headers.get("x-import-gate-owner");
     if (!validOwner(owner) || lease.opened_by !== owner) return reply(409, "GATE_OWNER_MISMATCH");
+  }
+  if (url.pathname === "/api/internal/fdci-delta") {
+    if (!leaseMode(env)) return reply(503, "IMPORT_DISABLED");
+    if (request.method !== "POST") return reply(405, "METHOD_NOT_ALLOWED");
+    const parsed = await leaseBody(request, 150_000);
+    return parsed.error || fdciDelta(parsed.payload, env.DB, owner);
   }
   if (url.pathname === "/api/internal/fdci-checkpoint") {
     if (!leaseMode(env)) return reply(503, "IMPORT_DISABLED");
