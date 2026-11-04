@@ -73,6 +73,8 @@ export async function fetchNewsFeed(feed: Feed, fetcher: typeof fetch = fetch, n
   if (contentType && !/xml|rss|atom|text\/plain/i.test(contentType)) throw new Error("NEWS_FEED_CONTENT_TYPE_INVALID");
   const reader = response.body?.getReader();
   if (!reader) {
+    const contentLength = Number(response.headers.get("content-length") || 0);
+    if (Number.isFinite(contentLength) && contentLength > NEWS_FEED_MAX_BYTES) throw new Error("NEWS_FEED_TOO_LARGE");
     const xml = await response.text();
     if (xml.length > NEWS_FEED_MAX_BYTES) throw new Error("NEWS_FEED_TOO_LARGE");
     return parseNewsFeed(xml, feed, now);

@@ -110,6 +110,10 @@ test("fetchNewsFeed cancela la lectura cuando el cuerpo supera 300 KB", async ()
   await assert.rejects(fetchNewsFeed(OFFICIAL_FEED, huge, now), /NEWS_FEED_TOO_LARGE/);
 });
 
+test("fetchNewsFeed rechaza respuestas con content-length excesivo aunque no haya stream", async () => {
+  const noStream = async () => new Response(null, { status: 200, headers: { "content-type": "application/xml", "content-length": String(NEWS_FEED_MAX_BYTES + 1) } });
+  await assert.rejects(fetchNewsFeed(OFFICIAL_FEED, noStream, now), /NEWS_FEED_TOO_LARGE/);
+});
 test("fetchNewsFeed rechaza hosts privados en la URL del feed", async () => {
   const privateFeed = { ...OFFICIAL_FEED, url: "https://127.0.0.1/feed/", host: "127.0.0.1" } as unknown as Feed;
   await assert.rejects(fetchNewsFeed(privateFeed, async () => new Response(RSS_FIXTURE, { status: 200 }), now), /NEWS_FEED_HOST_BLOCKED/);
