@@ -10,6 +10,7 @@ export const NEWS_FEEDS = [
 
 export type Feed = typeof NEWS_FEEDS[number];
 export type DiscoveredArticle = { feed: Feed; title: string; url: string; publishedAt: string; updatedAt: string; fingerprint: string };
+
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const uuid = (text: string) => {
   const h = hash(text);
@@ -108,6 +109,9 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
 export async function importNewsCandidates(database: CommunityDatabase, articles: DiscoveredArticle[], now = new Date(), maxCandidates = 20) {
   if (articles.length > maxCandidates) throw new Error("NEWS_TOO_MANY_ARTICLES");
   let created = 0, updated = 0, unchanged = 0;
+  const statements: unknown[] = [];
+  const stamp = now.toISOString();
+
   for (const article of articles) {
     const url = canonical(article.url, article.feed.host);
     if (!url || !article.title.trim() || article.title.length > 160 || !/^[0-9a-f]{64}$/.test(article.fingerprint))
@@ -118,25 +122,24 @@ export async function importNewsCandidates(database: CommunityDatabase, articles
       .first<{ news_item_id: string }>();
     // A manually curated article may cite this URL; discovery never takes it over.
     if (existing && existing.news_item_id !== itemId) { unchanged++; continue; }
-    const stamp = now.toISOString();
     const item = await database.prepare("SELECT status,editorial_title,updated_at FROM news_items WHERE id=?")
       .bind(itemId).first<{ status: string; editorial_title: string; updated_at: string }>();
     if (!item) {
-      await database.prepare(`INSERT OR IGNORE INTO news_items(id,status,editorial_title,editorial_summary,topic,relevance,created_at,updated_at)
-        VALUES(?,'candidate',?,'',?,'informativa',?,?)`).bind(itemId, article.title, article.feed.topic, stamp, stamp).run();
+      statements.push(database.prepare(`INSERT OR IGNORE INTO news_items(id,status,editorial_title,editorial_summary,topic,relevance,created_at,updated_at)
+        VALUES(?,'candidate',?,'',?,'informativa',?,?)`).bind(itemId, article.title, article.feed.topic, stamp, stamp));
     }
     const source = await database.prepare("SELECT source_title,source_published_at FROM news_sources WHERE id=?")
       .bind(sourceId).first<{ source_title: string; source_published_at: string | null }>();
     const changed = !source || source.source_title !== article.title || source.source_published_at !== article.publishedAt;
     if (!source) {
-      await database.prepare(`INSERT OR IGNORE INTO news_sources(id,news_item_id,source_name,source_title,url,normalized_url,source_type,is_primary,source_published_at)
-        VALUES(?,?,?,?,?,?,?,1,?)`).bind(sourceId, itemId, article.feed.name, article.title, url, url, article.feed.type, article.publishedAt).run();
+      statements.push(database.prepare(`INSERT OR IGNORE INTO news_sources(id,news_item_id,source_name,source_title,url,normalized_url,source_type,is_primary,source_published_at)
+        VALUES(?,?,?,?,?,?,?,1,?)`).bind(sourceId, itemId, article.feed.name, article.title, url, url, article.feed.type, article.publishedAt));
     } else if (changed) {
-      await database.prepare("UPDATE news_sources SET source_title=?,source_published_at=? WHERE id=?")
-        .bind(article.title, article.publishedAt, sourceId).run();
+      statements.push(database.prepare("UPDATE news_sources SET source_title=?,source_published_at=? WHERE id=?")
+        .bind(article.title, article.publishedAt, sourceId));
       if (item?.status === "candidate" && item.editorial_title === source.source_title) {
-        await database.prepare("UPDATE news_items SET editorial_title=?,updated_at=? WHERE id=? AND status='candidate' AND editorial_title=?")
-          .bind(article.title, stamp, itemId, source.source_title).run();
+        statements.push(database.prepare("UPDATE news_items SET editorial_title=?,updated_at=? WHERE id=? AND status='candidate' AND editorial_title=?")
+          .bind(article.title, stamp, itemId, source.source_title));
       }
     }
     const evidence = { feed: article.feed.url, url, publishedAt: article.publishedAt, updatedAt: article.updatedAt,
@@ -146,11 +149,21 @@ export async function importNewsCandidates(database: CommunityDatabase, articles
     const previousDigest = previous ? (JSON.parse(previous.details) as { digest?: string }).digest : null;
     if (previousDigest !== evidence.digest) {
       const eventId = uuid(previous ? `event:update:${itemId}:${evidence.digest}` : `event:create:${itemId}`);
-      await database.prepare(`INSERT OR IGNORE INTO news_events(id,news_item_id,actor_kind,action,previous_status,next_status,details,created_at)
+      statements.push(database.prepare(`INSERT OR IGNORE INTO news_events(id,news_item_id,actor_kind,action,previous_status,next_status,details,created_at)
         VALUES(?,?,'system',?,?,?,?,?)`).bind(eventId, itemId, previous ? "edit" : "create_candidate", previous ? item?.status ?? "candidate" : null, item?.status ?? "candidate",
-          JSON.stringify(evidence), stamp).run();
+          JSON.stringify(evidence), stamp));
     }
     if (!item) created++; else if (changed || previousDigest !== evidence.digest) updated++; else unchanged++;
+  }
+
+  // Execute all writes atomically via batch (single transaction).
+  if (statements.length > 0) {
+    try {
+      await database.batch(statements);
+    } catch (error) {
+      if (error instanceof Error && /UNIQUE|FOREIGN KEY|CHECK constraint/iu.test(error.message)) throw new Error("NEWS_CONFLICT");
+      throw error;
+    }
   }
   return { created, updated, unchanged };
 }

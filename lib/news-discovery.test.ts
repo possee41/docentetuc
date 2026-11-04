@@ -53,16 +53,22 @@ function fixture() {
   raw.exec(`CREATE TABLE "user"(id TEXT PRIMARY KEY); CREATE TABLE publications(id TEXT PRIMARY KEY, removed_at TEXT);`);
   raw.exec(readFileSync(new URL("../migrations/0021_news_editorial.sql", import.meta.url), "utf8"));
   raw.exec(readFileSync(new URL("../migrations/0022_news_media_content.sql", import.meta.url), "utf8"));
-  const database = { prepare(sql: string) {
-    return { bind(...values: unknown[]) {
-      const args = values as (string | number | null)[];
-      return { first: async <T>() => raw.prepare(sql).get(...args) as T | null,
-        all: async <T>() => ({ results: raw.prepare(sql).all(...args) as T[] }),
-        run: async () => raw.prepare(sql).run(...args) };
+  const database = {
+    prepare(sql: string) {
+      return { bind(...values: unknown[]) {
+        const args = values as (string | number | null)[];
+        return { first: async <T>() => raw.prepare(sql).get(...args) as T | null,
+          all: async <T>() => ({ results: raw.prepare(sql).all(...args) as T[] }),
+          run: async () => raw.prepare(sql).run(...args),
+          runSync: () => raw.prepare(sql).run(...args) };
+      } };
     },
-    batch: async (statements: unknown[]) => statements.map(() => ({ meta: { changes: 1, rows_read: 0, rows_written: 1 } })),
-    };
-  } } as unknown as CommunityDatabase;
+    async batch(statements: unknown[]) {
+      raw.exec('BEGIN');
+      try { const result = statements.map((statement) => (statement as { runSync(): { meta: { changes: number } } }).runSync()); raw.exec('COMMIT'); return result; }
+      catch (error) { raw.exec('ROLLBACK'); throw error; }
+    },
+  } as unknown as CommunityDatabase;
   return { raw, database };
 }
 
