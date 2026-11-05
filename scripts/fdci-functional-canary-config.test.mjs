@@ -27,7 +27,7 @@ test("both runner guards admit only the exact exclusive FDCI hostname and target
   assert.throws(() => resolveGatewayConfig({ ...base, IMPORT_GATEWAY_DATABASE_ID: "baaf5886-0123-4948-96da-aa7106424549" }), /GATEWAY_TARGET_FORBIDDEN/);
 });
 
-test("exclusive canary template is closed, has one unresolved exclusive DB and no inherited bindings", () => {
+test("exclusive canary config is closed, has only the authorized exclusive DB and no inherited bindings", () => {
   const config = JSON.parse(readFileSync(new URL("../wrangler.1.2-fdci-functional-canary.jsonc", import.meta.url), "utf8"));
   assert.equal(config.name, name);
   assert.equal(config.account_id, "6bbc3dae7e111660f0c835677ceffb69");
@@ -35,13 +35,13 @@ test("exclusive canary template is closed, has one unresolved exclusive DB and n
   assert.deepEqual(Object.keys(config).sort(), ["name", "account_id", "main", "compatibility_date", "workers_dev", "preview_urls", "routes", "triggers", "vars", "d1_databases", "observability"].sort());
   assert.equal(config.workers_dev, false); assert.equal(config.preview_urls, false);
   assert.deepEqual(config.routes, []); assert.deepEqual(config.triggers, { crons: [] });
-  assert.deepEqual(config.vars, { IMPORT_DATABASE_NAME: name, IMPORT_DATABASE_ID: "REPLACE_WITH_NEW_EXCLUSIVE_CANARY_UUID",
+  assert.deepEqual(config.vars, { IMPORT_DATABASE_NAME: name, IMPORT_DATABASE_ID: "3e84a257-cbac-4023-a0a3-148a3441dd62",
     IMPORT_GATE_ENABLED: "false", IMPORT_GATE_LEASE_REQUIRED: "false", IMPORT_GATE_ALLOWED_SOURCE: "fdci",
     FDCI_EXTERNAL_ENABLED: "false", FDCI_AUTOMATION_ENABLED: "false", FDCI_DELTA_ENABLED: "false" });
   assert.deepEqual(config.d1_databases, [{ binding: "DB", database_name: name, database_id: config.vars.IMPORT_DATABASE_ID }]);
   assert.deepEqual(config.observability, { enabled: true, head_sampling_rate: 1,
     logs: { enabled: true, invocation_logs: true, head_sampling_rate: 1, persist: true } });
-  assert.throws(() => resolveGatewayConfig({ ...base, IMPORT_GATEWAY_DATABASE_ID: config.vars.IMPORT_DATABASE_ID }), /GATEWAY_CONFIG_INVALID/);
+  assert.equal(resolveGatewayConfig({ ...base, IMPORT_GATEWAY_DATABASE_ID: config.vars.IMPORT_DATABASE_ID }).id, config.vars.IMPORT_DATABASE_ID);
 });
 
 test("ten required migrations create exclusive delta schema closed and empty without reminder/AI migration", t => {

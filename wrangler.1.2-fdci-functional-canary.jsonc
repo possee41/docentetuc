@@ -9,7 +9,7 @@
   "triggers": { "crons": [] },
   "vars": {
     "IMPORT_DATABASE_NAME": "docentetuc-fdci-functional-canary-1-2",
-    "IMPORT_DATABASE_ID": "REPLACE_WITH_NEW_EXCLUSIVE_CANARY_UUID",
+    "IMPORT_DATABASE_ID": "3e84a257-cbac-4023-a0a3-148a3441dd62",
     "IMPORT_GATE_ENABLED": "false",
     "IMPORT_GATE_LEASE_REQUIRED": "false",
     "IMPORT_GATE_ALLOWED_SOURCE": "fdci",
@@ -20,7 +20,7 @@
   "d1_databases": [{
     "binding": "DB",
     "database_name": "docentetuc-fdci-functional-canary-1-2",
-    "database_id": "REPLACE_WITH_NEW_EXCLUSIVE_CANARY_UUID"
+    "database_id": "3e84a257-cbac-4023-a0a3-148a3441dd62"
   }],
   "observability": {
     "enabled": true,
