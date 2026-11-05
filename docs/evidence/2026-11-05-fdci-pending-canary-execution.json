@@ -1,0 +1,324 @@
+{
+  "scope": "Single authorized finite FDCI canary execution; no production",
+  "approvedSha": "1803d153051be0621f454890e0ba9791a95a512b",
+  "worker": "docentetuc-fdci-functional-canary-1-2",
+  "databaseId": "3e84a257-cbac-4023-a0a3-148a3441dd62",
+  "verdict": "NO APTO",
+  "reason": "SNAPSHOT_INDIVIDUAL_CPU_8_MS_EXCEEDS_7_MS",
+  "backup": {
+    "at": "2026-11-05T12:01:34.470Z",
+    "path": ".wrangler/fdci-pending-backup/before.sql",
+    "bytes": 12272,
+    "sha256": "c56a3987461ab938af85fc3820f81e0eaa40b57db9cb8e018a228a1b8a0bc1f4",
+    "integrity": "ok"
+  },
+  "optimizedClosed": {
+    "at": "2026-11-05T12:01:54.769Z",
+    "version": "990ca9fc-45f7-4a53-a767-e8cab38bc3e4",
+    "deployment": "e80cf6e7-5f2c-4aa5-adac-90a4b2a6d78e",
+    "exposure": {
+      "enabled": false,
+      "previews_enabled": false
+    }
+  },
+  "live": {
+    "at": "2026-11-05T12:04:35.087Z",
+    "version": "065d8517-3edd-48f5-94db-c7d1c6655e7f",
+    "deployment": "25d9c66a-c8f2-4fac-af33-7d44923f3b81",
+    "owner": "1793880251764-1",
+    "windowUntil": "2026-11-05T12:18:11.764Z"
+  },
+  "invocations": [
+    {
+      "seq": 1,
+      "at": "2026-11-05T12:04:35.088Z",
+      "worker": "docentetuc-fdci-functional-canary-1-2",
+      "version": "065d8517-3edd-48f5-94db-c7d1c6655e7f",
+      "method": "GET",
+      "path": "/api/internal/fdci-automation/identity",
+      "operation": "identity",
+      "attempted": true,
+      "finishedAt": "2026-11-05T12:04:35.588Z",
+      "http": 401,
+      "ray": "a55bb8c72ed65d23-GRU",
+      "clientElapsedMs": 499.11119999999937,
+      "ack": {
+        "error": "UNAUTHORIZED"
+      },
+      "cpu": {
+        "cpuTimeMs": 1,
+        "eventId": "01M6NSHE4S0000000000000002",
+        "http": 401,
+        "outcome": "ok",
+        "path": "/api/internal/fdci-automation/identity",
+        "rayId": "a55bb8c72ed65d23",
+        "requestId": "a2a02fd653606e4a911e65774d545139",
+        "source": "Cloudflare Dashboard live Invocation Log",
+        "truncated": false,
+        "version": "065d8517-3edd-48f5-94db-c7d1c6655e7f",
+        "wallTimeMs": 1,
+        "worker": "docentetuc-fdci-functional-canary-1-2"
+      }
+    },
+    {
+      "seq": 2,
+      "at": "2026-11-05T12:05:03.211Z",
+      "worker": "docentetuc-fdci-functional-canary-1-2",
+      "version": "065d8517-3edd-48f5-94db-c7d1c6655e7f",
+      "method": "GET",
+      "path": "/api/internal/fdci-automation/identity",
+      "operation": "identity",
+      "attempted": true,
+      "finishedAt": "2026-11-05T12:05:03.633Z",
+      "http": 200,
+      "ray": "a55bb974aed53012-EZE",
+      "clientElapsedMs": 422.08439999999246,
+      "ack": {},
+      "cpu": {
+        "cpuTimeMs": 5,
+        "eventId": "01M6NSJ9HN000000000000000E",
+        "http": 200,
+        "outcome": "ok",
+        "path": "/api/internal/fdci-automation/identity",
+        "rayId": "a55bb974aed53012",
+        "requestId": "da60f222bd862c23b2f2a77cda7becd5",
+        "source": "Cloudflare Dashboard Invocation Log",
+        "truncated": false,
+        "version": "065d8517-3edd-48f5-94db-c7d1c6655e7f",
+        "wallTimeMs": 307,
+        "worker": "docentetuc-fdci-functional-canary-1-2"
+      }
+    },
+    {
+      "seq": 3,
+      "at": "2026-11-05T12:06:24.281Z",
+      "worker": "docentetuc-fdci-functional-canary-1-2",
+      "version": "065d8517-3edd-48f5-94db-c7d1c6655e7f",
+      "method": "POST",
+      "path": "/api/internal/fdci-automation/start",
+      "operation": "start",
+      "attempted": true,
+      "finishedAt": "2026-11-05T12:06:24.880Z",
+      "http": 200,
+      "ray": "a55bbb6f5b90ee13-EZE",
+      "clientElapsedMs": 598.5628000000142,
+      "ack": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "1793880251764-1",
+        "expiresAt": "2026-11-05T12:16:24.091Z"
+      },
+      "cpu": {
+        "cpuTimeMs": 4,
+        "eventId": "01M6NSMRWR000000000000000M",
+        "http": 200,
+        "outcome": "ok",
+        "path": "/api/internal/fdci-automation/start",
+        "rayId": "a55bbb6f5b90ee13",
+        "requestId": "cb508510c343a0f19522eda4ca27af96",
+        "source": "Cloudflare Dashboard Invocation Log",
+        "truncated": false,
+        "version": "065d8517-3edd-48f5-94db-c7d1c6655e7f",
+        "wallTimeMs": 502,
+        "worker": "docentetuc-fdci-functional-canary-1-2"
+      }
+    },
+    {
+      "seq": 4,
+      "at": "2026-11-05T12:07:04.073Z",
+      "worker": "docentetuc-fdci-functional-canary-1-2",
+      "version": "065d8517-3edd-48f5-94db-c7d1c6655e7f",
+      "method": "POST",
+      "path": "/api/internal/fdci-automation/delta",
+      "operation": "snapshot",
+      "attempted": true,
+      "finishedAt": "2026-11-05T12:07:05.211Z",
+      "http": 200,
+      "ray": "a55bbc6a18e5287d-GRU",
+      "clientElapsedMs": 1137.415399999998,
+      "ack": {
+        "ok": true,
+        "state": {
+          "revision": 1,
+          "last_staged_id": "fdci:commission:9001",
+          "last_complete_scan_at": null,
+          "detail_after": "",
+          "detail_upper": "",
+          "detail_cycle": 1
+        }
+      },
+      "confirmedCount": 0,
+      "queuedCount": 2,
+      "cpu": {
+        "cpuTimeMs": 8,
+        "eventId": "01M6NSP0880000000000000016",
+        "http": 200,
+        "outcome": "ok",
+        "path": "/api/internal/fdci-automation/delta",
+        "rayId": "a55bbc6a18e5287d",
+        "requestId": "ea80663cfd949640f28b5ba6b4f72581",
+        "source": "Cloudflare Dashboard Invocation Log",
+        "truncated": false,
+        "version": "065d8517-3edd-48f5-94db-c7d1c6655e7f",
+        "wallTimeMs": 711,
+        "worker": "docentetuc-fdci-functional-canary-1-2"
+      }
+    }
+  ],
+  "incident": {
+    "initialClosureError": "API_HTTP_403",
+    "apiError": {
+      "at": "2026-11-05T12:07:33.533Z",
+      "http": 403,
+      "codes": [
+        9109
+      ],
+      "message": [
+        "Invalid access token"
+      ]
+    },
+    "authRecovery": {
+      "at": "2026-11-05T12:08:29.484Z",
+      "accountMatches": true
+    }
+  },
+  "closed": {
+    "at": "2026-11-05T12:08:58.171Z",
+    "version": "2cfee3f5-8b43-4497-841b-9c80bf89718a",
+    "deployment": "f1dbfb4c-0929-4e28-9f9d-0ec431970954",
+    "exposure": {
+      "enabled": false,
+      "previews_enabled": false
+    },
+    "crons": [],
+    "routes": [],
+    "domains": [],
+    "secrets": [],
+    "bindings": [
+      {
+        "name": "DB",
+        "type": "d1"
+      },
+      {
+        "name": "FDCI_AUTOMATION_ENABLED",
+        "type": "plain_text"
+      },
+      {
+        "name": "FDCI_DELTA_ENABLED",
+        "type": "plain_text"
+      },
+      {
+        "name": "FDCI_EXTERNAL_ENABLED",
+        "type": "plain_text"
+      },
+      {
+        "name": "IMPORT_DATABASE_ID",
+        "type": "plain_text"
+      },
+      {
+        "name": "IMPORT_DATABASE_NAME",
+        "type": "plain_text"
+      },
+      {
+        "name": "IMPORT_GATE_ALLOWED_SOURCE",
+        "type": "plain_text"
+      },
+      {
+        "name": "IMPORT_GATE_ENABLED",
+        "type": "plain_text"
+      },
+      {
+        "name": "IMPORT_GATE_LEASE_REQUIRED",
+        "type": "plain_text"
+      }
+    ],
+    "counts": [
+      [
+        {
+          "n": 0
+        }
+      ],
+      [
+        {
+          "status": "HALTED"
+        }
+      ],
+      [
+        {
+          "n": 0
+        }
+      ],
+      [
+        {
+          "n": 2
+        }
+      ],
+      [
+        {
+          "revision": 1,
+          "detail_after": "",
+          "detail_upper": "",
+          "detail_cycle": 1
+        }
+      ],
+      [
+        {
+          "n": 0
+        }
+      ],
+      [
+        {
+          "n": 0
+        }
+      ]
+    ],
+    "otherWorkerMetadataChanges": []
+  },
+  "finalPending": {
+    "at": "2026-11-05T12:10:25.942Z",
+    "unchanged": true,
+    "queue": [
+      {
+        "seq": 1,
+        "id": "fdci:commission:9000",
+        "hash": "a9350ccdc7515f321010418b126765617f88bf68c3320274c4559a36a40a06bd",
+        "version": 1
+      },
+      {
+        "seq": 2,
+        "id": "fdci:commission:9001",
+        "hash": "dec1799f51b0a716591e0a2734b072a1803dde766d6704a3b338e1214a3f4ec4",
+        "version": 1
+      }
+    ],
+    "publications": 0,
+    "publicationAttempts": 0,
+    "activeLeases": 0,
+    "HALTED": true
+  },
+  "d1Analytics": {
+    "at": "2026-11-05T12:10:32.404Z",
+    "http": 200,
+    "window": "2026-11-05T12:00:00Z/2026-11-05T12:59:59Z",
+    "scope": "Entire canary database hour, includes administrative reads and setup/close; not per invocation",
+    "rows": [
+      {
+        "dimensions": {
+          "datetimeHour": "2026-11-05T12:00:00Z"
+        },
+        "sum": {
+          "readQueries": 24,
+          "rowsRead": 153,
+          "rowsWritten": 5,
+          "writeQueries": 5
+        }
+      }
+    ]
+  },
+  "administrativeD1": {
+    "statements": 20,
+    "rowsRead": 20,
+    "rowsWritten": 3,
+    "scope": "Successful direct operator SQL only, excludes gateway usage, backup/export and metadata reads"
+  }
+}
