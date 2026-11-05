@@ -49,9 +49,10 @@ function validateArticle(input: ArticleInput): DiscoveredArticle | null {
 }
 
 export async function POST(request: Request) {
-  const secret = (env as { NEWS_DISCOVERY_SECRET?: string }).NEWS_DISCOVERY_SECRET;
+  const secret = ((env as { NEWS_DISCOVERY_SECRET?: string }).NEWS_DISCOVERY_SECRET
+    || (typeof process !== "undefined" ? process.env?.NEWS_DISCOVERY_SECRET : undefined))?.trim();
   const auth = request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   if (!secret || !token || token !== secret) {
     return Response.json({ error: "No autorizado." }, { status: 401, headers: { "Cache-Control": "no-store" } });
   }
