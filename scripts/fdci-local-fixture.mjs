@@ -21,7 +21,14 @@ export function fdciLocalFixture() {
         const results = statement.all(...args);
         return { results, meta: { rows_read: results.length, rows_written: 0 } };
       },
-      async run() { const result = statement.run(...args); return { meta: { changes: Number(result.changes), rows_written: Number(result.changes), rows_read: 0 } }; },
+      async run() {
+        // D1 batch returns SELECT rows as well as mutation metadata.
+        if (statement.columns().length) {
+          const results = statement.all(...args);
+          return { results, meta: { changes: 0, rows_written: 0, rows_read: results.length } };
+        }
+        const result = statement.run(...args); return { meta: { changes: Number(result.changes), rows_written: Number(result.changes), rows_read: 0 } };
+      },
     };
   };
   const db = { prepare, async batch(statements) {

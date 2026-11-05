@@ -1,0 +1,559 @@
+{
+  "scope": "Local Workerd/CDP sampled active time, not remote CPU or billing",
+  "baseline": "9d39d71",
+  "operation": "snapshot",
+  "count": 40,
+  "rounds": 3,
+  "summary": {
+    "before": {
+      "coldMetrics": {
+        "rpc": 6,
+        "sql": 6,
+        "prepared": 6,
+        "read": 7,
+        "written": 0
+      },
+      "repeatedMetrics": {
+        "rpc": 6,
+        "sql": 6,
+        "prepared": 6,
+        "read": 7,
+        "written": 0
+      },
+      "coldActiveSampledMsMedian": 7.455,
+      "repeatActiveSampledMsPerRequestMedian": 8.375975,
+      "repeatGatewayWallMsMedian": 7.6
+    },
+    "after": {
+      "coldMetrics": {
+        "rpc": 5,
+        "sql": 6,
+        "prepared": 6,
+        "read": 7,
+        "written": 0
+      },
+      "repeatedMetrics": {
+        "rpc": 5,
+        "sql": 6,
+        "prepared": 6,
+        "read": 7,
+        "written": 0
+      },
+      "coldActiveSampledMsMedian": 7.442,
+      "repeatActiveSampledMsPerRequestMedian": 6.901825,
+      "repeatGatewayWallMsMedian": 6.625
+    }
+  },
+  "results": [
+    {
+      "variant": "before",
+      "round": 0,
+      "cold": {
+        "metrics": {
+          "rpc": 6,
+          "sql": 6,
+          "prepared": 6,
+          "read": 7,
+          "written": 0
+        },
+        "sampledCpu": {
+          "activeSampledMs": 13.718,
+          "idleSampledMs": 7.138,
+          "profileWindowMs": 20.934,
+          "samples": 4,
+          "activeSamples": 2,
+          "lowResolution": true,
+          "topSampledFrames": [
+            {
+              "functionName": "reply7",
+              "sampledMs": 10.836
+            },
+            {
+              "functionName": "prepare",
+              "sampledMs": 2.882
+            }
+          ]
+        },
+        "wallMs": 12
+      },
+      "repeat": {
+        "requests": 40,
+        "meanGatewayWallMs": 7.875,
+        "metricsPerRequest": {
+          "rpc": 6,
+          "sql": 6,
+          "prepared": 6,
+          "read": 7,
+          "written": 0
+        },
+        "sampledCpu": {
+          "activeSampledMs": 293.439,
+          "idleSampledMs": 97.247,
+          "profileWindowMs": 390.775,
+          "samples": 34,
+          "activeSamples": 24,
+          "lowResolution": false,
+          "topSampledFrames": [
+            {
+              "functionName": "fetch",
+              "sampledMs": 85.207
+            },
+            {
+              "functionName": "(program)",
+              "sampledMs": 47.423
+            },
+            {
+              "functionName": "TextDecoder",
+              "sampledMs": 34.023
+            },
+            {
+              "functionName": "",
+              "sampledMs": 18.577
+            },
+            {
+              "functionName": "setAttribute",
+              "sampledMs": 17.034
+            },
+            {
+              "functionName": "enterSpan",
+              "sampledMs": 15.494
+            },
+            {
+              "functionName": "Headers",
+              "sampledMs": 15.451
+            },
+            {
+              "functionName": "_send",
+              "sampledMs": 13.954
+            }
+          ]
+        },
+        "activeSampledMsPerRequest": 7.335975
+      },
+      "queueUnchangedOnRepeat": true
+    },
+    {
+      "variant": "after",
+      "round": 0,
+      "cold": {
+        "metrics": {
+          "rpc": 5,
+          "sql": 6,
+          "prepared": 6,
+          "read": 7,
+          "written": 0
+        },
+        "sampledCpu": {
+          "activeSampledMs": 2.781,
+          "idleSampledMs": 14.452,
+          "profileWindowMs": 17.309,
+          "samples": 3,
+          "activeSamples": 1,
+          "lowResolution": true,
+          "topSampledFrames": [
+            {
+              "functionName": "enterSpan",
+              "sampledMs": 2.781
+            }
+          ]
+        },
+        "wallMs": 11
+      },
+      "repeat": {
+        "requests": 40,
+        "meanGatewayWallMs": 6.625,
+        "metricsPerRequest": {
+          "rpc": 5,
+          "sql": 6,
+          "prepared": 6,
+          "read": 7,
+          "written": 0
+        },
+        "sampledCpu": {
+          "activeSampledMs": 276.073,
+          "idleSampledMs": 68.59,
+          "profileWindowMs": 344.732,
+          "samples": 33,
+          "activeSamples": 26,
+          "lowResolution": false,
+          "topSampledFrames": [
+            {
+              "functionName": "(program)",
+              "sampledMs": 51.6
+            },
+            {
+              "functionName": "toJson",
+              "sampledMs": 44.927
+            },
+            {
+              "functionName": "digest",
+              "sampledMs": 37.122
+            },
+            {
+              "functionName": "json",
+              "sampledMs": 30.998
+            },
+            {
+              "functionName": "fetch",
+              "sampledMs": 29.414
+            },
+            {
+              "functionName": "",
+              "sampledMs": 20.165
+            },
+            {
+              "functionName": "withSpan",
+              "sampledMs": 16.968
+            },
+            {
+              "functionName": "read",
+              "sampledMs": 13.927
+            }
+          ]
+        },
+        "activeSampledMsPerRequest": 6.901825
+      },
+      "queueUnchangedOnRepeat": true
+    },
+    {
+      "variant": "after",
+      "round": 1,
+      "cold": {
+        "metrics": {
+          "rpc": 5,
+          "sql": 6,
+          "prepared": 6,
+          "read": 7,
+          "written": 0
+        },
+        "sampledCpu": {
+          "activeSampledMs": 7.442,
+          "idleSampledMs": 8.131,
+          "profileWindowMs": 15.643,
+          "samples": 4,
+          "activeSamples": 2,
+          "lowResolution": true,
+          "topSampledFrames": [
+            {
+              "functionName": "_send",
+              "sampledMs": 4.335
+            },
+            {
+              "functionName": "fetch",
+              "sampledMs": 3.107
+            }
+          ]
+        },
+        "wallMs": 10
+      },
+      "repeat": {
+        "requests": 40,
+        "meanGatewayWallMs": 6.575,
+        "metricsPerRequest": {
+          "rpc": 5,
+          "sql": 6,
+          "prepared": 6,
+          "read": 7,
+          "written": 0
+        },
+        "sampledCpu": {
+          "activeSampledMs": 238.167,
+          "idleSampledMs": 97.575,
+          "profileWindowMs": 335.828,
+          "samples": 24,
+          "activeSamples": 19,
+          "lowResolution": false,
+          "topSampledFrames": [
+            {
+              "functionName": "fetch",
+              "sampledMs": 62.098
+            },
+            {
+              "functionName": "_wrappedFetch",
+              "sampledMs": 41.786
+            },
+            {
+              "functionName": "get",
+              "sampledMs": 31.359
+            },
+            {
+              "functionName": "automationRequest",
+              "sampledMs": 30.664
+            },
+            {
+              "functionName": "measured",
+              "sampledMs": 18.24
+            },
+            {
+              "functionName": "",
+              "sampledMs": 13.932
+            },
+            {
+              "functionName": "text",
+              "sampledMs": 12.254
+            },
+            {
+              "functionName": "set",
+              "sampledMs": 10.812
+            }
+          ]
+        },
+        "activeSampledMsPerRequest": 5.954175
+      },
+      "queueUnchangedOnRepeat": true
+    },
+    {
+      "variant": "before",
+      "round": 1,
+      "cold": {
+        "metrics": {
+          "rpc": 6,
+          "sql": 6,
+          "prepared": 6,
+          "read": 7,
+          "written": 0
+        },
+        "sampledCpu": {
+          "activeSampledMs": 2.739,
+          "idleSampledMs": 14.281,
+          "profileWindowMs": 17.093,
+          "samples": 3,
+          "activeSamples": 1,
+          "lowResolution": true,
+          "topSampledFrames": [
+            {
+              "functionName": "first",
+              "sampledMs": 2.739
+            }
+          ]
+        },
+        "wallMs": 11
+      },
+      "repeat": {
+        "requests": 40,
+        "meanGatewayWallMs": 7.6,
+        "metricsPerRequest": {
+          "rpc": 6,
+          "sql": 6,
+          "prepared": 6,
+          "read": 7,
+          "written": 0
+        },
+        "sampledCpu": {
+          "activeSampledMs": 335.039,
+          "idleSampledMs": 41.485,
+          "profileWindowMs": 376.608,
+          "samples": 33,
+          "activeSamples": 27,
+          "lowResolution": false,
+          "topSampledFrames": [
+            {
+              "functionName": "fetch",
+              "sampledMs": 60.725
+            },
+            {
+              "functionName": "automationRequest",
+              "sampledMs": 46.633
+            },
+            {
+              "functionName": "(program)",
+              "sampledMs": 37.089
+            },
+            {
+              "functionName": "text",
+              "sampledMs": 35.942
+            },
+            {
+              "functionName": "_send",
+              "sampledMs": 35.556
+            },
+            {
+              "functionName": "_sendOrThrow",
+              "sampledMs": 21.922
+            },
+            {
+              "functionName": "_wrappedFetch",
+              "sampledMs": 21.642
+            },
+            {
+              "functionName": "toJson",
+              "sampledMs": 20.095
+            }
+          ]
+        },
+        "activeSampledMsPerRequest": 8.375975
+      },
+      "queueUnchangedOnRepeat": true
+    },
+    {
+      "variant": "before",
+      "round": 2,
+      "cold": {
+        "metrics": {
+          "rpc": 6,
+          "sql": 6,
+          "prepared": 6,
+          "read": 7,
+          "written": 0
+        },
+        "sampledCpu": {
+          "activeSampledMs": 7.455,
+          "idleSampledMs": 9.643,
+          "profileWindowMs": 17.175,
+          "samples": 4,
+          "activeSamples": 2,
+          "lowResolution": true,
+          "topSampledFrames": [
+            {
+              "functionName": "read",
+              "sampledMs": 4.294
+            },
+            {
+              "functionName": "fetch",
+              "sampledMs": 3.161
+            }
+          ]
+        },
+        "wallMs": 11
+      },
+      "repeat": {
+        "requests": 40,
+        "meanGatewayWallMs": 7.5,
+        "metricsPerRequest": {
+          "rpc": 6,
+          "sql": 6,
+          "prepared": 6,
+          "read": 7,
+          "written": 0
+        },
+        "sampledCpu": {
+          "activeSampledMs": 348.131,
+          "idleSampledMs": 25.648,
+          "profileWindowMs": 373.861,
+          "samples": 47,
+          "activeSamples": 42,
+          "lowResolution": false,
+          "topSampledFrames": [
+            {
+              "functionName": "fetch",
+              "sampledMs": 97.999
+            },
+            {
+              "functionName": "Headers",
+              "sampledMs": 46.385
+            },
+            {
+              "functionName": "Request",
+              "sampledMs": 29.524
+            },
+            {
+              "functionName": "text",
+              "sampledMs": 27.89
+            },
+            {
+              "functionName": "",
+              "sampledMs": 27.814
+            },
+            {
+              "functionName": "leaseBody",
+              "sampledMs": 23.279
+            },
+            {
+              "functionName": "_send",
+              "sampledMs": 18.423
+            },
+            {
+              "functionName": "automationRequest",
+              "sampledMs": 17.089
+            }
+          ]
+        },
+        "activeSampledMsPerRequest": 8.703275
+      },
+      "queueUnchangedOnRepeat": true
+    },
+    {
+      "variant": "after",
+      "round": 2,
+      "cold": {
+        "metrics": {
+          "rpc": 5,
+          "sql": 6,
+          "prepared": 6,
+          "read": 7,
+          "written": 0
+        },
+        "sampledCpu": {
+          "activeSampledMs": 8.44,
+          "idleSampledMs": 8.301,
+          "profileWindowMs": 16.829,
+          "samples": 3,
+          "activeSamples": 1,
+          "lowResolution": true,
+          "topSampledFrames": [
+            {
+              "functionName": "bind",
+              "sampledMs": 8.44
+            }
+          ]
+        },
+        "wallMs": 11
+      },
+      "repeat": {
+        "requests": 40,
+        "meanGatewayWallMs": 6.775,
+        "metricsPerRequest": {
+          "rpc": 5,
+          "sql": 6,
+          "prepared": 6,
+          "read": 7,
+          "written": 0
+        },
+        "sampledCpu": {
+          "activeSampledMs": 329.382,
+          "idleSampledMs": 24.808,
+          "profileWindowMs": 354.281,
+          "samples": 26,
+          "activeSamples": 22,
+          "lowResolution": false,
+          "topSampledFrames": [
+            {
+              "functionName": "batch",
+              "sampledMs": 61.186
+            },
+            {
+              "functionName": "fetch",
+              "sampledMs": 52.392
+            },
+            {
+              "functionName": "",
+              "sampledMs": 44.041
+            },
+            {
+              "functionName": "(garbage collector)",
+              "sampledMs": 43.957
+            },
+            {
+              "functionName": "_wrappedFetch",
+              "sampledMs": 43.72
+            },
+            {
+              "functionName": "(program)",
+              "sampledMs": 33.969
+            },
+            {
+              "functionName": "forward",
+              "sampledMs": 15.641
+            },
+            {
+              "functionName": "text",
+              "sampledMs": 10.747
+            }
+          ]
+        },
+        "activeSampledMsPerRequest": 8.23455
+      },
+      "queueUnchangedOnRepeat": true
+    }
+  ]
+}

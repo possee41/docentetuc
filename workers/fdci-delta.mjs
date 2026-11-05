@@ -5,11 +5,12 @@ const validId = id => typeof id === "string" && /^fdci:commission:[1-9]\d{0,11}$
 const live = `EXISTS(SELECT 1 FROM import_gate_lease WHERE id=1 AND source='fdci'
   AND opened_by=? AND julianday(expires_at)>julianday('now'))`;
 const reply = (value, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
+const stateSql = "SELECT revision,last_staged_id,last_complete_scan_at,detail_after,detail_upper,detail_cycle FROM fdci_delta_state WHERE id=1";
 
 export async function fdciDelta(body, db, owner) {
   if (!body || typeof body !== "object") return reply({ error: "DELTA_INVALID" }, 400);
   try {
-    const state = () => db.prepare("SELECT revision,last_staged_id,last_complete_scan_at,detail_after,detail_upper,detail_cycle FROM fdci_delta_state WHERE id=1").first();
+    const state = () => db.prepare(stateSql).first();
     if (body.op === "state") return reply({ ok: true, state: await state() });
     if (body.op === "snapshot") {
       for (const key of ["after", "queuedAfter"])
@@ -17,9 +18,15 @@ export async function fdciDelta(body, db, owner) {
           return reply({ error: "DELTA_INVALID" }, 400);
       // Every page carries the revision observed BEFORE its reads. Subsequent CAS
       // rejects mutations if another scan changed it; no extra final state request.
-      const current = await state();
-      const queued = body.queuedAfter === null ? [] : (await db.prepare(`SELECT seq,publication_id AS id,content_hash
-        FROM fdci_delta_queue WHERE publication_id>? ORDER BY publication_id LIMIT 201`).bind(body.queuedAfter).all()).results;
+      // Read state first and queue second in one transaction/RPC. Do not fetch
+      // extra confirmed rows to guess the remaining response budget.
+      let current, queued = [];
+      if (body.queuedAfter === null) current = await state();
+      else {
+        const [s, q] = await db.batch([db.prepare(stateSql), db.prepare(`SELECT seq,publication_id AS id,content_hash
+          FROM fdci_delta_queue WHERE publication_id>? ORDER BY publication_id LIMIT 201`).bind(body.queuedAfter)]);
+        current = s.results[0] ?? null; queued = q.results;
+      }
       // Preserve the old 200-hash response ceiling across BOTH lists, rather
       // than doubling serialization work when the queue is large.
       const limit = 200 - Math.min(queued.length, 200);

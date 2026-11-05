@@ -1,4 +1,4 @@
-// Local-only reproduction of the two-candidate canary stage, with sampled Workerd CPU.
+// Local-only reproduction of the two-candidate canary stage/snapshot, with sampled Workerd CPU.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
@@ -11,6 +11,7 @@ const { Miniflare } = require("../node_modules/.pnpm/miniflare@4.20260515.0/node
 const { build } = require("../node_modules/.pnpm/esbuild@0.28.2/node_modules/esbuild");
 const baseline = process.argv.find(x => x.startsWith("--baseline="))?.split("=")[1] || "47707e6";
 assert.match(baseline, /^[a-f0-9]{7,40}$/);
+const snapshot = process.argv.includes("--snapshot");
 const count = 40, rounds = 3, secret = "synthetic_stage_profile_secret_1234567890", sha = "a".repeat(40), owner = "100-1";
 const items = await prepareFdciImports([{ capacitacion_id: 100, nombre: "Canary FDCI sintético — NO OFICIAL", token: "synthetic", slug: "synthetic" }],
   [9000, 9001].map((id, i) => ({ id, capacitacion_id: 100, cupo: 21 + i,
@@ -58,13 +59,17 @@ for (let round = 0; round < rounds; round++) for (const variant of round % 2 ? [
       db.prepare("UPDATE fdci_automation_control SET status='RUNNING',owner='100-1',approved_sha=?,not_before=?,not_after=?,lease_until=? WHERE id=1")
         .bind(sha, new Date(from).toISOString(), until, until),
     ]);
+    if(snapshot) {
+      for(const item of items) await db.prepare("INSERT INTO fdci_delta_queue(publication_id,content_hash,payload,version) VALUES(?,?,?,1)").bind(item.id,item.contentHash,JSON.stringify(item)).run();
+      await db.prepare("UPDATE fdci_delta_state SET revision=1 WHERE id=1").run();
+    }
     profiler = await connectWorkerdCpuProfiler(await mf.getInspectorURL());
     let revision = 0;
     const stage = async () => {
       const r = await mf.dispatchFetch("http://local.test/api/internal/fdci-automation/delta", { method: "POST",
         headers: { authorization: `Bearer ${secret}`, "content-type": "application/json", "x-import-gate-owner": owner, "x-fdci-automation-sha": sha },
-        body: JSON.stringify({ op: "stage", revision, items }) });
-      const result = await r.json(); assert.equal(result.status, 200); assert.equal(result.ack.state.revision, ++revision); return result;
+        body: JSON.stringify(snapshot ? {op:"snapshot",after:"",queuedAfter:""} : { op: "stage", revision, items }) });
+      const result = await r.json(); assert.equal(result.status, 200); assert.equal(result.ack.state.revision, snapshot ? 1 : ++revision); if(snapshot){assert.equal(result.ack.queued.length,2);assert.equal(result.ack.confirmed.length,0);} return result;
     };
     const cold = await profiler.measure(stage);
     const repeated = await profiler.measure(async () => { const samples = []; for (let i = 0; i < count; i++) samples.push(await stage()); return samples; });
@@ -86,7 +91,7 @@ const summary = Object.fromEntries(["before", "after"].map(v => { const rr = res
   repeatActiveSampledMsPerRequestMedian: median(rr.map(x => x.repeat.activeSampledMsPerRequest)),
   repeatGatewayWallMsMedian: median(rr.map(x => x.repeat.meanGatewayWallMs)),
 }]; }));
-const report = { scope: "Local Workerd/CDP sampled active time, not remote CPU or billing", baseline, count, rounds,
-  fixture: { publications: 0, candidates: 2, payloadBytes: Buffer.byteLength(JSON.stringify({ op: "stage", revision: 0, items })) }, summary, results };
-mkdirSync(".wrangler", { recursive: true }); writeFileSync(".wrangler/fdci-stage-workerd-comparison.json", JSON.stringify(report, null, 2));
+const report = { operation: snapshot ? "snapshot" : "stage", scope: "Local Workerd/CDP sampled active time, not remote CPU or billing", baseline, count, rounds,
+  fixture: { publications: 0, candidates: 2, payloadBytes: Buffer.byteLength(JSON.stringify(snapshot ? { op: "snapshot", after: "", queuedAfter: "" } : { op: "stage", revision: 0, items })) }, summary, results };
+mkdirSync(".wrangler", { recursive: true }); writeFileSync(snapshot ? ".wrangler/fdci-snapshot-workerd-comparison.json" : ".wrangler/fdci-stage-workerd-comparison.json", JSON.stringify(report, null, 2));
 console.log(JSON.stringify({ summary, caveat: report.scope }));
