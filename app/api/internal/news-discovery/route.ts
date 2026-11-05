@@ -1,13 +1,53 @@
 import { getD1 } from "@/db";
-import { fetchNewsFeed, importNewsCandidates, NEWS_FEEDS } from "@/lib/news-discovery";
+import { importNewsCandidates, NEWS_FEEDS, type DiscoveredArticle } from "@/lib/news-discovery";
 import type { CommunityDatabase } from "@/lib/community";
 import { env } from "cloudflare:workers";
+import { isPrivateOrLoopbackHost, normalizeNewsSourceUrl } from "@/lib/news-editorial";
 
 export const dynamic = "force-dynamic";
 
 // Authenticated internal endpoint for RSS news discovery.
-// Writes candidates only; never publishes, approves or notifies.
+// Receives pre-parsed articles from GitHub Actions (processing happens there).
+// Validates and persists candidates only; never fetches feeds, parses XML,
+// publishes, approves or notifies.
 // Requires NEWS_DISCOVERY_SECRET in env and Bearer token in Authorization header.
+
+const MAX_CANDIDATES = 5;
+const MAX_ARTICLES_PER_REQUEST = 20;
+const PILOT_ALLOWED_FEEDS = ["infod"];
+
+type ArticleInput = {
+  feedKey?: unknown;
+  title?: unknown;
+  url?: unknown;
+  publishedAt?: unknown;
+  updatedAt?: unknown;
+  fingerprint?: unknown;
+};
+
+function validateArticle(input: ArticleInput): DiscoveredArticle | null {
+  if (!input || typeof input !== "object") return null;
+  const feed = NEWS_FEEDS.find((f) => f.key === input.feedKey);
+  if (!feed) return null;
+  if (!PILOT_ALLOWED_FEEDS.includes(feed.key)) return null;
+  if (typeof input.title !== "string" || !input.title.trim() || input.title.length > 160) return null;
+  const url = normalizeNewsSourceUrl(input.url);
+  if (!url) return null;
+  try { if (isPrivateOrLoopbackHost(new URL(url).hostname)) return null; } catch { return null; }
+  if (new URL(url).hostname !== feed.host) return null;
+  if (typeof input.publishedAt !== "string" || Number.isNaN(Date.parse(input.publishedAt))) return null;
+  if (typeof input.updatedAt !== "string" || Number.isNaN(Date.parse(input.updatedAt))) return null;
+  if (typeof input.fingerprint !== "string" || !/^[0-9a-f]{64}$/.test(input.fingerprint)) return null;
+  return {
+    feed,
+    title: input.title.trim(),
+    url,
+    publishedAt: new Date(input.publishedAt).toISOString(),
+    updatedAt: new Date(input.updatedAt).toISOString(),
+    fingerprint: input.fingerprint,
+  };
+}
+
 export async function POST(request: Request) {
   const secret = (env as { NEWS_DISCOVERY_SECRET?: string }).NEWS_DISCOVERY_SECRET;
   const auth = request.headers.get("authorization") || "";
@@ -17,44 +57,42 @@ export async function POST(request: Request) {
   }
 
   const database = getD1() as unknown as CommunityDatabase;
-  // Verify news tables exist.
   try { await database.prepare("SELECT 1 FROM news_items LIMIT 1").bind().first(); }
   catch { return Response.json({ error: "Esquema de noticias no disponible." }, { status: 503, headers: { "Cache-Control": "no-store" } }); }
 
-  const body = await request.json().catch(() => ({})) as { maxCandidates?: number; feeds?: string[] };
-  const rawMax = Number(body.maxCandidates);
-  const maxCandidates = Math.min(20, Math.max(1, Number.isFinite(rawMax) ? rawMax : 5));
-  const feedsFilter = Array.isArray(body.feeds) ? body.feeds.filter((f) => typeof f === "string") : null;
-  const selectedFeeds = feedsFilter
-    ? NEWS_FEEDS.filter((f) => feedsFilter.includes(f.key))
-    : NEWS_FEEDS;
-  if (selectedFeeds.length === 0) {
-    return Response.json({ error: "No hay fuentes válidas." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+  let body: { articles?: unknown; maxCandidates?: unknown };
+  try { body = await request.json(); }
+  catch { return Response.json({ error: "JSON inválido." }, { status: 400, headers: { "Cache-Control": "no-store" } }); }
+
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return Response.json({ error: "Cuerpo inválido." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+  }
+  if (!Array.isArray(body.articles)) {
+    return Response.json({ error: "Se requiere 'articles' (array)." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+  }
+  if (body.articles.length > MAX_ARTICLES_PER_REQUEST) {
+    return Response.json({ error: "Demasiados artículos." }, { status: 400, headers: { "Cache-Control": "no-store" } });
   }
 
-  const now = new Date();
-  const allArticles = [];
-  const feedResults = [];
-  for (const feed of selectedFeeds) {
-    try {
-      const articles = await fetchNewsFeed(feed, fetch, now);
-      const selected = articles.slice(0, maxCandidates);
-      allArticles.push(...selected);
-      feedResults.push({ feed: feed.key, status: "OK", discovered: articles.length, selected: selected.length });
-    } catch (error) {
-      feedResults.push({ feed: feed.key, status: "ERROR", code: error instanceof Error ? error.message : "UNKNOWN", discovered: 0, selected: 0 });
+  const articles = [];
+  for (const raw of body.articles) {
+    const validated = validateArticle(raw as ArticleInput);
+    if (!validated) {
+      return Response.json({ error: "Artículo inválido o no autorizado." }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
+    articles.push(validated);
   }
-  const capped = allArticles.slice(0, maxCandidates);
+
+  const rawMax = Number(body.maxCandidates);
+  const maxCandidates = Math.min(MAX_CANDIDATES, Math.max(1, Number.isFinite(rawMax) ? rawMax : MAX_CANDIDATES));
 
   try {
-    const result = await importNewsCandidates(database, capped, now, maxCandidates);
+    const result = await importNewsCandidates(database, articles, new Date(), maxCandidates);
     return Response.json({
       status: "OK",
-      feeds: feedResults,
       maxCandidates,
-      totalDiscovered: allArticles.length,
-      capped: capped.length,
+      totalReceived: articles.length,
+      capped: Math.min(articles.length, maxCandidates),
       result,
       autoPublish: false,
       notifications: false,

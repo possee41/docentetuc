@@ -76,10 +76,17 @@ if (seedFile) {
 const database = { prepare(sql) {
   return { bind(...values) {
     const args = values;
+    const runFn = () => raw.prepare(sql).run(...args);
     return { first: async () => raw.prepare(sql).get(...args) ?? null,
       all: async () => ({ results: raw.prepare(sql).all(...args) }),
-      run: async () => raw.prepare(sql).run(...args) };
+      run: async () => runFn(),
+      runSync: () => runFn() };
   } };
+},
+async batch(statements) {
+  raw.exec("BEGIN");
+  try { const result = statements.map((s) => s.runSync()); raw.exec("COMMIT"); return result.map(r => ({ meta: { changes: Number(r.changes) } })); }
+  catch (e) { raw.exec("ROLLBACK"); throw e; }
 } };
 
 const result = await importNewsCandidates(database, capped, now, maxCandidates);
