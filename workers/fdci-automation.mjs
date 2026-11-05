@@ -45,7 +45,7 @@ export async function automationRequest(request, env, authorized, delegate) {
     const headers = new Headers(request.headers);
     const forward = async (path, body) => delegate(new Request(new URL(path, url), {
       method: body === undefined ? "GET" : "POST", headers,
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(body === undefined ? {} : { body }),
     }), scopedEnv);
     if (op === "identity") return forward("/api/internal/import-identity?source=fdci");
     if (Number(request.headers.get("content-length") || 0) > 150_000) return reply(413, "AUTOMATION_BODY_TOO_LARGE");
@@ -59,7 +59,7 @@ export async function automationRequest(request, env, authorized, delegate) {
       if (size > 150_000) { await reader.cancel(); return reply(413, "AUTOMATION_BODY_TOO_LARGE"); }
       raw += decoder.decode(value, { stream: true });
     }
-    let body; try { body = JSON.parse(raw + decoder.decode()); } catch { return reply(400, "AUTOMATION_JSON_INVALID"); }
+    let body; try { raw += decoder.decode(); body = JSON.parse(raw); } catch { return reply(400, "AUTOMATION_JSON_INVALID"); }
     if (op === "start") {
       if (body.source !== "fdci" || body.owner !== owner || body.action !== "open" ||
           !Number.isInteger(body.ttlSeconds) || body.ttlSeconds < 60 || body.ttlSeconds > 600)
@@ -101,7 +101,7 @@ export async function automationRequest(request, env, authorized, delegate) {
     if (state.status !== "RUNNING" || !live(state)) return reply(503, "AUTOMATION_NO_LEASE");
     if (op === "close") {
       if (body.source !== "fdci" || body.action !== "close" || body.owner !== owner) return reply(400, "AUTOMATION_CLOSE_INVALID");
-      return forward("/api/internal/import-gate", body);
+      return forward("/api/internal/import-gate", raw);
     }
     if (op === "import") {
       if (body.mode !== "batch" || !Array.isArray(body.items) || body.items.length !== 1) return reply(400, "AUTOMATION_BATCH_INVALID");
@@ -111,7 +111,7 @@ export async function automationRequest(request, env, authorized, delegate) {
       if (Number(quota.meta?.changes) !== 1) { await suspendAutomation(env.DB, owner, "PUBLICATION_LIMIT"); return reply(409, "PUBLICATION_LIMIT"); }
     }
     const response = await forward(op === "import" ? "/api/internal/fdci-import" :
-      op === "delta" ? "/api/internal/fdci-delta" : "/api/internal/fdci-checkpoint", body);
+      op === "delta" ? "/api/internal/fdci-delta" : "/api/internal/fdci-checkpoint", raw);
     if (!response.ok) await suspendAutomation(env.DB, owner, "GATEWAY_HTTP_ERROR");
     return response;
   } catch {

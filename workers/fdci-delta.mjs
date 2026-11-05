@@ -56,13 +56,15 @@ export async function fdciDelta(body, db, owner) {
             !validFdciPrepared(x) || !validId(x.id) || x.id === "fdci:commission:6375" || x.normalizedStatus === "UNKNOWN"))
         return reply({ error: "DELTA_INVALID" }, 400);
       const ids = body.items.map(x => x.id);
-      const existing = await db.prepare(`SELECT id,source,normalized_status FROM publications WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
-      if (existing.results.some(x => x.source !== source || x.normalized_status === "UNKNOWN")) return reply({ error: "PROTECTED_RECORD" }, 422);
-      const capacity = await db.prepare(`SELECT (SELECT COUNT(*) FROM fdci_delta_queue) +
+      const admission = await db.prepare(`SELECT EXISTS(SELECT 1 FROM publications
+        WHERE id IN (${ids.map(() => "?").join(",")}) AND (source<>? OR normalized_status='UNKNOWN')) AS protected_record,
+        (SELECT COUNT(*) FROM fdci_delta_queue) +
         (SELECT COUNT(*) FROM json_each(?) AS candidate WHERE NOT EXISTS
-          (SELECT 1 FROM fdci_delta_queue WHERE publication_id=candidate.value)) AS total`).bind(JSON.stringify(ids)).first();
-      if (!Number.isSafeInteger(Number(capacity?.total)) || Number(capacity.total) < 0) throw new Error("DELTA_CAPACITY_INVALID");
-      if (Number(capacity.total) > 1000) return reply({ error: "DELTA_QUEUE_FULL" }, 409);
+          (SELECT 1 FROM fdci_delta_queue WHERE publication_id=candidate.value)) AS total`).bind(...ids, source, JSON.stringify(ids)).first();
+      if (![0, 1].includes(Number(admission?.protected_record))) throw new Error("DELTA_CAPACITY_INVALID");
+      if (Number(admission.protected_record) === 1) return reply({ error: "PROTECTED_RECORD" }, 422);
+      if (!Number.isSafeInteger(Number(admission?.total)) || Number(admission.total) < 0) throw new Error("DELTA_CAPACITY_INVALID");
+      if (Number(admission.total) > 1000) return reply({ error: "DELTA_QUEUE_FULL" }, 409);
       extra = ",last_staged_id=?"; args = [ids.at(-1)];
       statements = body.items.map(item => db.prepare(`INSERT INTO fdci_delta_queue(publication_id,content_hash,payload)
         SELECT ?,?,? WHERE ${tokenFence}
