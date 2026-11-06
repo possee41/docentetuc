@@ -14,6 +14,22 @@ export function isNewsSourceType(value: unknown): value is typeof NEWS_SOURCE_TY
   return typeof value === "string" && NEWS_SOURCE_TYPES.some((type) => type === value);
 }
 
+// Public audiences see three categories. A media article or a public body is educational
+// coverage, never an official statement; only official sources and union sources keep
+// their own category so readers can tell a communiqué from union information.
+export const NEWS_CATEGORIES = ["oficial", "educativa", "gremial"] as const;
+export type NewsCategory = typeof NEWS_CATEGORIES[number];
+
+export function isNewsCategory(value: unknown): value is NewsCategory {
+  return typeof value === "string" && NEWS_CATEGORIES.some((category) => category === value);
+}
+
+export function newsCategory(sourceType: unknown): NewsCategory {
+  if (sourceType === "official") return "oficial";
+  if (sourceType === "union") return "gremial";
+  return "educativa";
+}
+
 // Keep path and query semantics intact; only URL-standard canonicalization and fragments are removed.
 export function normalizeNewsSourceUrl(value: unknown): string | null {
   if (typeof value !== "string" || value.length > 2048) return null;
