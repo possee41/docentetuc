@@ -13,34 +13,6 @@ import type { SyncStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-// Trusted FDCI catalog (GitHub Pages). Cached for 5 minutes.
-let fdciCatalogCache: { data: unknown; expires: number } | null = null;
-async function fetchFdciCatalog(): Promise<{ items: Array<Record<string, unknown>> } | null> {
-  if (fdciCatalogCache && fdciCatalogCache.expires > Date.now()) return fdciCatalogCache.data as { items: Array<Record<string, unknown>> };
-  try {
-    const response = await fetch("https://possee41.github.io/docentetuc-fdci-catalog-pilot/catalog.json", { signal: AbortSignal.timeout(10_000) });
-    if (!response.ok) return null;
-    const data = await response.json() as { version?: string; items?: unknown[] };
-    if (!data || typeof data !== "object" || !Array.isArray(data.items)) return null;
-    // Validate version hash (must match the accepted catalog).
-    if (data.version !== "14ffa0ebd934c43d36757b89be76318ee0053a45352912f758786ee5377c613b") return null;
-    fdciCatalogCache = { data: data as { items: Array<Record<string, unknown>> }, expires: Date.now() + 300_000 };
-    return fdciCatalogCache.data as { items: Array<Record<string, unknown>> };
-  } catch { return null; }
-}
-
-async function fetchFdciCatalogItem(id: string): Promise<Record<string, unknown> | null> {
-  const catalog = await fetchFdciCatalog();
-  if (!catalog) return null;
-  const item = catalog.items.find((i) => i.id === id);
-  if (!item || item.title !== "DEMO SINTÉTICA — NO OFICIAL") return null;
-  // Validate required fields.
-  if (typeof item.externalId !== "string" || typeof item.category !== "string" ||
-      typeof item.title !== "string" || typeof item.officialUrl !== "string" ||
-      !item.officialUrl.startsWith("https://")) return null;
-  return item;
-}
-
 const value = (input: unknown, max = 300) => typeof input === "string" ? input.trim().slice(0, max) : "";
 
 export async function GET(request: Request) {
@@ -141,13 +113,10 @@ export async function POST(request: Request) {
     } else if (["save", "agenda", "follow"].includes(action)) {
       const id = value(body.publicationId, 120);
       if (!id) return Response.json({ error: "Publicación inválida." }, { status: 400 });
-      // External catalog items (FDCI) are materialized on demand from a trusted source.
+      // External-only actions stay closed until the versioned client/server flow is validated.
+      // Existing D1 publications retain private actions; never materialize the legacy DEMO.
       if (id.startsWith("fdci:") && !await db.prepare("SELECT 1 FROM publications WHERE id=?").bind(id).first()) {
-        const catalogItem = await fetchFdciCatalogItem(id);
-        if (!catalogItem) return Response.json({ error: "La capacitación externa no está disponible en el catálogo." }, { status: 400 });
-        await db.prepare(`INSERT OR IGNORE INTO publications (id, source, external_id, kind, category, title, summary, level, area, location, character, junta, shift, starts_at, ends_at, status, official_url, registration_open_at, registration_close_at, normalized_status, source_published_at, metadata, first_seen_at, updated_at, removed_at)
-          VALUES (?, 'FDCI', ?, 'capacitacion', ?, ?, ?, ?, ?, ?, ?, '', '', ?, ?, ?, ?, ?, ?, ?, NULL, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL)`)
-          .bind(catalogItem.id, catalogItem.externalId, catalogItem.category, catalogItem.title, catalogItem.summary || "", catalogItem.level || "", catalogItem.area || "", catalogItem.location || "", catalogItem.character || "", catalogItem.startsAt || null, catalogItem.endsAt || null, catalogItem.status, catalogItem.officialUrl, catalogItem.registrationOpenAt || null, catalogItem.registrationCloseAt || null, catalogItem.normalizedStatus, JSON.stringify({ source: "FDCI Tucumán", sourceUrl: catalogItem.officialUrl, entity: "commission", commissionId: catalogItem.externalId, catalogOnly: true })).run();
+        return Response.json({ error: "Las acciones privadas del catálogo externo todavía no están habilitadas." }, { status: 409 });
       }
       const enabled = body.enabled !== false ? 1 : 0;
       if (action === "save" && !enabled) await db.prepare("DELETE FROM saved_publications WHERE user_id=? AND publication_id=?").bind(user.userId, id).run();

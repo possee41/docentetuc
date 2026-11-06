@@ -6,7 +6,7 @@ export function fdciPilotAllowed(host: string, query: string) {
 }
 
 // Opt-in composition only. Existing queries, private APIs and app state untouched.
-export async function integrateFdciCatalog(current: Publication[], input: FdciCatalog, freshness: "ready" | "stale", now = Date.now()) {
+export async function integrateFdciCatalog(current: Publication[], input: FdciCatalog, freshness: "ready" | "stale", now = Date.now(), generation: number | null = null) {
   const catalog = await validateFdciCatalog(input);
   if (Date.parse(catalog.updatedAt) > now + 300_000) throw Error("FDCI_CATALOG_FUTURE_DATE");
   const stale = freshness === "stale" || now - Date.parse(catalog.updatedAt) > 86_400_000;
@@ -14,8 +14,8 @@ export async function integrateFdciCatalog(current: Publication[], input: FdciCa
   const info: Record<string, { backend: boolean; stale: boolean; checkedAt: string | null; sourceUpdatedAt: string | null; lastDetectedChangeAt: string | null; canSave: boolean; canSchedule: boolean; canRemind: boolean }> = {};
   const conflicts: string[] = [];
   for (const item of catalog.items) {
-    const same = current.find(p => p.id === item.id || p.source === "Capacitación Docente" && p.external_id === item.externalId);
-    if (same && same.source !== "Capacitación Docente") { conflicts.push(item.id!); continue; }
+    const same = current.find(p => p.id === item.id || ["Capacitación Docente", "FDCI"].includes(p.source) && p.external_id === item.externalId);
+    if (same && !["Capacitación Docente", "FDCI"].includes(same.source)) { conflicts.push(item.id!); continue; }
     const id = same?.id ?? item.id!, observed = catalog.observations?.[item.id!];
     info[id] = { backend: Boolean(same), stale, checkedAt: observed?.checkedAt ?? null,
       sourceUpdatedAt: item.sourceUpdatedAt, lastDetectedChangeAt: observed?.lastChangedAt ?? null,
@@ -32,7 +32,7 @@ export async function integrateFdciCatalog(current: Publication[], input: FdciCa
       metadata: JSON.stringify({ source: "FDCI Tucumán", sourceUrl: item.officialUrl, entity: "commission",
         commissionId: item.externalId, registrationOpensAt: item.registrationOpenAt, registrationClosesAt: item.registrationCloseAt,
         dateStatus: "unknown", catalogCheckedAt: observed?.checkedAt ?? null, catalogCompletedAt: catalog.updatedAt,
-        catalogOnly: true, catalogStale: stale }),
+        catalogOnly: true, catalogStale: stale, catalogGeneration: generation, catalogSha256: catalog.sha256 }),
     });
   }
   // Explicit context for a future chat caller; not injected into backend RAG.

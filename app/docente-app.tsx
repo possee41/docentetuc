@@ -476,7 +476,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   }
 
   const mutateSaved = async (action: "save" | "agenda" | "follow", publication: Publication, enabled: boolean, agenda?: { at?: string; notes?: string; reminderAt?: string }) => {
-    if (isFdciCatalogOnly(publication)) { toast.info("Capacitación ficticia de consulta: acción privada no disponible."); return; }
+    if (isFdciCatalogOnly(publication)) { toast.info("Capacitación externa de consulta: acción privada no disponible."); return; }
     const storedId = savedMap.get(publication.id)?.publication_id || publication.id;
     setData((current) => {
       if (!current) return current;
@@ -1044,7 +1044,7 @@ function PublicationList({ items, sync, loading, savedMap, reminderMap, matchRes
       {simeCode && <p className="mt-2 text-xs font-bold text-[#315d7a]">ID de trámite: {simeCode}</p>}
       <OfficialPublicationSummary item={item} />
       {training ? <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-[#61766f]">{item.character && <span><strong>Modalidad:</strong> {item.character}</span>}{item.starts_at && <span><strong>Inicio:</strong> {dateLabel(item.starts_at)}</span>}{metadata?.registrationClosesAt && <span><strong>Inscripción hasta:</strong> {dateLabel(metadata.registrationClosesAt, true)}</span>}{item.location && <span className="col-span-2"><strong>Lugar:</strong> {item.location}</span>}</div> : <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#61766f]">{item.character && <span>{item.character}</span>}{item.junta && <span>{item.junta}</span>}{item.shift && <span>Turno {item.shift}</span>}{item.ends_at && <span className="ml-auto flex items-center gap-1 font-semibold text-[#9a641f]"><Clock3 className="size-4" />{unverified ? `Cierre informado: ${dateLabel(item.ends_at, true)}` : fromNow(item.ends_at)}</span>}</div>}
-      {isFdciCatalogOnly(item) && <p className="mt-2 text-sm font-bold text-amber-800 dark:text-amber-200">FICTICIA — solo consulta, sin acciones privadas</p>}
+      {isFdciCatalogOnly(item) && <p className="mt-2 text-sm font-bold text-amber-800 dark:text-amber-200">CATÁLOGO EXTERNO — solo consulta, sin acciones privadas</p>}
       <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-[#e7eee9] pt-3">
         {training && !isFdciCatalogOnly(item) && sourceCurrent && canScheduleTrainingReminder(metadata, item.status, item.normalized_status) && <button onClick={() => onRemind(item)} className="flex min-h-10 items-center gap-2 rounded-xl bg-[#fff4d6] px-3 text-sm font-bold text-[#7b5500]"><Bell className="size-4" />{reminded ? "Aviso activo" : "Recordarme"}</button>}
         {training && !isFdciCatalogOnly(item) && <button onClick={() => onSave(item, !saved)} className={`flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold ${saved ? "bg-[#fff3dd] text-[#8b5b00]" : "bg-[#edf6fc] text-[#0878be]"}`}><Star className={`size-4 ${saved ? "fill-current" : ""}`} />{saved ? "Guardada" : "Guardar"}</button>}
@@ -1467,7 +1467,7 @@ function PublicationSheet({ publication, sync, saved, tracking, match, onClose, 
               : <><div className="flex items-center justify-between gap-3"><div><h3 className="font-black">¿Por qué coincide?</h3><p className="mt-1 text-sm text-[#52708c]">Compatibilidad: {match.score}% · confianza: {match.confidence}% · {match.matched} de {match.total} criterios coinciden.</p></div></div></>}
             <div className="mt-4 space-y-2">{criteriaView}</div>
           </div>}
-          {isFdciCatalogOnly(publication) ? <p className="rounded-xl bg-amber-50 p-3 font-bold text-amber-950">FICTICIA — Guardados, Agenda y recordatorios no disponibles en esta prueba.</p> : <div className="grid gap-2 sm:grid-cols-2">
+          {isFdciCatalogOnly(publication) ? <p className="rounded-xl bg-amber-50 p-3 font-bold text-amber-950">CATÁLOGO EXTERNO — Guardados, Agenda y recordatorios no disponibles en esta prueba.</p> : <div className="grid gap-2 sm:grid-cols-2">
             <Button variant={saved ? "default" : "outline"} onClick={() => onSave(publication, !saved)} className="h-11 rounded-xl"><Star className={`size-4 ${saved ? "fill-current" : ""}`} />{saved ? (publication.kind === "informacion" ? "Contacto guardado" : "Guardada") : (publication.kind === "informacion" ? "Guardar contacto" : "Guardar")}</Button>
             {publication.kind !== "informacion" && <Button variant={Boolean(saved?.in_agenda) ? "default" : "outline"} onClick={() => onAgenda(publication, !Boolean(saved?.in_agenda))} className="h-11 rounded-xl"><CalendarDays className="size-4" />{Boolean(saved?.in_agenda) ? "Quitar de mi agenda" : "Agregar a mi agenda"}</Button>}
             {(publication.kind === "junta" || publication.kind === "vacante") && <Button variant={Boolean(saved?.followed) ? "default" : "outline"} onClick={() => onFollow(publication, !Boolean(saved?.followed))} className="h-11 rounded-xl"><Bell className="size-4" />{Boolean(saved?.followed) ? "Dejar de seguir" : "Seguir"}</Button>}
