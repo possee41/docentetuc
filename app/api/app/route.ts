@@ -113,6 +113,10 @@ export async function POST(request: Request) {
     } else if (["save", "agenda", "follow"].includes(action)) {
       const id = value(body.publicationId, 120);
       if (!id) return Response.json({ error: "Publicación inválida." }, { status: 400 });
+      // External catalog items (FDCI, etc.) must be registered in publications first.
+      if (id.startsWith("fdci:") && !await db.prepare("SELECT 1 FROM publications WHERE id=?").bind(id).first()) {
+        return Response.json({ error: "La capacitación externa no está disponible en el catálogo local." }, { status: 400 });
+      }
       const enabled = body.enabled !== false ? 1 : 0;
       if (action === "save" && !enabled) await db.prepare("DELETE FROM saved_publications WHERE user_id=? AND publication_id=?").bind(user.userId, id).run();
       else {
