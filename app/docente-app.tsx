@@ -476,6 +476,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   }
 
   const mutateSaved = async (action: "save" | "agenda" | "follow", publication: Publication, enabled: boolean, agenda?: { at?: string; notes?: string; reminderAt?: string }) => {
+    if (isFdciCatalogOnly(publication)) { toast.info("Capacitación ficticia de consulta: acción privada no disponible."); return; }
     const storedId = savedMap.get(publication.id)?.publication_id || publication.id;
     setData((current) => {
       if (!current) return current;
