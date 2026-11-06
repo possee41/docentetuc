@@ -57,6 +57,7 @@ import type { AppView as View } from "@/components/app-sidebar";
 import { deviceRequestHeaders } from "@/lib/device-user";
 import { filterForNavigation, sectionUrl, shouldRevalidateAccount, viewFromSection } from "@/lib/app-navigation";
 import { boardItems } from "@/lib/board-view";
+import { useFdciCatalogPilot, FdciCatalogPilotBanner, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
 import { sourceHealth, sourceNotices } from "@/lib/source-health";
 import type { BoardView } from "@/lib/board-view";
 import { groupPadrones, padronDocuments, padronSelection, padronTitleFacts, padronYear } from "@/lib/padron-documents";
@@ -222,7 +223,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     window.addEventListener("docentetuc:refresh-auth-status", refreshAccountPhoto);
     return () => window.removeEventListener("docentetuc:refresh-auth-status", refreshAccountPhoto);
   }, [refreshAccountPhoto]);
-  const openPublication = (publication: Publication) => { const canonical = resolveOfficialAlias(publication, data?.publications || []); setData(current => current && !current.publications.some(item => item.id === canonical.id) ? { ...current, publications: [...current.publications, canonical] } : current); setSelected(canonical); history.pushState({ ...history.state, publicationId: canonical.id }, "", `#publicacion-${encodeURIComponent(canonical.id)}`); };
+  const openPublication = (publication: Publication) => { const canonical = resolveOfficialAlias(publication, data?.publications || []); setData(current => !isFdciCatalogOnly(publication) && current && !current.publications.some(item => item.id === canonical.id) ? { ...current, publications: [...current.publications, canonical] } : current); setSelected(canonical); history.pushState({ ...history.state, publicationId: canonical.id }, "", `#publicacion-${encodeURIComponent(canonical.id)}`); };
   const closePublication = () => { if (history.state?.publicationId) history.back(); else setSelected(null); };
 
   const resolveDeepLink = useCallback((publications: Publication[]) => {
@@ -396,6 +397,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const savedMap = useMemo(() => officialSavedLookup(data?.saved || [], data?.publications || []), [data]);
   const reminderMap = useMemo(() => new Map((data?.reminders || []).map((item) => [item.training_id, item])), [data]);
   const profile = data?.profile ?? undefined;
+  const trainingPilot = useFdciCatalogPilot(data?.publications, view === "capacitaciones");
   const designationAvailability = data ? designationEmptyState({
     filter, profileConfigured: hasDesignationProfilePreferences(profile),
     availableCount: data.publications.filter((item) => item.kind === "vacante").length,
@@ -420,14 +422,14 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
       if (trainingSource === "platform:fdci" && ["ABRE_HOY", "PROXIMAMENTE"].includes(enrollmentForUI(a)) && ["ABRE_HOY", "PROXIMAMENTE"].includes(enrollmentForUI(b))) return opening(a) - opening(b);
       return rank(a) - rank(b) || Number(relevantTraining(b)) - Number(relevantTraining(a)) || matchResult(b).score - matchResult(a).score || opening(a) - opening(b);
     };
-    if (filter === "para-mi" && (view === "vacantes" || view === "capacitaciones")) {
+    if (filter === "para-mi" && (view === "vacantes" || view === "capacitaciones" && !trainingPilot.enabled)) {
       const now = new Date();
       const current = personalized.items.filter((item) => view === "vacantes"
         ? ["ACTIVE", "UPCOMING"].includes(publicationLifecycleForUI(item, now))
         : ["ABRE_HOY", "PROXIMAMENTE", "ABIERTA"].includes(enrollmentForUI(item, now)));
       return view === "capacitaciones" ? current.sort(trainingCompare) : current;
     }
-    let items = (data?.publications || []).filter(item => !officialMetadata(item)?.canonicalId || resolveOfficialAlias(item, data?.publications || []).id === item.id);
+    let items = (view === "capacitaciones" ? trainingPilot.publications : data?.publications || []).filter(item => !officialMetadata(item)?.canonicalId || resolveOfficialAlias(item, data?.publications || []).id === item.id);
     if (view === "vacantes") items = items.filter((item) => hasOfficialTopic(item, "INSCRIPCION_SIME") || item.source === "SIME" && hasOfficialTopic(item, "CLASIFICACION_PENDIENTE"));
     if (view === "capacitaciones") items = items.filter((item) => item.kind === "capacitacion");
     if (view === "junta") items = items.filter((item) => item.kind === "junta");
@@ -474,6 +476,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   }
 
   const mutateSaved = async (action: "save" | "agenda" | "follow", publication: Publication, enabled: boolean, agenda?: { at?: string; notes?: string; reminderAt?: string }) => {
+    if (isFdciCatalogOnly(publication)) { toast.info("Capacitación ficticia de consulta: acción privada no disponible."); return; }
     const storedId = savedMap.get(publication.id)?.publication_id || publication.id;
     setData((current) => {
       if (!current) return current;
@@ -583,6 +586,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         : view === "junta" ? <OfficialConsultations onView={navigateToView} />
         : view === "padrones" ? <PadronSection query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} />
         : ["comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection key={`${view}:${query}`} view={view as BoardView} publications={data?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
+            {view === "capacitaciones" && <FdciCatalogPilotBanner pilot={trainingPilot} />}
             <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void refreshSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
             <Filters filter={filter} setFilter={setFilter} junta={juntaFilter} setJunta={setJuntaFilter} character={character} setCharacter={setCharacter} query={designationQuery} setQuery={setDesignationQuery} kind={view} date={trainingDate} setDate={setTrainingDate} source={trainingSource} setSource={setTrainingSource} compatibility={trainingCompatibility} setCompatibility={setTrainingCompatibility} sort={trainingSort} setSort={setTrainingSort} hasTrainingTerritoryData={hasTrainingTerritoryData} circuit={view === "vacantes" ? designationCircuit : trainingCircuit} setCircuit={view === "vacantes" ? setDesignationCircuit : setTrainingCircuit} />
             {view === "vacantes" && items.some(item => hasOfficialTopic(item, "CLASIFICACION_PENDIENTE")) && <p role="note" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Los registros con «Procedimiento pendiente de verificar» no están confirmados como inscripciones online. Consultá el detalle oficial antes de actuar.</p>}
@@ -1040,11 +1044,12 @@ function PublicationList({ items, sync, loading, savedMap, reminderMap, matchRes
       {simeCode && <p className="mt-2 text-xs font-bold text-[#315d7a]">ID de trámite: {simeCode}</p>}
       <OfficialPublicationSummary item={item} />
       {training ? <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-[#61766f]">{item.character && <span><strong>Modalidad:</strong> {item.character}</span>}{item.starts_at && <span><strong>Inicio:</strong> {dateLabel(item.starts_at)}</span>}{metadata?.registrationClosesAt && <span><strong>Inscripción hasta:</strong> {dateLabel(metadata.registrationClosesAt, true)}</span>}{item.location && <span className="col-span-2"><strong>Lugar:</strong> {item.location}</span>}</div> : <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#61766f]">{item.character && <span>{item.character}</span>}{item.junta && <span>{item.junta}</span>}{item.shift && <span>Turno {item.shift}</span>}{item.ends_at && <span className="ml-auto flex items-center gap-1 font-semibold text-[#9a641f]"><Clock3 className="size-4" />{unverified ? `Cierre informado: ${dateLabel(item.ends_at, true)}` : fromNow(item.ends_at)}</span>}</div>}
+      {isFdciCatalogOnly(item) && <p className="mt-2 text-sm font-bold text-amber-800 dark:text-amber-200">FICTICIA — solo consulta, sin acciones privadas</p>}
       <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-[#e7eee9] pt-3">
-        {training && sourceCurrent && canScheduleTrainingReminder(metadata, item.status, item.normalized_status) && <button onClick={() => onRemind(item)} className="flex min-h-10 items-center gap-2 rounded-xl bg-[#fff4d6] px-3 text-sm font-bold text-[#7b5500]"><Bell className="size-4" />{reminded ? "Aviso activo" : "Recordarme"}</button>}
-        {training && <button onClick={() => onSave(item, !saved)} className={`flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold ${saved ? "bg-[#fff3dd] text-[#8b5b00]" : "bg-[#edf6fc] text-[#0878be]"}`}><Star className={`size-4 ${saved ? "fill-current" : ""}`} />{saved ? "Guardada" : "Guardar"}</button>}
+        {training && !isFdciCatalogOnly(item) && sourceCurrent && canScheduleTrainingReminder(metadata, item.status, item.normalized_status) && <button onClick={() => onRemind(item)} className="flex min-h-10 items-center gap-2 rounded-xl bg-[#fff4d6] px-3 text-sm font-bold text-[#7b5500]"><Bell className="size-4" />{reminded ? "Aviso activo" : "Recordarme"}</button>}
+        {training && !isFdciCatalogOnly(item) && <button onClick={() => onSave(item, !saved)} className={`flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold ${saved ? "bg-[#fff3dd] text-[#8b5b00]" : "bg-[#edf6fc] text-[#0878be]"}`}><Star className={`size-4 ${saved ? "fill-current" : ""}`} />{saved ? "Guardada" : "Guardar"}</button>}
         <button onClick={() => onOpen(item)} className="flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold text-[#1f5f4e] hover:bg-[#edf4ef]">Ver <ChevronRight className="size-4" /></button>
-        {training && trainingState === "ABIERTA" && metadata?.commissionId && <a href={item.official_url} target="_blank" rel="noreferrer" className="flex min-h-10 items-center gap-2 rounded-xl bg-[#0878be] px-4 text-sm font-black text-white">{unverified ? "Verificar en fuente" : "INSCRIBIRME"} <ExternalLink className="size-4" /></a>}
+        {training && !isFdciCatalogOnly(item) && trainingState === "ABIERTA" && metadata?.commissionId && <a href={item.official_url} target="_blank" rel="noreferrer" className="flex min-h-10 items-center gap-2 rounded-xl bg-[#0878be] px-4 text-sm font-black text-white">{unverified ? "Verificar en fuente" : "INSCRIBIRME"} <ExternalLink className="size-4" /></a>}
       </div>
     </Card>;
   })}</div>;
@@ -1434,7 +1439,7 @@ function PublicationSheet({ publication, sync, saved, tracking, match, onClose, 
           <SheetDescription className="text-left">Fuente oficial: {publication?.source || ""}</SheetDescription>
         </SheetHeader>
         {publication && <div className="space-y-5 p-5 pb-24 md:p-6 md:pb-24">
-          <Button onClick={() => onAskAI(publication)} className="h-11 w-full rounded-xl bg-[#0878be] text-white"><Sparkles className="size-4" />Preguntar a IA sobre esta información</Button>
+          {!isFdciCatalogOnly(publication) && <Button onClick={() => onAskAI(publication)} className="h-11 w-full rounded-xl bg-[#0878be] text-white"><Sparkles className="size-4" />Preguntar a IA sobre esta información</Button>}
           <div className="grid grid-cols-2 gap-3">{facts.filter(([, value]) => value !== undefined && value !== null && value !== "").map(([label, value]) => <div key={label} className="rounded-2xl border border-[#dce8e1] bg-white p-4"><p className="text-xs font-bold uppercase tracking-wide text-[#80938c]">{label}</p><p className="mt-1 font-semibold">{value}</p></div>)}</div>
           <OfficialPublicationDetails item={publication} />
           <div className="rounded-2xl border border-[#dce8e1] bg-white p-5">
@@ -1462,12 +1467,12 @@ function PublicationSheet({ publication, sync, saved, tracking, match, onClose, 
               : <><div className="flex items-center justify-between gap-3"><div><h3 className="font-black">¿Por qué coincide?</h3><p className="mt-1 text-sm text-[#52708c]">Compatibilidad: {match.score}% · confianza: {match.confidence}% · {match.matched} de {match.total} criterios coinciden.</p></div></div></>}
             <div className="mt-4 space-y-2">{criteriaView}</div>
           </div>}
-          <div className="grid gap-2 sm:grid-cols-2">
+          {isFdciCatalogOnly(publication) ? <p className="rounded-xl bg-amber-50 p-3 font-bold text-amber-950">FICTICIA — Guardados, Agenda y recordatorios no disponibles en esta prueba.</p> : <div className="grid gap-2 sm:grid-cols-2">
             <Button variant={saved ? "default" : "outline"} onClick={() => onSave(publication, !saved)} className="h-11 rounded-xl"><Star className={`size-4 ${saved ? "fill-current" : ""}`} />{saved ? (publication.kind === "informacion" ? "Contacto guardado" : "Guardada") : (publication.kind === "informacion" ? "Guardar contacto" : "Guardar")}</Button>
             {publication.kind !== "informacion" && <Button variant={Boolean(saved?.in_agenda) ? "default" : "outline"} onClick={() => onAgenda(publication, !Boolean(saved?.in_agenda))} className="h-11 rounded-xl"><CalendarDays className="size-4" />{Boolean(saved?.in_agenda) ? "Quitar de mi agenda" : "Agregar a mi agenda"}</Button>}
             {(publication.kind === "junta" || publication.kind === "vacante") && <Button variant={Boolean(saved?.followed) ? "default" : "outline"} onClick={() => onFollow(publication, !Boolean(saved?.followed))} className="h-11 rounded-xl"><Bell className="size-4" />{Boolean(saved?.followed) ? "Dejar de seguir" : "Seguir"}</Button>}
             {publication.kind === "vacante" && tracking && <Button variant="outline" onClick={() => onEditDesignation(publication)} className="h-11 rounded-xl">Editar seguimiento</Button>}
-          </div>
+          </div>}
           {publication.kind === "vacante"
             ? <Button type="button" onClick={() => onExternal(publication)} className="min-h-12 w-full rounded-xl bg-[#17362d] px-5 text-white">{!unverified && lifecycle === "ACTIVE" && hasOfficialTopic(publication, "INSCRIPCION_SIME") ? "Inscribirme en sitio oficial" : "Ver procedimiento en fuente oficial"} <ExternalLink className="size-4" /></Button>
             : <a href={publication.official_url} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#17362d] px-5 text-center font-bold text-white">{publication.kind === "capacitacion" ? !unverified && trainingState === "ABIERTA" && training?.commissionId ? "CONTINUAR INSCRIPCIÓN EN SITIO OFICIAL" : "Ver detalle en sitio oficial" : publication.kind === "informacion" && info?.access === "private" ? "Abrir sistema oficial" : "Abrir fuente oficial"} <ExternalLink className="size-4" /></a>}
