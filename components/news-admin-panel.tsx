@@ -32,6 +32,7 @@ async function api(params: string, body?: Record<string, unknown>) {
 export function NewsAdminPanel() {
   const [status, setStatus] = useState("candidate"), [query, setQuery] = useState(""), [page, setPage] = useState(0);
   const [list, setList] = useState<{ counts: Record<string, number>; items: NewsItem[] }>({ counts: {}, items: [] });
+  const [sources, setSources] = useState<{ type: string; total: number; distinctNames: number; names: { name: string; count: number }[] }[]>([]);
   const [detail, setDetail] = useState<Detail | null>(null), [draft, setDraft] = useState<Draft | null>(null);
   const [originQuery, setOriginQuery] = useState(""), [origins, setOrigins] = useState<Origin[]>([]);
   const [source, setSource] = useState({ sourceName: "", sourceTitle: "", url: "", sourceType: "official", isPrimary: false });
@@ -43,6 +44,7 @@ export function NewsAdminPanel() {
     catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo cargar la cola."); }
   }, [status, query, page]);
   useEffect(() => { queueMicrotask(() => { void loadList(); }); }, [loadList]);
+  useEffect(() => { let active = true; void api("?sources=1").then((rows) => { if (active) setSources(rows as unknown as typeof sources); }).catch(() => { if (active) setSources([]); }); return () => { active = false; }; }, []);
   useEffect(() => {
     if (originQuery.trim().length < 2) { queueMicrotask(() => setOrigins([])); return; }
     let active = true;
@@ -96,6 +98,16 @@ export function NewsAdminPanel() {
 
   return <section className="space-y-5" aria-label="Noticias editoriales">
     <div><h2 className="text-xl font-black">Noticias · revisión editorial</h2><p className="text-sm text-slate-600">Ninguna publicación sincronizada se convierte automáticamente en noticia.</p></div>
+    <section className="rounded-2xl bg-[var(--surface-primary)] p-4 shadow-sm" aria-label="Fuentes registradas">
+      <h3 className="font-bold text-[var(--text-primary)]">Fuentes registradas</h3>
+      {sources.length === 0 ? <p className="mt-2 text-sm text-[var(--text-secondary)]">No hay fuentes registradas todavía.</p> : <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {sources.map((source) => <article key={source.type} className="rounded-xl border border-[var(--border)] p-3">
+          <p className="font-bold text-[var(--text-primary)]">{source.type} · {source.total} referencias ({source.distinctNames} fuentes)</p>
+          <p className="mt-1 text-xs text-[var(--text-muted)]">{source.names.map((name) => `${name.name} (${name.count})`).join(" · ")}</p>
+        </article>)}
+      </div>}
+      <p className="mt-2 text-xs text-[var(--text-muted)]">La recolección RSS está desactivada; las fuentes se registran al crear o editar noticias. Las categorías públicas se derivan del tipo de fuente.</p>
+    </section>
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {notice && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
     <div className="grid gap-3 rounded-2xl bg-white p-4 shadow-sm sm:grid-cols-2">
