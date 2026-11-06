@@ -1,0 +1,42 @@
+# Local preparation only; requires separate authorization before publishing/executing.
+name: FDCI official durable synchronization
+on:
+  workflow_dispatch:
+    inputs:
+      recovery_only:
+        description: Reconcile publication without querying the official source
+        type: boolean
+        default: true
+permissions:
+  contents: write
+concurrency:
+  group: fdci-official-durable-state
+  cancel-in-progress: false
+jobs:
+  synchronize:
+    if: github.repository == 'possee41/docentetuc-fdci-catalog-pilot' && github.ref == 'refs/heads/main' && vars.FDCI_INTEGRATED_ENABLED == 'true' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FDCI_INTEGRATED_ENABLED: ${{ vars.FDCI_INTEGRATED_ENABLED }}
+      FDCI_STATIC_APPROVED_SHA: ${{ vars.FDCI_STATIC_APPROVED_SHA }}
+      FDCI_RECOVER_ONLY: ${{ inputs.recovery_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.FDCI_STATIC_APPROVED_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Reconcile or synchronize using the reviewed executable
+        run: node scripts/fdci-static-runner.mjs run
+      - name: Optional execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fdci-integrated-result
+          path: fdci-integrated-result/
+          if-no-files-found: warn
+          retention-days: 2
