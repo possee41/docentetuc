@@ -81,6 +81,7 @@ export function createFdciCatalogReader(url: string, fetcher: typeof fetch = fet
     } catch { error = "FDCI_CATALOG_UNAVAILABLE"; }
     const age = lastGood ? now() - Date.parse(lastGood.updatedAt) : Infinity;
     return { status: !lastGood ? "unavailable" : error || age > 86_400_000 ? "stale" : "ready",
+      catalog: lastGood ? structuredClone(lastGood) : null,
       updatedAt: lastGood?.updatedAt ?? null, version: lastGood?.version ?? null,
       observations: structuredClone(lastGood?.observations ?? {}),
       // Return detached public DTOs; caller cannot corrupt last-known-good state.

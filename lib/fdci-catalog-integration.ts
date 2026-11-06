@@ -1,6 +1,9 @@
 import type { Publication } from "./types.ts";
 import { validateFdciCatalog, type FdciCatalog } from "./fdci-static-catalog.ts";
 import { canScheduleTrainingReminder, parseTrainingMetadata } from "./training.ts";
+export function fdciPilotAllowed(host: string, query: string) {
+  return ["localhost", "127.0.0.1", "canary.docentetuc.com.ar"].includes(host) && new URLSearchParams(query).get("fdciCatalogTest") === "1";
+}
 
 // Opt-in composition only. Existing queries, private APIs and app state untouched.
 export async function integrateFdciCatalog(current: Publication[], input: FdciCatalog, freshness: "ready" | "stale", now = Date.now()) {

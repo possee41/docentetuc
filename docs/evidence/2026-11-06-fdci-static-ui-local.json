@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "defaultOff": true,
+  "productionHostBlocked": true,
+  "twoSyntheticRecords": true,
+  "d1Priority": true,
+  "duplicateCount": 0,
+  "privateButtonsHidden": true,
+  "corruptAndNetworkRetainLastGood": true,
+  "fdciFilter": true,
+  "officialLinksPreserved": true,
+  "screenshots": [
+    "mobile.png",
+    "desktop-d1-priority.png",
+    "desktop-dark.png"
+  ],
+  "pageErrors": [],
+  "privateMutationRequests": 0,
+  "externalRequestsAllowed": 0,
+  "catalogCalls": 5
+}
