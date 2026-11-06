@@ -12,7 +12,7 @@ async function saveCheckpoint(path, data) {
   try { await writeFile(temp, JSON.stringify({ data, sha256: await catalogHash(data) }) + "\n", { flag: "wx" }); await rename(temp, path); }
   finally { await rm(temp, { force: true }); }
 }
-export async function runFdciStaticCycle({ workDirectory, publishDirectory, fetcher, checkedAt, pause = ms => new Promise(r => setTimeout(r, ms)) }) {
+export async function runFdciStaticCycle({ workDirectory, publishDirectory, fetcher, checkedAt, courseLimit = 4, pause = ms => new Promise(r => setTimeout(r, ms)) }) {
   if (typeof fetcher !== "function" || new Date(checkedAt).toISOString() !== checkedAt) throw Error("STATIC_CYCLE_CONFIG_INVALID");
   const work = resolve(workDirectory), output = resolve(publishDirectory), rel = relative(output, work);
   if (!rel || !isAbsolute(rel) && rel !== ".." && !rel.startsWith(".." + sep)) throw Error("CHECKPOINT_MUST_NOT_BE_PUBLIC");
@@ -47,7 +47,7 @@ export async function runFdciStaticCycle({ workDirectory, publishDirectory, fetc
           if (previous.activeKey && previous.activeKey !== activeKey) { membershipChanged = true; throw Error("FDCI_CANCELLED"); }
         }
         return response;
-      }, { state: previous.state, queued: new Map() });
+      }, { state: previous.state, queued: new Map(), courseLimit });
     } catch (e) {
       if (!membershipChanged) throw e;
       // Source membership changed: restart a new local scan, never publish a mix

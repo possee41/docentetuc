@@ -10,18 +10,31 @@ export async function integrateFdciCatalog(current: Publication[], input: FdciCa
   const catalog = await validateFdciCatalog(input);
   if (Date.parse(catalog.updatedAt) > now + 300_000) throw Error("FDCI_CATALOG_FUTURE_DATE");
   const stale = freshness === "stale" || now - Date.parse(catalog.updatedAt) > 86_400_000;
-  const publications = [...current];
+  // Remove only previous external projections before composing this snapshot.
+  // A verified empty catalog must not retain old catalog-only rows as active.
+  const backend = current.filter(p => {
+    try { return !(p.source === "Capacitación Docente" && p.kind === "capacitacion" && JSON.parse(p.metadata).catalogOnly === true); }
+    catch { return true; }
+  });
+  const publications = [...backend];
+  const activePublications: Publication[] = [];
+  const activeAt = (status: string | undefined | null, closesAt: string | null | undefined, endsAt: string | null | undefined) =>
+    !["CLOSED", "EXPIRED", "REMOVED_FROM_SOURCE"].includes(status ?? "") && ![closesAt, endsAt].some(d => d && Date.parse(d) <= now);
   const info: Record<string, { backend: boolean; stale: boolean; checkedAt: string | null; sourceUpdatedAt: string | null; lastDetectedChangeAt: string | null; canSave: boolean; canSchedule: boolean; canRemind: boolean }> = {};
   const conflicts: string[] = [];
   for (const item of catalog.items) {
-    const same = current.find(p => p.id === item.id || p.source === "Capacitación Docente" && p.external_id === item.externalId);
+    const same = backend.find(p => p.id === item.id || p.source === "Capacitación Docente" && p.external_id === item.externalId);
     if (same && same.source !== "Capacitación Docente") { conflicts.push(item.id!); continue; }
     const id = same?.id ?? item.id!, observed = catalog.observations?.[item.id!];
     info[id] = { backend: Boolean(same), stale, checkedAt: observed?.checkedAt ?? null,
       sourceUpdatedAt: item.sourceUpdatedAt, lastDetectedChangeAt: observed?.lastChangedAt ?? null,
       canSave: Boolean(same), canSchedule: Boolean(same),
       canRemind: Boolean(same && canScheduleTrainingReminder(parseTrainingMetadata(same.metadata), same.status, same.normalized_status)) };
-    if (same) continue; // D1 (including moderation/admin edits) wins; never overwrite.
+    if (same) {
+      if (!stale && activeAt(item.normalizedStatus, item.registrationCloseAt, item.endsAt) &&
+          activeAt(same.normalized_status, same.registration_close_at, same.ends_at)) activePublications.push(same);
+      continue; // D1 wins; active-list membership is a separate projection.
+    }
     publications.push({ id, source: "Capacitación Docente", external_id: item.externalId!, kind: "capacitacion", category: item.category!,
       title: item.title!, summary: item.summary!, level: item.level!, area: item.area!, location: item.location!, character: item.character!,
       junta: "", shift: "", starts_at: item.startsAt, ends_at: item.endsAt, status: item.status!, official_url: item.officialUrl!,
@@ -34,9 +47,11 @@ export async function integrateFdciCatalog(current: Publication[], input: FdciCa
         dateStatus: "unknown", catalogCheckedAt: observed?.checkedAt ?? null, catalogCompletedAt: catalog.updatedAt,
         catalogOnly: true, catalogStale: stale }),
     });
+    if (!stale && activeAt(item.normalizedStatus, item.registrationCloseAt, item.endsAt)) activePublications.push(publications.at(-1)!);
   }
   // Explicit context for a future chat caller; not injected into backend RAG.
   const aiContext = catalog.items.map(i => ({ id: i.id, title: i.title, url: i.officialUrl,
     checkedAt: catalog.observations?.[i.id!]?.checkedAt ?? null, sourceUpdatedAt: i.sourceUpdatedAt, stale }));
-  return { publications, info, conflicts, aiContext, catalogCompletedAt: catalog.updatedAt, catalogStatus: stale ? "stale" : "ready" };
+  return { publications, activePublications, info, conflicts, aiContext, catalogCompletedAt: catalog.updatedAt,
+    catalogAgeMs: Math.max(0, now - Date.parse(catalog.updatedAt)), catalogStatus: stale ? "stale" : "ready" };
 }

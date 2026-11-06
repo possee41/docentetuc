@@ -1,0 +1,40 @@
+# Preparation only. No schedule. Publish only to the dedicated pilot repository after authorization.
+name: FDCI durable manual synchronization
+on:
+  workflow_dispatch:
+permissions:
+  contents: write # GITHUB_TOKEN, only this repository; no Cloudflare or D1 credential.
+concurrency:
+  group: fdci-official-durable-state
+  cancel-in-progress: false
+jobs:
+  collect:
+    if: github.repository == 'possee41/docentetuc-fdci-catalog-pilot' && github.ref == 'refs/heads/main' && vars.FDCI_DURABLE_ENABLED == 'true' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FDCI_DURABLE_ENABLED: ${{ vars.FDCI_DURABLE_ENABLED }}
+      FDCI_STATIC_APPROVED_SHA: ${{ vars.FDCI_STATIC_APPROVED_SHA }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify approved revision
+        run: |
+          set -euo pipefail
+          [[ "$FDCI_STATIC_APPROVED_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$FDCI_STATIC_APPROVED_SHA"
+      - name: Restore durable cursor, collect bounded slice, commit confirmed state
+        run: node scripts/fdci-static-durable.mjs run
+      - name: Optional evidence only, not cursor persistence or Pages publication
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fdci-durable-result
+          path: fdci-result/
+          if-no-files-found: warn
+          retention-days: 2

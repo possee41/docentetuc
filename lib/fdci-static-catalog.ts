@@ -56,13 +56,15 @@ export async function validateFdciCatalog(value: unknown): Promise<FdciCatalog> 
   return canonical;
 }
 
-export function createFdciCatalogReader(url: string, fetcher: typeof fetch = fetch, now = () => Date.now()) {
+export function createFdciCatalogReader(url: string, fetcher: typeof fetch = fetch, now = () => Date.now(), statusUrl?: string) {
   const target = new URL(url);
   if (target.origin !== "https://possee41.github.io" || target.username || target.password || target.search || target.hash || !target.pathname.endsWith("/catalog.json"))
     throw Error("FDCI_CATALOG_ORIGIN_FORBIDDEN");
+  if (statusUrl && statusUrl !== new URL("status.json", target).href) throw Error("FDCI_STATUS_ORIGIN_FORBIDDEN");
   let lastGood: FdciCatalog | undefined;
   return async () => {
     let error: string | undefined;
+    let incomplete = false;
     try {
       const response = await fetcher(target.href, { credentials: "omit", redirect: "error", headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
       if (!response.ok || !response.headers.get("content-type")?.includes("application/json")) throw Error();
@@ -77,10 +79,22 @@ export function createFdciCatalogReader(url: string, fetcher: typeof fetch = fet
       const next = await validateFdciCatalog(JSON.parse(text + decoder.decode()));
       if (Date.parse(next.updatedAt) > now() + 300_000 || lastGood &&
           (next.updatedAt < lastGood.updatedAt || next.updatedAt === lastGood.updatedAt && next.sha256 !== lastGood.sha256)) throw Error();
+      if (statusUrl) {
+        const statusResponse = await fetcher(statusUrl, { credentials: "omit", redirect: "error", headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
+        if (!statusResponse.ok || !statusResponse.headers.get("content-type")?.includes("application/json")) throw Error();
+        const text = await statusResponse.text(); if (text.length > 4096) throw Error();
+        const s = JSON.parse(text);
+        if (!exact(s, ["status", "updatedAt", "ageMs", "lastAttempt", "catalogSha256", "revision"]) ||
+            !["ready", "stale"].includes(s.status) || s.updatedAt !== next.updatedAt || s.catalogSha256 !== next.sha256 ||
+            !/^[a-f0-9]{40}$/.test(s.revision) || !s.lastAttempt || !exact(s.lastAttempt, ["at", "status", "error"]) ||
+            !iso(s.lastAttempt.at) || s.lastAttempt.at < next.updatedAt || Date.parse(s.lastAttempt.at) > now() + 300_000 ||
+            !["complete", "partial", "restarted", "source-error"].includes(s.lastAttempt.status)) throw Error();
+        incomplete = s.lastAttempt.status !== "complete" || s.status === "stale";
+      }
       lastGood = next;
     } catch { error = "FDCI_CATALOG_UNAVAILABLE"; }
     const age = lastGood ? now() - Date.parse(lastGood.updatedAt) : Infinity;
-    return { status: !lastGood ? "unavailable" : error || age > 86_400_000 ? "stale" : "ready",
+    return { status: !lastGood ? "unavailable" : error || incomplete || age > 86_400_000 ? "stale" : "ready", ageMs: lastGood ? Math.max(0, age) : null,
       catalog: lastGood ? structuredClone(lastGood) : null,
       updatedAt: lastGood?.updatedAt ?? null, version: lastGood?.version ?? null,
       observations: structuredClone(lastGood?.observations ?? {}),

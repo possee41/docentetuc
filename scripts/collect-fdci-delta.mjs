@@ -6,7 +6,8 @@ import { fdciKey } from "./fdci-incremental.mjs";
 const root = "https://apicapacitaciones.educaciontuc.edu.ar/api";
 const courseKey = id => fdciKey(id, 1).slice(0, 12);
 
-export async function collectFdciDeltaSlice(fetcher, { state, queued }) {
+export async function collectFdciDeltaSlice(fetcher, { state, queued, courseLimit = 4 }) {
+  if (!Number.isSafeInteger(courseLimit) || courseLimit < 1 || courseLimit > 4) throw new Error("FDCI_DETAIL_LIMIT_INVALID");
   if (![state.detail_after, state.detail_upper].every(value => typeof value === "string" && /^(?:\d{12})?$/.test(value)) ||
       state.detail_after > state.detail_upper) throw new Error("FDCI_DELTA_CURSOR_INVALID");
   const active = await requestJson(`${root}/gestionCapas/getCapaActivas`, {}, fetcher);
@@ -37,8 +38,8 @@ export async function collectFdciDeltaSlice(fetcher, { state, queued }) {
     const c = commissions.get(row.id.split(":").at(-1));
     return c ? [courseKey(c.capacitacion_id)] : [];
   });
-  const selected = [...new Set(pinned)].slice(0, 2);
-  for (const key of pending) { if (selected.length === 4) break; if (!selected.includes(key)) selected.push(key); }
+  const selected = [...new Set(pinned)].slice(0, Math.min(2, courseLimit));
+  for (const key of pending) { if (selected.length >= courseLimit) break; if (!selected.includes(key)) selected.push(key); }
   const completed = new Set(), items = [];
   let budgetStop = false;
   for (const key of selected) {

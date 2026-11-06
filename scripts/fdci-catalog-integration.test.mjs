@@ -58,7 +58,7 @@ test("D1 records and admin edits win; saved IDs, Agenda and eligible reminders r
 });
 
 test("empty/stale composition never deletes existing publications, and v1/v2 observations distinguish check/change/source dates", async () => {
-  const { catalog } = await fixture(); const known = (await integrateFdciCatalog([], catalog, "ready")).publications[0];
+  const { catalog } = await fixture(); const known = { ...(await integrateFdciCatalog([], catalog, "ready")).publications[0], metadata: "{}" };
   const empty = await integrateFdciCatalog([known], await buildFdciCatalog([], later), "ready"); assert.deepEqual(empty.publications, [known]);
   const observations = Object.fromEntries(catalog.items.map(i => [i.id, { checkedAt: later, lastChangedAt: at }]));
   const v2 = await buildFdciCatalog(catalog.items, later, observations); assert.equal(v2.schemaVersion, 2);
