@@ -1,0 +1,108 @@
+# Local preparation only: requires separate authorization before publishing/running.
+# No Pages deploy, official API calls, Cloudflare credentials or real catalog.
+name: FDCI static state synthetic pilot
+on:
+  workflow_dispatch:
+    inputs:
+      bootstrap:
+        description: Authorize first empty synthetic state (first run only)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: fdci-static-synthetic-state-v2
+  cancel-in-progress: false
+jobs:
+  synthetic:
+    if: github.repository == 'possee41/docentetuc' && vars.FDCI_STATIC_PILOT_ENABLED == 'true' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    environment: fdci-static-pilot
+    timeout-minutes: 8
+    env:
+      FDCI_STATIC_APPROVED_SHA: ${{ vars.FDCI_STATIC_APPROVED_SHA }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify reviewed code
+        run: |
+          set -euo pipefail
+          [[ "$FDCI_STATIC_APPROVED_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$FDCI_STATIC_APPROVED_SHA"
+          test "$GITHUB_SHA" = "$FDCI_STATIC_APPROVED_SHA"
+      - name: Select exact previously committed artifact
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BOOTSTRAP: ${{ inputs.bootstrap }}
+        run: |
+          set -euo pipefail
+          export FDCI_STATIC_WORKFLOW_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/fdci-static-catalog-pilot.yml" --jq .id)"
+          echo "FDCI_STATIC_WORKFLOW_ID=$FDCI_STATIC_WORKFLOW_ID" >> "$GITHUB_ENV"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/$FDCI_STATIC_WORKFLOW_ID/runs?per_page=100" --jq '.workflow_runs[]' | jq -s '.' > runs.json
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?name=fdci-static-synthetic-state-v2&per_page=100" --jq '.artifacts[]' | jq -s '.' > artifacts.json
+          node scripts/fdci-static-artifact.mjs select artifacts.json runs.json > selected.json
+          if [[ "$(jq -r 'type' selected.json)" = null ]]; then
+            test "$BOOTSTRAP" = true
+            echo 'restore=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'restore=true' >> "$GITHUB_OUTPUT"
+            echo "run=$(jq -r .runId selected.json)" >> "$GITHUB_OUTPUT"
+            echo "artifact=$(jq -r .artifactId selected.json)" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@v4
+        if: steps.state.outputs.restore == 'true'
+        with:
+          github-token: ${{ github.token }}
+          repository: possee41/docentetuc
+          run-id: ${{ steps.state.outputs.run }}
+          artifact-ids: ${{ steps.state.outputs.artifact }}
+          merge-multiple: true
+          path: restored
+      - name: Restore verified synthetic state
+        if: steps.state.outputs.restore == 'true'
+        run: node scripts/fdci-static-artifact.mjs restore restored/state.json .fdci-runner selected.json
+      - name: Synthetic collection only (six fictional courses, six request budget)
+        id: collect
+        run: |
+          set -euo pipefail
+          node scripts/fdci-static-artifact.mjs synthetic-cycle .fdci-runner | tee result.json
+          echo "complete=$(jq -r '.status == "complete" and .published == true' result.json)" >> "$GITHUB_OUTPUT"
+      - name: Export confirmed progress and last complete public snapshot
+        id: export
+        if: always() && steps.state.outcome == 'success'
+        run: node scripts/fdci-static-artifact.mjs export .fdci-runner artifact/state.json
+      - uses: actions/upload-artifact@v4
+        id: progress
+        if: always() && steps.export.outcome == 'success'
+        with:
+          name: fdci-static-synthetic-state-v2
+          path: artifact/state.json
+          if-no-files-found: error
+          retention-days: 2
+      - name: Retain complete synthetic catalog only after durable progress upload
+        uses: actions/upload-artifact@v4
+        if: success() && steps.collect.outputs.complete == 'true' && steps.progress.outcome == 'success'
+        with:
+          name: fdci-static-synthetic-complete-v2
+          path: .fdci-runner/public/catalog.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
+      - name: Record result and provenance
+        if: always()
+        env:
+          RESTORED_RUN: ${{ steps.state.outputs.run }}
+          RESTORED_ARTIFACT: ${{ steps.state.outputs.artifact }}
+          PROGRESS_ARTIFACT: ${{ steps.progress.outputs.artifact-id }}
+        run: |
+          {
+            printf 'Synthetic only. Run: %s; SHA: %s\n\n' "$GITHUB_RUN_ID" "$GITHUB_SHA"
+            printf 'Restored run/artifact: %s/%s; committed artifact: %s\n\n' "$RESTORED_RUN" "$RESTORED_ARTIFACT" "$PROGRESS_ARTIFACT"
+            if [[ -f result.json ]]; then cat result.json; fi
+          } >> "$GITHUB_STEP_SUMMARY"
