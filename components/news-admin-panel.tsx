@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { NEWS_RELEVANCE, NEWS_SOURCE_TYPES, NEWS_STATUSES, normalizeNewsImage } from "@/lib/news-editorial";
 
@@ -38,6 +38,8 @@ export function NewsAdminPanel() {
   const [source, setSource] = useState({ sourceName: "", sourceTitle: "", url: "", sourceType: "official", isPrimary: false });
   const [newItem, setNewItem] = useState({ title: "", summary: "", sourceName: "", url: "", sourceType: "official", sourcePublishedAt: "" });
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
+  const [detailLoading, setDetailLoading] = useState(false);
+  const detailRef = useRef<HTMLDivElement>(null);
   const loadList = useCallback(async () => {
     const params = new URLSearchParams({ status, q: query, page: String(page) });
     try { setList(await api(`?${params}`) as unknown as typeof list); }
@@ -53,18 +55,22 @@ export function NewsAdminPanel() {
       .catch(() => { if (active) setOrigins([]); }); }, 250);
     return () => { active = false; clearTimeout(timer); };
   }, [originQuery]);
-  const open = async (newsId: string) => {
+  const open = useCallback(async (newsId: string) => {
     setError("");
+    setDetailLoading(true);
     try {
       const value = await api(`?id=${encodeURIComponent(newsId)}`) as unknown as Detail;
+      if (!value?.item) throw new Error("La noticia no se pudo cargar.");
       setDetail(value);
       setDraft({ title: value.item.editorial_title, summary: value.item.editorial_summary, topic: value.item.topic || "",
         body: value.item.editorial_body || "", relevance: value.item.relevance, validFrom: localDate(value.item.valid_from), validUntil: localDate(value.item.valid_until),
         imageUrl: value.item.hero_image_url || "", imageAlt: value.item.hero_image_alt || "", imageCredit: value.item.hero_image_credit || "",
         imageSourceUrl: value.item.hero_image_source_url || "", imageRightsNote: value.item.hero_image_rights_note || "",
         imageRightsUrl: value.item.hero_image_rights_url || "" });
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo cargar la noticia."); }
-  };
+      queueMicrotask(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo cargar la noticia."); setDetail(null); setDraft(null); }
+    finally { setDetailLoading(false); }
+  }, []);
   const submit = async (body: Record<string, unknown>) => {
     setBusy(true); setError(""); setNotice("");
     try {
@@ -117,8 +123,9 @@ export function NewsAdminPanel() {
       <label className="text-sm font-bold">Buscar noticia<input value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} maxLength={100} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 px-3" /></label>
     </div>
     <div className="grid gap-3 lg:grid-cols-2">{list.items.map((item) => <button key={item.id} type="button" onClick={() => void open(item.id)}
-      className="min-h-16 rounded-2xl bg-white p-4 text-left shadow-sm"><strong className="block break-words">{item.editorial_title || item.origin_title || "Sin título"}</strong>
+      className="min-h-16 cursor-pointer rounded-2xl bg-white p-4 text-left shadow-sm transition hover:shadow-md"><strong className="block break-words">{item.editorial_title || item.origin_title || "Sin título"}</strong>
       <span className="text-xs text-slate-600">{item.status} · {item.relevance}{item.featured ? " · Destacada" : ""}</span></button>)}</div>
+    {detailLoading && <p role="status" className="text-sm text-slate-600">Cargando noticia…</p>}
     {list.items.length === 0 && <p className="text-sm text-slate-600">No hay noticias para este filtro.</p>}
     <div className="flex gap-2"><button type="button" disabled={page === 0} onClick={() => setPage(page - 1)} className="min-h-11 rounded-xl border border-sky-200 bg-white px-4 disabled:opacity-50">Anterior</button>
       <button type="button" disabled={list.items.length < 30} onClick={() => setPage(page + 1)} className="min-h-11 rounded-xl border border-sky-200 bg-white px-4 disabled:opacity-50">Siguiente</button></div>
@@ -144,7 +151,7 @@ export function NewsAdminPanel() {
       </div>)}
     </section>
 
-    {detail && draft && <section className="space-y-5 rounded-2xl bg-white p-4 shadow-sm" aria-label="Ficha editorial">
+    {detail && draft && <section ref={detailRef} className="space-y-5 rounded-2xl bg-white p-4 shadow-sm" aria-label="Ficha editorial">
       <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-lg font-black">Ficha editorial · {detail.item.status}</h3>
         <p className="text-xs text-slate-600">Actualizada: {new Date(detail.item.updated_at).toLocaleString("es-AR")}</p></div>
         <button type="button" onClick={() => void open(detail.item.id)} className="min-h-11 rounded-xl border border-sky-200 px-3">Recargar noticia</button></div>

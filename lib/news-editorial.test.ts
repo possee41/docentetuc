@@ -163,3 +163,11 @@ test("la categoría pública se deriva del tipo de fuente sin confundir gremial 
   for (const category of ["oficial", "educativa", "gremial"]) assert.ok(isNewsCategory(category));
   for (const invalid of ["", "oficiales", "gremiales", "all", null, 1]) assert.ok(!isNewsCategory(invalid));
 });
+
+test("normalizeNewsSourceUrl bloquea formatos alternativos de IP privada", () => {
+  for (const value of [
+    "https://2130706433/x", "https://0177.0.0.1/x", "https://0x7f000001/x",
+    "https://[::ffff:127.0.0.1]/x", "https://[::1]/x", "https://localhost./x",
+  ]) assert.equal(normalizeNewsSourceUrl(value), null, value);
+  assert.equal(normalizeNewsSourceUrl("https://example.org/x"), "https://example.org/x");
+});

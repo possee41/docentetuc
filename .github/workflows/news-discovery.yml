@@ -1,0 +1,89 @@
+name: News discovery (disabled)
+on:
+  # Disabled by default. Enable only after authorization and a fixed approved SHA.
+  # schedule: [{ cron: '0 */6 * * *' }]
+  workflow_dispatch:
+    inputs:
+      max_candidates:
+        description: 'Máximo de candidatas nuevas por ejecución'
+        required: false
+        type: string
+        default: '5'
+      feeds:
+        description: 'Fuentes a procesar (coma separada, vacío = todas)'
+        required: false
+        type: string
+        default: 'infod'
+      dry_run:
+        description: 'Solo verificar, sin escribir candidatas'
+        required: false
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: news-discovery
+  cancel-in-progress: false
+jobs:
+  discover:
+    if: >-
+      github.repository == 'possee41/docentetuc' &&
+      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/1.2-sync-integration') ||
+       (github.event_name == 'schedule' &&
+        github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+        vars.NEWS_DISCOVERY_ENABLED == 'true'))
+    runs-on: ubuntu-latest
+    environment: news-discovery
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.NEWS_DISCOVERY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify approved revision
+        env:
+          NEWS_REF: ${{ vars.NEWS_DISCOVERY_REF }}
+        run: |
+          [[ "$NEWS_REF" =~ ^[a-f0-9]{40}$ ]] || exit 1
+      - name: Run discovery via Worker endpoint
+        env:
+          NEWS_DISCOVERY_SECRET: ${{ secrets.NEWS_DISCOVERY_SECRET }}
+          NEWS_DISCOVERY_ORIGIN: ${{ vars.NEWS_DISCOVERY_ORIGIN }}
+          MAX_CANDIDATES: ${{ inputs.max_candidates || '5' }}
+          FEEDS: ${{ inputs.feeds || 'infod' }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -o pipefail
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run: verificando endpoint..."
+            curl -s -o /dev/null -w "%{http_code}" "$NEWS_DISCOVERY_ORIGIN/api/internal/news-discovery" \
+              -H "Authorization: Bearer $NEWS_DISCOVERY_SECRET" -X POST \
+              -H "Content-Type: application/json" -d '{"maxCandidates":0}' || true
+            exit 0
+          fi
+          curl -s -X POST "$NEWS_DISCOVERY_ORIGIN/api/internal/news-discovery" \
+            -H "Authorization: Bearer $NEWS_DISCOVERY_SECRET" \
+            -H "Content-Type: application/json" \
+            -d "{\"maxCandidates\":$MAX_CANDIDATES,\"feeds\":[\"$(echo $FEEDS | tr ',' ' ' | tr ' ' '\",\"')\"]}" \
+            | tee news-discovery-result.json
+      - name: Record result
+        if: always()
+        run: |
+          node -e "
+            const fs=require('fs');
+            let r={};
+            try { r=JSON.parse(fs.readFileSync('news-discovery-result.json','utf8')); } catch {}
+            console.log('### News discovery');
+            console.log('- status: ' + (r.status || 'NO_RESULT'));
+            console.log('- totalDiscovered: ' + (Number.isSafeInteger(r.totalDiscovered) ? r.totalDiscovered : 'n/a'));
+            console.log('- created: ' + (r.result?.created ?? 'n/a'));
+            console.log('- updated: ' + (r.result?.updated ?? 'n/a'));
+            console.log('- unchanged: ' + (r.result?.unchanged ?? 'n/a'));
+            for (const f of (r.feeds||[])) console.log('- feed ' + f.feed + ': ' + f.status + ' (discovered=' + f.discovered + ')');
+            console.log('- auto-publish: no');
+            console.log('- notifications: no');
+          " >> "$GITHUB_STEP_SUMMARY"
