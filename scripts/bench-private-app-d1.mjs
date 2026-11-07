@@ -1,12 +1,9 @@
 // Ephemeral local D1 only. Measures the two public queries removed from /api/app.
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { APP_PUBLICATIONS_QUERY as query } from "../lib/app-publications-query.ts";
 
 const require = createRequire(import.meta.url);
 const { Miniflare } = require("../node_modules/.pnpm/miniflare@4.20260515.0/node_modules/miniflare");
-const query = readFileSync(new URL("../lib/app-publications-query.ts", import.meta.url), "utf8")
-  .match(/export const APP_PUBLICATIONS_QUERY = `([\s\S]*?)`;/)?.[1];
-if (!query) throw new Error("No se pudo leer la consulta pública");
 
 const mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('local'); } }", d1Databases: ["DB"] });
 try {

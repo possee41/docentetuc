@@ -57,6 +57,7 @@ import type { AppView as View } from "@/components/app-sidebar";
 import { deviceRequestHeaders } from "@/lib/device-user";
 import { filterForNavigation, sectionUrl, shouldRevalidateAccount, viewFromSection } from "@/lib/app-navigation";
 import { boardItems } from "@/lib/board-view";
+import { isKnownFdciSynthetic } from "@/lib/fdci-canary-synthetic";
 import { useFdciCatalogPilot, FdciCatalogPilotBanner, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
 import { sourceHealth, sourceNotices } from "@/lib/source-health";
 import type { BoardView } from "@/lib/board-view";
@@ -424,12 +425,13 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     };
     if (filter === "para-mi" && (view === "vacantes" || view === "capacitaciones" && !trainingPilot.enabled)) {
       const now = new Date();
-      const current = personalized.items.filter((item) => view === "vacantes"
+      const current = personalized.items.filter(item => !isKnownFdciSynthetic(item.id)).filter((item) => view === "vacantes"
         ? ["ACTIVE", "UPCOMING"].includes(publicationLifecycleForUI(item, now))
         : ["ABRE_HOY", "PROXIMAMENTE", "ABIERTA"].includes(enrollmentForUI(item, now)));
       return view === "capacitaciones" ? current.sort(trainingCompare) : current;
     }
     let items = (view === "capacitaciones" ? trainingPilot.publications : data?.publications || []).filter(item => !officialMetadata(item)?.canonicalId || resolveOfficialAlias(item, data?.publications || []).id === item.id);
+    if (view !== "guardados") items = items.filter(item => !isKnownFdciSynthetic(item.id));
     if (view === "vacantes") items = items.filter((item) => hasOfficialTopic(item, "INSCRIPCION_SIME") || item.source === "SIME" && hasOfficialTopic(item, "CLASIFICACION_PENDIENTE"));
     if (view === "capacitaciones") items = items.filter((item) => item.kind === "capacitacion");
     if (view === "junta") items = items.filter((item) => item.kind === "junta");
@@ -813,6 +815,7 @@ const homeShortcuts: { label: string; caption: string; icon: typeof Home; view: 
 function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult, isEligible, onOpen, onRemind, onView, loading, error }: DashboardProps) {
   const now = new Date();
   const publications = data?.publications || [];
+  const catalogPublications = publications.filter(item => !isKnownFdciSynthetic(item.id));
   const sync = data?.sync || [];
   const visibleHomeShortcuts = homeShortcuts.filter(({ view }) =>
     view !== "actos" && view !== "llamados" || boardItems(publications, view, now).some((item) => sourceHealth(healthForPublication(item, sync), now) === "current"));
@@ -830,11 +833,11 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const upcomingManualAgenda = manualEvents.flatMap((item) => { const startsAt = safeDate(item.starts_at); return startsAt && startsAt.getTime() >= now.getTime() ? [{ title: item.title, startsAt: item.starts_at }] : []; });
   const nextAgendaEntry = [...agenda.map((item) => ({ title: item.title, startsAt: eventDate(item) || "" })), ...upcomingManualAgenda].filter((item) => Boolean(safeDate(item.startsAt))).sort((a, b) => (safeDate(a.startsAt)?.getTime() ?? Number.MAX_SAFE_INTEGER) - (safeDate(b.startsAt)?.getTime() ?? Number.MAX_SAFE_INTEGER))[0];
   const todayEvents = agenda.filter((item) => calendarDayDistance(eventDate(item), now) === 0).length + manualEvents.filter((item) => calendarDayDistance(item.starts_at, now) === 0).length;
-  const vacancies = publications.filter((item) => hasOfficialTopic(item, "INSCRIPCION_SIME") && publicationLifecycleForUI(item, now) === "ACTIVE" && currentForHome(item) && relevant(item)).sort((a, b) => matchResult(b).score - matchResult(a).score);
+  const vacancies = catalogPublications.filter((item) => hasOfficialTopic(item, "INSCRIPCION_SIME") && publicationLifecycleForUI(item, now) === "ACTIVE" && currentForHome(item) && relevant(item)).sort((a, b) => matchResult(b).score - matchResult(a).score);
   const candidate = (item: Publication) => { const metadata = parseTrainingMetadata(item.metadata), result = matchResult(item); return { kind: item.kind === "informacion" ? "junta" as const : item.kind, registrationOpensAt: metadata?.registrationOpensAt, registrationClosesAt: metadata?.registrationClosesAt, eventAt: eventDate(item), matched: matches(item), inAgenda: Boolean(savedMap.get(item.id)?.in_agenda), updatedAt: item.updated_at, matchScore: result.status === "unconfigured" ? undefined : result.score }; };
   const compare = (a: Publication, b: Publication) => compareHomePriority(candidate(a), candidate(b), now);
   const profileReady = Boolean(profile && (profile.levels.length || profile.boards.length) && (profile.areas.length || profile.subjects.length || profile.roles.length || profile.circuits.length || profile.training_interests.length));
-  const upcoming = publications.filter((item) => {
+  const upcoming = catalogPublications.filter((item) => {
     const metadata = parseTrainingMetadata(item.metadata);
     return item.kind === "capacitacion" && metadata?.dateStatus === "confirmed"
       && currentForHome(item) && enrollmentForUI(item, now) !== "SIN_CUPO" && ["today", "tomorrow", "two-three", "four-seven", "eight-fourteen", "open"].includes(registrationState(metadata?.registrationOpensAt, metadata?.registrationClosesAt, now));
@@ -850,7 +853,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   });
   const eligibleUpcoming = upcoming.filter((item) => relevant(item));
   const nextTraining = profileReady ? eligibleUpcoming[0] : undefined, nextMetadata = nextTraining ? parseTrainingMetadata(nextTraining.metadata) : null, nextMatch = nextTraining ? matchResult(nextTraining) : null;
-  const forYou = publications.filter((item) => currentForHome(item) && (item.kind !== "capacitacion" || enrollmentForUI(item, now) !== "SIN_CUPO") && (item.kind !== "vacante" || publicationLifecycleForUI(item, now) === "ACTIVE") && relevant(item) && !isGeneralNotice(item) && item.id !== nextTraining?.id && item.id !== vacancies[0]?.id).sort(compare).slice(0, 2);
+  const forYou = catalogPublications.filter((item) => currentForHome(item) && (item.kind !== "capacitacion" || enrollmentForUI(item, now) !== "SIN_CUPO") && (item.kind !== "vacante" || publicationLifecycleForUI(item, now) === "ACTIVE") && relevant(item) && !isGeneralNotice(item) && item.id !== nextTraining?.id && item.id !== vacancies[0]?.id).sort(compare).slice(0, 2);
   const unreadByPublication = new Map<string, Notice>();
   for (const notice of data?.notifications || []) {
     if (Boolean(notice.read) || unreadByPublication.has(notice.publication_id)) continue;
@@ -861,7 +864,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const alreadySurfaced = new Set([nextTraining?.id, ...forYou.map((item) => item.id), vacancies[0]?.id].filter(Boolean));
   const importantNotice = unread.map((notice) => ({ notice, publication: publicationMap.get(notice.publication_id) })).find(({ publication }) => publication && (isGeneralNotice(publication) || (relevant(publication) && !alreadySurfaced.has(publication.id))));
   const primaryHomeIds = new Set([nextTraining?.id, ...forYou.map((item) => item.id), vacancies[0]?.id, importantNotice?.publication?.id].filter(Boolean));
-  const latest = [...publications].filter((item) => currentForHome(item) && (item.kind !== "capacitacion" || enrollmentForUI(item, now) !== "SIN_CUPO") && !primaryHomeIds.has(item.id) && (relevant(item) || isGeneralNotice(item))).sort((a, b) => new Date(b.last_changed_at || b.updated_at).getTime() - new Date(a.last_changed_at || a.updated_at).getTime()).slice(0, 3);
+  const latest = [...catalogPublications].filter((item) => currentForHome(item) && (item.kind !== "capacitacion" || enrollmentForUI(item, now) !== "SIN_CUPO") && !primaryHomeIds.has(item.id) && (relevant(item) || isGeneralNotice(item))).sort((a, b) => new Date(b.last_changed_at || b.updated_at).getTime() - new Date(a.last_changed_at || a.updated_at).getTime()).slice(0, 3);
   const profileNeedsDetail = !profileReady || !publications.some((item) => matchResult(item).confidence >= 70);
   const priorityLabel = (item: Publication) => {
     if (item.kind === "capacitacion") {

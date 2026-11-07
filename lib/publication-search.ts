@@ -1,3 +1,5 @@
+import { EXCLUDE_FDCI_CANARY_SYNTHETIC_SQL } from "./fdci-canary-synthetic.ts";
+
 export const PUBLICATION_SEARCH_PAGE_SIZE = 20;
 export const PUBLICATION_SEARCH_KINDS = ["all", "vacante", "capacitacion", "junta", "informacion"] as const;
 export type PublicationSearchKind = typeof PUBLICATION_SEARCH_KINDS[number];
@@ -36,7 +38,10 @@ export function publicationSearchQuery(query: string, cursor?: string, pageSize 
   const sql = `SELECT * FROM publications WHERE kind IN ('vacante','capacitacion','junta','informacion')
     ${kind && kind !== "all" ? "AND kind=?" : ""}
     AND (CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.official.canonicalId') IS NULL ELSE 1 END)
+    AND ${EXCLUDE_FDCI_CANARY_SYNTHETIC_SQL}
     ${terms.length ? `AND ${terms.map(() => `${foldedText} LIKE ? ESCAPE '\\'`).join(" AND ")}` : ""}${cursorCondition}
     ORDER BY updated_at DESC, id DESC LIMIT ${pageSize + 1}`;
   return { sql, params };
 }
+
+export const PUBLICATION_BY_ID_SQL = `SELECT * FROM publications WHERE id=? AND kind IN ('vacante','capacitacion','junta','informacion') AND ${EXCLUDE_FDCI_CANARY_SYNTHETIC_SQL}`;

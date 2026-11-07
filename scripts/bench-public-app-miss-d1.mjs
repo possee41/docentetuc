@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { APP_PUBLICATIONS_QUERY } from "../lib/app-publications-query.ts";
 
 const require = createRequire(import.meta.url);
 const { Miniflare } = require("../node_modules/.pnpm/miniflare@4.20260515.0/node_modules/miniflare");
 const base = "563832f6ee95879b8eb461ee66a6db7c977d7b8d";
 const extract = text => text.match(/export const APP_PUBLICATIONS_QUERY = `([\s\S]*?)`;/)?.[1];
 const before = extract(execFileSync("git", ["show", `${base}:lib/app-publications-query.ts`], { encoding: "utf8" }));
-const after = extract(readFileSync("lib/app-publications-query.ts", "utf8"));
+const after = APP_PUBLICATIONS_QUERY;
 assert.ok(before && after);
 const syncSQL = "SELECT source, synced_at, last_attempt_at, last_successful_sync_at, sync_status FROM sync_state ORDER BY source";
 const mf = new Miniflare({ modules: true, script: "export default {fetch(){return new Response('local')}}",

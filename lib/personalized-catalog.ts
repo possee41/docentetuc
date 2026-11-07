@@ -4,6 +4,7 @@ import { hasOfficialTopic, officialLifecycle, officialMetadata } from "./officia
 import { publicationLifecycle } from "./publication-lifecycle.ts";
 import { enrollmentState, parseTrainingMetadata } from "./training.ts";
 import type { Profile, Publication } from "./types.ts";
+import { EXCLUDE_FDCI_CANARY_SYNTHETIC_SQL } from "./fdci-canary-synthetic.ts";
 
 export type PersonalKind = "vacante" | "capacitacion";
 export const PERSONAL_SCAN_SIZE = 120;
@@ -59,7 +60,7 @@ export function eligiblePersonalPublication(item: Publication, profile: Profile,
   return isEligibleMatchResult(profileMatch(publicationForMatch(item), matchProfileFromUser(profile)), profile.personal_match_threshold);
 }
 
-export const PERSONAL_CATALOG_SQL = `SELECT * FROM publications WHERE kind=? AND id>? ORDER BY id LIMIT ${PERSONAL_SCAN_SIZE + 1}`;
+export const PERSONAL_CATALOG_SQL = `SELECT * FROM publications WHERE kind=? AND id>? AND ${EXCLUDE_FDCI_CANARY_SYNTHETIC_SQL} ORDER BY id LIMIT ${PERSONAL_SCAN_SIZE + 1}`;
 
 type CatalogDB = { prepare(sql: string): { bind(...values: string[]): { all<T>(): Promise<{ results: T[]; meta?: { rows_read?: number } }> } } };
 

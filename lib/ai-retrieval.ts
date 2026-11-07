@@ -4,6 +4,7 @@ import { publicationSearchQuery } from "./publication-search.ts";
 import { listPublicNews } from "./public-news.ts";
 import type { CommunityDatabase } from "./community.ts";
 import type { Publication } from "./types.ts";
+import { EXCLUDE_FDCI_CANARY_SYNTHETIC_SQL } from "./fdci-canary-synthetic.ts";
 
 const publicKinds = "kind IN ('vacante','capacitacion','junta','informacion')";
 const canonical = "(CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.official.canonicalId') IS NULL ELSE 1 END)";
@@ -41,10 +42,10 @@ export async function retrieveAIRecords(database: D1Database, question: string, 
   const search = terms.length ? publicationSearchQuery(terms.join(" "), undefined, 80) : null;
   const [matching, recent, focused, agenda] = await Promise.all([
     search ? database.prepare(search.sql).bind(...search.params).all<Publication>() : Promise.resolve({ results: [] as Publication[] }),
-    database.prepare(`SELECT * FROM publications WHERE ${intentWhere(intent)} AND ${canonical}
+    database.prepare(`SELECT * FROM publications WHERE ${intentWhere(intent)} AND ${canonical} AND ${EXCLUDE_FDCI_CANARY_SYNTHETIC_SQL}
       ORDER BY CASE WHEN normalized_status IN ('ACTIVE','UPCOMING') THEN 0 ELSE 1 END,
       COALESCE(source_published_at,last_changed_at,updated_at) DESC LIMIT 80`).all<Publication>(),
-    options.focusedId ? database.prepare(`SELECT * FROM publications WHERE id=? AND ${publicKinds}`).bind(options.focusedId).first<Publication>() : Promise.resolve(null),
+    options.focusedId ? database.prepare(`SELECT * FROM publications WHERE id=? AND ${publicKinds} AND ${EXCLUDE_FDCI_CANARY_SYNTHETIC_SQL}`).bind(options.focusedId).first<Publication>() : Promise.resolve(null),
     intent === "agenda" && options.agendaUserId ? database.prepare(`SELECT p.* FROM saved_publications s JOIN publications p ON p.id=s.publication_id
       WHERE s.user_id=? AND s.in_agenda=1 ORDER BY s.saved_at DESC LIMIT 100`).bind(options.agendaUserId).all<Publication>() : Promise.resolve({ results: [] as Publication[] }),
   ]);
