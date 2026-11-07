@@ -130,12 +130,13 @@ async function question(prompt) {
 
 export async function runOne({ scenario, accountId, subdomain, token, readToken, config,
   cli = wrangler, send = fetch, metadataRequest = fetch, ask = question,
-  now = new Date(), runId = `push-${randomBytes(6).toString("hex")}` }) {
+  now = new Date(), runId = `push-${randomBytes(6).toString("hex")}`,
+  configPath = null }) {
   if (!RUN_ID.test(runId)) throw new Error("CANARY_RUN_ID_INVALID");
   const target = validateTarget({ scenario, accountId, subdomain, token, readToken, config });
   const report = { scenario, runId, measuredAt: now.toISOString(), worker: NAME, measurement: null };
-  const configPath = resolve(ROOT, "wrangler.push-canary.json");
-  const base = ["--config", configPath];
+  const resolvedConfigPath = configPath || resolve(ROOT, "wrangler.push-canary.json");
+  const base = ["--config", resolvedConfigPath];
   // These checks are read-only. Any unexpected response stops before seeding or invoking.
   const metadata = await readWorkerMetadata(accountId, readToken, metadataRequest);
   verifyWorkerMetadata(...metadata, subdomain, target.dbId);
@@ -154,8 +155,8 @@ export async function runOne({ scenario, accountId, subdomain, token, readToken,
   writeFileSync(seedFile, generatePushCanarySql({ count: Number(scenario.split("-")[0]),
     density: scenario.split("-")[1], now }), "utf8");
   // Recheck local config immediately before the first remote write.
-  checkPushCanaryConfig(JSON.parse(readFileSync(configPath, "utf8")));
-  if (JSON.parse(readFileSync(configPath, "utf8")).d1_databases[0].database_id.toLowerCase() !== target.dbId)
+  checkPushCanaryConfig(JSON.parse(readFileSync(resolvedConfigPath, "utf8")));
+  if (JSON.parse(readFileSync(resolvedConfigPath, "utf8")).d1_databases[0].database_id.toLowerCase() !== target.dbId)
     throw new Error("CANARY_CONFIG_CHANGED");
   const seeded = jsonOutput(cli(["d1", "execute", "DB", "--remote", "--yes", "--json",
     "--file", seedFile, ...base], accountId));

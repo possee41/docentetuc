@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 import { evaluateCanary, runOne, validateTarget, verifyRemoteIdentity, verifyWorkerMetadata } from "../scripts/run-push-canary.mjs";
 
@@ -24,7 +25,7 @@ test("canary limita escenarios, configuración y URL al Worker independiente", (
 
 const metadataRequest = async (input: RequestInfo | URL) => Response.json({ success: true, result:
   String(input).endsWith("/scripts/docentetuc-push-canary-1-2/settings")
-    ? { bindings: [{ name: "DB", type: "d1", database_id: config.d1_databases[0].database_id },
+    ? { bindings: [{ name: "DB", type: "d1", database_id: isolated.d1_databases[0].database_id },
       { name: "CANARY_BEARER_TOKEN", type: "secret_text" }, { name: "CANARY_BUILD_ID", type: "plain_text" }] }
     : String(input).endsWith("/scripts/docentetuc-push-canary-1-2/subdomain") ? { enabled: true } : { subdomain: "only-canary" } });
 
@@ -87,7 +88,7 @@ test("una sola semilla, un envío simulado y CPU manual obligatoria", async () =
   const cli = (args: string[]) => {
     calls.push(args.join(" "));
     if (args[0] === "whoami") return JSON.stringify({ accounts: [{ id: accountId }] });
-    if (args[1] === "info") return JSON.stringify({ name: "docentetuc-push-canary-1-2", uuid: config.d1_databases[0].database_id });
+    if (args[1] === "info") return JSON.stringify({ name: "docentetuc-push-canary-1-2", uuid: isolated.d1_databases[0].database_id });
     if (args[1] === "execute" && args.includes("--command"))
       return JSON.stringify([{ success: true, results: [{ marker: "docentetuc-push-canary-1-2" }] }]);
     if (args[1] === "execute") return JSON.stringify([{ success: true }]);
@@ -97,9 +98,16 @@ test("una sola semilla, un envío simulado y CPU manual obligatoria", async () =
   const send = async () => { sends++;
     return Response.json({ runId, scenario, result: { considered: 2, sent: 2, failed: 0, removed: 0, deferred: 0 },
       d1: { queries: 11, rowsRead: 17, rowsWritten: 14 }, isolateId: "local-isolate", isolateInvocation: 1, wallMs: 2000 }); };
+  const tempConfigPath = join(process.cwd(), "wrangler.push-canary.test-temp.json");
+  writeFileSync(tempConfigPath, JSON.stringify(isolated, null, 2));
   const answers = [`EJECUTAR ${scenario} ${runId}`, "", "ok"];
-  const result = await runOne({ scenario, runId, accountId, subdomain: "only-canary", token, readToken,
-    config, cli, send, metadataRequest, ask: async () => answers.shift() || "" });
+  let result;
+  try {
+    result = await runOne({ scenario, runId, accountId, subdomain: "only-canary", token, readToken,
+      config: isolated, cli, send, metadataRequest, ask: async () => answers.shift() || "", configPath: tempConfigPath as any });
+  } finally {
+    try { unlinkSync(tempConfigPath); } catch {}
+  }
   assert.equal(sends, 1);
   assert.equal(calls.filter((line) => line.includes("--file")).length, 1);
   const measurement = result.measurement as unknown as { status: string, reasons: string[] };
