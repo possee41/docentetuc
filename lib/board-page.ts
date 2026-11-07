@@ -1,5 +1,6 @@
 import { OFFICIAL_JUNTAS, type JuntaId } from "./juntas.ts";
 import type { BoardView } from "./board-view.ts";
+import { PUBLICATION_VISIBILITY_SQL } from "./publication-visibility.ts";
 
 export const BOARD_PAGE_SIZE = 50;
 // Padrones needs the whole list to group and rank it, so it ships in larger pages.
@@ -20,14 +21,14 @@ export function boardPageQuery(view: BoardPageView, junta: JuntaId | "todas", mo
       !["current", "references"].includes(mode)) throw new Error("BOARD_FILTER_INVALID");
   const category = view === "padrones" ? "Padrones" : view === "comunicados" ? "Comunicados" : "Llamados abiertos";
   const entity = view === "padrones" ? "padron" : view === "comunicados" ? "notice" : "opportunity";
-  const conditions = ["source='Padrones y Comunicados'", "kind='junta'", "id>?", "removed_at IS NULL"];
+  const conditions = ["source='Padrones y Comunicados'", "kind='junta'", "id>?", "removed_at IS NULL", PUBLICATION_VISIBILITY_SQL];
   const binds: string[] = [];
   if (view === "llamados" && mode === "references") {
     conditions.push("category='Llamados abiertos'");
   } else {
     conditions.push(view === "padrones"
-      ? "(category='Padrones' OR title LIKE '%padron%' OR title LIKE '%padrón%' OR (json_valid(metadata) AND json_extract(metadata,'$.official.entity')='padron'))"
-      : `(category='${category}' OR (json_valid(metadata) AND json_extract(metadata,'$.official.entity')='${entity}'))`);
+      ? "(category='Padrones' OR title LIKE '%padron%' OR title LIKE '%padrón%' OR CASE WHEN json_valid(metadata) THEN json_extract(metadata,'$.official.entity')='padron' ELSE 0 END)"
+      : `(category='${category}' OR CASE WHEN json_valid(metadata) THEN json_extract(metadata,'$.official.entity')='${entity}' ELSE 0 END)`);
     if (view === "llamados") conditions.push("(registration_close_at>=? OR ends_at>=?)");
   }
   if (junta !== "todas") {

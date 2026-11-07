@@ -51,9 +51,8 @@ export function createFdciVersionedReader(url: string, fetcher: typeof fetch = f
       // Check after both awaits too: a slower old response must not replace a newer accepted pair.
       if (Date.parse(pointer.lastAttempt.at) > now() + 300_000 || last && (pointer.generation < last.pointer.generation ||
           pointer.generation === last.pointer.generation && pointer.sha256 !== last.pointer.sha256 || pointer.catalogUpdatedAt < last.catalog.updatedAt)) throw Error("FDCI_PUBLICATION_ROLLBACK");
-      // The old public pilot is a DEMO, never an official fallback.
-      if (catalog.version === "14ffa0ebd934c43d36757b89be76318ee0053a45352912f758786ee5377c613b" ||
-          catalog.items.some(item => /DEMO\s+SINT[ÉE]TICA/i.test(item.title!))) throw Error("FDCI_SYNTHETIC_CATALOG");
+      // Reject the verified old pilot fingerprint, never infer provenance from title words.
+      if (catalog.version === "14ffa0ebd934c43d36757b89be76318ee0053a45352912f758786ee5377c613b") throw Error("FDCI_SYNTHETIC_CATALOG");
       last = { pointer, catalog };
     } catch { error = "FDCI_PUBLICATION_UNAVAILABLE"; }
     const ageMs = last ? Math.max(0, now() - Date.parse(last.catalog.updatedAt)) : null;

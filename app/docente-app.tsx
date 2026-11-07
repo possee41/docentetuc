@@ -57,7 +57,7 @@ import type { AppView as View } from "@/components/app-sidebar";
 import { deviceRequestHeaders } from "@/lib/device-user";
 import { filterForNavigation, sectionUrl, shouldRevalidateAccount, viewFromSection } from "@/lib/app-navigation";
 import { boardItems } from "@/lib/board-view";
-import { isKnownFdciSynthetic } from "@/lib/fdci-canary-synthetic";
+import { isPublicPublication } from "@/lib/publication-visibility";
 import { useFdciCatalogPilot, FdciCatalogPilotBanner, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
 import { sourceHealth, sourceNotices } from "@/lib/source-health";
 import type { BoardView } from "@/lib/board-view";
@@ -425,13 +425,14 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     };
     if (filter === "para-mi" && (view === "vacantes" || view === "capacitaciones" && !trainingPilot.enabled)) {
       const now = new Date();
-      const current = personalized.items.filter(item => !isKnownFdciSynthetic(item.id)).filter((item) => view === "vacantes"
+      const current = personalized.items.filter(isPublicPublication).filter((item) => view === "vacantes"
         ? ["ACTIVE", "UPCOMING"].includes(publicationLifecycleForUI(item, now))
         : ["ABRE_HOY", "PROXIMAMENTE", "ABIERTA"].includes(enrollmentForUI(item, now)));
       return view === "capacitaciones" ? current.sort(trainingCompare) : current;
     }
     let items = (view === "capacitaciones" ? trainingPilot.publications : data?.publications || []).filter(item => !officialMetadata(item)?.canonicalId || resolveOfficialAlias(item, data?.publications || []).id === item.id);
-    if (view !== "guardados") items = items.filter(item => !isKnownFdciSynthetic(item.id));
+    // Guardados is private; Capacitaciones is already composed by the guarded, opt-in catalog hook.
+    if (view !== "guardados" && view !== "capacitaciones") items = items.filter(isPublicPublication);
     if (view === "vacantes") items = items.filter((item) => hasOfficialTopic(item, "INSCRIPCION_SIME") || item.source === "SIME" && hasOfficialTopic(item, "CLASIFICACION_PENDIENTE"));
     if (view === "capacitaciones") items = items.filter((item) => item.kind === "capacitacion");
     if (view === "junta") items = items.filter((item) => item.kind === "junta");
@@ -782,7 +783,7 @@ function OfficialBoardSection({ view, publications, query, junta, setJunta, onOp
   };
   const matchesBoard = (item: Publication) => junta === "todas" || matchesJunta(item, junta) || (readMetadata(item.metadata).portalPlacements as { junta: string }[] | undefined)?.some(p => matchesJunta({ junta: p.junta, level: "" }, junta));
   const entries = remote ? rows : boardItems(publications, view).filter((item) => matchesBoard(item) && (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query))));
-  const sources = publications.filter((item) => item.id.startsWith("padrones:") && (view === "actos" || view === "comunicados" ? item.category === "Comunicados" : view === "llamados" ? item.category === "Llamados abiertos" : false) && matchesBoard(item));
+  const sources = publications.filter(isPublicPublication).filter((item) => item.id.startsWith("padrones:") && (view === "actos" || view === "comunicados" ? item.category === "Comunicados" : view === "llamados" ? item.category === "Llamados abiertos" : false) && matchesBoard(item));
   return <section className="space-y-4 pb-16 md:pb-0">
     <VisualSectionBanner kind={view === "padrones" || view === "llamados" ? "padrones" : "novedades"} title={title} description={description} />
     <div className="max-w-lg"><Label htmlFor="board-junta">Junta</Label><Select value={junta} onValueChange={(value) => { restart(); setJunta((value || "todas") as typeof junta); }}><SelectTrigger id="board-junta" className="mt-1 h-11 rounded-xl border-[#c8e1f1] bg-white"><SelectValue placeholder="Todas las juntas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
@@ -815,7 +816,7 @@ const homeShortcuts: { label: string; caption: string; icon: typeof Home; view: 
 function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult, isEligible, onOpen, onRemind, onView, loading, error }: DashboardProps) {
   const now = new Date();
   const publications = data?.publications || [];
-  const catalogPublications = publications.filter(item => !isKnownFdciSynthetic(item.id));
+  const catalogPublications = publications.filter(isPublicPublication);
   const sync = data?.sync || [];
   const visibleHomeShortcuts = homeShortcuts.filter(({ view }) =>
     view !== "actos" && view !== "llamados" || boardItems(publications, view, now).some((item) => sourceHealth(healthForPublication(item, sync), now) === "current"));

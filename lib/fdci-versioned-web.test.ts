@@ -5,6 +5,7 @@ import { buildFdciCatalog, catalogHash } from "./fdci-static-catalog.ts";
 import { buildFdciActiveVersion, createFdciVersionedReader, FDCI_RAW_ACTIVE_URL } from "./fdci-static-publication.ts";
 import { fdciPilotAllowed, integrateFdciCatalog } from "./fdci-catalog-integration.ts";
 import type { Publication } from "./types.ts";
+import { generateFdciCatalog, syntheticFdciFetch } from "../scripts/fdci-static-catalog.mjs";
 
 const at = "2026-11-06T10:00:00.000Z", now = () => Date.parse(at);
 const course = (id = "101") => ({ id: `fdci:commission:${id}`, externalId: id, title: `Curso simulado ${id}`,
@@ -12,7 +13,7 @@ const course = (id = "101") => ({ id: `fdci:commission:${id}`, externalId: id, t
   location: "Tucumán", character: "Gratuito", status: "Inscripción abierta", normalizedStatus: "ACTIVE",
   officialUrl: `https://capacitaciondocente.educaciontuc.gov.ar/comisiones/${id}`, registrationOpenAt: at,
   registrationCloseAt: "2026-11-20T10:00:00.000Z", startsAt: null, endsAt: null, sourceUpdatedAt: null });
-async function fixture(items = [course()], generation = 3, updatedAt = at) {
+async function fixture(items: Record<string, unknown>[] = [course()], generation = 3, updatedAt = at) {
   const catalog = await buildFdciCatalog(items, updatedAt);
   const pointer = await buildFdciActiveVersion({ generation, stateChecksum: "a".repeat(64), stateRevision: "b".repeat(40),
     codeSha: "c".repeat(40), catalogSha256: catalog.sha256, catalogUpdatedAt: catalog.updatedAt,
@@ -93,10 +94,16 @@ test("D1 wins by canonical ID or external ID under both source aliases; unrelate
     assert.deepEqual((await integrateFdciCatalog([stored, unrelated], await buildFdciCatalog([], at), "ready", now())).publications, [stored, unrelated]);
   }
 });
-test("DEMO cannot replace a valid official catalog even with internally consistent new checksums", async () => {
+test("the verified old pilot fingerprint cannot replace a valid official catalog", async () => {
   const h = await harness(await fixture([])); const good = await h.read();
-  h.set(await fixture([{ ...course("9000"), title: "DEMO SINTÉTICA — NO OFICIAL" }], 4));
+  const { catalog } = await generateFdciCatalog(syntheticFdciFetch, at, async () => {});
+  assert.equal(catalog.version, "14ffa0ebd934c43d36757b89be76318ee0053a45352912f758786ee5377c613b");
+  h.set(await fixture(catalog.items, 4));
   const result = await h.read(); assert.deepEqual(result.catalog, good.catalog); assert.equal(result.status, "stale");
+});
+test("versioned official content is not excluded by PRUEBA, DEMO or SINTÉTICA words", async () => {
+  const h = await harness(await fixture([{ ...course(), title: "PRUEBA y DEMO SINTÉTICA: contenidos didácticos" }]));
+  assert.equal((await h.read()).status, "ready");
 });
 test("reference bypasses cache, immutable file uses cache, both omit credentials and forbid redirects", async () => {
   const h = await harness(); await h.read();

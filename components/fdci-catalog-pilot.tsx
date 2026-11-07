@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import type { Publication } from "@/lib/types";
 import { createFdciVersionedReader, FDCI_RAW_ACTIVE_URL } from "@/lib/fdci-static-publication";
 import { integrateFdciCatalog, fdciPilotAllowed } from "@/lib/fdci-catalog-integration";
+import { isPublicPublication } from "@/lib/publication-visibility";
 const EMPTY: Publication[] = [];
 type ReadResult = Awaited<ReturnType<ReturnType<typeof createFdciVersionedReader>>>;
 export function isFdciCatalogOnly(item: Publication) {
@@ -12,6 +13,7 @@ const subscribe = (notify: () => void) => { window.addEventListener("popstate", 
 const pilotEnabled = () => fdciPilotAllowed(window.location.hostname, window.location.search);
 export function useFdciCatalogPilot(publications: Publication[] | undefined, active: boolean) {
   const current = publications ?? EMPTY;
+  const publicCurrent = useMemo(() => current.filter(isPublicPublication), [current]);
   const enabled = useSyncExternalStore(subscribe, pilotEnabled, () => false);
   const [response, setResponse] = useState<ReadResult | null>(null);
   const [composed, setComposed] = useState<{ input: Publication[]; response: ReadResult; publications: Publication[] } | null>(null);
@@ -33,7 +35,7 @@ export function useFdciCatalogPilot(publications: Publication[] | undefined, act
   }, [enabled, active, current, response]);
   return { enabled, status: response?.status ?? "loading", updatedAt: response?.updatedAt,
     generation: response?.generation, interrupted: response?.lastAttempt?.error === "FDCI_CANCELLED",
-    publications: enabled && active && composed?.input === current && composed.response === response ? composed.publications : current, refresh };
+    publications: enabled && active && composed?.input === current && composed.response === response ? composed.publications : publicCurrent, refresh };
 }
 export function FdciCatalogPilotBanner({ pilot }: { pilot: ReturnType<typeof useFdciCatalogPilot> }) {
   if (!pilot.enabled) return null;

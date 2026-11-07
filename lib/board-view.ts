@@ -1,5 +1,6 @@
 import type { Publication } from "./types";
 import { eventDate, hasOfficialTopic, officialMetadata } from "./official-publication.ts";
+import { isPublicPublication } from "./publication-visibility.ts";
 
 export type BoardView = "padrones" | "comunicados" | "llamados" | "actos";
 export type BoardPublication = Pick<Publication, "id" | "kind" | "category" | "metadata" | "starts_at" | "ends_at" | "updated_at" | "source_published_at" | "removed_at" | "normalized_status">;
@@ -30,6 +31,7 @@ export function boardItems<T extends BoardPublication>(publications: T[], view: 
   const category = { padrones: "Padrones", comunicados: "Comunicados", llamados: "Llamados abiertos", actos: "Actos de designación" }[view];
   const topic = { padrones: "PADRON", comunicados: "OTRO_COMUNICADO", llamados: "LLAMADO_ABIERTO", actos: "ACTO_DESIGNACION" } as const;
   const items = publications.filter((item) => {
+    if (!isPublicPublication(item)) return false;
     const m = officialMetadata(item);
     if (!m) return item.kind === "junta" && item.category === category;
     if (m.canonicalId) return false;

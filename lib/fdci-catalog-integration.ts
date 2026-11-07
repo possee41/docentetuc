@@ -1,6 +1,8 @@
 import type { Publication } from "./types.ts";
 import { validateFdciCatalog, type FdciCatalog } from "./fdci-static-catalog.ts";
 import { canScheduleTrainingReminder, parseTrainingMetadata } from "./training.ts";
+import { isPublicPublication } from "./publication-visibility.ts";
+import { isKnownFdciSynthetic } from "./fdci-canary-synthetic.ts";
 export function fdciPilotAllowed(host: string, query: string) {
   return ["localhost", "127.0.0.1", "canary.docentetuc.com.ar"].includes(host) && new URLSearchParams(query).get("fdciCatalogTest") === "1";
 }
@@ -10,10 +12,12 @@ export async function integrateFdciCatalog(current: Publication[], input: FdciCa
   const catalog = await validateFdciCatalog(input);
   if (Date.parse(catalog.updatedAt) > now + 300_000) throw Error("FDCI_CATALOG_FUTURE_DATE");
   const stale = freshness === "stale" || now - Date.parse(catalog.updatedAt) > 86_400_000;
-  const publications = [...current];
+  // D1 rows obey public policy; only validated feed items may become opt-in read-only projections.
+  const publications = current.filter(isPublicPublication);
+  const items = catalog.items.filter(item => !isKnownFdciSynthetic(item.id!));
   const info: Record<string, { backend: boolean; stale: boolean; checkedAt: string | null; sourceUpdatedAt: string | null; lastDetectedChangeAt: string | null; canSave: boolean; canSchedule: boolean; canRemind: boolean }> = {};
   const conflicts: string[] = [];
-  for (const item of catalog.items) {
+  for (const item of items) {
     const same = current.find(p => p.id === item.id || ["Capacitación Docente", "FDCI"].includes(p.source) && p.external_id === item.externalId);
     if (same && !["Capacitación Docente", "FDCI"].includes(same.source)) { conflicts.push(item.id!); continue; }
     const id = same?.id ?? item.id!, observed = catalog.observations?.[item.id!];
@@ -36,7 +40,7 @@ export async function integrateFdciCatalog(current: Publication[], input: FdciCa
     });
   }
   // Explicit context for a future chat caller; not injected into backend RAG.
-  const aiContext = catalog.items.map(i => ({ id: i.id, title: i.title, url: i.officialUrl,
+  const aiContext = items.map(i => ({ id: i.id, title: i.title, url: i.officialUrl,
     checkedAt: catalog.observations?.[i.id!]?.checkedAt ?? null, sourceUpdatedAt: i.sourceUpdatedAt, stale }));
   return { publications, info, conflicts, aiContext, catalogCompletedAt: catalog.updatedAt, catalogStatus: stale ? "stale" : "ready" };
 }
