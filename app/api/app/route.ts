@@ -10,7 +10,9 @@ import { PERSONAL_PUBLICATIONS_QUERY } from "@/lib/personal-publications";
 import { sourceHealth } from "@/lib/source-health";
 import { privateNotifications, readPrivateNotification } from "@/lib/private-notifications";
 import type { Publication, SyncStatus } from "@/lib/types";
-import { fdciPersonalEnabled, prepareFdciPersonalAction, FdciPersonalError } from "@/lib/fdci-personal-server";
+import { fdciPersonalEnabled, prepareFdciPersonalAction, authorizeFdciPersonalCleanup, FdciPersonalError } from "@/lib/fdci-personal-server";
+import { fdciCanaryFixture, cleanupFdciCanaryFixture } from "@/lib/fdci-canary-personal";
+import { FDCI_PERSONAL_FIXTURE_ID } from "@/lib/fdci-personal-fixture-id";
 import { withFdciPersonalCapability } from "@/lib/fdci-personal-contract";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +23,14 @@ export async function GET(request: Request) {
   try {
     const user = await currentUser(request);
     const account = await getAuthenticatedAccount(request);
+    const fixture = new URL(request.url).searchParams.get("fdciPersonalFixture") === "1" ? await fdciCanaryFixture(request, user.userId) : null;
+    const personalEnabled = fdciPersonalEnabled(request, user.userId, account?.accountId);
+    if (fixture) {
+      const trace = request.headers.get("X-DocenteTuc-FDCI-Trace") ?? "";
+      if (!/^[a-f0-9-]{36}$/.test(trace)) throw new FdciPersonalError(400,"Falta el identificador del ensayo.");
+      console.info(JSON.stringify({test:"fdci-personal-canary",trace,operation:"read-fixture",fixtureCache:fixture.cache}));
+    }
+
     const db = getD1();
     const now = new Date().toISOString();
     await db.prepare(PROFILE_BOOTSTRAP_SQL).bind(user.userId, user.fullName || user.displayName.split("@")[0], user.email).run();
@@ -38,8 +48,13 @@ export async function GET(request: Request) {
       db.prepare("SELECT id, title, notes, category, starts_at, all_day, recurrence, reminder_minutes, reminder_at, reminder_notified, created_at, updated_at FROM manual_events WHERE user_id=? ORDER BY starts_at").bind(user.userId).all(),
       db.prepare(PERSONAL_PUBLICATIONS_QUERY).bind(user.userId, user.userId, user.userId, user.userId).all(),
     ]);
-    return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publicProfile: publicProfileForClient(publicProfile as Record<string, unknown> | null), saved: saved.results, notifications: notifications.results, reminders: reminders.results, designations: designations.results, manualEvents: manualEvents.results, fdciPersonalActionsEnabled: fdciPersonalEnabled(request), personalPublications: withFdciPersonalCapability(personalPublications.results as Publication[], fdciPersonalEnabled(request)) });
+    const hidden = new Set((personalPublications.results as Publication[]).filter(p => {
+      try { return !personalEnabled && (p.id === FDCI_PERSONAL_FIXTURE_ID || p.id.startsWith("fdci:") && JSON.parse(p.metadata)?.catalogOnly === true); } catch { return false; }
+    }).map(p=>p.id));
+    const visible = (rows: unknown[]) => rows.filter(row => !hidden.has((row as {publication_id:string}).publication_id));
+    return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publicProfile: publicProfileForClient(publicProfile as Record<string, unknown> | null), saved: visible(saved.results), notifications: visible(notifications.results), reminders: visible(reminders.results), designations: visible(designations.results), manualEvents: manualEvents.results, fdciPersonalActionsEnabled: personalEnabled, fdciCanaryFixture: fixture ? withFdciPersonalCapability([fixture.publication], true)[0] : null, personalPublications: withFdciPersonalCapability((personalPublications.results as Publication[]).filter(p => !hidden.has(p.id)), personalEnabled) }, {headers:{"Cache-Control":"private, no-store",...(fixture ? {"X-FDCI-Fixture-Cache":fixture.cache} : {})}});
   } catch (error) {
+    if (error instanceof FdciPersonalError) return Response.json({error:error.message},{status:error.status,headers:{"Cache-Control":"private, no-store"}});
     console.error("[api/app] GET failed", error);
     return Response.json({ error: authError(error) ? "Iniciá sesión para continuar." : "No se pudieron cargar los datos." }, { status: authError(error) ? 401 : 500 });
   }
@@ -60,7 +75,17 @@ export async function POST(request: Request) {
       return Response.json({ ok: true });
     }
     const user = await currentUser(request);
-    if (action === "save_profile") {
+    const fixtureTarget = value(body.publicationId,120) === FDCI_PERSONAL_FIXTURE_ID || value(body.trainingId,80) === FDCI_PERSONAL_FIXTURE_ID || action === "cleanup_fdci_canary_fixture";
+    const fixture = fixtureTarget ? await fdciCanaryFixture(request, user.userId, action === "cleanup_fdci_canary_fixture") : null;
+    if (fixture && !isSameOriginMutation(request)) throw new FdciPersonalError(403, "Origen no autorizado.");
+    if (fixture) {
+      const trace = request.headers.get("X-DocenteTuc-FDCI-Trace") ?? "";
+      if (!/^[a-f0-9-]{36}$/.test(trace)) throw new FdciPersonalError(400, "Falta el identificador del ensayo.");
+      console.info(JSON.stringify({ test: "fdci-personal-canary", trace, operation: action, fixtureCache: fixture.cache }));
+    }
+    if (action === "cleanup_fdci_canary_fixture" && fixture) {
+      await cleanupFdciCanaryFixture(db, user.userId, fixture.publication);
+    } else if (action === "save_profile") {
       const columns = ["name", "level", "area", "subjects", "junta", "roles", "department", "locality", "shifts", "wants_interim", "wants_substitute", "training_interests", "characters", "circuits", "personal_match_threshold"];
       const fields = [value(body.name, 100) || "Docente", profileStorage(body.levels ?? body.level, 120), profileStorage(body.areas ?? body.area, 180), profileStorage(body.subjects), profileStorage(body.boards ?? body.junta, 240), profileStorage(body.roles, 300), value(body.department, 100), value(body.locality, 100), profileStorage(body.shifts, 100), body.wantsInterim === true ? 1 : 0, body.wantsSubstitute === true ? 1 : 0, profileStorage(body.trainingInterests), profileStorage(body.characters, 80), profileStorage(body.circuits, 80), Math.min(100, Math.max(70, Number(body.personalMatchThreshold) || 85))];
       await db.prepare(`UPDATE profiles SET ${columns.map((column) => `${column}=?`).join(",")}, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND (${columns.map((column) => `${column} IS NOT ?`).join(" OR ")})`)
@@ -89,7 +114,7 @@ export async function POST(request: Request) {
         .bind(id, user.userId, publicationId, status, value(body.role, 200), value(body.subject, 200), value(body.school, 250), value(body.address, 250), value(body.locality, 120), optionalDate(body.appliedAt), optionalDate(body.appointmentAt), value(body.shift, 80), value(body.board, 180), value(body.documentation, 500), value(body.orderNumber, 120), value(body.notes, 1000), publication.official_url, reminderAt).run();
     } else if (action === "set_training_reminder") {
       const publicationId = value(body.publicationId, 120);
-      const external = await prepareFdciPersonalAction(db, request, body, publicationId);
+      const external = await prepareFdciPersonalAction(db, request, body, publicationId, user.userId);
       const publication = external?.publication ?? await db.prepare("SELECT id, source, metadata, status, normalized_status FROM publications WHERE id=? AND kind='capacitacion'").bind(publicationId).first<{ id: string; source: string; metadata: string; status: string; normalized_status: string }>();
       const metadata = parseTrainingMetadata(publication?.metadata);
       if (!publication || !metadata?.registrationOpensAt || !metadata.trainingId) return Response.json({ error: "La fuente oficial no informó una apertura válida." }, { status: 400 });
@@ -117,6 +142,7 @@ export async function POST(request: Request) {
       await db.batch(statements);
       if (external?.hash && (await db.prepare("SELECT content_hash FROM publications WHERE id=?").bind(publicationId).first<{content_hash:string}>())?.content_hash !== external.hash) throw new FdciPersonalError(409,"La capacitación cambió durante la confirmación.");
     } else if (action === "remove_training_reminder") {
+      if (!fixture) await authorizeFdciPersonalCleanup(db,request,user.userId,value(body.trainingId,80));
       await db.prepare("DELETE FROM training_reminders WHERE user_id=? AND training_id=?").bind(user.userId, value(body.trainingId, 80)).run();
     } else if (["save", "agenda", "follow"].includes(action)) {
       const id = value(body.publicationId, 120);
@@ -124,6 +150,7 @@ export async function POST(request: Request) {
       const enabled = body.enabled !== false ? 1 : 0;
       // Cleanup remains available for the authenticated owner even after removal/disablement.
       if (!enabled) {
+        if (!fixture) await authorizeFdciPersonalCleanup(db,request,user.userId,id);
         const owned = await db.prepare("SELECT 1 FROM saved_publications WHERE user_id=? AND publication_id=?").bind(user.userId,id).first();
         if (!owned) return Response.json({error:"No existe ese guardado en tu cuenta."},{status:404});
         if (action === "save") await db.prepare("DELETE FROM saved_publications WHERE user_id=? AND publication_id=?").bind(user.userId,id).run();
@@ -131,11 +158,12 @@ export async function POST(request: Request) {
         else await db.prepare("UPDATE saved_publications SET followed=0 WHERE user_id=? AND publication_id=?").bind(user.userId,id).run();
         return Response.json({ok:true});
       }
+      if (fixture && value(body.agendaReminderAt,40)) throw new FdciPersonalError(400,"El fixture no admite entrega de avisos de Agenda.");
       const rawAgendaAt = value(body.agendaAt,40), agendaDate = rawAgendaAt ? new Date(rawAgendaAt) : null;
       const rawReminderAt = value(body.agendaReminderAt,40), reminderDate = rawReminderAt ? new Date(rawReminderAt) : null;
       if (action === "agenda" && (rawAgendaAt && (!agendaDate || Number.isNaN(agendaDate.getTime())) || rawReminderAt && (!reminderDate || Number.isNaN(reminderDate.getTime()) || agendaDate && reminderDate > agendaDate)))
         return Response.json({error:"Fecha de agenda o recordatorio inválida."},{status:400});
-      const external = await prepareFdciPersonalAction(db,request,body,id);
+      const external = await prepareFdciPersonalAction(db,request,body,id,user.userId);
       if (!external && !await db.prepare("SELECT 1 FROM publications WHERE id=?").bind(id).first()) return Response.json({error:"Publicación no disponible."},{status:404});
       const statements = external?.insert ? [external.insert] : [];
       const guard = external?.hash ? " AND content_hash=?" : "";
@@ -169,7 +197,7 @@ export async function POST(request: Request) {
       if (!Number.isSafeInteger(Number(body.id)) || Number(body.id) === 0) return Response.json({ error: "Aviso inválido." }, { status: 400 });
       await readPrivateNotification(db, user.userId, Number(body.id));
     } else return Response.json({ error: "Acción no admitida." }, { status: 400 });
-    return Response.json({ ok: true });
+    return Response.json({ ok: true }, {headers:{"Cache-Control":"private, no-store",...(fixture ? {"X-FDCI-Fixture-Cache":fixture.cache} : {})}});
   } catch (error) {
     if (error instanceof FdciPersonalError) return Response.json({error:error.message},{status:error.status});
     return Response.json({ error: authError(error) ? "Iniciá sesión para continuar." : "No se pudo guardar el cambio." }, { status: authError(error) ? 401 : 500 });

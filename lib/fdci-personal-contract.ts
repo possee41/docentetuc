@@ -20,15 +20,17 @@ export function fdciPersonalMetadata(catalog: FdciCatalog, item: CatalogItem, ge
 export function fdciPersonalBlocked(publication: Pick<Publication, "metadata" | "source">) {
   try {
     const m = JSON.parse(publication.metadata);
+    if (m?.fdciCanaryFixture === true && !(Date.parse(m.fixtureExpiresAt) > Date.now())) return true;
     return ["Capacitación Docente", "FDCI"].includes(publication.source) && m.catalogOnly === true &&
-      !(m.catalogOrigin === "fdci-versioned" && m.catalogPersonalEligible === true && m.catalogStale === false && fdciCatalogReference(publication));
+      !((m.catalogOrigin === "fdci-versioned" || m.catalogOrigin === "fdci-canary-fixture" && m.fdciCanaryFixture === true && m.preview === true) && m.catalogPersonalEligible === true && m.catalogStale === false && fdciCatalogReference(publication));
   } catch { return false; }
 }
 export function withFdciPersonalCapability(publications: Publication[], enabled: boolean, now = Date.now()) {
   return publications.map(p => {
     let m; try { m = JSON.parse(p.metadata); } catch { return p; }
-    if (m?.catalogOrigin !== "fdci-versioned") return p;
+    if (!["fdci-versioned", "fdci-canary-fixture"].includes(m?.catalogOrigin)) return p;
     const age = now - Date.parse(m.catalogCompletedAt);
-    return { ...p, metadata: JSON.stringify({ ...m, catalogPersonalEligible: enabled && !m.catalogStale && age >= 0 && age <= 86_400_000 && Boolean(fdciCatalogReference(p)) }) };
+    return { ...p, metadata: JSON.stringify({ ...m, catalogPersonalEligible: enabled && !m.catalogStale && age >= 0 && age <= 86_400_000 &&
+      (m.fdciCanaryFixture !== true || Date.parse(m.fixtureExpiresAt) > now) && Boolean(fdciCatalogReference(p)) }) };
   });
 }

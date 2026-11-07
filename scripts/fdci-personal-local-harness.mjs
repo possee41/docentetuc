@@ -11,7 +11,7 @@ const bundle = await build({ entryPoints: ["app/api/app/route.ts"], bundle: true
     b.onResolve({ filter: /^@\/db$|^@\/lib\/current-user$|^@\/lib\/auth-session$|^cloudflare:workers$/ }, args => ({ path: args.path, namespace: "test-only" }));
     b.onLoad({ filter: /.*/, namespace: "test-only" }, args => ({ contents: args.path === "@/db" ? "export const getD1=()=>globalThis.__fdciCase.db;"
       : args.path === "@/lib/current-user" ? "export const currentUser=r=>globalThis.__fdciCase.user(r); export const authError=e=>e?.message==='UNAUTHENTICATED';"
-      : args.path === "@/lib/auth-session" ? "export const getAuthenticatedAccount=async()=>null;"
+      : args.path === "@/lib/auth-session" ? "export const getAuthenticatedAccount=r=>globalThis.__fdciCase.account(r);"
       : "export const env=new Proxy({},{get:(_,k)=>globalThis.__fdciCase.env[k]});" }));
     b.onResolve({ filter: /^@\// }, args => ({ path: resolve(args.path.slice(2) + ".ts") }));
   } }] });
@@ -20,9 +20,9 @@ export async function createFdciPersonalHarness(databasePath = ":memory:") {
   const raw = new DatabaseSync(databasePath); raw.exec("PRAGMA foreign_keys=ON");
   for (const file of ["drizzle/0000_docentetuc.sql", "drizzle/0001_training_metadata.sql", "drizzle/0002_reminders_ai.sql", "drizzle/0003_web_push.sql",
     "migrations/0002_designations.sql", "migrations/0003_information_agenda.sql", "migrations/0004_agenda_reminders.sql", "migrations/0005_training_match_threshold.sql",
-    "migrations/0006_manual_events.sql", "migrations/0007_manual_event_recurrence.sql", "migrations/0008_personal_matching_circuits.sql", "migrations/0009_reliability_lifecycle.sql"])
+    "migrations/0006_manual_events.sql", "migrations/0007_manual_event_recurrence.sql", "migrations/0008_personal_matching_circuits.sql", "migrations/0009_reliability_lifecycle.sql", "migrations/0012_public_profiles.sql"])
     raw.exec(readFileSync(new URL("../" + file, import.meta.url), "utf8"));
-  const realNow = Date.now, h = { raw, clock: realNow(), env: { FDCI_PERSONAL_ACTIONS_ENABLED: "true" }, requests: [], sql: [], failOnce: null, failFetch: false, beforeBatch: null };
+  const realNow = Date.now, h = { raw, clock: realNow(), env: { FDCI_PERSONAL_ACTIONS_ENABLED: "true", FDCI_CANARY_TEST_ENVIRONMENT: "docentetuc-web-canary-1-2", FDCI_CANARY_TEST_USER_IDS: JSON.stringify(["test-a"]) }, requests: [], sql: [], failOnce: null, failFetch: false, beforeBatch: null };
   Date.now = () => h.clock;
   const execute = (sql, values, mode) => {
     h.sql.push({ operation: mode, sql });
@@ -36,6 +36,7 @@ export async function createFdciPersonalHarness(databasePath = ":memory:") {
   async batch(statements) { h.beforeBatch?.(); h.beforeBatch = null; raw.exec("BEGIN"); try { const results = statements.map(s => s.execute()); raw.exec("COMMIT"); return results; } catch (e) { raw.exec("ROLLBACK"); throw e; } } };
   h.user = async request => { const id = { "Bearer unit-session-a": "test-a", "Bearer unit-session-b": "test-b" }[request.headers.get("authorization")];
     if (!id) throw Error("UNAUTHENTICATED"); return { userId: id, fullName: "Docente de prueba", displayName: "Prueba", email: "" }; };
+  h.account = async request => { if (h.noAccount) return null; try { return { accountId: (await h.user(request)).userId }; } catch { return null; } };
   h.course = { id: "fdci:commission:501", externalId: "501", title: "Capacitación verificada en fixture local", summary: "Solo SQLite local", category: "Capacitaciones", level: "Primario", area: "Matemática", location: "Tucumán", character: "Virtual", status: "próximamente", normalizedStatus: "UPCOMING",
     officialUrl: "https://capacitaciondocente.educaciontuc.gov.ar/comisiones/501", registrationOpenAt: new Date(h.clock + 3 * 86400000).toISOString(), registrationCloseAt: new Date(h.clock + 5 * 86400000).toISOString(), startsAt: null, endsAt: null, sourceUpdatedAt: null };
   h.setCatalog = async (items = [h.course], generation = 1, evidence = true) => {

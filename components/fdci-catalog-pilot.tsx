@@ -12,7 +12,7 @@ export function isFdciCatalogOnly(item: Publication) {
 }
 const subscribe = (notify: () => void) => { window.addEventListener("popstate", notify); return () => window.removeEventListener("popstate", notify); };
 const pilotEnabled = () => fdciPilotAllowed(window.location.hostname, window.location.search);
-export function useFdciCatalogPilot(publications: Publication[] | undefined, active: boolean, personalEnabled = false) {
+export function useFdciCatalogPilot(publications: Publication[] | undefined, active: boolean, personalEnabled = false, fixture?: Publication | null) {
   const current = publications ?? EMPTY;
   const publicCurrent = useMemo(() => current.filter(isPublicPublication), [current]);
   const enabled = useSyncExternalStore(subscribe, pilotEnabled, () => false);
@@ -34,9 +34,10 @@ export function useFdciCatalogPilot(publications: Publication[] | undefined, act
       .catch(() => { if (!cancelled) setComposed(null); });
     return () => { cancelled = true; };
   }, [enabled, active, current, response, personalEnabled]);
+  const items = enabled && active && composed?.input === current && composed.response === response ? composed.publications : publicCurrent;
   return { enabled, personalEnabled, status: response?.status ?? "loading", updatedAt: response?.updatedAt,
     generation: response?.generation, interrupted: response?.lastAttempt?.error === "FDCI_CANCELLED",
-    publications: enabled && active && composed?.input === current && composed.response === response ? composed.publications : publicCurrent, refresh };
+    publications: enabled && active && fixture && personalEnabled ? [...items.filter(p => p.id !== fixture.id), fixture] : items, refresh };
 }
 export function FdciCatalogPilotBanner({ pilot }: { pilot: ReturnType<typeof useFdciCatalogPilot> }) {
   if (!pilot.enabled) return null;

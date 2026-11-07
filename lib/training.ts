@@ -213,7 +213,8 @@ export const CONFIRMED_TRAINING_REMINDER_SQL = `EXISTS (SELECT 1 FROM publicatio
   WHERE p.id=training_reminders.publication_id AND p.kind='capacitacion'
   AND p.normalized_status NOT IN ('CLOSED','EXPIRED','REMOVED_FROM_SOURCE')
   AND CASE WHEN json_valid(p.metadata) THEN
-    json_extract(p.metadata,'$.dateStatus')='confirmed'
+    json_extract(p.metadata,'$.fdciCanaryFixture') IS NOT 1
+    AND json_extract(p.metadata,'$.dateStatus')='confirmed'
     AND json_extract(p.metadata,'$.registrationHasTime')=1
     AND json_extract(p.metadata,'$.registrationOpensAt')=training_reminders.opens_at
     AND COALESCE(json_extract(p.metadata,'$.availablePreCapacity'),1)>0

@@ -58,6 +58,7 @@ import { deviceRequestHeaders } from "@/lib/device-user";
 import { filterForNavigation, sectionUrl, shouldRevalidateAccount, viewFromSection } from "@/lib/app-navigation";
 import { boardItems } from "@/lib/board-view";
 import { isPublicPublication } from "@/lib/publication-visibility";
+import { FDCI_PERSONAL_FIXTURE_ID } from "@/lib/fdci-personal-fixture-id";
 import { fdciPersonalBlocked, fdciCatalogReference } from "@/lib/fdci-personal-contract";
 import { useFdciCatalogPilot, FdciCatalogPilotBanner, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
 import { sourceHealth, sourceNotices } from "@/lib/source-health";
@@ -93,7 +94,8 @@ const simeCodeForPublication = (item?: Pick<Publication, "metadata"> | null) => 
   try { const parsed = JSON.parse(item.metadata) as { simeCode?: unknown }; return typeof parsed.simeCode === "string" ? parsed.simeCode.trim() : ""; } catch { return ""; }
 };
 const apiHeaders = (json = false) => {
-  return deviceRequestHeaders(localStorage.getItem("docentetuc-device-id"), json);
+  const headers = deviceRequestHeaders(localStorage.getItem("docentetuc-device-id"), json);
+  return new URLSearchParams(window.location.search).get("fdciPersonalFixture") === "1" ? { ...headers, "X-DocenteTuc-FDCI-Trace": crypto.randomUUID() } : headers;
 };
 const dateLabel = (value: string | null, withTime = false) => { const dateOnly = Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value)), date = safeDate(dateOnly ? `${value}T12:00:00-03:00` : value); return date ? new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Tucuman", day: "2-digit", month: "short", ...(withTime && !dateOnly ? { hour: "2-digit", minute: "2-digit" } : {}) }).format(date) : "Sin fecha informada"; };
 const fromNow = (value: string | null) => {
@@ -296,7 +298,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     refreshLoadError();
     if (showLoading) setLoading(true);
     try {
-      const response = await fetch("/api/app", { cache: "no-store", headers: apiHeaders(), signal: AbortSignal.timeout(15000) });
+      const response = await fetch(new URLSearchParams(window.location.search).get("fdciPersonalFixture") === "1" ? "/api/app?fdciPersonalFixture=1" : "/api/app", { cache: "no-store", headers: apiHeaders(), signal: AbortSignal.timeout(15000) });
       if (requestId !== privateLoadSequence.current) return;
       if (response.status === 401) { privateData.current = null; privateLoadProblem.current = import.meta.env.DEV ? "No se pudo verificar esta instalación en la D1 local. Si pertenece a otra base de prueba, podés iniciar una nueva desde Cuentas y accesos; sus datos no se borran." : "No se pudo verificar esta instalación o su cuenta. Sus datos privados se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."; setPrivateAccess("unauthorized"); setData(publicData.current); refreshLoadError(); return; }
       if (!response.ok) throw new Error("No se pudo cargar la información");
@@ -399,7 +401,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const savedMap = useMemo(() => officialSavedLookup(data?.saved || [], data?.publications || []), [data]);
   const reminderMap = useMemo(() => new Map((data?.reminders || []).map((item) => [item.training_id, item])), [data]);
   const profile = data?.profile ?? undefined;
-  const trainingPilot = useFdciCatalogPilot(data?.publications, view === "capacitaciones", data?.fdciPersonalActionsEnabled === true);
+  const trainingPilot = useFdciCatalogPilot(data?.publications, view === "capacitaciones", data?.fdciPersonalActionsEnabled === true, data?.fdciCanaryFixture);
   const designationAvailability = data ? designationEmptyState({
     filter, profileConfigured: hasDesignationProfilePreferences(profile),
     availableCount: data.publications.filter((item) => item.kind === "vacante").length,
@@ -1495,7 +1497,7 @@ function PublicationSheet({ publication, sync, saved, tracking, match, onClose, 
           </div>}
           {publication.kind === "vacante"
             ? <Button type="button" onClick={() => onExternal(publication)} className="min-h-12 w-full rounded-xl bg-[#17362d] px-5 text-white">{!unverified && lifecycle === "ACTIVE" && hasOfficialTopic(publication, "INSCRIPCION_SIME") ? "Inscribirme en sitio oficial" : "Ver procedimiento en fuente oficial"} <ExternalLink className="size-4" /></Button>
-            : <a href={publication.official_url} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#17362d] px-5 text-center font-bold text-white">{publication.kind === "capacitacion" ? !unverified && trainingState === "ABIERTA" && training?.commissionId ? "CONTINUAR INSCRIPCIÓN EN SITIO OFICIAL" : "Ver detalle en sitio oficial" : publication.kind === "informacion" && info?.access === "private" ? "Abrir sistema oficial" : "Abrir fuente oficial"} <ExternalLink className="size-4" /></a>}
+            : publication.id === FDCI_PERSONAL_FIXTURE_ID ? <p className="rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-950">Fixture ficticio privado: sin inscripción ni entrega de avisos.</p> : <a href={publication.official_url} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#17362d] px-5 text-center font-bold text-white">{publication.kind === "capacitacion" ? !unverified && trainingState === "ABIERTA" && training?.commissionId ? "CONTINUAR INSCRIPCIÓN EN SITIO OFICIAL" : "Ver detalle en sitio oficial" : publication.kind === "informacion" && info?.access === "private" ? "Abrir sistema oficial" : "Abrir fuente oficial"} <ExternalLink className="size-4" /></a>}
           {training?.registrationUrl && training.registrationUrl !== publication.official_url && <a href={training.registrationUrl} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#0878be] bg-white px-5 text-center font-bold text-[#0878be]">{!unverified && trainingState === "ABIERTA" ? "Ingresar a inscripción oficial" : "Consultar inscripción en sitio oficial"} <ExternalLink className="size-4" /></a>}
           <p className="rounded-xl bg-[#fff3dd] p-4 text-sm leading-relaxed text-[#7d541b]">{publication.kind === "vacante" ? "DocenteTuc organiza información pública. Abrir el sitio oficial no marca una inscripción; el estado sólo cambia cuando vos lo confirmás." : publication.kind === "junta" ? "DocenteTuc muestra el contenido público recuperable. Para archivos PDF o carpetas sin texto exportable, la fuente oficial conserva el documento completo." : publication.kind === "informacion" ? `Información oficial verificada el ${info?.lastVerified || "día no informado"}. DocenteTuc nunca solicita credenciales de sistemas gubernamentales.` : "La inscripción y cualquier gestión se completan siempre en el sitio oficial."}</p>
         </div>}

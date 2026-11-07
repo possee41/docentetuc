@@ -27,9 +27,9 @@ test("test sessions are isolated; absent sessions and another user's cleanup can
     ok(await h.action("save")); ok(await h.action("set_training_reminder", { advanceMinutes: [60] }));
     const before = h.raw.prepare("SELECT * FROM saved_publications").all();
     const other = await h.request("GET", null, "b"); ok(other); assert.deepEqual(other.body.saved, []); assert.deepEqual(other.body.personalPublications, []);
-    assert.equal((await h.post({ action: "save", enabled: false, publicationId: h.course.id, userId: "test-a" }, "b")).status, 404);
-    assert.equal((await h.post({ action: "agenda", enabled: false, publicationId: h.course.id, userId: "test-a" }, "b")).status, 404);
-    ok(await h.post({ action: "remove_training_reminder", trainingId: h.course.id, userId: "test-a" }, "b"));
+    assert.equal((await h.post({ action: "save", enabled: false, publicationId: h.course.id, userId: "test-a" }, "b")).status, 403);
+    assert.equal((await h.post({ action: "agenda", enabled: false, publicationId: h.course.id, userId: "test-a" }, "b")).status, 403);
+    assert.equal((await h.post({ action: "remove_training_reminder", trainingId: h.course.id, userId: "test-a" }, "b")).status, 403);
     assert.equal(h.count("training_reminders"), 1); assert.deepEqual(h.raw.prepare("SELECT * FROM saved_publications").all(), before);
   } finally { h.close(); }
 });
@@ -81,8 +81,8 @@ test("arbitrary IDs, unknown membership, wrong revision, disabled feature and pr
       assert((await h.action("save", { publicationId })).status >= 400);
     assert.equal((await h.action("save", { fdciCatalog: { ...h.reference, generation: 99 } })).status, 409);
     assert.equal((await h.action("save", { fdciCatalog: null })).status, 409);
-    assert.equal((await h.request("POST", { action: "save", publicationId: h.course.id, fdciCatalog: h.reference }, "a", "https://docentetuc.com.ar")).status, 503);
-    h.env.FDCI_PERSONAL_ACTIONS_ENABLED = "false"; assert.equal((await h.action("save")).status, 503);
+    assert.equal((await h.request("POST", { action: "save", publicationId: h.course.id, fdciCatalog: h.reference }, "a", "https://docentetuc.com.ar")).status, 403);
+    h.env.FDCI_PERSONAL_ACTIONS_ENABLED = "false"; assert.equal((await h.action("save")).status, 403);
     assert.equal(h.count("publications"), 0); assert.equal(h.count("saved_publications"), 0);
   } finally { h.close(); }
 });
