@@ -38,7 +38,7 @@ async function readPublicJson(url: string, fetcher: typeof fetch, limit: number,
   }
   return JSON.parse(text + decoder.decode());
 }
-export function createFdciVersionedReader(url: string, fetcher: typeof fetch = fetch, now = () => Date.now()) {
+export function createFdciVersionedReader(url: string, fetcher: typeof fetch = fetch, now = () => Date.now(), maxBytes = CATALOG_MAX_BYTES) {
   if (![FDCI_RAW_ACTIVE_URL, "https://possee41.github.io/docentetuc-fdci-catalog-pilot/fdci-catalog/active.json"].includes(url)) throw Error("FDCI_PUBLICATION_ORIGIN_FORBIDDEN");
   const raw = url === FDCI_RAW_ACTIVE_URL;
   let last: { pointer: FdciActiveVersion; catalog: FdciCatalog } | null = null;
@@ -46,7 +46,7 @@ export function createFdciVersionedReader(url: string, fetcher: typeof fetch = f
     let error: string | null = null;
     try {
       const pointer = await validateFdciActiveVersion(await readPublicJson(url, fetcher, 4096, false, raw));
-      const catalog = await validateFdciCatalog(await readPublicJson(new URL(pointer.versionPath, url).href, fetcher, CATALOG_MAX_BYTES, true, raw));
+      const catalog = await validateFdciCatalog(await readPublicJson(new URL(pointer.versionPath, url).href, fetcher, Math.min(maxBytes, CATALOG_MAX_BYTES), true, raw));
       if (catalog.sha256 !== pointer.catalogSha256 || catalog.updatedAt !== pointer.catalogUpdatedAt) throw Error("FDCI_PUBLICATION_MISMATCH");
       // Check after both awaits too: a slower old response must not replace a newer accepted pair.
       if (Date.parse(pointer.lastAttempt.at) > now() + 300_000 || last && (pointer.generation < last.pointer.generation ||

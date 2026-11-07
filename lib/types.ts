@@ -10,7 +10,7 @@ export type Profile = {
 export type Publication = {
   id: string; source: string; external_id: string; kind: "vacante" | "capacitacion" | "junta" | "informacion"; category: string;
   title: string; summary: string; level: string; area: string; junta: string; location: string; shift: string; character: string;
-  circuit?: string; source_circuit_raw?: string; circuit_inference_source?: string; circuit_confidence?: number;
+  content_hash?: string; circuit?: string; source_circuit_raw?: string; circuit_inference_source?: string; circuit_confidence?: number;
   starts_at: string | null; ends_at: string | null; status: string; official_url: string; metadata: string; first_seen_at: string; updated_at: string;
   last_seen_at?: string; last_changed_at?: string; source_published_at?: string | null; registration_open_at?: string | null; registration_close_at?: string | null; expires_at?: string | null;
   source_status?: string; normalized_status?: "ACTIVE" | "UPCOMING" | "CLOSED" | "EXPIRED" | "REMOVED_FROM_SOURCE" | "UNKNOWN" | string; removed_at?: string | null;
@@ -22,4 +22,4 @@ export type SyncStatus = { source: string; synced_at?: string; item_count?: numb
 export type TrainingReminder = { id: string; training_id: string; publication_id: string; opens_at: string; precision: "date" | "datetime"; advance_minutes: number | null; remind_at: string; notified: number | boolean };
 export type DesignationTracking = { id: string; publication_id: string; status: string; role: string; subject: string; school: string; address: string; locality: string; applied_at: string | null; appointment_at: string | null; shift: string; board: string; documentation: string; order_number: string; notes: string; official_url: string; reminder_at: string | null; reminder_notified: number | boolean; created_at: string; updated_at: string };
 export type ManualEvent = { id: string; title: string; notes: string; category: string; starts_at: string; all_day?: number | boolean; recurrence?: "none" | "daily" | "weekly" | "monthly"; reminder_minutes?: number | null; reminder_at: string | null; reminder_notified: number | boolean; created_at: string; updated_at: string };
-export type AppData = { profile: Profile | null; publicProfile?: PublicProfile | null; publications: Publication[]; saved: Saved[]; notifications: Notice[]; reminders: TrainingReminder[]; designations: DesignationTracking[]; manualEvents: ManualEvent[]; sync: SyncStatus[] };
+export type AppData = { fdciPersonalActionsEnabled?: boolean; profile: Profile | null; publicProfile?: PublicProfile | null; publications: Publication[]; saved: Saved[]; notifications: Notice[]; reminders: TrainingReminder[]; designations: DesignationTracking[]; manualEvents: ManualEvent[]; sync: SyncStatus[] };

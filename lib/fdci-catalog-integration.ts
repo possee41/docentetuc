@@ -1,7 +1,8 @@
 import type { Publication } from "./types.ts";
-import { validateFdciCatalog, type FdciCatalog } from "./fdci-static-catalog.ts";
+import { catalogHash, validateFdciCatalog, type FdciCatalog } from "./fdci-static-catalog.ts";
 import { canScheduleTrainingReminder, parseTrainingMetadata } from "./training.ts";
 import { isPublicPublication } from "./publication-visibility.ts";
+import { fdciPersonalMetadata } from "./fdci-personal-contract.ts";
 import { isKnownFdciSynthetic } from "./fdci-canary-synthetic.ts";
 export function fdciPilotAllowed(host: string, query: string) {
   return ["localhost", "127.0.0.1", "canary.docentetuc.com.ar"].includes(host) && new URLSearchParams(query).get("fdciCatalogTest") === "1";
@@ -25,7 +26,17 @@ export async function integrateFdciCatalog(current: Publication[], input: FdciCa
       sourceUpdatedAt: item.sourceUpdatedAt, lastDetectedChangeAt: observed?.lastChangedAt ?? null,
       canSave: Boolean(same), canSchedule: Boolean(same),
       canRemind: Boolean(same && canScheduleTrainingReminder(parseTrainingMetadata(same.metadata), same.status, same.normalized_status)) };
-    if (same) continue; // D1 (including moderation/admin edits) wins; never overwrite.
+    if (same) {
+      // An owned, materialized snapshot may reappear only in this opt-in projection, never in public SQL.
+      if (!isPublicPublication(same) && !stale) {
+        let m; try { m = JSON.parse(same.metadata); } catch { m = null; }
+        if (m?.catalogOrigin === "fdci-versioned" && same.content_hash === await catalogHash({ item, evidence: catalog.reminderEvidence?.[item.id!] ?? null })) {
+          // Refresh only the client proof after a new generation; never rewrite the stored snapshot.
+          publications.push({ ...same, metadata: JSON.stringify({ ...m, catalogGeneration: generation, catalogSha256: catalog.sha256, catalogCompletedAt: catalog.updatedAt, catalogStale: false }) });
+        }
+      }
+      continue; // D1 (including moderation/admin edits) wins; never overwrite.
+    }
     publications.push({ id, source: "Capacitación Docente", external_id: item.externalId!, kind: "capacitacion", category: item.category!,
       title: item.title!, summary: item.summary!, level: item.level!, area: item.area!, location: item.location!, character: item.character!,
       junta: "", shift: "", starts_at: item.startsAt, ends_at: item.endsAt, status: item.status!, official_url: item.officialUrl!,
@@ -33,9 +44,9 @@ export async function integrateFdciCatalog(current: Publication[], input: FdciCa
       normalized_status: item.normalizedStatus!, source_published_at: null,
       // Unknown official dates remain unknown; checking a feed is not a source update.
       first_seen_at: "", updated_at: item.sourceUpdatedAt ?? "", removed_at: null,
-      metadata: JSON.stringify({ source: "FDCI Tucumán", sourceUrl: item.officialUrl, entity: "commission",
+      metadata: JSON.stringify({ ...fdciPersonalMetadata(catalog, item, generation ?? 0), source: "FDCI Tucumán", sourceUrl: item.officialUrl, entity: "commission",
         commissionId: item.externalId, registrationOpensAt: item.registrationOpenAt, registrationClosesAt: item.registrationCloseAt,
-        dateStatus: "unknown", catalogCheckedAt: observed?.checkedAt ?? null, catalogCompletedAt: catalog.updatedAt,
+        dateStatus: catalog.reminderEvidence?.[item.id!]?.dateStatus ?? "unknown", catalogCheckedAt: observed?.checkedAt ?? null, catalogCompletedAt: catalog.updatedAt,
         catalogOnly: true, catalogStale: stale, catalogGeneration: generation, catalogSha256: catalog.sha256 }),
     });
   }

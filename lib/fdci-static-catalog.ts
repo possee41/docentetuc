@@ -1,9 +1,10 @@
-// Independent public-feed prototype. Not wired into app state or private APIs.
+// Shared public-feed contract; reminder precision must be explicit and checksummed.
 export const CATALOG_MAX_BYTES = 2_000_000;
 const fields = ["id", "externalId", "title", "summary", "category", "level", "area", "location", "character", "status", "normalizedStatus", "officialUrl", "registrationOpenAt", "registrationCloseAt", "startsAt", "endsAt", "sourceUpdatedAt"] as const;
 export type CatalogItem = Record<typeof fields[number], string | null>;
 export type CatalogObservation = { checkedAt: string; lastChangedAt: string };
-export type FdciCatalog = { schemaVersion: 1 | 2; source: "fdci"; scope: "active"; updatedAt: string; version: string; items: CatalogItem[]; sha256: string; observations?: Record<string, CatalogObservation> };
+export type CatalogReminderEvidence = { trainingId: string; registrationHasTime: boolean; dateStatus: "confirmed" | "unknown"; availablePreCapacity: number | null };
+export type FdciCatalog = { schemaVersion: 1 | 2 | 3; source: "fdci"; scope: "active"; updatedAt: string; version: string; items: CatalogItem[]; sha256: string; observations?: Record<string, CatalogObservation>; reminderEvidence?: Record<string, CatalogReminderEvidence> };
 const fail = () => { throw Error("FDCI_CATALOG_INVALID"); };
 const iso = (v: unknown): v is string => typeof v === "string" && Number.isFinite(Date.parse(v)) && new Date(v).toISOString() === v;
 const exact = (v: object, keys: readonly string[]) => Object.keys(v).length === keys.length && keys.every(k => Object.hasOwn(v, k));
@@ -25,7 +26,7 @@ export function publicCatalogItem(input: Record<string, unknown>): CatalogItem {
   if (url.protocol !== "https:" || url.hostname !== "capacitaciondocente.educaciontuc.gov.ar" || url.port || url.username || url.password || url.search || url.hash) fail();
   return item;
 }
-export async function buildFdciCatalog(inputs: Record<string, unknown>[], updatedAt: string, observations?: Record<string, CatalogObservation>): Promise<FdciCatalog> {
+export async function buildFdciCatalog(inputs: Record<string, unknown>[], updatedAt: string, observations?: Record<string, CatalogObservation>, reminderEvidence?: Record<string, CatalogReminderEvidence>): Promise<FdciCatalog> {
   if (!iso(updatedAt) || inputs.length > 10_000) fail();
   const unique = new Map<string, CatalogItem>();
   for (const input of inputs) {
@@ -38,8 +39,16 @@ export async function buildFdciCatalog(inputs: Record<string, unknown>[], update
     const o = observations[i.id!];
     return !o || !exact(o, ["checkedAt", "lastChangedAt"]) || !iso(o.checkedAt) || !iso(o.lastChangedAt) || o.lastChangedAt > o.checkedAt || o.checkedAt > updatedAt;
   }))) fail();
-  const body = { schemaVersion: observations ? 2 as const : 1 as const, source: "fdci" as const, scope: "active" as const, updatedAt, version: await catalogHash(items), items,
-    ...(observations ? { observations: Object.fromEntries(items.map(i => [i.id!, observations[i.id!]])) } : {}) };
+  if (reminderEvidence && (!exact(reminderEvidence, items.map(i => i.id!)) || items.some(i => {
+    const e = reminderEvidence[i.id!];
+    return !e || !exact(e, ["trainingId", "registrationHasTime", "dateStatus", "availablePreCapacity"]) ||
+      !/^[1-9]\d{0,11}$/.test(e.trainingId) || typeof e.registrationHasTime !== "boolean" || !["confirmed", "unknown"].includes(e.dateStatus) ||
+      e.registrationHasTime && (!i.registrationOpenAt || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(i.registrationOpenAt)) ||
+      e.availablePreCapacity !== null && (!Number.isFinite(e.availablePreCapacity) || e.availablePreCapacity < 0);
+  }))) fail();
+  const body = { schemaVersion: reminderEvidence ? 3 as const : observations ? 2 as const : 1 as const, source: "fdci" as const, scope: "active" as const, updatedAt, version: await catalogHash(items), items,
+    ...(observations ? { observations: Object.fromEntries(items.map(i => [i.id!, observations[i.id!]])) } : {}),
+    ...(reminderEvidence ? { reminderEvidence: Object.fromEntries(items.map(i => { const e = reminderEvidence[i.id!]; return [i.id!, { trainingId: e.trainingId, registrationHasTime: e.registrationHasTime, dateStatus: e.dateStatus, availablePreCapacity: e.availablePreCapacity }]; })) } : {}) };
   const result = { ...body, sha256: await catalogHash(body) };
   if (new TextEncoder().encode(JSON.stringify(result)).byteLength > CATALOG_MAX_BYTES) fail();
   return result;
@@ -47,11 +56,12 @@ export async function buildFdciCatalog(inputs: Record<string, unknown>[], update
 export async function validateFdciCatalog(value: unknown): Promise<FdciCatalog> {
   if (!value || typeof value !== "object") fail();
   const v = value as FdciCatalog;
-  if (!exact(v, ["schemaVersion", "source", "scope", "updatedAt", "version", "items", "sha256", ...(v.schemaVersion === 2 ? ["observations"] : [])]) ||
-      ![1, 2].includes(v.schemaVersion) || v.schemaVersion === 2 && (!v.observations || typeof v.observations !== "object") ||
+  if (!exact(v, ["schemaVersion", "source", "scope", "updatedAt", "version", "items", "sha256", ...(v.schemaVersion === 2 || v.schemaVersion === 3 && Object.hasOwn(v,"observations") ? ["observations"] : []), ...(v.schemaVersion === 3 ? ["reminderEvidence"] : [])]) ||
+      ![1, 2, 3].includes(v.schemaVersion) || v.schemaVersion === 2 && (!v.observations || typeof v.observations !== "object") ||
+      v.schemaVersion === 3 && (!v.reminderEvidence || typeof v.reminderEvidence !== "object") ||
       v.source !== "fdci" || v.scope !== "active" || !Array.isArray(v.items) ||
       v.items.some(x => !x || !exact(x, fields))) fail();
-  const canonical = await buildFdciCatalog(v.items, v.updatedAt, v.observations);
+  const canonical = await buildFdciCatalog(v.items, v.updatedAt, v.observations, v.reminderEvidence);
   if (canonical.version !== v.version || canonical.sha256 !== v.sha256 || JSON.stringify(canonical.items) !== JSON.stringify(v.items)) fail();
   return canonical;
 }

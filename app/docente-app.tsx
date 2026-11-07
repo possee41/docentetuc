@@ -58,6 +58,7 @@ import { deviceRequestHeaders } from "@/lib/device-user";
 import { filterForNavigation, sectionUrl, shouldRevalidateAccount, viewFromSection } from "@/lib/app-navigation";
 import { boardItems } from "@/lib/board-view";
 import { isPublicPublication } from "@/lib/publication-visibility";
+import { fdciPersonalBlocked, fdciCatalogReference } from "@/lib/fdci-personal-contract";
 import { useFdciCatalogPilot, FdciCatalogPilotBanner, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
 import { sourceHealth, sourceNotices } from "@/lib/source-health";
 import type { BoardView } from "@/lib/board-view";
@@ -398,7 +399,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const savedMap = useMemo(() => officialSavedLookup(data?.saved || [], data?.publications || []), [data]);
   const reminderMap = useMemo(() => new Map((data?.reminders || []).map((item) => [item.training_id, item])), [data]);
   const profile = data?.profile ?? undefined;
-  const trainingPilot = useFdciCatalogPilot(data?.publications, view === "capacitaciones");
+  const trainingPilot = useFdciCatalogPilot(data?.publications, view === "capacitaciones", data?.fdciPersonalActionsEnabled === true);
   const designationAvailability = data ? designationEmptyState({
     filter, profileConfigured: hasDesignationProfilePreferences(profile),
     availableCount: data.publications.filter((item) => item.kind === "vacante").length,
@@ -479,7 +480,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   }
 
   const mutateSaved = async (action: "save" | "agenda" | "follow", publication: Publication, enabled: boolean, agenda?: { at?: string; notes?: string; reminderAt?: string }) => {
-    if (isFdciCatalogOnly(publication)) { toast.info("Capacitación externa de consulta: acción privada no disponible."); return; }
+    if (enabled && fdciPersonalBlocked(publication)) { toast.info("Capacitación externa de consulta: acción privada no disponible."); return; }
     const storedId = savedMap.get(publication.id)?.publication_id || publication.id;
     setData((current) => {
       if (!current) return current;
@@ -488,18 +489,33 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
       if (action !== "save" || enabled) saved = [...saved, { publication_id: storedId, in_agenda: action === "agenda" ? enabled : existing?.in_agenda || false, followed: action === "follow" ? enabled : existing?.followed || false, agenda_at: action === "agenda" ? (agenda?.at ? new Date(agenda.at).toISOString() : null) : existing?.agenda_at, agenda_notes: action === "agenda" ? agenda?.notes || "" : existing?.agenda_notes, agenda_reminder_at: action === "agenda" ? agenda?.reminderAt || null : existing?.agenda_reminder_at, agenda_reminder_notified: false, saved_at: existing?.saved_at || new Date().toISOString() }];
       return { ...current, saved };
     });
-    const response = await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action, publicationId: storedId, enabled, agendaAt: agenda?.at ? new Date(agenda.at).toISOString() : undefined, agendaNotes: agenda?.notes, agendaReminderAt: agenda?.reminderAt }) });
-    if (!response.ok) { toast.error("No se pudo guardar el cambio"); await load(false); } else toast.success(action === "save" ? (enabled ? "Guardado" : "Quitado de guardados") : action === "agenda" ? "Agenda actualizada" : "Seguimiento actualizado");
+    try {
+    const response = await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action, fdciCatalog: fdciCatalogReference(publication), publicationId: storedId, enabled, agendaAt: agenda?.at ? new Date(agenda.at).toISOString() : undefined, agendaNotes: agenda?.notes, agendaReminderAt: agenda?.reminderAt }) });
+    if (!response.ok) { toast.error("No se pudo guardar el cambio"); await load(false); } else { toast.success(action === "save" ? (enabled ? "Guardado" : "Quitado de guardados") : action === "agenda" ? "Agenda actualizada" : "Seguimiento actualizado"); if (isFdciCatalogOnly(publication)) await load(false); }
+    } catch { toast.error("Resultado no confirmado. Se volverán a leer tus datos sin repetir la operación."); await load(false); }
   };
 
   const saveReminder = async () => {
-    if (!reminderPublication) return;
-    const response = await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "set_training_reminder", publicationId: reminderPublication.id, advanceMinutes: reminderAdvances }) });
+    if (!reminderPublication || fdciPersonalBlocked(reminderPublication)) return;
+    try {
+    const response = await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "set_training_reminder", fdciCatalog: fdciCatalogReference(reminderPublication), publicationId: reminderPublication.id, advanceMinutes: reminderAdvances }) });
     const result = await response.json() as { error?: string };
     if (!response.ok) return toast.error(result.error || "No se pudo crear el recordatorio");
     toast.success("Recordatorio activado"); setReminderPublication(null); await load(false);
+    } catch { toast.error("No se pudo confirmar el aviso. Recargá tus datos antes de intentar otra operación."); await load(false); }
   };
 
+  const cancelReminder = async () => {
+    const metadata = reminderPublication ? parseTrainingMetadata(reminderPublication.metadata) : null;
+    if (!metadata) return;
+    try {
+      const response = await fetch("/api/app", {method:"POST",headers:apiHeaders(true),body:JSON.stringify({action:"remove_training_reminder",trainingId:trainingReminderKey(metadata)})});
+      if (!response.ok) { toast.error("No se pudo cancelar el aviso"); return; }
+      setReminderPublication(null); await load(false);
+    } catch { toast.error("Cancelación no confirmada. Se leerá el estado sin repetirla."); await load(false); }
+  };
+  const selectedReminderMetadata = reminderPublication ? parseTrainingMetadata(reminderPublication.metadata) : null;
+  const hasSelectedReminder = Boolean(selectedReminderMetadata && reminderMap.has(trainingReminderKey(selectedReminderMetadata)));
   const install = async () => { if (!installPrompt) return; await installPrompt.prompt(); const choice = await installPrompt.userChoice; if (choice.outcome === "accepted") setInstallPrompt(null); };
   const toggleTheme = () => setTheme((current) => { const next = current === "dark" ? "light" : "dark"; localStorage.setItem("docentetuc-theme", next); document.documentElement.dataset.theme = next; return next; });
   const openAI = (context: AIContext) => { setAIContext(context); setSelected(null); setAIMode("minimized"); };
@@ -616,7 +632,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
 
       <PublicationSheet publication={selected} sync={data?.sync || []} saved={selected ? savedMap.get(selected.id) : undefined} tracking={selected ? designationMap.get(selected.id) : undefined} match={selected ? matchResult(selected) : null} onClose={closePublication} onAskAI={(item) => openAI({ type: item.kind === "vacante" ? "designaciones" : item.kind, id: item.id, title: item.title })} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAgenda={(item, enabled) => void mutateSaved("agenda", item, enabled)} onSchedule={(item) => { const stored = savedMap.get(item.id); setAgendaPublication(item); setAgendaAt(stored?.agenda_at ? new Date(stored.agenda_at).toISOString().slice(0, 16) : ""); setAgendaNotes(stored?.agenda_notes || ""); }} onFollow={(item, enabled) => void mutateSaved("follow", item, enabled)} onExternal={openDesignationOfficial} onEditDesignation={setTrackingPublication} />
       <InformationAgendaAction publication={selected?.kind === "informacion" ? selected : null} saved={selected ? savedMap.get(selected.id) : undefined} onSchedule={(item) => { const stored = savedMap.get(item.id); setAgendaPublication(item); setAgendaAt(stored?.agenda_at ? new Date(stored.agenda_at).toISOString().slice(0, 16) : ""); setAgendaNotes(stored?.agenda_notes || ""); }} onRemove={(item) => void mutateSaved("agenda", item, false)} />
-      <ReminderDialog publication={reminderPublication} advances={reminderAdvances} onAdvances={setReminderAdvances} onClose={() => setReminderPublication(null)} onSave={() => void saveReminder()} />
+      <ReminderDialog publication={reminderPublication} advances={reminderAdvances} onAdvances={setReminderAdvances} onClose={() => setReminderPublication(null)} onSave={() => void saveReminder()} onRemove={hasSelectedReminder ? () => void cancelReminder() : undefined} canSave={!reminderPublication || !fdciPersonalBlocked(reminderPublication)} />
       <AgendaDialog publication={agendaPublication} at={agendaAt} notes={agendaNotes} reminder={agendaReminder} onAt={setAgendaAt} onNotes={setAgendaNotes} onReminder={setAgendaReminder} onClose={() => setAgendaPublication(null)} onSave={() => { if (!agendaPublication || !agendaAt) return; const minutes = agendaReminder === "one_day" ? 1440 : agendaReminder === "one_hour" ? 60 : 0, reminderAt = agendaReminder === "none" ? undefined : new Date(new Date(agendaAt).getTime() - minutes * 60_000).toISOString(); void mutateSaved("agenda", agendaPublication, true, { at: agendaAt, notes: agendaNotes, reminderAt }).then(() => setAgendaPublication(null)); }} />
       {manualEvent && <ManualEventDialog key={manualEvent === "new" ? `new:${manualEventDate}` : manualEvent.id} event={manualEvent === "new" ? null : manualEvent} initialDate={manualEventDate} headers={() => apiHeaders(true)} onClose={() => setManualEvent(null)} onSaved={async (startsAt) => { if (startsAt) setAgendaFocusAt(startsAt); setManualEvent(null); await load(false); }} />}
       <DesignationReturnDialog publication={returnPublication} onNo={() => { localStorage.removeItem("docentetuc-pending-designation"); setReturnPublication(null); }} onYes={() => { if (returnPublication) setTrackingPublication(returnPublication); localStorage.removeItem("docentetuc-pending-designation"); setReturnPublication(null); }} />
@@ -935,10 +951,10 @@ function HomeAdminNotices() {
 
 function HomeSkeleton() { return <div className="home-skeleton" aria-label="Cargando oportunidades"><span /><span /><span /></div>; }
 
-function ReminderDialog({ publication, advances, onAdvances, onClose, onSave }: { publication: Publication | null; advances: number[]; onAdvances: (value: number[]) => void; onClose: () => void; onSave: () => void }) {
+function ReminderDialog({ publication, advances, onAdvances, onClose, onSave, onRemove, canSave = true }: { publication: Publication | null; advances: number[]; onAdvances: (value: number[]) => void; onClose: () => void; onSave: () => void; onRemove?: () => void; canSave?: boolean }) {
   const metadata = publication ? parseTrainingMetadata(publication.metadata) : null;
   const options: [number, string][] = [[10080, "7 días antes"], [4320, "3 días antes"], [1440, "1 día antes"], [60, "1 hora antes"], [0, "Cuando abra"]];
-  return <Dialog open={Boolean(publication)} onOpenChange={(open) => !open && onClose()}><DialogContent><DialogHeader><DialogTitle className="flex items-center gap-2 text-[#062b55]"><Bell className="size-5 text-[#0878be]" />Avisarme cuando abra</DialogTitle><DialogDescription>{publication?.title}</DialogDescription></DialogHeader>{metadata?.registrationOpensAt && <div className="rounded-2xl bg-[#edf6fc] p-4 text-sm text-[#335f7d]"><strong className="block">Apertura: {dateLabel(metadata.registrationOpensAt, Boolean(metadata.registrationHasTime))}</strong>{metadata.dateStatus === "tentative" ? <span>Fecha tentativa según {metadata.source}.</span> : !metadata.registrationHasTime && <span>La fuente oficial informa la fecha pero no el horario exacto.</span>}</div>}<fieldset className="space-y-2"><Label asChild><legend>Podés elegir más de un aviso</legend></Label>{options.map(([minutes, label]) => <button type="button" key={minutes} aria-pressed={advances.includes(minutes)} onClick={() => onAdvances(advances.includes(minutes) ? advances.filter((value) => value !== minutes) : [...advances, minutes])} className={`flex min-h-11 w-full items-center justify-between rounded-xl border px-4 text-left font-semibold ${advances.includes(minutes) ? "border-[#0878be] bg-[#edf6fc] text-[#075c91]" : "border-[var(--border)] bg-[var(--surface-primary)] text-[var(--text-secondary)]"}`}><span>{label}</span><span>{advances.includes(minutes) ? "✓" : ""}</span></button>)}</fieldset><DialogFooter><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={onSave} disabled={!advances.length} className="bg-[#0878be] text-white"><Bell className="size-4" />Activar {advances.length || ""} {advances.length === 1 ? "aviso" : "avisos"}</Button></DialogFooter></DialogContent></Dialog>;
+  return <Dialog open={Boolean(publication)} onOpenChange={(open) => !open && onClose()}><DialogContent><DialogHeader><DialogTitle className="flex items-center gap-2 text-[#062b55]"><Bell className="size-5 text-[#0878be]" />Avisarme cuando abra</DialogTitle><DialogDescription>{publication?.title}</DialogDescription></DialogHeader>{metadata?.registrationOpensAt && <div className="rounded-2xl bg-[#edf6fc] p-4 text-sm text-[#335f7d]"><strong className="block">Apertura: {dateLabel(metadata.registrationOpensAt, Boolean(metadata.registrationHasTime))}</strong>{metadata.dateStatus === "tentative" ? <span>Fecha tentativa según {metadata.source}.</span> : !metadata.registrationHasTime && <span>La fuente oficial informa la fecha pero no el horario exacto.</span>}</div>}<fieldset className="space-y-2"><Label asChild><legend>Podés elegir más de un aviso</legend></Label>{options.map(([minutes, label]) => <button type="button" key={minutes} aria-pressed={advances.includes(minutes)} onClick={() => onAdvances(advances.includes(minutes) ? advances.filter((value) => value !== minutes) : [...advances, minutes])} className={`flex min-h-11 w-full items-center justify-between rounded-xl border px-4 text-left font-semibold ${advances.includes(minutes) ? "border-[#0878be] bg-[#edf6fc] text-[#075c91]" : "border-[var(--border)] bg-[var(--surface-primary)] text-[var(--text-secondary)]"}`}><span>{label}</span><span>{advances.includes(minutes) ? "✓" : ""}</span></button>)}</fieldset><DialogFooter>{onRemove && <Button variant="outline" onClick={onRemove}>Cancelar aviso</Button>}<Button variant="outline" onClick={onClose}>Cerrar</Button><Button onClick={onSave} disabled={!advances.length || !canSave} className="bg-[#0878be] text-white"><Bell className="size-4" />Activar {advances.length || ""} {advances.length === 1 ? "aviso" : "avisos"}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function AgendaDialog({ publication, at, notes, reminder, onAt, onNotes, onReminder, onClose, onSave }: { publication: Publication | null; at: string; notes: string; reminder: string; onAt: (value: string) => void; onNotes: (value: string) => void; onReminder: (value: string) => void; onClose: () => void; onSave: () => void }) {
@@ -1048,10 +1064,10 @@ function PublicationList({ items, sync, loading, savedMap, reminderMap, matchRes
       {simeCode && <p className="mt-2 text-xs font-bold text-[#315d7a]">ID de trámite: {simeCode}</p>}
       <OfficialPublicationSummary item={item} />
       {training ? <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-[#61766f]">{item.character && <span><strong>Modalidad:</strong> {item.character}</span>}{item.starts_at && <span><strong>Inicio:</strong> {dateLabel(item.starts_at)}</span>}{metadata?.registrationClosesAt && <span><strong>Inscripción hasta:</strong> {dateLabel(metadata.registrationClosesAt, true)}</span>}{item.location && <span className="col-span-2"><strong>Lugar:</strong> {item.location}</span>}</div> : <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#61766f]">{item.character && <span>{item.character}</span>}{item.junta && <span>{item.junta}</span>}{item.shift && <span>Turno {item.shift}</span>}{item.ends_at && <span className="ml-auto flex items-center gap-1 font-semibold text-[#9a641f]"><Clock3 className="size-4" />{unverified ? `Cierre informado: ${dateLabel(item.ends_at, true)}` : fromNow(item.ends_at)}</span>}</div>}
-      {isFdciCatalogOnly(item) && <p className="mt-2 text-sm font-bold text-amber-800 dark:text-amber-200">CATÁLOGO EXTERNO — solo consulta, sin acciones privadas</p>}
+      {fdciPersonalBlocked(item) && <p className="mt-2 text-sm font-bold text-amber-800 dark:text-amber-200">CATÁLOGO EXTERNO — solo consulta, sin acciones privadas</p>}
       <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-[#e7eee9] pt-3">
-        {training && !isFdciCatalogOnly(item) && sourceCurrent && canScheduleTrainingReminder(metadata, item.status, item.normalized_status) && <button onClick={() => onRemind(item)} className="flex min-h-10 items-center gap-2 rounded-xl bg-[#fff4d6] px-3 text-sm font-bold text-[#7b5500]"><Bell className="size-4" />{reminded ? "Aviso activo" : "Recordarme"}</button>}
-        {training && !isFdciCatalogOnly(item) && <button onClick={() => onSave(item, !saved)} className={`flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold ${saved ? "bg-[#fff3dd] text-[#8b5b00]" : "bg-[#edf6fc] text-[#0878be]"}`}><Star className={`size-4 ${saved ? "fill-current" : ""}`} />{saved ? "Guardada" : "Guardar"}</button>}
+        {training && (reminded || !fdciPersonalBlocked(item) && (sourceCurrent || isFdciCatalogOnly(item)) && canScheduleTrainingReminder(metadata, item.status, item.normalized_status)) && <button onClick={() => onRemind(item)} className="flex min-h-10 items-center gap-2 rounded-xl bg-[#fff4d6] px-3 text-sm font-bold text-[#7b5500]"><Bell className="size-4" />{reminded ? "Aviso activo" : "Recordarme"}</button>}
+        {training && (!fdciPersonalBlocked(item) || saved) && <button onClick={() => onSave(item, !saved)} className={`flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold ${saved ? "bg-[#fff3dd] text-[#8b5b00]" : "bg-[#edf6fc] text-[#0878be]"}`}><Star className={`size-4 ${saved ? "fill-current" : ""}`} />{saved ? "Guardada" : "Guardar"}</button>}
         <button onClick={() => onOpen(item)} className="flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold text-[#1f5f4e] hover:bg-[#edf4ef]">Ver <ChevronRight className="size-4" /></button>
         {training && !isFdciCatalogOnly(item) && trainingState === "ABIERTA" && metadata?.commissionId && <a href={item.official_url} target="_blank" rel="noreferrer" className="flex min-h-10 items-center gap-2 rounded-xl bg-[#0878be] px-4 text-sm font-black text-white">{unverified ? "Verificar en fuente" : "INSCRIBIRME"} <ExternalLink className="size-4" /></a>}
       </div>
@@ -1471,7 +1487,7 @@ function PublicationSheet({ publication, sync, saved, tracking, match, onClose, 
               : <><div className="flex items-center justify-between gap-3"><div><h3 className="font-black">¿Por qué coincide?</h3><p className="mt-1 text-sm text-[#52708c]">Compatibilidad: {match.score}% · confianza: {match.confidence}% · {match.matched} de {match.total} criterios coinciden.</p></div></div></>}
             <div className="mt-4 space-y-2">{criteriaView}</div>
           </div>}
-          {isFdciCatalogOnly(publication) ? <p className="rounded-xl bg-amber-50 p-3 font-bold text-amber-950">CATÁLOGO EXTERNO — Guardados, Agenda y recordatorios no disponibles en esta prueba.</p> : <div className="grid gap-2 sm:grid-cols-2">
+          {fdciPersonalBlocked(publication) ? <div className="space-y-2"><p className="rounded-xl bg-amber-50 p-3 font-bold text-amber-950">Catálogo externo sin verificación vigente. Tus datos se conservan; podés retirarlos.</p>{saved && <Button variant="outline" onClick={() => onSave(publication,false)}>Quitar guardado</Button>}{Boolean(saved?.in_agenda) && <Button variant="outline" onClick={() => onAgenda(publication,false)}>Quitar de mi agenda</Button>}</div> : <div className="grid gap-2 sm:grid-cols-2">
             <Button variant={saved ? "default" : "outline"} onClick={() => onSave(publication, !saved)} className="h-11 rounded-xl"><Star className={`size-4 ${saved ? "fill-current" : ""}`} />{saved ? (publication.kind === "informacion" ? "Contacto guardado" : "Guardada") : (publication.kind === "informacion" ? "Guardar contacto" : "Guardar")}</Button>
             {publication.kind !== "informacion" && <Button variant={Boolean(saved?.in_agenda) ? "default" : "outline"} onClick={() => onAgenda(publication, !Boolean(saved?.in_agenda))} className="h-11 rounded-xl"><CalendarDays className="size-4" />{Boolean(saved?.in_agenda) ? "Quitar de mi agenda" : "Agregar a mi agenda"}</Button>}
             {(publication.kind === "junta" || publication.kind === "vacante") && <Button variant={Boolean(saved?.followed) ? "default" : "outline"} onClick={() => onFollow(publication, !Boolean(saved?.followed))} className="h-11 rounded-xl"><Bell className="size-4" />{Boolean(saved?.followed) ? "Dejar de seguir" : "Seguir"}</Button>}

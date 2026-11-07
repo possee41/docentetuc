@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { buildFdciCatalog, catalogHash } from "./fdci-static-catalog.ts";
 import { buildFdciActiveVersion, createFdciVersionedReader, FDCI_RAW_ACTIVE_URL } from "./fdci-static-publication.ts";
 import { fdciPilotAllowed, integrateFdciCatalog } from "./fdci-catalog-integration.ts";
+import { fdciPersonalBlocked, withFdciPersonalCapability } from "./fdci-personal-contract.ts";
 import type { Publication } from "./types.ts";
 import { generateFdciCatalog, syntheticFdciFetch } from "../scripts/fdci-static-catalog.mjs";
 
@@ -115,7 +116,23 @@ test("experimental opt-in never runs on production; server no longer materialize
   assert(!fdciPilotAllowed("canary.docentetuc.com.ar", "")); assert(!fdciPilotAllowed("docentetuc.com.ar", "?fdciCatalogTest=1"));
   const route = readFileSync(new URL("../app/api/app/route.ts", import.meta.url), "utf8");
   assert(!route.includes("catalog.json")); assert(!route.includes("fetchFdciCatalog"));
-  assert.match(route, /id\.startsWith\("fdci:"\)[\s\S]*?status: 409/);
+  assert.match(route, /prepareFdciPersonalAction/);
+});
+
+test("personal buttons require a fresh verified projection and explicit local/canary capability", async () => {
+  const { catalog } = await fixture();
+  const merged = await integrateFdciCatalog([], catalog, "ready", now(), 3);
+  assert(fdciPersonalBlocked(withFdciPersonalCapability(merged.publications, false, now())[0]));
+  const enabled = withFdciPersonalCapability(merged.publications, true, now());
+  assert(!fdciPersonalBlocked(enabled[0]));
+  assert(fdciPersonalBlocked(withFdciPersonalCapability(enabled, true, now() + 86_400_001)[0]));
+  const stored = { ...enabled[0], title: "Snapshot conservado", content_hash: await catalogHash({ item: catalog.items[0], evidence: null }) };
+  const reloaded = await integrateFdciCatalog([stored], catalog, "ready", now(), 3);
+  assert.equal(reloaded.publications.length, 1); assert.equal(reloaded.publications[0].title, stored.title);
+  const next = (await integrateFdciCatalog([stored], catalog, "ready", now(), 4)).publications;
+  assert.equal(next.length, 1); assert.equal(JSON.parse(next[0].metadata).catalogGeneration, 4);
+  const changed = await buildFdciCatalog([{ ...catalog.items[0], summary: "Contenido actualizado" }], at);
+  assert.equal((await integrateFdciCatalog([stored], changed, "ready", now(), 5)).publications.length, 0);
 });
 
 test("HTTP errors and incomplete JSON never become a displayed catalog", async () => {

@@ -9,7 +9,9 @@ import { isSameOriginMutation } from "@/lib/auth-identity";
 import { PERSONAL_PUBLICATIONS_QUERY } from "@/lib/personal-publications";
 import { sourceHealth } from "@/lib/source-health";
 import { privateNotifications, readPrivateNotification } from "@/lib/private-notifications";
-import type { SyncStatus } from "@/lib/types";
+import type { Publication, SyncStatus } from "@/lib/types";
+import { fdciPersonalEnabled, prepareFdciPersonalAction, FdciPersonalError } from "@/lib/fdci-personal-server";
+import { withFdciPersonalCapability } from "@/lib/fdci-personal-contract";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +38,7 @@ export async function GET(request: Request) {
       db.prepare("SELECT id, title, notes, category, starts_at, all_day, recurrence, reminder_minutes, reminder_at, reminder_notified, created_at, updated_at FROM manual_events WHERE user_id=? ORDER BY starts_at").bind(user.userId).all(),
       db.prepare(PERSONAL_PUBLICATIONS_QUERY).bind(user.userId, user.userId, user.userId, user.userId).all(),
     ]);
-    return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publicProfile: publicProfileForClient(publicProfile as Record<string, unknown> | null), saved: saved.results, notifications: notifications.results, reminders: reminders.results, designations: designations.results, manualEvents: manualEvents.results, personalPublications: personalPublications.results });
+    return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publicProfile: publicProfileForClient(publicProfile as Record<string, unknown> | null), saved: saved.results, notifications: notifications.results, reminders: reminders.results, designations: designations.results, manualEvents: manualEvents.results, fdciPersonalActionsEnabled: fdciPersonalEnabled(request), personalPublications: withFdciPersonalCapability(personalPublications.results as Publication[], fdciPersonalEnabled(request)) });
   } catch (error) {
     console.error("[api/app] GET failed", error);
     return Response.json({ error: authError(error) ? "Iniciá sesión para continuar." : "No se pudieron cargar los datos." }, { status: authError(error) ? 401 : 500 });
@@ -87,11 +89,12 @@ export async function POST(request: Request) {
         .bind(id, user.userId, publicationId, status, value(body.role, 200), value(body.subject, 200), value(body.school, 250), value(body.address, 250), value(body.locality, 120), optionalDate(body.appliedAt), optionalDate(body.appointmentAt), value(body.shift, 80), value(body.board, 180), value(body.documentation, 500), value(body.orderNumber, 120), value(body.notes, 1000), publication.official_url, reminderAt).run();
     } else if (action === "set_training_reminder") {
       const publicationId = value(body.publicationId, 120);
-      const publication = await db.prepare("SELECT id, source, metadata, status, normalized_status FROM publications WHERE id=? AND kind='capacitacion'").bind(publicationId).first<{ id: string; source: string; metadata: string; status: string; normalized_status: string }>();
+      const external = await prepareFdciPersonalAction(db, request, body, publicationId);
+      const publication = external?.publication ?? await db.prepare("SELECT id, source, metadata, status, normalized_status FROM publications WHERE id=? AND kind='capacitacion'").bind(publicationId).first<{ id: string; source: string; metadata: string; status: string; normalized_status: string }>();
       const metadata = parseTrainingMetadata(publication?.metadata);
       if (!publication || !metadata?.registrationOpensAt || !metadata.trainingId) return Response.json({ error: "La fuente oficial no informó una apertura válida." }, { status: 400 });
-      const health = await db.prepare("SELECT source, sync_status, last_attempt_at, last_successful_sync_at FROM sync_state WHERE source=?").bind(publication.source).first<SyncStatus>();
-      if (sourceHealth(health || undefined) !== "current") return Response.json({ error: "La fuente requiere una verificación reciente antes de activar avisos." }, { status: 400 });
+      const health = external?.hash ? null : await db.prepare("SELECT source, sync_status, last_attempt_at, last_successful_sync_at FROM sync_state WHERE source=?").bind(publication.source).first<SyncStatus>();
+      if (!external?.hash && sourceHealth(health || undefined) !== "current") return Response.json({ error: "La fuente requiere una verificación reciente antes de activar avisos." }, { status: 400 });
       if (!canScheduleTrainingReminder(metadata, publication.status, publication.normalized_status)) return Response.json({ error: "La apertura y su horario deben estar confirmados, ser futuros y conservar cupos." }, { status: 400 });
       const opens = new Date(metadata.registrationOpensAt);
       if (!Number.isFinite(opens.getTime()) || opens.getTime() <= Date.now()) return Response.json({ error: "La apertura ya pasó; no se puede crear un recordatorio nuevo." }, { status: 400 });
@@ -99,39 +102,53 @@ export async function POST(request: Request) {
       if (!advances.length || advances.some((advance) => ![10080, 4320, 1440, 60, 0].includes(advance))) return Response.json({ error: "Elegí al menos un aviso válido." }, { status: 400 });
       const reminderKey = trainingReminderKey(metadata);
       const reminderIds = advances.map((advance) => `${user.userId}:${reminderKey}:${advance}`);
-      await db.prepare(`DELETE FROM training_reminders WHERE user_id=? AND training_id=? AND id NOT IN (${reminderIds.map(() => "?").join(",")})`).bind(user.userId, reminderKey, ...reminderIds).run();
-      await db.batch(advances.map((advance) => {
+      const statements = external?.insert ? [external.insert] : [];
+      const checkedPublication = external?.hash ? " AND EXISTS(SELECT 1 FROM publications WHERE id=? AND content_hash=?)" : "";
+      const checkedParams = external?.hash ? [publicationId,external.hash] : [];
+      statements.push(db.prepare(`DELETE FROM training_reminders WHERE user_id=? AND training_id=? AND id NOT IN (${reminderIds.map(() => "?").join(",")})${checkedPublication}`).bind(user.userId, reminderKey, ...reminderIds,...checkedParams));
+      statements.push(...advances.map((advance) => {
         const remindAt = new Date(opens.getTime() - advance * 60000), id = `${user.userId}:${reminderKey}:${advance}`;
-        return db.prepare(`INSERT INTO training_reminders (id, user_id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+        return db.prepare(`INSERT INTO training_reminders (id, user_id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified) SELECT ?, ?, ?, ?, ?, ?, ?, ?, 0 WHERE ${external?.hash ? "EXISTS(SELECT 1 FROM publications WHERE id=? AND content_hash=?)" : "1"}
           ON CONFLICT(id) DO UPDATE SET publication_id=excluded.publication_id, opens_at=excluded.opens_at, precision=excluded.precision, advance_minutes=excluded.advance_minutes, remind_at=excluded.remind_at,
             notified=CASE WHEN training_reminders.opens_at IS excluded.opens_at AND training_reminders.remind_at IS excluded.remind_at THEN training_reminders.notified ELSE 0 END, updated_at=CURRENT_TIMESTAMP
           WHERE training_reminders.publication_id IS NOT excluded.publication_id OR training_reminders.opens_at IS NOT excluded.opens_at OR training_reminders.precision IS NOT excluded.precision OR training_reminders.advance_minutes IS NOT excluded.advance_minutes OR training_reminders.remind_at IS NOT excluded.remind_at`)
-          .bind(id, user.userId, reminderKey, publicationId, metadata.registrationOpensAt, metadata.registrationHasTime ? "datetime" : "date", advance, remindAt.toISOString());
+          .bind(id, user.userId, reminderKey, publicationId, metadata.registrationOpensAt, metadata.registrationHasTime ? "datetime" : "date", advance, remindAt.toISOString(), ...(external?.hash ? [publicationId,external.hash] : []));
       }));
+      await db.batch(statements);
+      if (external?.hash && (await db.prepare("SELECT content_hash FROM publications WHERE id=?").bind(publicationId).first<{content_hash:string}>())?.content_hash !== external.hash) throw new FdciPersonalError(409,"La capacitación cambió durante la confirmación.");
     } else if (action === "remove_training_reminder") {
       await db.prepare("DELETE FROM training_reminders WHERE user_id=? AND training_id=?").bind(user.userId, value(body.trainingId, 80)).run();
     } else if (["save", "agenda", "follow"].includes(action)) {
       const id = value(body.publicationId, 120);
       if (!id) return Response.json({ error: "Publicación inválida." }, { status: 400 });
-      // External-only actions stay closed until the versioned client/server flow is validated.
-      // Existing D1 publications retain private actions; never materialize the legacy DEMO.
-      if (id.startsWith("fdci:") && !await db.prepare("SELECT 1 FROM publications WHERE id=?").bind(id).first()) {
-        return Response.json({ error: "Las acciones privadas del catálogo externo todavía no están habilitadas." }, { status: 409 });
-      }
       const enabled = body.enabled !== false ? 1 : 0;
-      if (action === "save" && !enabled) await db.prepare("DELETE FROM saved_publications WHERE user_id=? AND publication_id=?").bind(user.userId, id).run();
-      else {
-        await db.prepare("INSERT INTO saved_publications (user_id, publication_id) VALUES (?, ?) ON CONFLICT(user_id, publication_id) DO NOTHING").bind(user.userId, id).run();
-        if (action === "agenda") {
-          const rawAgendaAt = value(body.agendaAt, 40), agendaDate = rawAgendaAt ? new Date(rawAgendaAt) : null;
-          if (rawAgendaAt && (!agendaDate || Number.isNaN(agendaDate.getTime()))) return Response.json({ error: "Fecha de agenda inválida." }, { status: 400 });
-          const rawReminderAt = value(body.agendaReminderAt, 40), reminderDate = rawReminderAt ? new Date(rawReminderAt) : null;
-          if (rawReminderAt && (!reminderDate || Number.isNaN(reminderDate.getTime()) || (agendaDate && reminderDate > agendaDate))) return Response.json({ error: "Recordatorio de agenda inválido." }, { status: 400 });
-          const agendaFields = [enabled, enabled && agendaDate ? agendaDate.toISOString() : null, enabled ? value(body.agendaNotes, 1000) : "", enabled && reminderDate ? reminderDate.toISOString() : null];
-          await db.prepare("UPDATE saved_publications SET in_agenda=?, agenda_at=?, agenda_notes=?, agenda_reminder_at=?, agenda_reminder_notified=CASE WHEN agenda_reminder_at IS ? THEN agenda_reminder_notified ELSE 0 END WHERE user_id=? AND publication_id=? AND (in_agenda IS NOT ? OR agenda_at IS NOT ? OR agenda_notes IS NOT ? OR agenda_reminder_at IS NOT ?)").bind(...agendaFields, agendaFields[3], user.userId, id, ...agendaFields).run();
-        }
-        if (action === "follow") await db.prepare("UPDATE saved_publications SET followed=? WHERE user_id=? AND publication_id=? AND followed IS NOT ?").bind(enabled, user.userId, id, enabled).run();
+      // Cleanup remains available for the authenticated owner even after removal/disablement.
+      if (!enabled) {
+        const owned = await db.prepare("SELECT 1 FROM saved_publications WHERE user_id=? AND publication_id=?").bind(user.userId,id).first();
+        if (!owned) return Response.json({error:"No existe ese guardado en tu cuenta."},{status:404});
+        if (action === "save") await db.prepare("DELETE FROM saved_publications WHERE user_id=? AND publication_id=?").bind(user.userId,id).run();
+        else if (action === "agenda") await db.prepare("UPDATE saved_publications SET in_agenda=0,agenda_at=NULL,agenda_notes='',agenda_reminder_at=NULL,agenda_reminder_notified=0 WHERE user_id=? AND publication_id=?").bind(user.userId,id).run();
+        else await db.prepare("UPDATE saved_publications SET followed=0 WHERE user_id=? AND publication_id=?").bind(user.userId,id).run();
+        return Response.json({ok:true});
       }
+      const rawAgendaAt = value(body.agendaAt,40), agendaDate = rawAgendaAt ? new Date(rawAgendaAt) : null;
+      const rawReminderAt = value(body.agendaReminderAt,40), reminderDate = rawReminderAt ? new Date(rawReminderAt) : null;
+      if (action === "agenda" && (rawAgendaAt && (!agendaDate || Number.isNaN(agendaDate.getTime())) || rawReminderAt && (!reminderDate || Number.isNaN(reminderDate.getTime()) || agendaDate && reminderDate > agendaDate)))
+        return Response.json({error:"Fecha de agenda o recordatorio inválida."},{status:400});
+      const external = await prepareFdciPersonalAction(db,request,body,id);
+      if (!external && !await db.prepare("SELECT 1 FROM publications WHERE id=?").bind(id).first()) return Response.json({error:"Publicación no disponible."},{status:404});
+      const statements = external?.insert ? [external.insert] : [];
+      const guard = external?.hash ? " AND content_hash=?" : "";
+      const checkedPublication = external?.hash ? " AND EXISTS(SELECT 1 FROM publications WHERE id=? AND content_hash=?)" : "";
+      const checkedParams = external?.hash ? [id,external.hash] : [];
+      statements.push(db.prepare(`INSERT INTO saved_publications(user_id,publication_id) SELECT ?,id FROM publications WHERE id=?${guard} ON CONFLICT(user_id,publication_id) DO NOTHING`)
+        .bind(user.userId,id,...(external?.hash ? [external.hash] : [])));
+      if (action === "agenda") statements.push(db.prepare(`UPDATE saved_publications SET in_agenda=1,agenda_at=?,agenda_notes=?,agenda_reminder_at=?,agenda_reminder_notified=CASE WHEN agenda_reminder_at IS ? THEN agenda_reminder_notified ELSE 0 END WHERE user_id=? AND publication_id=?${checkedPublication}`)
+        .bind(agendaDate?.toISOString()??null,value(body.agendaNotes,1000),reminderDate?.toISOString()??null,reminderDate?.toISOString()??null,user.userId,id,...checkedParams));
+      if (action === "follow") statements.push(db.prepare(`UPDATE saved_publications SET followed=1 WHERE user_id=? AND publication_id=?${checkedPublication}`).bind(user.userId,id,...checkedParams));
+      await db.batch(statements);
+      if (external?.hash && (await db.prepare("SELECT content_hash FROM publications WHERE id=?").bind(id).first<{content_hash:string}>())?.content_hash !== external.hash) throw new FdciPersonalError(409,"La capacitación cambió concurrentemente.");
+      if (!await db.prepare("SELECT 1 FROM saved_publications WHERE user_id=? AND publication_id=?").bind(user.userId,id).first()) throw new FdciPersonalError(409,"La publicación cambió concurrentemente; no se confirmó el guardado.");
     } else if (action === "save_event") {
       const title = value(body.title, 160), startsAt = value(body.startsAt, 40), starts = new Date(startsAt);
       if (!title || !startsAt || Number.isNaN(starts.getTime())) return Response.json({ error: "Completá un título y una fecha válida." }, { status: 400 });
@@ -154,6 +171,7 @@ export async function POST(request: Request) {
     } else return Response.json({ error: "Acción no admitida." }, { status: 400 });
     return Response.json({ ok: true });
   } catch (error) {
+    if (error instanceof FdciPersonalError) return Response.json({error:error.message},{status:error.status});
     return Response.json({ error: authError(error) ? "Iniciá sesión para continuar." : "No se pudo guardar el cambio." }, { status: authError(error) ? 401 : 500 });
   }
 }
