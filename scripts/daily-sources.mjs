@@ -43,6 +43,9 @@ export async function runDailySource(config, codeSha, { store, sourceFetch = fet
   if (config.IMPORT_GATEWAY_TARGET === "production" &&
       new URL(target.origin).hostname !== "docentetuc-sources-1-2.possee41.workers.dev") throw Error("DAILY_RETIRED_GATEWAY_FORBIDDEN");
   const initial = await store.load(); validateDailyState(initial.state, target.source, codeSha);
+  if (config.IMPORT_GATEWAY_TARGET === 'production' &&
+      (!['sime','infd','cenet'].includes(target.source) || config.DAILY_STATE_ENVIRONMENT !== 'production' || initial.state.data.environment !== 'production'))
+    throw Error('DAILY_PRODUCTION_STATE_REQUIRED');
   if (initial.state.data.halted || initial.state.data.inFlight) throw Error("DAILY_HALTED_REVIEW_REQUIRED");
   try { await verifyGatewayIdentity(target, receiverFetch); }
   catch (error) {
@@ -86,7 +89,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (c.GITHUB_REPOSITORY !== "possee41/docentetuc" || c.GITHUB_RUN_ATTEMPT !== "1" || !/^[a-f0-9]{40}$/.test(sha ?? "") ||
         c.GITHUB_REF !== `refs/heads/${c.DAILY_DEFAULT_BRANCH}` || !/^\d+$/.test(c.GITHUB_RUN_ID ?? "") ||
         execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim() !== sha) throw Error("DAILY_EXECUTION_NOT_APPROVED");
-    const store = createDailyGitStore({ source: c.SYNC_SOURCE, codeSha: sha, token: c.GH_TOKEN });
+    const store = createDailyGitStore({ source: c.SYNC_SOURCE, codeSha: sha, token: c.GH_TOKEN,
+      environment: c.IMPORT_GATEWAY_TARGET === 'production' ? 'production' : 'canary' });
     console.log(JSON.stringify(await runDailySource(c, sha, { store })));
   } catch (error) {
     console.error(/^[A-Z0-9_]+$/.test(error?.message ?? "") ? error.message : "DAILY_SYNC_FAILED"); process.exitCode = 1;

@@ -1,0 +1,50 @@
+name: Production daily sources (disabled)
+on:
+  # Enable only after the owner's final authorization, on the default branch.
+  # schedule:
+  #   - cron: '7 9 * * *'   # SIME 06:07 Tucuman
+  #   - cron: '7 10 * * *'  # INFoD 07:07
+  #   - cron: '37 10 * * *' # CeNET 07:37
+  workflow_dispatch:
+    inputs:
+      source:
+        type: choice
+        options: [sime, infd, cenet]
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: daily-production-source-writes
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: github.repository == 'possee41/docentetuc' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && vars.DAILY_PRODUCTION_ENABLED == 'true' && vars.DAILY_PRODUCTION_APPROVED == 'true' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # Repository-wide, not branch-scoped; required for the separate Git ledgers.
+    environment: ${{ format('production-{0}', inputs.source || (github.event.schedule == '7 9 * * *' && 'sime') || (github.event.schedule == '7 10 * * *' && 'infd') || (github.event.schedule == '37 10 * * *' && 'cenet')) }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DAILY_SOURCES_ENABLED: ${{ vars.DAILY_PRODUCTION_ENABLED }}
+      DAILY_APPROVED_SHA: ${{ vars.DAILY_PRODUCTION_APPROVED_SHA }}
+      DAILY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      DAILY_STATE_ENVIRONMENT: production
+      SYNC_SOURCE: ${{ inputs.source || (github.event.schedule == '7 9 * * *' && 'sime') || (github.event.schedule == '7 10 * * *' && 'infd') || (github.event.schedule == '37 10 * * *' && 'cenet') }}
+      IMPORT_GATEWAY_TARGET: production
+      IMPORT_GATEWAY_PRODUCTION_ENABLED: ${{ vars.DAILY_PRODUCTION_APPROVED }}
+      IMPORT_GATEWAY_APPROVED_SHA: ${{ vars.DAILY_PRODUCTION_APPROVED_SHA }}
+      IMPORT_GATEWAY_ORIGIN: https://docentetuc-sources-1-2.possee41.workers.dev
+      IMPORT_GATEWAY_DATABASE_ID: baaf5886-0123-4948-96da-aa7106424549
+      IMPORT_GATEWAY_DATABASE_NAME: docentetuc-db
+      DAILY_IMPORT_SECRET: ${{ secrets.IMPORT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.DAILY_PRODUCTION_APPROVED_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Synchronize one bounded source with production-only Git state
+        run: node --experimental-strip-types scripts/daily-sources.mjs

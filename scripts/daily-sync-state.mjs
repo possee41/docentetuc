@@ -8,9 +8,10 @@ const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const blob = bytes => createHash("sha1").update(`blob ${Buffer.byteLength(bytes)}\0`).update(bytes).digest("hex");
 const hex = /^[a-f0-9]{40}$/;
 export const sealDailyState = data => ({ data, sha256: hash(JSON.stringify(data)) });
-export function initialDailyState(source, codeSha) {
-  if (!DAILY_SOURCES.includes(source) || !hex.test(codeSha)) throw Error("DAILY_STATE_IDENTITY_INVALID");
+export function initialDailyState(source, codeSha, environment = 'canary') {
+  if (!DAILY_SOURCES.includes(source) || !hex.test(codeSha) || !['canary','production'].includes(environment)) throw Error("DAILY_STATE_IDENTITY_INVALID");
   return sealDailyState({ format: 1, repository: DAILY_REPOSITORY, source, codeSha, generation: 0,
+    ...(environment === 'production' ? { environment } : {}),
     confirmed: {}, queue: {}, cursor: "", owner: null, expiresAt: null, inFlight: null, halted: false,
     lastAttemptAt: null, lastSuccessAt: null, pending: 0 });
 }
@@ -34,10 +35,11 @@ export function validateDailyState(state, source, codeSha) {
 
 // Same Contents API CAS approach as the proven FDCI store, on a separate fixed branch.
 // contents:write is repository-wide; branch restrictions here are code controls, not token scope.
-export function createDailyGitStore({ source, codeSha, token, fetcher = fetch }) {
-  initialDailyState(source, codeSha);
+export function createDailyGitStore({ source, codeSha, token, fetcher = fetch, environment = 'canary' }) {
+  initialDailyState(source, codeSha, environment);
   if (!token) throw Error("DAILY_GITHUB_TOKEN_REQUIRED");
-  const branch = `daily-state-${source}`, path = `${source}.json`;
+  const branch = `daily-state-${environment === 'production' ? 'production-' : ''}${source}`, path = `${source}.json`;
+  const scoped = state => { validateDailyState(state, source, codeSha); if ((state.data.environment ?? 'canary') !== environment) throw Error('DAILY_STATE_ENVIRONMENT_MISMATCH'); return state; };
   const base = `https://api.github.com/repos/${DAILY_REPOSITORY}`;
   const request = (route, method = "GET", body) => fetcher(base + route, { method, redirect: "error",
     headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github.object+json", "Content-Type": "application/json" },
@@ -54,7 +56,7 @@ export function createDailyGitStore({ source, codeSha, token, fetcher = fetch })
     if (item.encoding !== "base64" || typeof item.content !== "string") throw Error("DAILY_STATE_ENCODING_INVALID");
     const bytes = Buffer.from(item.content, "base64");
     if (bytes.length > 8_000_000 || blob(bytes) !== revision) throw Error("DAILY_STATE_CHECKSUM_INVALID");
-    return { revision, state: validateDailyState(JSON.parse(bytes.toString("utf8")), source, codeSha) };
+    return { revision, state: scoped(JSON.parse(bytes.toString("utf8"))) };
   };
   const load = async () => {
     const r = await request(`/contents/${path}?ref=${branch}`);
@@ -62,7 +64,7 @@ export function createDailyGitStore({ source, codeSha, token, fetcher = fetch })
     return decode(await r.json());
   };
   const save = async (previous, state) => {
-    validateDailyState(previous.state, source, codeSha); validateDailyState(state, source, codeSha);
+    scoped(previous.state); scoped(state);
     if (!hex.test(previous.revision) || state.data.generation !== previous.state.data.generation + 1) throw Error("DAILY_STATE_TRANSITION_INVALID");
     const content = JSON.stringify(state) + "\n", proposed = blob(content);
     const confirm = async () => { const actual = await load(); if (actual.revision !== proposed) throw Error("DAILY_STATE_WRITE_UNCERTAIN"); return actual; };
@@ -168,7 +170,7 @@ export async function runDailyCheckpoint({ store, codeSha, owner, operation, now
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (process.argv[2] !== "seed-local") throw Error("DAILY_STATE_OPERATION_INVALID");
-  const [, , , source, codeSha, output] = process.argv;
+  const [, , , source, codeSha, output, environment = 'canary'] = process.argv;
   if (!output) throw Error("DAILY_STATE_OUTPUT_REQUIRED");
-  writeFileSync(output, JSON.stringify(initialDailyState(source, codeSha)) + "\n", { flag: "wx" });
+  writeFileSync(output, JSON.stringify(initialDailyState(source, codeSha, environment)) + "\n", { flag: "wx" });
 }

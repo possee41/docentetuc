@@ -14,6 +14,7 @@
   },
   "vars": {
     "DAILY_SOURCES_ENABLED": "false",
+    "DAILY_PRODUCTION_APPROVED": "false",
     "DAILY_RECEIVER_NAME": "docentetuc-sources-1-2",
     "IMPORT_GATE_ENABLED": "false",
     "IMPORT_GATE_LEASE_REQUIRED": "true",

@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { NEWS_FEEDS, fetchNewsFeed } from "../lib/news-discovery.ts";
 import { createDailyGitStore, runDailyBatch } from "./daily-sync-state.mjs";
+import { diagnoseNewsFeed } from './news-feed-diagnostics.mjs';
 
 export function newsTarget(config) {
   const url = new URL(config.NEWS_DISCOVERY_ORIGIN);
@@ -19,7 +20,7 @@ export async function runDailyNews(config, codeSha, { store, sourceFetch = fetch
   // All registry feeds, parsed in Node. No remote HTML/XML processing in the Worker.
   const collect = async () => {
     const items = [];
-    for (const feed of NEWS_FEEDS) for (const article of await fetchNewsFeed(feed, sourceFetch, now)) {
+    for (const feed of NEWS_FEEDS) for (const article of await diagnoseNewsFeed(feed,()=>fetchNewsFeed(feed, sourceFetch, now))) {
       items.push({ id: createHash("sha256").update(article.url).digest("hex"), contentHash: article.fingerprint,
         article: { feedKey: feed.key, title: article.title, url: article.url, publishedAt: article.publishedAt,
           updatedAt: article.updatedAt, fingerprint: article.fingerprint } });
