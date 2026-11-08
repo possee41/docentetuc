@@ -8,7 +8,10 @@
   "vars": {
     "LEGACY_SYNC_PAUSED": "true",
     "AI_WEB_SEARCH_ENABLED": "0",
-    "PUSH_DISPATCH_MODE": "disabled"
+    "PUSH_DISPATCH_MODE": "disabled",
+    "FDCI_PERSONAL_ACTIONS_ENABLED": "false",
+    "FDCI_CANARY_FIXTURE_ENABLED": "false",
+    "FDCI_CANARY_TEST_ENVIRONMENT": "production-disabled"
   },
   "no_bundle": true,
   "rules": [{ "type": "ESModule", "globs": ["**/*.js", "**/*.mjs"] }],
