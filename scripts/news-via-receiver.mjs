@@ -1,3 +1,4 @@
+import { collectNewsFeeds, newsFeedStateStore, newsCollectionResult } from './news-feed-collection.mjs';
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { createDailyGitStore, runDailyBatch, validateDailyState, sealDailyState } from "./daily-sync-state.mjs";
