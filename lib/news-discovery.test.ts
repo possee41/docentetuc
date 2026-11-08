@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import type { CommunityDatabase } from "./community.ts";
-import { NEWS_DISCOVERY_MAX_ARTICLES, NEWS_FEED_MAX_BYTES, fetchNewsFeed, importNewsCandidates, parseNewsFeed, type Feed } from "./news-discovery.ts";
+import { NEWS_FEEDS, NEWS_DISCOVERY_MAX_ARTICLES, NEWS_FEED_MAX_BYTES, fetchNewsFeed, importNewsCandidates, parseNewsFeed, type Feed } from "./news-discovery.ts";
 import { normalizeNewsSourceUrl } from "./news-editorial.ts";
 
 const RSS_FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
@@ -199,6 +199,27 @@ test("importNewsCandidates rechaza demasiados artículos por ejecución", async 
       publishedAt: now.toISOString(), updatedAt: now.toISOString(), fingerprint: "a".repeat(64),
     }));
     await assert.rejects(importNewsCandidates(database, many, now), /NEWS_TOO_MANY_ARTICLES/);
+  } finally { raw.close(); }
+});
+
+test("corrige la categoría automática sin sobrescribir revisión editorial", async () => {
+  const { raw, database } = fixture();
+  try {
+    const corrected = parseNewsFeed(RSS_FIXTURE.replaceAll('www.educaciontuc.gov.ar', 'red.infd.edu.ar'), NEWS_FEEDS.find(feed => feed.key === 'infod')!, now);
+    await importNewsCandidates(database, corrected, now);
+    raw.exec("UPDATE news_sources SET source_type='official'");
+    const manual = raw.prepare("SELECT id FROM news_items ORDER BY id LIMIT 1").get() as { id: string };
+    raw.prepare("INSERT INTO news_events(id,news_item_id,actor_kind,action,details,created_at) VALUES('manual-review',?,'admin','edit','{}',?)")
+      .run(manual.id, now.toISOString());
+    const result = await importNewsCandidates(database, corrected, now);
+    assert.equal(result.updated, 1);
+    assert.equal(result.unchanged, 1);
+    assert.equal((raw.prepare("SELECT source_type FROM news_sources WHERE news_item_id=?").get(manual.id) as {source_type:string}).source_type, "official");
+    assert.equal((raw.prepare("SELECT COUNT(*) n FROM news_sources WHERE source_type='public'").get() as {n:number}).n, 1);
+    const replay = await importNewsCandidates(database, corrected, now);
+    assert.equal(replay.updated, 0);
+    assert.equal(replay.unchanged, 2);
+    assert.equal((raw.prepare("SELECT COUNT(*) n FROM news_events WHERE details LIKE '%categoryCorrection%'").get() as {n:number}).n, 1);
   } finally { raw.close(); }
 });
 

@@ -1,0 +1,45 @@
+{
+  "name": "docentetuc-news-canary-1-2",
+  "main": "workers/news-canary-gateway.mjs",
+  "compatibility_date": "2026-05-15",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [],
+  "triggers": {
+    "crons": []
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+      "head_sampling_rate": 1,
+      "persist": true
+    }
+  },
+  "vars": {
+    "DAILY_SOURCES_ENABLED": "false",
+    "DAILY_RECEIVER_NAME": "docentetuc-news-canary-1-2",
+    "IMPORT_GATE_ENABLED": "false",
+    "IMPORT_GATE_LEASE_REQUIRED": "true",
+    "IMPORT_DATABASE_NAME": "docentetuc-web-canary-1-2",
+    "IMPORT_DATABASE_ID": "853e2f5d-89b1-46a3-9c1c-5cbd46784756",
+    "FDCI_EXTERNAL_ENABLED": "false",
+    "FDCI_AUTOMATION_ENABLED": "false",
+    "FDCI_DELTA_ENABLED": "false",
+    "IMPORT_GATE_ALLOWED_SOURCE": "news"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "docentetuc-web-canary-1-2",
+      "database_id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+    }
+  ],
+  "account_id": "6bbc3dae7e111660f0c835677ceffb69",
+  "keep_vars": true,
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
+}
