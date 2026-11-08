@@ -1,0 +1,13 @@
+{
+  "name": "docentetuc-web-canary-1-2",
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+      "head_sampling_rate": 1,
+      "persist": true
+    }
+  }
+}
