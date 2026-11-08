@@ -1,11 +1,14 @@
-# Use ONLY in possee41/docentetuc-fdci-catalog-pilot with its ALREADY VALIDATED runner package.
-# Do not copy this to possee41/docentetuc: no FDCI gateway or Cloudflare token.
-name: FDCI official durable daily synchronization
+# Reference of the active workflow in possee41/docentetuc-fdci-catalog-pilot only.
+# Do not install this in the Web repository. Runtime remains pinned; no Cloudflare credentials.
+# Daily official FDCI synchronization; approved runtime remains immutable.
+name: FDCI official durable synchronization
 on:
-  # schedule: [{ cron: '37 9 * * *' }] # 06:37 Tucumán; disabled pending authorization
+  schedule:
+    - cron: '37 9 * * *' # 06:37 Tucumán
   workflow_dispatch:
     inputs:
       recovery_only:
+        description: Reconcile publication without querying the official source
         type: boolean
         default: true
 permissions:
@@ -15,20 +18,55 @@ concurrency:
   cancel-in-progress: false
 jobs:
   synchronize:
-    if: github.repository == 'possee41/docentetuc-fdci-catalog-pilot' && github.ref == 'refs/heads/main' && vars.FDCI_INTEGRATED_ENABLED == 'true' && github.run_attempt == 1
+    if: github.repository == 'possee41/docentetuc-fdci-catalog-pilot' && github.ref == 'refs/heads/main' && vars.FDCI_INTEGRATED_ENABLED == 'true' && github.run_attempt == 1 && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' && github.event.schedule == '37 9 * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
       FDCI_INTEGRATED_ENABLED: ${{ vars.FDCI_INTEGRATED_ENABLED }}
       FDCI_STATIC_APPROVED_SHA: ${{ vars.FDCI_STATIC_APPROVED_SHA }}
-      FDCI_RECOVER_ONLY: ${{ github.event_name == 'schedule' && 'false' || inputs.recovery_only && 'true' || 'false' }}
+      FDCI_RECOVER_ONLY: ${{ github.event_name == 'schedule' && 'false' || toJSON(inputs.recovery_only) == 'false' && 'false' || 'true' }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ vars.FDCI_STATIC_APPROVED_SHA }}
+          ref: 1689dbf735f6d4c7790a15a2cca549d346dbd2ae
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node .github/pilot/fdci-static-runner.mjs run
+      - name: Enforce one official collection per Tucumán day
+        id: daily_gate
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          const expected = '1689dbf735f6d4c7790a15a2cca549d346dbd2ae';
+          if (process.env.FDCI_STATIC_APPROVED_SHA !== expected) throw Error('FDCI_APPROVED_SHA_MISMATCH');
+          const response = await fetch('https://api.github.com/repos/possee41/docentetuc-fdci-catalog-pilot/contents/fdci-state.json?ref=fdci-static-state', {
+            headers: { Authorization: 'Bearer ' + process.env.GH_TOKEN, Accept: 'application/vnd.github+json' },
+            redirect: 'error', signal: AbortSignal.timeout(20000)
+          });
+          if (!response.ok) throw Error('FDCI_DAILY_STATE_HTTP_' + response.status);
+          const file = await response.json();
+          if (file.path !== 'fdci-state.json' || file.type !== 'file' || file.encoding !== 'base64') throw Error('FDCI_DAILY_STATE_METADATA');
+          const state = JSON.parse(Buffer.from(file.content, 'base64'));
+          if (state.data.repository !== 'possee41/docentetuc-fdci-catalog-pilot' || state.data.dataset !== 'official' || state.data.codeSha !== expected ||
+              createHash('sha256').update(JSON.stringify(state.data)).digest('hex') !== state.sha256) throw Error('FDCI_DAILY_STATE_INVALID');
+          const attempt = new Date(state.data.lastAttempt.at), now = new Date();
+          if (!Number.isFinite(attempt.getTime()) || attempt > new Date(now.getTime() + 300000)) throw Error('FDCI_DAILY_ATTEMPT_INVALID');
+          const day = date => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Tucuman' }).format(date);
+          const collect = process.env.FDCI_RECOVER_ONLY !== 'false' || day(attempt) !== day(now);
+          appendFileSync(process.env.GITHUB_OUTPUT, 'collect=' + collect + '\n');
+          if (!collect) appendFileSync(process.env.GITHUB_STEP_SUMMARY, 'FDCI: ya hubo un intento oficial en esta jornada; no se vuelve a consultar la fuente.\n');
+          NODE
+      - name: Reconcile or synchronize using the reviewed executable
+        if: steps.daily_gate.outputs.collect == 'true'
+        run: node .github/pilot/fdci-static-runner.mjs run
+      - name: Optional execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fdci-integrated-result
+          path: fdci-integrated-result/
+          if-no-files-found: warn
+          retention-days: 2
