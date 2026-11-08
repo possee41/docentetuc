@@ -16,20 +16,18 @@ jobs:
   discover:
     if: >-
       github.repository == 'possee41/docentetuc' &&
-      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
-      vars.DAILY_SOURCES_ENABLED == 'true' && vars.NEWS_DISCOVERY_ENABLED == 'true' && github.run_attempt == 1
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release/daily-sync-358112c' &&
+      vars.DAILY_CANARY_TEST_ENABLED == 'true' && vars.NEWS_CANARY_TEST_ENABLED == 'true' && github.run_attempt == 1
     runs-on: ubuntu-latest
-    environment: news-discovery
+    environment: canary-news-discovery
     timeout-minutes: 10
     permissions:
       contents: write # Repository-wide, not branch-scoped. Requires approval before publication.
     env:
       GH_TOKEN: ${{ github.token }}
-      DAILY_SOURCES_ENABLED: ${{ vars.DAILY_SOURCES_ENABLED }}
+      DAILY_SOURCES_ENABLED: ${{ vars.DAILY_CANARY_TEST_ENABLED }}
       DAILY_APPROVED_SHA: ${{ vars.DAILY_APPROVED_SHA }}
-      DAILY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      DAILY_PRODUCTION_APPROVED: ${{ vars.DAILY_PRODUCTION_APPROVED }}
-      NEWS_DISCOVERY_ORIGIN: ${{ vars.NEWS_DISCOVERY_ORIGIN }}
+      NEWS_DISCOVERY_ORIGIN: https://canary.docentetuc.com.ar
       NEWS_DISCOVERY_SECRET: ${{ secrets.NEWS_DISCOVERY_SECRET }}
       NEWS_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
     steps:
@@ -40,5 +38,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Verify dependency closure and isolated target
+        run: node --experimental-strip-types scripts/verify-sync-publication.mjs
       - name: Collect feeds in Node and send articles to candidate-only receiver
         run: node --experimental-strip-types scripts/news-via-receiver.mjs

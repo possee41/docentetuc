@@ -12,33 +12,52 @@ on:
         type: choice
         options: [sime, infd, cenet, juntas]
         required: true
+      validation_only:
+        description: Validate local integration only; no source requests, secrets or D1
+        type: boolean
+        default: true
 permissions:
   contents: read
 concurrency:
   group: daily-public-source-writes
   cancel-in-progress: false
 jobs:
+  validate:
+    if: github.repository == 'possee41/docentetuc' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release/daily-sync-358112c' && inputs.validation_only && vars.DAILY_VALIDATION_ENABLED == 'true' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      DAILY_APPROVED_SHA: ${{ vars.DAILY_APPROVED_SHA }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.DAILY_APPROVED_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify imports and isolated configuration without network
+        run: node --experimental-strip-types scripts/verify-sync-publication.mjs
+      - name: Run local-only contract checks
+        run: node --experimental-strip-types --test scripts/sync-publication-isolation.test.mjs scripts/daily-sources.test.mjs scripts/news-daily-http.test.mjs
   sync:
-    if: github.repository == 'possee41/docentetuc' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && vars.DAILY_SOURCES_ENABLED == 'true' && github.run_attempt == 1
+    if: github.repository == 'possee41/docentetuc' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release/daily-sync-358112c' && !inputs.validation_only && vars.DAILY_CANARY_TEST_ENABLED == 'true' && github.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: write # Whole repository, NOT branch-scoped. Explicit approval required before publication.
-    environment: ${{ format('daily-{0}', inputs.source || (github.event.schedule == '7 9 * * *' && 'sime') || (github.event.schedule == '7 10 * * *' && 'infd') || (github.event.schedule == '37 10 * * *' && 'cenet') || (github.event.schedule == '7 11 * * *' && 'juntas')) }}
+    environment: ${{ format('canary-{0}', inputs.source || (github.event.schedule == '7 9 * * *' && 'sime') || (github.event.schedule == '7 10 * * *' && 'infd') || (github.event.schedule == '37 10 * * *' && 'cenet') || (github.event.schedule == '7 11 * * *' && 'juntas')) }}
     env:
-      GH_TOKEN: ${{ github.token }}
-      DAILY_SOURCES_ENABLED: ${{ vars.DAILY_SOURCES_ENABLED }}
+      DAILY_SOURCES_ENABLED: ${{ vars.DAILY_CANARY_TEST_ENABLED }}
       DAILY_APPROVED_SHA: ${{ vars.DAILY_APPROVED_SHA }}
-      DAILY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       SYNC_SOURCE: ${{ inputs.source || (github.event.schedule == '7 9 * * *' && 'sime') || (github.event.schedule == '7 10 * * *' && 'infd') || (github.event.schedule == '37 10 * * *' && 'cenet') || (github.event.schedule == '7 11 * * *' && 'juntas') }}
-      IMPORT_GATEWAY_TARGET: production
-      IMPORT_GATEWAY_PRODUCTION_ENABLED: ${{ vars.DAILY_PRODUCTION_APPROVED }}
+      IMPORT_GATEWAY_TARGET: canary
       IMPORT_GATEWAY_APPROVED_SHA: ${{ vars.DAILY_APPROVED_SHA }}
-      IMPORT_GATEWAY_ORIGIN: ${{ vars.DAILY_RECEIVER_ORIGIN }}
-      IMPORT_GATEWAY_DATABASE_ID: ${{ vars.DAILY_DATABASE_ID }}
-      IMPORT_GATEWAY_DATABASE_NAME: ${{ vars.DAILY_DATABASE_NAME }}
-      DAILY_IMPORT_SECRET: ${{ secrets.IMPORT_SECRET }} # Only the selected source environment.
-      GOOGLE_DRIVE_API_KEY: ${{ secrets.GOOGLE_DRIVE_API_KEY }}
+      IMPORT_GATEWAY_ORIGIN: https://docentetuc-sources-canary-1-2.possee41.workers.dev
+      IMPORT_GATEWAY_DATABASE_ID: ${{ vars.DAILY_CANARY_DATABASE_ID }}
+      IMPORT_GATEWAY_DATABASE_NAME: docentetuc-sources-canary-1-2
       JUNTAS_MAX_REQUESTS: '25'
       JUNTAS_MAX_PUBLICATION_WRITES: '20'
     steps:
@@ -49,5 +68,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Synchronize bounded public data and confirmed cursor
+      - name: Verify dependency closure and isolated target
+        run: node --experimental-strip-types scripts/verify-sync-publication.mjs
+      - name: Synchronize bounded canary data only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DAILY_IMPORT_SECRET: ${{ secrets.IMPORT_SECRET }}
+          GOOGLE_DRIVE_API_KEY: ${{ secrets.GOOGLE_DRIVE_API_KEY }}
         run: node --experimental-strip-types scripts/daily-sources.mjs

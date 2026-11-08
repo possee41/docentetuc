@@ -6,10 +6,9 @@ import { createDailyGitStore, runDailyBatch } from "./daily-sync-state.mjs";
 
 export function newsTarget(config) {
   const url = new URL(config.NEWS_DISCOVERY_ORIGIN);
-  if (!["https://docentetuc.com.ar", "https://canary.docentetuc.com.ar"].includes(url.origin) ||
+  if (!["https://canary.docentetuc.com.ar"].includes(url.origin) ||
       url.pathname !== "/" || url.search || url.hash || url.username || url.password ||
-      !/^[A-Za-z0-9_-]{32,}$/.test(config.NEWS_DISCOVERY_SECRET ?? "") ||
-      url.hostname === "docentetuc.com.ar" && config.DAILY_PRODUCTION_APPROVED !== "true") throw Error("NEWS_TARGET_NOT_APPROVED");
+      !/^[A-Za-z0-9_-]{32,}$/.test(config.NEWS_DISCOVERY_SECRET ?? "")) throw Error("NEWS_TARGET_NOT_APPROVED");
   return { endpoint: url.origin + "/api/internal/news-discovery", secret: config.NEWS_DISCOVERY_SECRET };
 }
 export async function runDailyNews(config, codeSha, { store, sourceFetch = fetch, receiverFetch = fetch, now = new Date() } = {}) {
@@ -43,8 +42,9 @@ export async function runDailyNews(config, codeSha, { store, sourceFetch = fetch
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const c = process.env, sha = c.DAILY_APPROVED_SHA;
+    if (c.NEWS_DISCOVERY_ORIGIN !== "https://canary.docentetuc.com.ar") throw Error("NEWS_PRODUCTION_DISABLED_IN_TEST");
     if (c.GITHUB_REPOSITORY !== "possee41/docentetuc" || c.GITHUB_RUN_ATTEMPT !== "1" ||
-        c.GITHUB_REF !== `refs/heads/${c.DAILY_DEFAULT_BRANCH}` || !/^\d+$/.test(c.GITHUB_RUN_ID ?? "") ||
+        c.GITHUB_REF !== "refs/heads/release/daily-sync-358112c" || c.GITHUB_SHA !== sha || !/^\d+$/.test(c.GITHUB_RUN_ID ?? "") ||
         !/^[a-f0-9]{40}$/.test(sha ?? "") || execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim() !== sha)
       throw Error("DAILY_EXECUTION_NOT_APPROVED");
     const store = c.NEWS_DRY_RUN === "true" ? null : createDailyGitStore({ source: "news", codeSha: sha, token: c.GH_TOKEN });

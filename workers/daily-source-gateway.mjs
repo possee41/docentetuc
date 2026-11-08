@@ -6,7 +6,9 @@ const routes = new Set(["/api/internal/import-identity", "/api/internal/import-g
   "/api/internal/juntas-checkpoint", ...["infd", "cenet", "juntas"].map(s => `/api/internal/public-source-import/${s}`)]);
 const dailyGateway = { async fetch(request, env) {
   const url = new URL(request.url);
-  if (env.DAILY_SOURCES_ENABLED !== "true" || env.DAILY_RECEIVER_NAME !== "docentetuc-sources-1-2" ||
+  if (env.DAILY_SOURCES_ENABLED !== "true" || env.DAILY_RECEIVER_NAME !== "docentetuc-sources-canary-1-2" ||
+      !/^docentetuc-sources-canary-1-2(?:-local)?$/.test(env.IMPORT_DATABASE_NAME ?? "") ||
+      env.IMPORT_DATABASE_ID === "baaf5886-0123-4948-96da-aa7106424549" ||
       env.IMPORT_GATE_ENABLED !== "false" || env.IMPORT_GATE_LEASE_REQUIRED !== "true")
     return Response.json({ error: "DAILY_DISABLED" }, { status: 503 });
   if (!routes.has(url.pathname) || url.pathname.endsWith("import-identity") && !sources.has(url.searchParams.get("source")))

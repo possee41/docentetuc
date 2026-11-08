@@ -1,10 +1,12 @@
 import type { Publication } from "./types.ts";
 import { normalizeOfficialText, officialMetadata } from "./official-publication.ts";
+import { isPublicPublication, PUBLICATION_VISIBILITY_SQL } from "./publication-visibility.ts";
 
 export type PadronType = "Provisorio" | "Definitivo" | "Complementario" | "Especial" | "Otro";
 
 export const PADRON_PAGE_QUERY = `SELECT * FROM publications
   WHERE source='Padrones y Comunicados' AND kind='junta' AND id>?
+    AND ${PUBLICATION_VISIBILITY_SQL}
     AND (category='Padrones' OR title LIKE '%padron%' OR title LIKE '%padrón%'
       OR CASE WHEN json_valid(metadata) THEN json_extract(metadata,'$.official.entity')='padron' ELSE 0 END)
   ORDER BY id LIMIT 201`;
@@ -29,7 +31,7 @@ export function padronTitleFacts(title: string) {
 }
 
 export function padronDocuments(items: Publication[]) {
-  return items.filter(item => item.kind === "junta" && !officialMetadata(item)?.canonicalId &&
+  return items.filter(item => isPublicPublication(item) && item.kind === "junta" && !officialMetadata(item)?.canonicalId &&
     (officialMetadata(item)?.entity === "padron" || item.category === "Padrones" || /\bpadron(?:es)?\b/i.test(normalizeOfficialText(item.title))));
 }
 

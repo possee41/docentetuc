@@ -40,8 +40,10 @@ export async function runDailySource(config, codeSha, { store, sourceFetch = fet
   config = { ...config, [secretName]: config[secretName] || config.DAILY_IMPORT_SECRET };
   const target = resolveGatewayConfig(config, codeSha);
   // Never repurpose or reopen the retired production FDCI gateway.
-  if (config.IMPORT_GATEWAY_TARGET === "production" &&
-      new URL(target.origin).hostname !== "docentetuc-sources-1-2.possee41.workers.dev") throw Error("DAILY_RETIRED_GATEWAY_FORBIDDEN");
+  if (config.IMPORT_GATEWAY_TARGET === "production") throw Error("DAILY_RETIRED_GATEWAY_FORBIDDEN");
+  if (!/^docentetuc-sources-canary-1-2(?:-local)?$/.test(target.name) ||
+      !["docentetuc-sources-canary-1-2.possee41.workers.dev", "127.0.0.1"].includes(new URL(target.origin).hostname)) throw Error("DAILY_CANARY_IDENTITY_REQUIRED");
+  if (target.origin.startsWith("https:") && target.id === "00000000-0000-4000-8000-000000000012") throw Error("DAILY_CANARY_DATABASE_NOT_CONFIGURED");
   const initial = await store.load(); validateDailyState(initial.state, target.source, codeSha);
   if (initial.state.data.halted || initial.state.data.inFlight) throw Error("DAILY_HALTED_REVIEW_REQUIRED");
   try { await verifyGatewayIdentity(target, receiverFetch); }
@@ -84,7 +86,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     const c = process.env, sha = c.DAILY_APPROVED_SHA;
     if (c.GITHUB_REPOSITORY !== "possee41/docentetuc" || c.GITHUB_RUN_ATTEMPT !== "1" || !/^[a-f0-9]{40}$/.test(sha ?? "") ||
-        c.GITHUB_REF !== `refs/heads/${c.DAILY_DEFAULT_BRANCH}` || !/^\d+$/.test(c.GITHUB_RUN_ID ?? "") ||
+        c.GITHUB_REF !== "refs/heads/release/daily-sync-358112c" || c.GITHUB_SHA !== sha || !/^\d+$/.test(c.GITHUB_RUN_ID ?? "") ||
         execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim() !== sha) throw Error("DAILY_EXECUTION_NOT_APPROVED");
     const store = createDailyGitStore({ source: c.SYNC_SOURCE, codeSha: sha, token: c.GH_TOKEN });
     console.log(JSON.stringify(await runDailySource(c, sha, { store })));

@@ -160,7 +160,7 @@ test("daily runner never reopens retired FDCI production gateway", async () => {
 });
 test("daily SIME runner verifies identity, claims state, opens once, propagates owner and closes even on failure", async () => {
   const config = { DAILY_SOURCES_ENABLED: "true", SYNC_SOURCE: "sime", SIME_IMPORT_SECRET: token, GITHUB_RUN_ID: "1", GITHUB_RUN_ATTEMPT: "1",
-    IMPORT_GATEWAY_ORIGIN: "http://127.0.0.1:9999", IMPORT_GATEWAY_DATABASE_NAME: "docentetuc-import-canary-1-2",
+    IMPORT_GATEWAY_ORIGIN: "http://127.0.0.1:9999", IMPORT_GATEWAY_DATABASE_NAME: "docentetuc-sources-canary-1-2-local",
     IMPORT_GATEWAY_DATABASE_ID: "00000000-0000-4000-8000-000000000012" };
   for (const failure of [null, "identity", "close"]) {
     const store = memory(); const events = [];
@@ -193,11 +193,11 @@ test("daily SIME runner verifies identity, claims state, opens once, propagates 
 });
 test("new receiver: disabled exits before DB; FDCI, oversized TTL, wrong secret and foreign owner rejected", async () => {
   const raw = new DatabaseSync(":memory:");
-  raw.exec("CREATE TABLE import_gateway_identity(id INTEGER PRIMARY KEY,database_name TEXT,database_id TEXT); INSERT INTO import_gateway_identity VALUES(1,'local','local'); CREATE TABLE import_gate_lease(id INTEGER PRIMARY KEY,source TEXT,expires_at TEXT,opened_at TEXT,opened_by TEXT)");
+  raw.exec("CREATE TABLE import_gateway_identity(id INTEGER PRIMARY KEY,database_name TEXT,database_id TEXT); INSERT INTO import_gateway_identity VALUES(1,'docentetuc-sources-canary-1-2-local','local'); CREATE TABLE import_gate_lease(id INTEGER PRIMARY KEY,source TEXT,expires_at TEXT,opened_at TEXT,opened_by TEXT)");
   const db = { prepare: sql => { const bound = (args = []) => ({ bind: (...a) => bound(a), first: async () => raw.prepare(sql).get(...args) ?? null,
     run: async () => ({ meta: { changes: Number(raw.prepare(sql).run(...args).changes) } }) }); return bound(); } };
-  const env = { DB: db, DAILY_SOURCES_ENABLED: "true", DAILY_RECEIVER_NAME: "docentetuc-sources-1-2", IMPORT_GATE_ENABLED: "false",
-    IMPORT_GATE_LEASE_REQUIRED: "true", IMPORT_DATABASE_NAME: "local", IMPORT_DATABASE_ID: "local", SIME_IMPORT_SECRET: token };
+  const env = { DB: db, DAILY_SOURCES_ENABLED: "true", DAILY_RECEIVER_NAME: "docentetuc-sources-canary-1-2", IMPORT_GATE_ENABLED: "false",
+    IMPORT_GATE_LEASE_REQUIRED: "true", IMPORT_DATABASE_NAME: "docentetuc-sources-canary-1-2-local", IMPORT_DATABASE_ID: "local", SIME_IMPORT_SECRET: token };
   const call = (body, secret = token) => gateway.fetch(new Request("https://local.test/api/internal/import-gate", { method: "POST",
     headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" }, body: JSON.stringify(body) }), env);
   try {
