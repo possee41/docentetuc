@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { Publication } from "@/lib/types";
 import { createFdciVersionedReader, FDCI_RAW_ACTIVE_URL } from "@/lib/fdci-static-publication";
-import { integrateFdciCatalog, fdciPilotAllowed } from "@/lib/fdci-catalog-integration";
+import { integrateFdciCatalog, fdciPilotAllowed, withFdciPublicVerification, fdciCatalogMessage } from "@/lib/fdci-catalog-integration";
 import { isPublicPublication } from "@/lib/publication-visibility";
 import { withFdciPersonalCapability } from "@/lib/fdci-personal-contract";
 const EMPTY: Publication[] = [];
@@ -30,23 +30,21 @@ export function useFdciCatalogPilot(publications: Publication[] | undefined, act
   useEffect(() => {
     let cancelled = false;
     if (enabled && active && response?.catalog) void integrateFdciCatalog(current, response.catalog, response.status === "ready" ? "ready" : "stale", Date.now(), response.generation)
-      .then(result => { if (!cancelled) setComposed({ input: current, response, publications: withFdciPersonalCapability(result.publications, personalEnabled) }); })
+      .then(result => { if (!cancelled) setComposed({ input: current, response, publications: withFdciPublicVerification(withFdciPersonalCapability(result.publications, personalEnabled), response.catalog!, response.status === "ready" ? "ready" : "stale") }); })
       .catch(() => { if (!cancelled) setComposed(null); });
     return () => { cancelled = true; };
   }, [enabled, active, current, response, personalEnabled]);
   const items = enabled && active && composed?.input === current && composed.response === response ? composed.publications : publicCurrent;
   return { enabled, personalEnabled, status: response?.status ?? "loading", updatedAt: response?.updatedAt,
-    generation: response?.generation, interrupted: response?.lastAttempt?.error === "FDCI_CANCELLED",
+    generation: response?.generation, itemCount: response?.catalog?.items.length ?? null, interrupted: response?.lastAttempt?.error === "FDCI_CANCELLED",
     publications: enabled && active && fixture && personalEnabled ? [...items.filter(p => p.id !== fixture.id), fixture] : items, refresh };
 }
 export function FdciCatalogPilotBanner({ pilot }: { pilot: ReturnType<typeof useFdciCatalogPilot> }) {
   if (!pilot.enabled) return null;
   return <aside data-testid="fdci-catalog-pilot" role="status" className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
-    <strong>Prueba FDCI — catálogo oficial versionado{pilot.personalEnabled ? " · funciones personales de prueba" : " · solo consulta"}</strong>
-    <p>{pilot.status === "loading" ? "Comprobando catálogo público…" : pilot.status === "unavailable" ? "Catálogo no disponible. Se conserva la fuente habitual."
-      : pilot.status === "stale" ? "Catálogo desactualizado o no verificable ahora. Se conserva la última versión válida; no es información actual."
-        : pilot.personalEnabled ? "Guardados y Agenda disponibles para cursos verificados. Los avisos de apertura requieren horario confirmado. IA no conectada."
-          : "D1 conserva prioridad. Los registros externos no admiten Guardados, Agenda, recordatorios ni IA en esta prueba."}</p>
+    <strong>FDCI — catálogo oficial versionado · solo consulta</strong>
+    <p>{fdciCatalogMessage(pilot.status, pilot.itemCount)}</p>
+    <p>La información histórica se conserva como referencia. Las acciones personales del catálogo externo no están habilitadas.</p>
     {pilot.updatedAt && <p>Última actualización exitosa del catálogo: {pilot.updatedAt} · generación {pilot.generation}. No es la fecha de modificación de cada capacitación.</p>}
     {pilot.interrupted && <p>La última verificación registrada fue interrumpida; no acredita un error actual de la fuente oficial.</p>}
     <button type="button" onClick={() => void pilot.refresh()} className="mt-2 underline">Reintentar lectura del catálogo</button>

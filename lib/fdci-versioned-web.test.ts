@@ -3,7 +3,8 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { buildFdciCatalog, catalogHash } from "./fdci-static-catalog.ts";
 import { buildFdciActiveVersion, createFdciVersionedReader, FDCI_RAW_ACTIVE_URL } from "./fdci-static-publication.ts";
-import { fdciPilotAllowed, integrateFdciCatalog } from "./fdci-catalog-integration.ts";
+import { fdciPilotAllowed, integrateFdciCatalog, fdciCatalogMessage, fdciPublicVerification, withFdciPublicVerification } from "./fdci-catalog-integration.ts";
+import { enrollmentForDisplay } from "./personalized-catalog.ts";
 import { fdciPersonalBlocked, withFdciPersonalCapability } from "./fdci-personal-contract.ts";
 import type { Publication } from "./types.ts";
 import { generateFdciCatalog, syntheticFdciFetch } from "../scripts/fdci-static-catalog.mjs";
@@ -111,12 +112,44 @@ test("reference bypasses cache, immutable file uses cache, both omit credentials
   assert.equal(h.requests[0].options?.cache, "no-store"); assert.equal(h.requests[1].options?.cache, "force-cache");
   for (const { options } of h.requests) { assert.equal(options?.credentials, "omit"); assert.equal(options?.redirect, "error"); assert.equal(options?.mode, "cors"); }
 });
-test("experimental opt-in never runs on production; server no longer materializes the legacy DEMO", () => {
+test("Canary reads the official catalog without a URL opt-in; production stays disabled", () => {
   assert(fdciPilotAllowed("canary.docentetuc.com.ar", "?fdciCatalogTest=1"));
-  assert(!fdciPilotAllowed("canary.docentetuc.com.ar", "")); assert(!fdciPilotAllowed("docentetuc.com.ar", "?fdciCatalogTest=1"));
+  assert(fdciPilotAllowed("canary.docentetuc.com.ar", "")); assert(!fdciPilotAllowed("docentetuc.com.ar", "?fdciCatalogTest=1"));
+  assert(!fdciPilotAllowed("docentetuc.com.ar", ""));
   const route = readFileSync(new URL("../app/api/app/route.ts", import.meta.url), "utf8");
   assert(!route.includes("catalog.json")); assert(!route.includes("fetchFdciCatalog"));
   assert.match(route, /prepareFdciPersonalAction/);
+});
+
+test("empty verified catalog keeps D1 history without advertising open registrations", async () => {
+  const full = await fixture();
+  const [stored] = (await integrateFdciCatalog([], full.catalog, "ready", now())).publications;
+  const infod = { ...stored, id: "infd:1", source: "INFoD / AulaS-TIC" };
+  const cenet = { ...stored, id: "cenet:1", source: "CeNET / INET" };
+  const empty = await buildFdciCatalog([], at);
+  const result = withFdciPublicVerification([stored, infod, cenet], empty, "ready");
+  assert.equal(result[0].title, stored.title); assert.equal(result[0].status, stored.status);
+  assert.equal(fdciPublicVerification(result[0])?.status, "historical");
+  assert.equal(enrollmentForDisplay(result[0], new Date(at)), "CERRADA");
+  assert.equal(result[1], infod); assert.equal(result[2], cenet);
+  assert.equal(fdciCatalogMessage("ready", 0), "No hay inscripciones activas verificadas");
+  assert.notEqual(fdciCatalogMessage("stale", 0), fdciCatalogMessage("ready", 0));
+  assert.notEqual(fdciCatalogMessage("unavailable", null), fdciCatalogMessage("ready", 0));
+});
+
+test("stale catalog is not an active offer; fresh proof preserves official fields and private block", async () => {
+  const {catalog} = await fixture();
+  const {publications} = await integrateFdciCatalog([], catalog, "ready", now(), 3);
+  const stale = withFdciPublicVerification(publications, catalog, "stale");
+  assert.equal(enrollmentForDisplay(stale[0], new Date(at)), "SIN_FECHA_CONFIRMADA");
+  const fresh = withFdciPublicVerification(withFdciPersonalCapability(publications, false, now()), catalog, "ready");
+  assert.equal(fdciPublicVerification(fresh[0])?.status, "verified");
+  assert.equal(fdciPublicVerification(fresh[0])?.checkedAt, at);
+  assert.equal(fresh[0].official_url, catalog.items[0].officialUrl);
+  assert.equal(fresh[0].level, catalog.items[0].level);
+  assert(fdciPersonalBlocked(fresh[0]));
+  const app = readFileSync(new URL("../app/docente-app.tsx", import.meta.url), "utf8");
+  assert.match(app, /useFdciCatalogPilot\(data\?\.publications, view === "capacitaciones"\)/u);
 });
 
 test("personal buttons require a fresh verified projection and explicit local/canary capability", async () => {

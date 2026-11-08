@@ -62,6 +62,7 @@ import { FDCI_PERSONAL_FIXTURE_ID } from "@/lib/fdci-personal-fixture-id";
 import { fdciPersonalBlocked, fdciCatalogReference } from "@/lib/fdci-personal-contract";
 import { useFdciCatalogPilot, FdciCatalogPilotBanner, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
 import { sourceHealth, sourceNotices } from "@/lib/source-health";
+import { fdciPublicVerification } from "@/lib/fdci-catalog-integration";
 import type { BoardView } from "@/lib/board-view";
 import { groupPadrones, padronDocuments, padronSelection, padronTitleFacts, padronYear } from "@/lib/padron-documents";
 import { eventDate as officialEventDate, hasOfficialTopic, officialDestination, officialMetadata, readMetadata } from "@/lib/official-publication";
@@ -109,6 +110,9 @@ const healthForPublication = (item: Publication, sync: SyncStatus[]) => sync.fin
 const publicationLifecycleForUI = publicationLifecycleForDisplay;
 const enrollmentForUI = enrollmentForDisplay;
 const enrollmentLabel = (item: Publication, now = new Date()) => {
+  const verification = fdciPublicVerification(item);
+  if (verification?.status === "historical") return "Referencia histórica — sin inscripción activa verificada";
+  if (verification?.status === "unverified") return "Inscripción sin verificación actual";
   const state = enrollmentForUI(item, now), tentative = parseTrainingMetadata(item.metadata)?.dateStatus === "tentative";
   return state === "PROXIMAMENTE" ? tentative ? "Preinscripción prevista · fecha tentativa" : "Próximamente"
     : state === "ABRE_HOY" ? tentative ? "Apertura prevista hoy · confirmar en fuente" : "Abre hoy"
@@ -401,7 +405,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const savedMap = useMemo(() => officialSavedLookup(data?.saved || [], data?.publications || []), [data]);
   const reminderMap = useMemo(() => new Map((data?.reminders || []).map((item) => [item.training_id, item])), [data]);
   const profile = data?.profile ?? undefined;
-  const trainingPilot = useFdciCatalogPilot(data?.publications, view === "capacitaciones", data?.fdciPersonalActionsEnabled === true, data?.fdciCanaryFixture);
+  const trainingPilot = useFdciCatalogPilot(data?.publications, view === "capacitaciones");
   const designationAvailability = data ? designationEmptyState({
     filter, profileConfigured: hasDesignationProfilePreferences(profile),
     availableCount: data.publications.filter((item) => item.kind === "vacante").length,
@@ -548,7 +552,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const openDesignationOfficial = (item: Publication) => { if (hasOfficialTopic(item, "INSCRIPCION_SIME")) localStorage.setItem("docentetuc-pending-designation", item.id); window.open(item.official_url, "_blank", "noopener,noreferrer"); };
   const accessState = privateAccessState(installationBootstrapComplete, installationSecurity, privateAccess);
   const privateView = ["agenda", "alertas", "guardados", "perfil"].includes(view);
-  const sourceWarnings = data || !loading ? sourceNotices(view, trainingSource, data?.sync || []) : [];
+  const sourceWarnings = data || !loading ? sourceNotices(view, trainingSource, data?.sync || []).filter(item => !(trainingPilot.enabled && view === "capacitaciones" && item.source === "Capacitación Docente")) : [];
   return (
     <SidebarProvider open={sidebar.open} onOpenChange={sidebar.onOpenChange} data-sidebar-pinned={sidebar.pinned} className="dt-app-shell" style={{ "--sidebar-width": "17rem" } as CSSProperties}>
       <AppSidebarEdge pinned={sidebar.pinned} onEnter={sidebar.enter} onLeave={sidebar.leave} />
@@ -1052,7 +1056,7 @@ function PublicationList({ items, sync, loading, savedMap, reminderMap, matchRes
   if (loading) return <LoadingCards />; if (!items.length) return <div className="grid min-h-52 place-items-center rounded-3xl border border-dashed border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><h2 className="font-bold text-[var(--text-primary)]">{emptyContext === "las plataformas seleccionadas" ? "No encontramos resultados" : `No encontramos resultados de ${emptyContext}`}</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">Puede que los filtros actuales estén limitando la búsqueda. La información menos compatible sigue disponible en Ver todas.</p><Button variant="outline" onClick={onClearFilters} className="mt-4 min-h-10 rounded-xl">Quitar filtros</Button></div></div>;
   return <div className="grid gap-4 xl:grid-cols-2">{items.map((item) => {
     const saved = savedMap.has(item.id), compatibility = matchResult(item), training = item.kind === "capacitacion", metadata = training ? parseTrainingMetadata(item.metadata) : null, reminded = metadata ? reminderMap.has(trainingReminderKey(metadata)) : false;
-    const lifecycle = publicationLifecycleForUI(item), trainingState = training ? enrollmentForUI(item) : null, sourceCurrent = sourceHealth(healthForPublication(item, sync)) === "current";
+    const lifecycle = publicationLifecycleForUI(item), trainingState = training ? enrollmentForUI(item) : null, sourceCurrent = fdciPublicVerification(item)?.status === "verified" || sourceHealth(healthForPublication(item, sync)) === "current";
     const currentClaim = training ? trainingState === "ABIERTA" || trainingState === "ABRE_HOY" || trainingState === "PROXIMAMENTE" : lifecycle === "ACTIVE" || lifecycle === "UPCOMING";
     const unverified = !sourceCurrent && currentClaim;
     const statusText = unverified ? "Vigencia por verificar" : training ? enrollmentLabel(item) : item.kind === "vacante" ? lifecycleLabel(lifecycle) : item.status, simeCode = item.kind === "vacante" ? simeCodeForPublication(item) : "";
@@ -1065,6 +1069,7 @@ function PublicationList({ items, sync, loading, savedMap, reminderMap, matchRes
       <button onClick={() => onOpen(item)} className="text-left"><h2 className="line-clamp-2 text-lg font-bold leading-snug hover:underline">{item.title}</h2><p className="mt-2 line-clamp-2 text-sm leading-relaxed text-[#657b73]">{summaryText(item.summary) || `Información publicada por ${item.source}.`}</p></button>
       {simeCode && <p className="mt-2 text-xs font-bold text-[#315d7a]">ID de trámite: {simeCode}</p>}
       <OfficialPublicationSummary item={item} />
+      {training && fdciPublicVerification(item) && <p className="mt-2 text-xs text-[var(--text-secondary)]">Última comprobación del catálogo: {dateLabel(fdciPublicVerification(item)!.checkedAt, true)}{fdciPublicVerification(item)!.status === "unverified" ? " · no vigente como verificación actual" : ""}</p>}
       {training ? <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-[#61766f]">{item.character && <span><strong>Modalidad:</strong> {item.character}</span>}{item.starts_at && <span><strong>Inicio:</strong> {dateLabel(item.starts_at)}</span>}{metadata?.registrationClosesAt && <span><strong>Inscripción hasta:</strong> {dateLabel(metadata.registrationClosesAt, true)}</span>}{item.location && <span className="col-span-2"><strong>Lugar:</strong> {item.location}</span>}</div> : <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#61766f]">{item.character && <span>{item.character}</span>}{item.junta && <span>{item.junta}</span>}{item.shift && <span>Turno {item.shift}</span>}{item.ends_at && <span className="ml-auto flex items-center gap-1 font-semibold text-[#9a641f]"><Clock3 className="size-4" />{unverified ? `Cierre informado: ${dateLabel(item.ends_at, true)}` : fromNow(item.ends_at)}</span>}</div>}
       {fdciPersonalBlocked(item) && <p className="mt-2 text-sm font-bold text-amber-800 dark:text-amber-200">CATÁLOGO EXTERNO — solo consulta, sin acciones privadas</p>}
       <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-[#e7eee9] pt-3">
@@ -1425,7 +1430,7 @@ function PublicationSheet({ publication, sync, saved, tracking, match, onClose, 
   const trainingState = publication?.kind === "capacitacion" ? enrollmentForUI(publication) : null;
   const info = publication?.kind === "informacion" ? usefulMetadata(publication.metadata) : null;
   const lifecycle = publication ? publicationLifecycleForUI(publication) : "UNKNOWN";
-  const unverified = Boolean(publication && publication.kind !== "informacion" && sourceHealth(healthForPublication(publication, sync)) !== "current" && (lifecycle === "ACTIVE" || lifecycle === "UPCOMING" || trainingState === "ABIERTA" || trainingState === "ABRE_HOY" || trainingState === "PROXIMAMENTE"));
+  const unverified = Boolean(publication && publication.kind !== "informacion" && fdciPublicVerification(publication)?.status !== "verified" && sourceHealth(healthForPublication(publication, sync)) !== "current" && (lifecycle === "ACTIVE" || lifecycle === "UPCOMING" || trainingState === "ABIERTA" || trainingState === "ABRE_HOY" || trainingState === "PROXIMAMENTE"));
   const documentMetadata = publication?.kind === "junta" ? (() => { try { return JSON.parse(publication.metadata) as { contentAvailable?: boolean; format?: string; itemCount?: number }; } catch { return {}; } })() : null;
   const facts: [string, string | number | undefined | null][] = publication ? publication.kind === "informacion" ? [
     ["Tipo", info?.recordType === "procedure" ? "Trámite" : info?.recordType === "system" ? "Sistema" : "Organismo"], ["Dirección", info?.address], ["Horario", info?.openingHours], ["Organismo", info?.parentOrganization]
@@ -1435,7 +1440,7 @@ function PublicationSheet({ publication, sync, saved, tracking, match, onClose, 
     ["Circuito", publication.circuit && publication.circuit !== "UNKNOWN" ? `${publication.circuit}${publication.circuit_confidence != null ? ` · confianza ${publication.circuit_confidence}%` : ""}` : "No recuperado del listado sincronizado; verificar en ficha oficial SIME"],
     ["Turno", publication.shift || "No informado por SIME"], ["Localidad", publication.location || "No informada por SIME"], ["Estado en DocenteTuc", unverified ? "Vigencia por verificar" : lifecycleLabel(lifecycle)]
   ] : publication.kind === "capacitacion" ? [
-    ["Estado de inscripción", unverified ? "Vigencia por verificar" : enrollmentLabel(publication)], ["Fuente", training?.source || publication.source], ["Propuesta / categoría", training?.category], ["Cohorte", training?.cohort], ["Duración", training?.duration], ["Fecha publicada por la fuente", publication.source_published_at || null], ["Estado de fechas", unverified ? "Fechas publicadas · vigencia por verificar" : training?.dateStatus === "tentative" ? "Tentativas según la fuente" : training?.generalWindowOpensAt && training.registrationOpensAt === training.generalWindowOpensAt && training.registrationClosesAt === training.generalWindowClosesAt ? "Inscripción común de la convocatoria" : training?.dateStatus === "general_window" ? "Ventana general, no específica del curso" : training?.dateStatus === "course_confirmed" ? "Confirmadas para este curso" : training?.dateStatus === "confirmed" ? "Confirmadas por la fuente" : "Fecha no confirmada"], ["Comisión", training?.commissionId], ["Nivel", publication.level], ["Área", publication.area], ["Modalidad", publication.character],
+    ["Estado de inscripción", unverified ? "Vigencia por verificar" : enrollmentLabel(publication)], ["Fuente", training?.source || publication.source], ["Última comprobación del catálogo", fdciPublicVerification(publication)?.checkedAt ? dateLabel(fdciPublicVerification(publication)!.checkedAt, true) : null], ["Propuesta / categoría", training?.category], ["Cohorte", training?.cohort], ["Duración", training?.duration], ["Fecha publicada por la fuente", publication.source_published_at || null], ["Estado de fechas", unverified ? "Fechas publicadas · vigencia por verificar" : training?.dateStatus === "tentative" ? "Tentativas según la fuente" : training?.generalWindowOpensAt && training.registrationOpensAt === training.generalWindowOpensAt && training.registrationClosesAt === training.generalWindowClosesAt ? "Inscripción común de la convocatoria" : training?.dateStatus === "general_window" ? "Ventana general, no específica del curso" : training?.dateStatus === "course_confirmed" ? "Confirmadas para este curso" : training?.dateStatus === "confirmed" ? "Confirmadas por la fuente" : "Fecha no confirmada"], ["Comisión", training?.commissionId], ["Nivel", publication.level], ["Área", publication.area], ["Modalidad", publication.character],
     ["Inicio", publication.starts_at ? dateLabel(publication.starts_at) : null], ["Finalización", training?.courseEndsAt ? dateLabel(training.courseEndsAt) : null],
     ["Apertura de inscripción", training?.registrationOpensAt ? dateLabel(training.registrationOpensAt, true) : null], ["Cierre de inscripción", training?.registrationClosesAt ? dateLabel(training.registrationClosesAt, true) : null],
     ["Lugar", publication.location], ["Dirección", training?.address], ["Cupo", training?.capacity], ["Cupo de preinscripción", training?.preCapacity], ["Cupos disponibles según la fuente", training?.availablePreCapacity],

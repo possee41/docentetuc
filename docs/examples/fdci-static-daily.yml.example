@@ -31,4 +31,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node scripts/fdci-static-runner.mjs run
+      - run: node .github/pilot/fdci-static-runner.mjs run

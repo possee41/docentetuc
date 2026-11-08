@@ -50,6 +50,13 @@ export function publicationLifecycleForDisplay(item: Publication, now = new Date
 }
 
 export function enrollmentForDisplay(item: Publication, now = new Date()) {
+  if (["Capacitación Docente", "FDCI"].includes(item.source)) {
+    try {
+      const status = JSON.parse(item.metadata).fdciPublicStatus;
+      if (status === "historical") return "CERRADA" as const;
+      if (status === "unverified") return "SIN_FECHA_CONFIRMADA" as const;
+    } catch { /* Existing records without valid metadata keep their prior behavior. */ }
+  }
   return enrollmentState(parseTrainingMetadata(item.metadata), item.source_status || item.status, item.normalized_status, now);
 }
 

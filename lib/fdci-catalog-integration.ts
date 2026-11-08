@@ -5,7 +5,35 @@ import { isPublicPublication } from "./publication-visibility.ts";
 import { fdciPersonalMetadata } from "./fdci-personal-contract.ts";
 import { isKnownFdciSynthetic } from "./fdci-canary-synthetic.ts";
 export function fdciPilotAllowed(host: string, query: string) {
-  return ["localhost", "127.0.0.1", "canary.docentetuc.com.ar"].includes(host) && new URLSearchParams(query).get("fdciCatalogTest") === "1";
+  return host === "canary.docentetuc.com.ar" || ["localhost", "127.0.0.1"].includes(host) && new URLSearchParams(query).get("fdciCatalogTest") === "1";
+}
+
+export function fdciPublicVerification(item: Pick<Publication, "metadata" | "source">) {
+  if (!["Capacitación Docente", "FDCI"].includes(item.source)) return null;
+  try {
+    const m = JSON.parse(item.metadata);
+    return ["verified", "historical", "unverified"].includes(m.fdciPublicStatus) && typeof m.fdciPublicCheckedAt === "string"
+      ? { status: m.fdciPublicStatus as "verified" | "historical" | "unverified", checkedAt: m.fdciPublicCheckedAt as string } : null;
+  } catch { return null; }
+}
+
+// Read-only client projection. Never changes D1 snapshots, titles or private relationships.
+export function withFdciPublicVerification(publications: Publication[], catalog: FdciCatalog, freshness: "ready" | "stale") {
+  return publications.map(p => {
+    if (p.kind !== "capacitacion" || !["Capacitación Docente", "FDCI"].includes(p.source)) return p;
+    const item = catalog.items.find(i => i.id === p.id || i.externalId === p.external_id);
+    let metadata; try { metadata = JSON.parse(p.metadata); } catch { metadata = {}; }
+    return { ...p, metadata: JSON.stringify({ ...metadata,
+      fdciPublicStatus: freshness === "stale" ? "unverified" : item ? "verified" : "historical",
+      fdciPublicCheckedAt: item && catalog.observations?.[item.id!]?.checkedAt || catalog.updatedAt }) };
+  });
+}
+
+export function fdciCatalogMessage(status: string, count: number | null) {
+  if (status === "loading") return "Comprobando catálogo oficial…";
+  if (status === "unavailable") return "No pudimos comprobar el catálogo oficial. La información histórica no acredita inscripciones abiertas.";
+  if (status === "stale") return "La última versión válida está desactualizada o su actualización quedó incompleta. No acredita inscripciones activas actuales.";
+  return count === 0 ? "No hay inscripciones activas verificadas" : `${count} ${count === 1 ? "comisión" : "comisiones"} en el catálogo oficial verificado. Consultá fechas y requisitos en la fuente oficial.`;
 }
 
 // Opt-in composition only. Existing queries, private APIs and app state untouched.
