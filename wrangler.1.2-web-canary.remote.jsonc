@@ -19,6 +19,16 @@
     "BETTER_AUTH_URL": "https://canary.docentetuc.com.ar"
   },
   "triggers": { "crons": [] },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+      "head_sampling_rate": 1,
+      "persist": true
+    }
+  },
   "d1_databases": [{
     "binding": "DB",
     "database_name": "docentetuc-web-canary-1-2",
