@@ -21,8 +21,9 @@ export function resolveGatewayConfig(config, revision = "") {
   const fdciCanary = source === "fdci" && (config.IMPORT_GATEWAY_TARGET || "canary") === "canary" &&
     config.IMPORT_GATEWAY_DATABASE_NAME === "docentetuc-fdci-functional-canary-1-2" &&
     origin.origin === "https://docentetuc-fdci-functional-canary-1-2.possee41.workers.dev";
+  const dailyReceiver = source !== "fdci" && origin.origin === "https://docentetuc-sources-1-2.possee41.workers.dev";
   if (origin.pathname !== "/" || origin.search || origin.hash || origin.username || origin.password ||
-      !(fdciCanary || origin.protocol === "https:" && /^docentetuc-import-(?:canary-1-2|1-2)\.[a-z0-9-]+\.workers\.dev$/.test(origin.hostname) ||
+      !(fdciCanary || dailyReceiver || origin.protocol === "https:" && /^docentetuc-import-(?:canary-1-2|1-2)\.[a-z0-9-]+\.workers\.dev$/.test(origin.hostname) ||
         origin.protocol === "http:" && origin.hostname === "127.0.0.1")) throw new Error("GATEWAY_CONFIG_INVALID");
   const target = config.IMPORT_GATEWAY_TARGET || "canary";
   const id = config.IMPORT_GATEWAY_DATABASE_ID, name = config.IMPORT_GATEWAY_DATABASE_NAME;
@@ -33,7 +34,7 @@ export function resolveGatewayConfig(config, revision = "") {
         (origin.protocol !== "http:" && !fdciCanary && !origin.hostname.startsWith("docentetuc-import-canary-1-2.")))
       throw new Error("GATEWAY_TARGET_FORBIDDEN");
   } else if (target !== "production" || id !== productionId || name !== "docentetuc-db" ||
-      origin.protocol !== "https:" || !origin.hostname.startsWith("docentetuc-import-1-2.") ||
+      origin.protocol !== "https:" || !(dailyReceiver || origin.hostname.startsWith("docentetuc-import-1-2.")) ||
       config.IMPORT_GATEWAY_PRODUCTION_ENABLED !== "true" ||
       !/^[a-f0-9]{40}$/i.test(config.IMPORT_GATEWAY_APPROVED_SHA || "") ||
       config.IMPORT_GATEWAY_APPROVED_SHA.toLowerCase() !== revision.toLowerCase())

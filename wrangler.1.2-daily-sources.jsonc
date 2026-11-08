@@ -1,0 +1,27 @@
+{
+  "name": "docentetuc-sources-1-2",
+  "main": "workers/daily-source-gateway.mjs",
+  "compatibility_date": "2026-05-15",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [],
+  "triggers": { "crons": [] },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "redact_query_string": true,
+    "logs": { "enabled": true, "invocation_logs": true, "head_sampling_rate": 1, "persist": true }
+  },
+  "vars": {
+    "DAILY_SOURCES_ENABLED": "false",
+    "DAILY_RECEIVER_NAME": "docentetuc-sources-1-2",
+    "IMPORT_GATE_ENABLED": "false",
+    "IMPORT_GATE_LEASE_REQUIRED": "true",
+    "IMPORT_DATABASE_NAME": "docentetuc-db",
+    "IMPORT_DATABASE_ID": "baaf5886-0123-4948-96da-aa7106424549",
+    "FDCI_EXTERNAL_ENABLED": "false",
+    "FDCI_AUTOMATION_ENABLED": "false",
+    "FDCI_DELTA_ENABLED": "false"
+  },
+  "d1_databases": [{ "binding": "DB", "database_name": "docentetuc-db", "database_id": "baaf5886-0123-4948-96da-aa7106424549" }]
+}

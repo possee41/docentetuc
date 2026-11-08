@@ -14,7 +14,6 @@ export const dynamic = "force-dynamic";
 
 const MAX_CANDIDATES = 5;
 const MAX_ARTICLES_PER_REQUEST = 20;
-const PILOT_ALLOWED_FEEDS = ["infod"];
 
 type ArticleInput = {
   feedKey?: unknown;
@@ -29,7 +28,6 @@ function validateArticle(input: ArticleInput): DiscoveredArticle | null {
   if (!input || typeof input !== "object") return null;
   const feed = NEWS_FEEDS.find((f) => f.key === input.feedKey);
   if (!feed) return null;
-  if (!PILOT_ALLOWED_FEEDS.includes(feed.key)) return null;
   if (typeof input.title !== "string" || !input.title.trim() || input.title.length > 160) return null;
   const url = normalizeNewsSourceUrl(input.url);
   if (!url) return null;

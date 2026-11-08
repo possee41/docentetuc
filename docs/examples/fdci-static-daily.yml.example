@@ -1,0 +1,34 @@
+# Use ONLY in possee41/docentetuc-fdci-catalog-pilot with its ALREADY VALIDATED runner package.
+# Do not copy this to possee41/docentetuc: no FDCI gateway or Cloudflare token.
+name: FDCI official durable daily synchronization
+on:
+  # schedule: [{ cron: '37 9 * * *' }] # 06:37 Tucumán; disabled pending authorization
+  workflow_dispatch:
+    inputs:
+      recovery_only:
+        type: boolean
+        default: true
+permissions:
+  contents: write
+concurrency:
+  group: fdci-official-durable-state
+  cancel-in-progress: false
+jobs:
+  synchronize:
+    if: github.repository == 'possee41/docentetuc-fdci-catalog-pilot' && github.ref == 'refs/heads/main' && vars.FDCI_INTEGRATED_ENABLED == 'true' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FDCI_INTEGRATED_ENABLED: ${{ vars.FDCI_INTEGRATED_ENABLED }}
+      FDCI_STATIC_APPROVED_SHA: ${{ vars.FDCI_STATIC_APPROVED_SHA }}
+      FDCI_RECOVER_ONLY: ${{ github.event_name == 'schedule' && 'false' || inputs.recovery_only && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.FDCI_STATIC_APPROVED_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node scripts/fdci-static-runner.mjs run

@@ -132,18 +132,6 @@ test("fetchNewsFeed rechaza hosts privados y URLs inseguras", async () => {
   assert.ok(isPrivateOrLoopbackHost("10.0.0.1"));
 });
 
-test("el piloto solo permite INFoD", () => {
-  const pilotAllowed = ["infod"];
-  const selected = NEWS_FEEDS.filter((f) => pilotAllowed.includes(f.key));
-  assert.equal(selected.length, 1);
-  assert.equal(selected[0].key, "infod");
-  for (const key of ["ministry", "atep"]) {
-    const filtered = NEWS_FEEDS.filter((f) => [key].includes(f.key) && pilotAllowed.includes(f.key));
-    assert.equal(filtered.length, 0, `${key} should not be allowed in pilot`);
-  }
-});
-
-
 test("fallo en batch no deja registros huérfanos ni auditorías falsas", async () => {
   const { raw, database } = fixture();
   try {

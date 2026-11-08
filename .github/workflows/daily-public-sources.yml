@@ -1,0 +1,53 @@
+# Publish only after authorization. schedule remains commented: no automatic execution.
+name: Daily public source synchronization
+on:
+  # schedule:
+  #   - cron: '7 9 * * *'   # SIME 06:07 Tucumán
+  #   - cron: '7 10 * * *'  # INFoD 07:07
+  #   - cron: '37 10 * * *' # CeNET 07:37
+  #   - cron: '7 11 * * *'  # Juntas / Padrones / Comunicados / Llamados 08:07
+  workflow_dispatch:
+    inputs:
+      source:
+        type: choice
+        options: [sime, infd, cenet, juntas]
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: daily-public-source-writes
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: github.repository == 'possee41/docentetuc' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && vars.DAILY_SOURCES_ENABLED == 'true' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write # Whole repository, NOT branch-scoped. Explicit approval required before publication.
+    environment: ${{ format('daily-{0}', inputs.source || (github.event.schedule == '7 9 * * *' && 'sime') || (github.event.schedule == '7 10 * * *' && 'infd') || (github.event.schedule == '37 10 * * *' && 'cenet') || (github.event.schedule == '7 11 * * *' && 'juntas')) }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DAILY_SOURCES_ENABLED: ${{ vars.DAILY_SOURCES_ENABLED }}
+      DAILY_APPROVED_SHA: ${{ vars.DAILY_APPROVED_SHA }}
+      DAILY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      SYNC_SOURCE: ${{ inputs.source || (github.event.schedule == '7 9 * * *' && 'sime') || (github.event.schedule == '7 10 * * *' && 'infd') || (github.event.schedule == '37 10 * * *' && 'cenet') || (github.event.schedule == '7 11 * * *' && 'juntas') }}
+      IMPORT_GATEWAY_TARGET: production
+      IMPORT_GATEWAY_PRODUCTION_ENABLED: ${{ vars.DAILY_PRODUCTION_APPROVED }}
+      IMPORT_GATEWAY_APPROVED_SHA: ${{ vars.DAILY_APPROVED_SHA }}
+      IMPORT_GATEWAY_ORIGIN: ${{ vars.DAILY_RECEIVER_ORIGIN }}
+      IMPORT_GATEWAY_DATABASE_ID: ${{ vars.DAILY_DATABASE_ID }}
+      IMPORT_GATEWAY_DATABASE_NAME: ${{ vars.DAILY_DATABASE_NAME }}
+      DAILY_IMPORT_SECRET: ${{ secrets.IMPORT_SECRET }} # Only the selected source environment.
+      GOOGLE_DRIVE_API_KEY: ${{ secrets.GOOGLE_DRIVE_API_KEY }}
+      JUNTAS_MAX_REQUESTS: '25'
+      JUNTAS_MAX_PUBLICATION_WRITES: '20'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.DAILY_APPROVED_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Synchronize bounded public data and confirmed cursor
+        run: node --experimental-strip-types scripts/daily-sources.mjs

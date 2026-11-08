@@ -17,8 +17,9 @@ export function resolveGateConfig(config) {
   const fdciCanary = source === "fdci" && (config.IMPORT_GATEWAY_TARGET || "canary") === "canary" &&
     config.IMPORT_GATEWAY_DATABASE_NAME === "docentetuc-fdci-functional-canary-1-2" &&
     origin.origin === "https://docentetuc-fdci-functional-canary-1-2.possee41.workers.dev";
+  const dailyReceiver = source !== "fdci" && origin.origin === "https://docentetuc-sources-1-2.possee41.workers.dev";
   if (origin.pathname !== "/" || origin.search || origin.hash || origin.username || origin.password ||
-      !(fdciCanary || origin.protocol === "https:" && /^docentetuc-import-(?:canary-1-2|1-2)\.[a-z0-9-]+\.workers\.dev$/.test(origin.hostname) ||
+      !(fdciCanary || dailyReceiver || origin.protocol === "https:" && /^docentetuc-import-(?:canary-1-2|1-2)\.[a-z0-9-]+\.workers\.dev$/.test(origin.hostname) ||
         origin.protocol === "http:" && origin.hostname === "127.0.0.1")) throw new Error("GATE_CONFIG_INVALID");
   const secret = config[`${source.toUpperCase()}_IMPORT_SECRET`];
   if (!/^[A-Za-z0-9_-]{32,}$/.test(secret || "")) throw new Error("GATE_SECRET_INVALID");
