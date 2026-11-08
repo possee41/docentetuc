@@ -93,11 +93,12 @@ test("la concesión exige autenticación y rechaza fuentes desconocidas", async 
 
 test("el TTL se limita a una ventana corta y acotada", async () => {
   const { env } = localEnv();
-  const long = await open(env, "fdci", 999_999);
+  for (const ttl of [1, 601, 999_999]) assert.equal((await open(env,"fdci",ttl)).status,400);
+  const long = await open(env, "fdci", 600);
   const longSeconds = (Date.parse((await long.json()).expiresAt) - Date.now()) / 1000;
-  assert.ok(longSeconds > 890 && longSeconds <= 900, `TTL máximo: ${longSeconds}`);
+  assert.ok(longSeconds > 590 && longSeconds <= 600, `TTL máximo: ${longSeconds}`);
   assert.equal((await close(env)).status, 200);
-  const short = await open(env, "fdci", 1);
+  const short = await open(env, "fdci", 60);
   const shortSeconds = (Date.parse((await short.json()).expiresAt) - Date.now()) / 1000;
   assert.ok(shortSeconds > 50 && shortSeconds <= 60, `TTL mínimo: ${shortSeconds}`);
 });

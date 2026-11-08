@@ -131,11 +131,11 @@ async function question(prompt) {
 export async function runOne({ scenario, accountId, subdomain, token, readToken, config,
   cli = wrangler, send = fetch, metadataRequest = fetch, ask = question,
   now = new Date(), runId = `push-${randomBytes(6).toString("hex")}`,
-  configPath = null }) {
+  configPath = "" }) {
   if (!RUN_ID.test(runId)) throw new Error("CANARY_RUN_ID_INVALID");
   const target = validateTarget({ scenario, accountId, subdomain, token, readToken, config });
   const report = { scenario, runId, measuredAt: now.toISOString(), worker: NAME, measurement: null };
-  const resolvedConfigPath = configPath || resolve(ROOT, "wrangler.push-canary.json");
+  const resolvedConfigPath = resolve(configPath || resolve(ROOT, "wrangler.push-canary.json"));
   const base = ["--config", resolvedConfigPath];
   // These checks are read-only. Any unexpected response stops before seeding or invoking.
   const metadata = await readWorkerMetadata(accountId, readToken, metadataRequest);

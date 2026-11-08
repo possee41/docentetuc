@@ -298,7 +298,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     refreshLoadError();
     if (showLoading) setLoading(true);
     try {
-      const response = await fetch(new URLSearchParams(window.location.search).get("fdciPersonalFixture") === "1" ? "/api/app?fdciPersonalFixture=1" : "/api/app", { cache: "no-store", headers: apiHeaders(), signal: AbortSignal.timeout(15000) });
+      const response = await fetch("/api/app" + (new URLSearchParams(window.location.search).get("fdciPersonalFixture") === "1" ? "?fdciPersonalFixture=1" : ""), { cache: "no-store", headers: apiHeaders(), signal: AbortSignal.timeout(15000) });
       if (requestId !== privateLoadSequence.current) return;
       if (response.status === 401) { privateData.current = null; privateLoadProblem.current = import.meta.env.DEV ? "No se pudo verificar esta instalación en la D1 local. Si pertenece a otra base de prueba, podés iniciar una nueva desde Cuentas y accesos; sus datos no se borran." : "No se pudo verificar esta instalación o su cuenta. Sus datos privados se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."; setPrivateAccess("unauthorized"); setData(publicData.current); refreshLoadError(); return; }
       if (!response.ok) throw new Error("No se pudo cargar la información");

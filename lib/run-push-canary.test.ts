@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import test from "node:test";
 import { evaluateCanary, runOne, validateTarget, verifyRemoteIdentity, verifyWorkerMetadata } from "../scripts/run-push-canary.mjs";
 
@@ -104,7 +104,7 @@ test("una sola semilla, un envío simulado y CPU manual obligatoria", async () =
   let result;
   try {
     result = await runOne({ scenario, runId, accountId, subdomain: "only-canary", token, readToken,
-      config: isolated, cli, send, metadataRequest, ask: async () => answers.shift() || "", configPath: tempConfigPath as any });
+      config: isolated, cli, send, metadataRequest, ask: async () => answers.shift() || "", configPath: tempConfigPath });
   } finally {
     try { unlinkSync(tempConfigPath); } catch {}
   }
@@ -124,4 +124,26 @@ test("CPU, outcome y resultado funcional detienen el avance", () => {
   assert.ok(evaluateCanary({ scenario, runId, status: 1102, body: null, cpuTimeMs: null, outcome: "exceededCpu" }).reasons.includes("HTTP_1102"));
   assert.ok(evaluateCanary({ scenario, runId, status: 200, body: { ...body, result: { ...body.result, sent: 1 } },
     cpuTimeMs: 5, outcome: "ok" }).reasons.includes("FUNCTIONAL_OR_D1_RESULT_INVALID"));
+});
+
+test("configPath nunca autoriza una D1 productiva ni el UUID cero antes de una escritura", async () => {
+  const unsafePath = join(process.cwd(), `wrangler.push-canary.unsafe-${Date.now()}.json`);
+  writeFileSync(unsafePath, JSON.stringify({ ...isolated, d1_databases: [{ ...isolated.d1_databases[0], database_id: "baaf5886-0123-4948-96da-aa7106424549" }] }));
+  try {
+    for (const configPath of ["wrangler.push-canary.json", unsafePath]) {
+      const calls: string[] = [];
+      const cli = (args: string[]) => {
+        if (args.includes("--config")) assert.equal(isAbsolute(args[args.indexOf("--config")+1]),true);
+        calls.push(args.join(" "));
+        if (args[0] === "whoami") return JSON.stringify({ accounts: [{ id: accountId }] });
+        if (args[1] === "info") return JSON.stringify({ name: "docentetuc-push-canary-1-2", uuid: isolated.d1_databases[0].database_id });
+        if (args[1] === "execute") return JSON.stringify([{ success: true, results: [{ marker: "docentetuc-push-canary-1-2" }] }]);
+        return JSON.stringify([{ id: "local-deployment" }]);
+      };
+      await assert.rejects(runOne({ scenario, runId, accountId, subdomain: "only-canary", token, readToken,
+        config: isolated, configPath, cli, metadataRequest, ask: async () => `EJECUTAR ${scenario} ${runId}`,
+        send: async () => { throw Error("SEND_MUST_NOT_RUN"); } }), /PUSH_CANARY_CONFIG_UNSAFE/);
+      assert.equal(calls.some(call => call.includes("--file")), false);
+    }
+  } finally { unlinkSync(unsafePath); }
 });
