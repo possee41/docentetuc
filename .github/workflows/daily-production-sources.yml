@@ -1,0 +1,15 @@
+name: Production daily sources (disabled)
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        type: choice
+        options: [sime, infd, cenet]
+        required: true
+permissions:
+  contents: read
+jobs:
+  registration:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Select the authorized integration branch; no synchronization runs here.'
