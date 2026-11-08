@@ -1,7 +1,8 @@
 import { calendarDayDistance } from "./home-dashboard.ts";
+import { htmlToText } from "./public-documents.ts";
 
 export type TrainingStatus = "inscripción abierta" | "próximamente" | "inscripción cerrada" | "en curso" | "finalizada" | "consultar";
-export type EnrollmentState = "PROXIMAMENTE" | "ABRE_HOY" | "ABIERTA" | "CERRADA" | "SIN_FECHA_CONFIRMADA";
+export type EnrollmentState = "PROXIMAMENTE" | "ABRE_HOY" | "ABIERTA" | "SIN_CUPO" | "CERRADA" | "SIN_FECHA_CONFIRMADA";
 
 export type TrainingMetadata = {
   entity: "course" | "commission";
@@ -27,6 +28,7 @@ export type TrainingMetadata = {
   address?: string;
   capacity?: number;
   preCapacity?: number;
+  availablePreCapacity?: number;
   hours?: number;
   meetings?: number;
   recipients?: string;
@@ -54,7 +56,25 @@ const localDateTime = (value: unknown, endOfDay = false) => {
     : `${raw.replace(" ", "T")}${/[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw) ? "" : "-03:00"}`;
   return Number.isFinite(Date.parse(normalized)) ? normalized : undefined;
 };
-export const plainText = (value: unknown) => text(value).replace(/<[^>]*>/g, " ").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
+export const plainText = (value: unknown) => text(value)
+  .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+  .replace(/<[^>]*>/g, " ")
+  .replace(/&#(x[0-9a-f]+|\d+);/gi, (_match, digits: string) => {
+    const point = Number.parseInt(digits[0].toLowerCase() === "x" ? digits.slice(1) : digits, digits[0].toLowerCase() === "x" ? 16 : 10);
+    return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : "";
+  }).replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
+
+// Some imported summaries keep escaped markup, bare CSS rules or inline script as visible text.
+export const summaryText = (value: unknown) => {
+  const cleaned = text(value)
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/@media[^{}]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/gi, " ")
+    .replace(/\{"@context"[\s\S]*?\}(?=\s|$)/g, " ")
+    .replace(/\b(?:function\s*[\w$]*\s*\([^)]*\)|\(?\s*[^(){};]*\)?\s*=>)\s*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, " ")
+    .replace(/\b(?:var|let|const)\s+[\w$]+\s*=[^;{}]{0,200};/g, " ")
+    .replace(/[\w.#:@-][^{}\n]{0,160}\{[^{}]*:[^{}]*\}/g, " ");
+  return htmlToText(htmlToText(cleaned)).replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+};
 
 export function enrollmentState(metadata: TrainingMetadata | null, sourceStatus = "", normalizedStatus = "", now = new Date()): EnrollmentState {
   if (["CLOSED", "EXPIRED", "REMOVED_FROM_SOURCE"].includes(normalizedStatus)) return "CERRADA";
@@ -64,6 +84,7 @@ export function enrollmentState(metadata: TrainingMetadata | null, sourceStatus 
   const closes = metadata.registrationClosesAt ? Date.parse(metadata.registrationClosesAt) : Number.NaN;
   const time = now.getTime();
   if (Number.isFinite(closes) && time > closes) return "CERRADA";
+  if (metadata.availablePreCapacity != null && metadata.availablePreCapacity <= 0) return "SIN_CUPO";
   if (Number.isFinite(opens) && time < opens) {
     const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
     return day.format(now) === day.format(new Date(opens)) ? "ABRE_HOY" : "PROXIMAMENTE";
@@ -73,10 +94,18 @@ export function enrollmentState(metadata: TrainingMetadata | null, sourceStatus 
     if (day.format(now) === day.format(new Date(opens))) return "ABRE_HOY";
   }
   // A tentative calendar is a forecast, not proof that registration actually opened.
-  if (metadata.dateStatus === "tentative") return /abiert/i.test(sourceStatus) && Number.isFinite(closes) && time <= closes ? "ABIERTA" : "SIN_FECHA_CONFIRMADA";
-  if (Number.isFinite(closes) && time <= closes && (Number.isFinite(opens) || /abiert/i.test(sourceStatus))) return "ABIERTA";
+  if (metadata.dateStatus === "tentative") return /abiert/i.test(sourceStatus) && Number.isFinite(opens) && opens <= time &&
+    Number.isFinite(closes) && time <= closes ? "ABIERTA" : "SIN_FECHA_CONFIRMADA";
+  if (Number.isFinite(opens) && Number.isFinite(closes) && time <= closes) return "ABIERTA";
   if (Number.isFinite(opens) && /abiert/i.test(sourceStatus)) return "ABIERTA";
   return "SIN_FECHA_CONFIRMADA";
+}
+
+export function canScheduleTrainingReminder(metadata: TrainingMetadata | null, sourceStatus = "", normalizedStatus = "", now = new Date()) {
+  if (metadata?.dateStatus !== "confirmed" || metadata.registrationHasTime !== true || !metadata.registrationOpensAt) return false;
+  const opens = Date.parse(metadata.registrationOpensAt);
+  return Number.isFinite(opens) && opens > now.getTime() &&
+    ["PROXIMAMENTE", "ABRE_HOY"].includes(enrollmentState(metadata, sourceStatus, normalizedStatus, now));
 }
 
 export function trainingStatus(commission: OfficialCommission | undefined, now = new Date()): TrainingStatus {
@@ -88,9 +117,9 @@ export function trainingStatus(commission: OfficialCommission | undefined, now =
   const finishes = localDateTime(commission.fecha_fin, true);
   const closed = Boolean(Number(commission.comision_cerrada));
   if (closed) return "inscripción cerrada";
+  if (opens && commission.isActivePre != null && !Boolean(Number(commission.isActivePre))) return "inscripción cerrada";
   if (opens && time < new Date(opens).getTime()) return "próximamente";
   if (closes && time > new Date(closes).getTime()) return "inscripción cerrada";
-  if (opens && commission.isActivePre != null && !Boolean(Number(commission.isActivePre))) return "inscripción cerrada";
   if (opens && (closes || Boolean(Number(commission.isActivePre)))) return "inscripción abierta";
   if (starts && time < new Date(starts).getTime()) return "consultar";
   if (starts && finishes && time <= new Date(finishes).getTime()) return "en curso";
@@ -145,6 +174,7 @@ function opportunity(course: OfficialCourse, commission?: OfficialCommission, no
       ...(commission?.direccion ? { address: text(commission.direccion) } : {}),
       ...(number(commission?.cupo) != null ? { capacity: number(commission?.cupo) } : {}),
       ...(number(commission?.cupo_preinscripcion) != null ? { preCapacity: number(commission?.cupo_preinscripcion) } : {}),
+      ...(number(commission?.cupo_disponible_pre) != null ? { availablePreCapacity: number(commission?.cupo_disponible_pre) } : {}),
       ...(number(course.horas_catedra) != null ? { hours: number(course.horas_catedra) } : {}),
       ...(number(commission?.cantidad_encuentros) != null ? { meetings: number(commission?.cantidad_encuentros) } : {}),
       ...(statedRecipients || [course.cargos, course.niveles, course.areas].filter(Boolean).length ? { recipients: statedRecipients || [course.cargos, course.niveles, course.areas].filter(Boolean).map(text).join(" · ") } : {}),
@@ -176,3 +206,18 @@ export const parseTrainingMetadata = (value: string | null | undefined): Trainin
 };
 
 export const trainingReminderKey = (metadata: TrainingMetadata) => metadata.commissionId ? `fdci:commission:${metadata.commissionId}` : metadata.trainingId;
+
+// Recheck a stored reminder against the current publication before queuing it.
+// The single placeholder is the current instant, supplied by the caller.
+export const CONFIRMED_TRAINING_REMINDER_SQL = `EXISTS (SELECT 1 FROM publications p
+  WHERE p.id=training_reminders.publication_id AND p.kind='capacitacion'
+  AND p.normalized_status NOT IN ('CLOSED','EXPIRED','REMOVED_FROM_SOURCE')
+  AND CASE WHEN json_valid(p.metadata) THEN
+    json_extract(p.metadata,'$.fdciCanaryFixture') IS NOT 1
+    AND json_extract(p.metadata,'$.dateStatus')='confirmed'
+    AND json_extract(p.metadata,'$.registrationHasTime')=1
+    AND json_extract(p.metadata,'$.registrationOpensAt')=training_reminders.opens_at
+    AND COALESCE(json_extract(p.metadata,'$.availablePreCapacity'),1)>0
+    AND (json_extract(p.metadata,'$.registrationClosesAt') IS NULL OR
+      datetime(json_extract(p.metadata,'$.registrationClosesAt'))>=datetime(?))
+  ELSE 0 END)`;

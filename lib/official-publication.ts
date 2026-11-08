@@ -140,10 +140,17 @@ export function officialDateLabel(item: MetadataLike) {
   const time = f.precision === "datetime" ? f.value.slice(11, 16) : "";
   return `${d}/${mo}/${y}${time ? ` · ${time}${f.status === "provisional" ? " (horario a confirmar)" : f.status === "conflict" ? " (dato en conflicto)" : " hs"}` : f.status === "conflict" ? " · fecha en conflicto" : f.status === "provisional" ? " · horario a confirmar" : " · horario no informado"}`;
 }
-export function officialLifecycle(item: MetadataLike, now = new Date()): "ACTIVE" | "UPCOMING" | "EXPIRED" | "UNKNOWN" | null {
+export function officialLifecycle(item: MetadataLike, now = new Date()): "ACTIVE" | "UPCOMING" | "CLOSED" | "EXPIRED" | "UNKNOWN" | null {
   const m = officialMetadata(item);
   if (!m) return null;
   if (m.canonicalId || m.entity === "reference" || m.topics.includes("CLASIFICACION_PENDIENTE")) return "UNKNOWN";
+  if (m.entity === "opportunity" && m.topics.includes("INSCRIPCION_SIME")) {
+    const open = m.facts.publicationStart, close = m.facts.publicationEnd;
+    if (!open || !close || open.precision !== "datetime" || close.precision !== "datetime") return "UNKNOWN";
+    if (Date.parse(close.value) < now.getTime()) return "CLOSED";
+    if (Date.parse(open.value) > now.getTime()) return m.abierto === false ? "UPCOMING" : "UNKNOWN";
+    return m.abierto === true ? "ACTIVE" : m.abierto === false ? "CLOSED" : "UNKNOWN";
+  }
   if (m.entity === "opportunity" && m.topics.includes("LLAMADO_ABIERTO") && !m.topics.includes("INSCRIPCION_SIME")) {
     const close = m.facts.registrationEnd, open = m.facts.registrationStart;
     if (!close || close.status !== "reported") return "UNKNOWN";
