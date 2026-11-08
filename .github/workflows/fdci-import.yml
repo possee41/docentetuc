@@ -1,7 +1,10 @@
 name: FDCI external import
 on:
   # Proposed schedule, DISABLED; requires new approval and a fixed authorized SHA.
-  # schedule: [{ cron: '17 */2 * * *' }]
+  # OBSOLETO PARA PROGRAMACIÓN: no activar este camino al gateway FDCI HALTED.
+  # La propuesta diaria 06:37 Tucumán (37 9 * * *) corresponde exclusivamente
+  # al runner estático durable del repositorio docentetuc-fdci-catalog-pilot.
+  # Ver docs/1.2-daily-sources.md. No agregar schedule aquí.
   workflow_dispatch:
 permissions:
   contents: read

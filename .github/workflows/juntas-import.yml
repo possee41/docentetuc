@@ -1,7 +1,9 @@
 name: Juntas external import pilot
 on:
   # Programación propuesta, DESACTIVADA hasta validar gateway, corte legacy y cuotas:
-  # schedule: [{ cron: '23 */2 * * *' }]
+  # Incluye Padrones, Comunicados y Llamados; no duplicar esos trabajos.
+  # Propuesta diaria DESACTIVADA: 08:07 Tucumán (UTC-3). Ver docs/1.2-daily-sources.md.
+  # schedule: [{ cron: '7 11 * * *' }]
   workflow_dispatch:
 permissions:
   contents: read

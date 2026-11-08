@@ -1,7 +1,8 @@
 name: CeNET external import pilot
 on:
   # Programación propuesta, DESACTIVADA hasta validar gateway, corte legacy y cuotas:
-  # schedule: [{ cron: '34 */6 * * *' }]
+  # Propuesta diaria DESACTIVADA: 07:37 Tucumán (UTC-3). Ver docs/1.2-daily-sources.md.
+  # schedule: [{ cron: '37 10 * * *' }]
   workflow_dispatch:
 permissions:
   contents: read

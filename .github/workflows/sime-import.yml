@@ -2,7 +2,8 @@ name: SIME external import pilot
 on:
   # Manual only. Scheduling stays disabled until gateway, legacy drain and quotas
   # are validated; the first productive pass must stay bounded.
-  # schedule: [{ cron: '12 * * * *' }]
+  # Propuesta diaria DESACTIVADA: 06:07 Tucumán (UTC-3). Ver docs/1.2-daily-sources.md.
+  # schedule: [{ cron: '7 9 * * *' }]
   workflow_dispatch:
     inputs:
       target:

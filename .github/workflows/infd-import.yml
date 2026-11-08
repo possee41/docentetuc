@@ -1,7 +1,8 @@
 name: INFoD external import pilot
 on:
   # Programación propuesta, DESACTIVADA hasta validar gateway, corte legacy y cuotas:
-  # schedule: [{ cron: '47 */6 * * *' }]
+  # Propuesta diaria DESACTIVADA: 07:07 Tucumán (UTC-3). Ver docs/1.2-daily-sources.md.
+  # schedule: [{ cron: '7 10 * * *' }]
   workflow_dispatch:
 permissions:
   contents: read

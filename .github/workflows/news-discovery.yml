@@ -1,7 +1,11 @@
 name: News discovery (disabled)
 on:
   # Disabled by default. Enable only after authorization and a fixed approved SHA.
-  # schedule: [{ cron: '0 */6 * * *' }]
+  # Propuesta diaria DESACTIVADA: 08:47 Tucumán (UTC-3).
+  # BLOQUEADO: adaptar este cliente al contrato articles[] del endpoint; feeds[] ya no sirve.
+  # Mantener recolección y XML en Node, candidatas sin publicación ni avisos.
+  # Ver docs/1.2-daily-sources.md antes de habilitar.
+  # schedule: [{ cron: '47 11 * * *' }]
   workflow_dispatch:
     inputs:
       max_candidates:
