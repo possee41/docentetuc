@@ -16,6 +16,7 @@ export function sourceHealth(row: SyncStatus | undefined, now = new Date()) {
   const timestamp = (value?: string | null) => value ? Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value.replace(" ", "T")}Z`) : NaN;
   const success = timestamp(row.last_successful_sync_at);
   const attempt = timestamp(row.last_attempt_at);
+  if (row.sync_status === "PARTIAL") return "partial" as const;
   if (row.sync_status && row.sync_status !== "OK") return "failed" as const;
   if (Number.isFinite(attempt) && (!Number.isFinite(success) || attempt > success)) return now.getTime() - attempt <= 15 * 60_000 ? "running" as const : "interrupted" as const;
   if (!Number.isFinite(success)) return "unknown" as const;

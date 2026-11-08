@@ -28,7 +28,10 @@ test("una fuente PARTIAL conservada en D1 aislada no verifica oportunidades para
   db.exec("CREATE TABLE sync_state(source TEXT,sync_status TEXT,last_attempt_at TEXT,last_successful_sync_at TEXT)");
   db.prepare("INSERT INTO sync_state VALUES(?,?,?,?)").run("SIME", "PARTIAL", "2026-10-19T11:30:00Z", "2026-10-19T11:00:00Z");
   const health = db.prepare("SELECT * FROM sync_state WHERE source=?").get("SIME") as { source: string; sync_status: string; last_attempt_at: string; last_successful_sync_at: string };
-  assert.equal(sourceHealth(health, now), "failed");
+  assert.equal(sourceHealth(health, now), "partial");
+  const notices = sourceNotices("vacantes", "todas", [health], now);
+  assert.equal(notices[0]?.health, "partial");
+  assert.equal(notices[0]?.lastSuccess, "2026-10-19T11:00:00Z");
   assert.equal(canRecommendCurrentPublication({ lifecycle: "ACTIVE", health, now }), false);
   db.close();
 });

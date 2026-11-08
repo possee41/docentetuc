@@ -144,7 +144,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const [query, setQuery] = useState("");
   const [searchKind, setSearchKind] = useState<PublicationSearchKind>("all");
   const [designationQuery, setDesignationQuery] = useState("");
-  const [filter, setFilter] = useState(() => viewFromSection(initialSection) === "capacitaciones" ? "todas" : "para-mi");
+  const [filter, setFilter] = useState(() => ["capacitaciones", "vacantes"].includes(viewFromSection(initialSection)) ? "todas" : "para-mi");
   const trainingFilterRef = useRef("todas");
   useEffect(() => { if (view === "capacitaciones") trainingFilterRef.current = filter; }, [view, filter]);
   const [juntaFilter, setJuntaFilter] = useState<(typeof OFFICIAL_JUNTAS)[number]["id"] | "todas">("todas");
@@ -194,7 +194,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     if (saved?.section !== section) return;
     setQuery(text(saved.query));
     setDesignationQuery(text(saved.designationQuery));
-    setFilter(text(saved.filter, ["capacitaciones", "informacion", "junta", "padrones", "comunicados", "actos", "llamados"].includes(section) ? "todas" : "para-mi"));
+    setFilter(text(saved.filter, filterForNavigation(section, "todas")));
     setJuntaFilter(text(saved.juntaFilter, "todas") as typeof juntaFilter);
     setDesignationCircuit(text(saved.designationCircuit, "todos"));
     setCharacter(text(saved.character, "todos"));
@@ -575,7 +575,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         <ul className="mt-2 space-y-1">{sourceWarnings.map((item) => {
           const timestamp = item.lastSuccess ? safeDate(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(item.lastSuccess) ? item.lastSuccess : `${item.lastSuccess.replace(" ", "T")}Z`) : null;
           const verified = timestamp ? new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Tucuman", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(timestamp) : "no disponible";
-          const state = item.health === "running" ? "verificación en curso" : item.health === "interrupted" ? "último intento inconcluso" : item.health === "failed" ? "última verificación fallida" : item.health === "stale" ? "información desactualizada" : "sin verificación confirmada";
+          const state = item.health === "partial" ? "actualización parcial; quedan registros pendientes" : item.health === "running" ? "verificación en curso" : item.health === "interrupted" ? "último intento inconcluso" : item.health === "failed" ? "última verificación fallida" : item.health === "stale" ? "información desactualizada" : "sin verificación confirmada";
           return <li key={item.source} className="flex flex-wrap items-center gap-x-2"><span><strong>{item.label}:</strong> {state}. Último éxito: {verified}.</span><a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-bold underline">Fuente oficial <ExternalLink className="size-3" /></a></li>;
         })}</ul>
       </section>}
@@ -1019,7 +1019,7 @@ function Filters({ filter, setFilter: onFilterChange, junta, setJunta, character
   const setSource = (value: string) => { onSourceChange(value); if (kind === "capacitaciones") setFilter("todas"); };
   const activeFilterCount = kind === "capacitaciones" ? Number(source !== "todas") + Number(filter !== "todas") + Number(character !== "todos") + Number(date !== "") + Number(compatibility !== "todas") + Number(circuit !== "todos") : Number(junta !== "todas") + Number(character !== "todos") + Number(kind === "vacantes" && circuit !== "todos") + Number(query.trim() !== "");
   const clearTrainingFilters = () => { setSource("todas"); setCharacter("todos"); setDate(""); setCompatibility("todas"); setCircuit("todos"); setFilter("todas"); };
-  const clearDesignationFilters = () => { setJunta("todas"); setCharacter("todos"); setCircuit("todos"); setQuery(""); setFilter("para-mi"); };
+  const clearDesignationFilters = () => { setJunta("todas"); setCharacter("todos"); setCircuit("todos"); setQuery(""); setFilter("todas"); };
   const tabs = kind === "capacitaciones" ? [["todas", "Todas"], ["para-mi", "⭐ Para mí"], ["proximamente", "Próximas"], ["abiertas", "Abiertas"]] as const : kind === "junta" ? [["para-mi", "Para mí"], ["todas", "Todo"], ["llamados", "Llamados abiertos"], ["padrones", "Padrones"], ["comunicados", "Comunicados"], ["nuevas", "Novedades"]] as const : kind === "vacantes" ? [["para-mi", "⭐ Para mí"], ["todas", "Todas"], ["finalizadas", "Finalizadas"]] as const : [["para-mi", "Para mí"], ["todas", "Todas"]] as const;
   return <section className="mb-6 rounded-2xl border border-[#c8e1f1] bg-white p-3 shadow-sm">
     {kind === "capacitaciones" && <><p className="mb-1 text-xs font-black uppercase tracking-wide text-[#52708c]">Plataformas</p><div className="flex flex-wrap gap-2 pb-1">{[["platform:fdci", "FDCI"], ["platform:infod", "INFoD"], ["platform:cenet", "CeNET"], ["todas", "Ver todas"]].map(([id, label]) => <FilterChip key={id} onClick={() => setSource(id)} selected={source === id} className="min-h-10 px-4 text-sm font-bold">{label}</FilterChip>)}</div>{source !== "todas" && <p className="mt-1 text-xs font-semibold text-[#315d7a]">{source === "platform:fdci" ? "FDCI" : source === "platform:infod" ? "INFoD / AulaS-TIC" : "CeNET / INET"} <button onClick={() => setSource("todas")} className="ml-1 underline">× Quitar filtro</button></p>}</>}

@@ -7,7 +7,8 @@ test("Capacitaciones conserva el filtro elegido sin cambiar otras secciones", ()
   for (const selected of ["todas", "para-mi", "abiertas", "proximamente"]) {
     assert.equal(filterForNavigation("capacitaciones", selected), selected);
   }
-  assert.equal(filterForNavigation("vacantes", "todas"), "para-mi");
+  assert.equal(filterForNavigation("vacantes", "todas"), "todas");
+  assert.equal(filterForNavigation("vacantes", "para-mi"), "todas");
   assert.equal(filterForNavigation("llamados", "para-mi"), "todas");
   const source = readFileSync(new URL("../app/docente-app.tsx", import.meta.url), "utf8");
   assert.match(source, /trainingFilterRef\.current = filter/u);
