@@ -1,0 +1,14 @@
+name: News discovery Canary (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        type: boolean
+        default: true
+permissions:
+  contents: read
+jobs:
+  registration:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Select the authorized release/news-canary revision; no synchronization runs on this branch.'
