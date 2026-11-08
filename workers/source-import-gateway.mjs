@@ -2,12 +2,14 @@
 import fdci, { receiveAuthenticatedFdci } from "./fdci-receiver.mjs";
 import sime from "./sime-receiver.mjs";
 import publicSources from "./public-source-receiver.mjs";
+import newsSource from "./news-source-receiver.mjs";
 import juntasCheckpoint from "./juntas-checkpoint-gateway.mjs";
 import { fdciCheckpoint } from "./fdci-checkpoint.mjs";
 import { automationRequest } from "./fdci-automation.mjs";
 import { fdciDelta } from "./fdci-delta.mjs";
 
 const routes = new Map([
+  ["/api/internal/news-discovery", ["NEWS_IMPORT_SECRET", newsSource]],
   ["/api/internal/fdci-import", ["FDCI_IMPORT_SECRET", fdci]],
   ["/api/internal/fdci-checkpoint", ["FDCI_IMPORT_SECRET", null]],
   ["/api/internal/fdci-delta", ["FDCI_IMPORT_SECRET", null]],
@@ -17,7 +19,7 @@ const routes = new Map([
   ["/api/internal/public-source-import/cenet", ["CENET_IMPORT_SECRET", publicSources]],
   ["/api/internal/public-source-import/infd", ["INFD_IMPORT_SECRET", publicSources]],
 ]);
-const paths = { fdci: "/api/internal/fdci-import", sime: "/api/internal/sime-import",
+const paths = { news: "/api/internal/news-discovery", fdci: "/api/internal/fdci-import", sime: "/api/internal/sime-import",
   juntas: "/api/internal/public-source-import/juntas", cenet: "/api/internal/public-source-import/cenet",
   infd: "/api/internal/public-source-import/infd" };
 const GATE_PATH = "/api/internal/import-gate";

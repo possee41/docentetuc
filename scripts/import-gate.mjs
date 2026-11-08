@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 import { resolveGatewayConfig, verifyGatewayIdentity, runGatewayImport, fdciSafety, safeImportError } from "./import-via-gateway.mjs";
 
-const paths = { fdci: "/api/internal/fdci-import", sime: "/api/internal/sime-import",
+const paths = { news: "/api/internal/news-discovery", fdci: "/api/internal/fdci-import", sime: "/api/internal/sime-import",
   juntas: "/api/internal/public-source-import/juntas", cenet: "/api/internal/public-source-import/cenet",
   infd: "/api/internal/public-source-import/infd" };
 

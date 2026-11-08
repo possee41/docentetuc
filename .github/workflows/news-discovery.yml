@@ -1,10 +1,8 @@
-name: News discovery (disabled)
+name: News discovery Canary (manual)
 on:
-  # schedule: [{ cron: '47 11 * * *' }] # 08:47 Tucumán; disabled pending authorization
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Validate configuration only; no source queries or writes'
         type: boolean
         default: true
 permissions:
@@ -14,31 +12,30 @@ concurrency:
   cancel-in-progress: false
 jobs:
   discover:
-    if: >-
-      github.repository == 'possee41/docentetuc' &&
-      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release/daily-sync-358112c' &&
-      vars.DAILY_CANARY_TEST_ENABLED == 'true' && vars.NEWS_CANARY_TEST_ENABLED == 'true' && github.run_attempt == 1
+    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/release/news-canary' && github.event_name == 'workflow_dispatch' && vars.NEWS_CANARY_TEST_ENABLED == 'true' && github.run_attempt == 1
     runs-on: ubuntu-latest
     environment: canary-news-discovery
     timeout-minutes: 10
     permissions:
-      contents: write # Repository-wide, not branch-scoped. Requires approval before publication.
+      contents: write # Repository-wide; state writes guarded by approved SHA and CAS.
     env:
       GH_TOKEN: ${{ github.token }}
-      DAILY_SOURCES_ENABLED: ${{ vars.DAILY_CANARY_TEST_ENABLED }}
-      DAILY_APPROVED_SHA: ${{ vars.DAILY_APPROVED_SHA }}
-      NEWS_DISCOVERY_ORIGIN: https://canary.docentetuc.com.ar
-      NEWS_DISCOVERY_SECRET: ${{ secrets.NEWS_DISCOVERY_SECRET }}
-      NEWS_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+      DAILY_SOURCES_ENABLED: ${{ vars.NEWS_CANARY_TEST_ENABLED }}
+      DAILY_APPROVED_SHA: ${{ vars.NEWS_CANARY_APPROVED_SHA }}
+      NEWS_DISCOVERY_ORIGIN: https://docentetuc-sources-canary-1-2.possee41.workers.dev
+      NEWS_DISCOVERY_SECRET: ${{ secrets.IMPORT_SECRET }}
+      NEWS_DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+      IMPORT_GATEWAY_TARGET: canary
+      IMPORT_GATEWAY_ORIGIN: https://docentetuc-sources-canary-1-2.possee41.workers.dev
+      IMPORT_GATEWAY_DATABASE_ID: ${{ vars.DAILY_CANARY_DATABASE_ID }}
+      IMPORT_GATEWAY_DATABASE_NAME: docentetuc-sources-canary-1-2
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ vars.DAILY_APPROVED_SHA }}
+          ref: ${{ vars.NEWS_CANARY_APPROVED_SHA }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Verify dependency closure and isolated target
-        run: node --experimental-strip-types scripts/verify-sync-publication.mjs
-      - name: Collect feeds in Node and send articles to candidate-only receiver
+      - name: Collect feeds in Node and persist at most five candidates
         run: node --experimental-strip-types scripts/news-via-receiver.mjs

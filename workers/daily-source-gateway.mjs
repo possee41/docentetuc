@@ -1,8 +1,8 @@
 // Reuse existing authentication, identity, leases and narrow receivers in a separate Worker.
 // The retired FDCI Worker is never changed or reopened by this entry point.
 import gateway from "./source-import-gateway.mjs";
-const sources = new Set(["sime", "infd", "cenet", "juntas"]);
-const routes = new Set(["/api/internal/import-identity", "/api/internal/import-gate", "/api/internal/sime-import",
+const sources = new Set(["sime", "infd", "cenet", "juntas", "news"]);
+const routes = new Set(["/api/internal/news-discovery", "/api/internal/import-identity", "/api/internal/import-gate", "/api/internal/sime-import",
   "/api/internal/juntas-checkpoint", ...["infd", "cenet", "juntas"].map(s => `/api/internal/public-source-import/${s}`)]);
 const dailyGateway = { async fetch(request, env) {
   const url = new URL(request.url);

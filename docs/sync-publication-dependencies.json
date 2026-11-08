@@ -69,7 +69,7 @@
     "workers/juntas-checkpoint-gateway.mjs": "ac38b151324394cab1005fb9404fc2a27415dbc3030d18e5bf5c0d7990b5f32c",
     "workers/public-source-receiver.mjs": "f8ff1ceba7f4ef04602bed6d2f2137388e71dbf3d8dbe2213bfbe2ebc5c8eacb",
     "workers/sime-receiver.mjs": "783569d472bd64290b7760b8182db7e5836194e10975621c3a5e6ed32f5d47e7",
-    "workers/source-import-gateway.mjs": "f46ecc8049637110f2d369b0b3b8b243af5e51cbcc25723248e64a08b4e8e983",
+    "workers/source-import-gateway.mjs": "340c04f7ee543f0978c9ebea44b033b6d2d3ed76dc8ba8fc21b336b13d44ea1c",
     "lib/junta-notices.ts": "5aec9863344100b5d6f098ffc6b66521d7650f1d78540e02e3ebdbcc3951e35a",
     "lib/official-publication.ts": "07f3988b536220534fa224f12083448475bced56cff4cdea5f54226f034b1007",
     "lib/padron-documents.ts": "31b03dab4b1c0c08e868c72fcc0d05b7885eb1651a8f9483b10647481fb2dcea",
@@ -86,5 +86,20 @@
     "package.json": "f67af5e0713705a371fd3f45a93b344856957c61da6fb8ea0bc7b0bfbf3c3177",
     "app/globals.css": "67872f76104e034fcd3fa3fe6985b97bc1d7aa8387e6aefd165fbc4b1f8d05d4"
   },
-  "hashNormalization": "UTF-8, CRLF normalized to LF"
+  "hashNormalization": "UTF-8, CRLF normalized to LF",
+  "newsCanaryAddition": {
+    "files": [
+      "workers/news-source-receiver.mjs",
+      "workers/source-import-gateway.mjs",
+      "workers/daily-source-gateway.mjs",
+      "scripts/import-via-gateway.mjs",
+      "scripts/import-gate.mjs",
+      "scripts/news-via-receiver.mjs",
+      "scripts/news-isolated-canary.test.mjs",
+      "scripts/verify-sync-publication.mjs",
+      ".github/workflows/news-discovery.yml",
+      "wrangler.1.2-daily-sources.jsonc"
+    ],
+    "productionChanged": false
+  }
 }

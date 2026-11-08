@@ -28,7 +28,7 @@ export async function verifySyncPublication(root = ROOT) {
   for (const path of [".github/workflows/daily-public-sources.yml", ".github/workflows/news-discovery.yml"]) {
     const yaml = read(path);
     assert.equal(/^\s*(?:schedule|push|pull_request|workflow_run):/m.test(yaml), false);
-    assert.ok(yaml.includes("refs/heads/release/daily-sync-358112c"));
+    assert.ok(yaml.includes(path.endsWith('news-discovery.yml')?'refs/heads/release/news-canary':"refs/heads/release/daily-sync-358112c"));
     assert.equal(/IMPORT_GATEWAY_TARGET:\s*production|DAILY_PRODUCTION_APPROVED|https:\/\/docentetuc\.com\.ar/.test(yaml), false);
   }
   const manifest = JSON.parse(read("docs/sync-publication-dependencies.json"));

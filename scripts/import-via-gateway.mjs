@@ -10,7 +10,7 @@ import { createJuntasGatewayDb } from "./juntas-gateway-db.mjs";
 import { JUNTA_EXTERNAL_SOURCES } from "../lib/junta-external-sources.ts";
 
 const productionId = "baaf5886-0123-4948-96da-aa7106424549";
-const paths = { fdci: "/api/internal/fdci-import", sime: "/api/internal/sime-import",
+const paths = { news: "/api/internal/news-discovery", fdci: "/api/internal/fdci-import", sime: "/api/internal/sime-import",
   juntas: "/api/internal/public-source-import/juntas", cenet: "/api/internal/public-source-import/cenet", infd: "/api/internal/public-source-import/infd" };
 
 export function resolveGatewayConfig(config, revision = "") {
