@@ -5,7 +5,7 @@ import { isPublicPublication } from "./publication-visibility.ts";
 import { fdciPersonalMetadata } from "./fdci-personal-contract.ts";
 import { isKnownFdciSynthetic } from "./fdci-canary-synthetic.ts";
 export function fdciPilotAllowed(host: string, query: string) {
-  return host === "canary.docentetuc.com.ar" || ["localhost", "127.0.0.1"].includes(host) && new URLSearchParams(query).get("fdciCatalogTest") === "1";
+  return ["canary.docentetuc.com.ar", "docentetuc.com.ar"].includes(host) || ["localhost", "127.0.0.1"].includes(host) && new URLSearchParams(query).get("fdciCatalogTest") === "1";
 }
 
 export function fdciPublicVerification(item: Pick<Publication, "metadata" | "source">) {

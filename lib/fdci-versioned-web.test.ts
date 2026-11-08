@@ -112,10 +112,11 @@ test("reference bypasses cache, immutable file uses cache, both omit credentials
   assert.equal(h.requests[0].options?.cache, "no-store"); assert.equal(h.requests[1].options?.cache, "force-cache");
   for (const { options } of h.requests) { assert.equal(options?.credentials, "omit"); assert.equal(options?.redirect, "error"); assert.equal(options?.mode, "cors"); }
 });
-test("Canary reads the official catalog without a URL opt-in; production stays disabled", () => {
+test("authorized public hosts read the official catalog without allowing other origins", () => {
   assert(fdciPilotAllowed("canary.docentetuc.com.ar", "?fdciCatalogTest=1"));
-  assert(fdciPilotAllowed("canary.docentetuc.com.ar", "")); assert(!fdciPilotAllowed("docentetuc.com.ar", "?fdciCatalogTest=1"));
-  assert(!fdciPilotAllowed("docentetuc.com.ar", ""));
+  assert(fdciPilotAllowed("canary.docentetuc.com.ar", "")); assert(fdciPilotAllowed("docentetuc.com.ar", "?fdciCatalogTest=1"));
+  assert(fdciPilotAllowed("docentetuc.com.ar", ""));
+  assert(!fdciPilotAllowed("docentetuc.com.ar.evil.example", "?fdciCatalogTest=1"));
   const route = readFileSync(new URL("../app/api/app/route.ts", import.meta.url), "utf8");
   assert(!route.includes("catalog.json")); assert(!route.includes("fetchFdciCatalog"));
   assert.match(route, /prepareFdciPersonalAction/);
