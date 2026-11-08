@@ -1,0 +1,21 @@
+# Future default-branch REGISTRATION ONLY, after separate authorization.
+# Path must be .github/workflows/daily-public-sources.yml, matching the release workflow.
+# This file does not collect, deploy, use secrets or write data.
+name: Daily source manual registration
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        type: choice
+        options: [sime, infd, cenet, juntas]
+        required: true
+      validation_only:
+        type: boolean
+        default: true
+permissions:
+  contents: read
+jobs:
+  instructions:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Select release/daily-sync-358112c with validation_only=true. This default-branch registration never synchronizes data.'
