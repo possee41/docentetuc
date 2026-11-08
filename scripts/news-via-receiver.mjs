@@ -1,16 +1,14 @@
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { NEWS_FEEDS, fetchNewsFeed } from "../lib/news-discovery.ts";
 import { createDailyGitStore, runDailyBatch, validateDailyState, sealDailyState } from "./daily-sync-state.mjs";
 import { resolveGatewayConfig, verifyGatewayIdentity } from './import-via-gateway.mjs';
 import { callGate } from './import-gate.mjs';
 
 export function newsTarget(config) {
   const url = new URL(config.NEWS_DISCOVERY_ORIGIN);
-  const isolated=url.origin==='https://docentetuc-sources-canary-1-2.possee41.workers.dev';
-  if(isolated&&(config.IMPORT_GATEWAY_TARGET!=='canary'||config.IMPORT_GATEWAY_DATABASE_NAME!=='docentetuc-sources-canary-1-2'||
-    !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(config.IMPORT_GATEWAY_DATABASE_ID||'')||
+  const isolated=url.origin==='https://docentetuc-news-canary-1-2.possee41.workers.dev';
+  if(isolated&&(config.IMPORT_GATEWAY_TARGET!=='canary'||config.IMPORT_GATEWAY_DATABASE_NAME!=='docentetuc-web-canary-1-2'||
+    config.IMPORT_GATEWAY_DATABASE_ID!=='853e2f5d-89b1-46a3-9c1c-5cbd46784756'||
     ['baaf5886-0123-4948-96da-aa7106424549','00000000-0000-4000-8000-000000000012'].includes(config.IMPORT_GATEWAY_DATABASE_ID)))throw Error('NEWS_TARGET_NOT_APPROVED');
   if (!isolated && !["https://canary.docentetuc.com.ar"].includes(url.origin) ||
       url.pathname !== "/" || url.search || url.hash || url.username || url.password ||
@@ -22,18 +20,15 @@ export async function runDailyNews(config, codeSha, { store, sourceFetch = fetch
   const target = newsTarget(config);
   if (config.NEWS_DRY_RUN === "true") return { source: "news", dryRun: true, sourceRequests: 0, writes: 0 };
   // All registry feeds, parsed in Node. No remote HTML/XML processing in the Worker.
+  let snapshot;
   const collect = async () => {
-    const items = [];
-    for (const feed of NEWS_FEEDS) for (const article of await fetchNewsFeed(feed, sourceFetch, now)) {
-      items.push({ id: createHash("sha256").update(article.url).digest("hex"), contentHash: article.fingerprint,
-        article: { feedKey: feed.key, title: article.title, url: article.url, publishedAt: article.publishedAt,
-          updatedAt: article.updatedAt, fingerprint: article.fingerprint } });
-    }
-    return { complete: true, items };
+    snapshot = await collectNewsFeeds(sourceFetch, now);
+    if (!snapshot.usable) throw Error('NEWS_ALL_FEEDS_FAILED');
+    return { complete: true, items: snapshot.items };
   };
-  const isolated=target.endpoint.startsWith('https://docentetuc-sources-canary-1-2.possee41.workers.dev/');
+  const isolated=target.endpoint.startsWith('https://docentetuc-news-canary-1-2.possee41.workers.dev/');
   const owner=`${config.GITHUB_RUN_ID}-${config.GITHUB_RUN_ATTEMPT}`;
-  const operation=()=>runDailyBatch({ source: "news", codeSha, store, now, limit: 5,
+  const operation=async()=>newsCollectionResult(await runDailyBatch({ source: "news", codeSha, store: newsFeedStateStore(store,()=>snapshot), now, limit: 5,
     owner: `${config.GITHUB_RUN_ID}-${config.GITHUB_RUN_ATTEMPT}`, collect,
     send: async payload => {
       if (payload.mode !== "batch") return { ok: true }; // News health persists in the Git ledger.
@@ -45,7 +40,7 @@ export async function runDailyNews(config, codeSha, { store, sourceFetch = fetch
       if (ack.status !== "OK" || ack.autoPublish !== false || ack.notifications !== false || ack.totalReceived !== 1 ||
           !result || result.skipped !== 0) throw Error("NEWS_RECEIVER_ACK_INVALID");
       return { ok: true, received: 1, created: result.created, updated: result.updated, unchanged: result.unchanged };
-    } });
+    } }), snapshot);
   if(!isolated)return operation();
   const previous=await store.load();validateDailyState(previous.state,'news',codeSha);
   if(previous.state.data.halted||previous.state.data.inFlight)throw Error('DAILY_HALTED_REVIEW_REQUIRED');
@@ -57,7 +52,7 @@ export async function runDailyNews(config, codeSha, { store, sourceFetch = fetch
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const c = process.env, sha = c.DAILY_APPROVED_SHA;
-    const isolated=c.NEWS_DISCOVERY_ORIGIN==='https://docentetuc-sources-canary-1-2.possee41.workers.dev';
+    const isolated=c.NEWS_DISCOVERY_ORIGIN==='https://docentetuc-news-canary-1-2.possee41.workers.dev';
     if (!isolated && c.NEWS_DISCOVERY_ORIGIN !== "https://canary.docentetuc.com.ar") throw Error("NEWS_PRODUCTION_DISABLED_IN_TEST");
     if (c.GITHUB_REPOSITORY !== "possee41/docentetuc" || c.GITHUB_RUN_ATTEMPT !== "1" ||
         c.GITHUB_REF !== (isolated?'refs/heads/release/news-canary':'refs/heads/release/daily-sync-358112c') || c.GITHUB_SHA !== sha || !/^\d+$/.test(c.GITHUB_RUN_ID ?? "") ||

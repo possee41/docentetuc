@@ -5,7 +5,7 @@ import { isPrivateOrLoopbackHost, normalizeNewsSourceUrl } from "./news-editoria
 export const NEWS_FEEDS = [
   { key: "ministry", name: "Ministerio de Educación de Tucumán", type: "official", topic: "Educación", url: "https://www.educaciontuc.gov.ar/feed/", host: "www.educaciontuc.gov.ar", format: "rss" },
   { key: "atep", name: "ATEP Tucumán", type: "union", topic: "Actualidad gremial", url: "https://atep-delosdocentestucumanos.blogspot.com/feeds/posts/default?alt=atom&max-results=10", host: "atep-delosdocentestucumanos.blogspot.com", format: "atom" },
-  { key: "infod", name: "INFoD / AulaS-TIC", type: "official", topic: "Formación docente", url: "https://red.infd.edu.ar/feed/", host: "red.infd.edu.ar", format: "rss" },
+  { key: "infod", name: "INFoD / AulaS-TIC", type: "public", topic: "Formación docente", url: "https://red.infd.edu.ar/feed/", host: "red.infd.edu.ar", format: "rss" },
 ] as const;
 
 export type Feed = typeof NEWS_FEEDS[number];
@@ -131,15 +131,21 @@ export async function importNewsCandidates(database: CommunityDatabase, articles
       statements.push(database.prepare(`INSERT OR IGNORE INTO news_items(id,status,editorial_title,editorial_summary,topic,relevance,created_at,updated_at)
         VALUES(?,'candidate',?,'',?,'informativa',?,?)`).bind(itemId, article.title, article.feed.topic, stamp, stamp));
     }
-    const source = await database.prepare("SELECT source_title,source_published_at FROM news_sources WHERE id=?")
-      .bind(sourceId).first<{ source_title: string; source_published_at: string | null }>();
-    const changed = !source || source.source_title !== article.title || source.source_published_at !== article.publishedAt;
+    const source = await database.prepare("SELECT source_title,source_published_at,source_type,source_name FROM news_sources WHERE id=?")
+      .bind(sourceId).first<{ source_title: string; source_published_at: string | null; source_type: string; source_name: string }>();
+    const previous = await database.prepare("SELECT details FROM news_events WHERE news_item_id=? AND actor_kind='system' ORDER BY rowid DESC LIMIT 1")
+      .bind(itemId).first<{ details: string }>();
+    const previousEvidence = previous ? JSON.parse(previous.details) as { digest?: string; feed?: string } : null;
+    const repairCategory = Boolean(source && item?.status === "candidate" && source.source_type !== article.feed.type &&
+      source.source_name === article.feed.name && previousEvidence?.feed === article.feed.url &&
+      !await database.prepare("SELECT 1 AS present FROM news_events WHERE news_item_id=? AND actor_kind<>'system' LIMIT 1").bind(itemId).first());
+    const changed = !source || source.source_title !== article.title || source.source_published_at !== article.publishedAt || repairCategory;
     if (!source) {
       statements.push(database.prepare(`INSERT OR IGNORE INTO news_sources(id,news_item_id,source_name,source_title,url,normalized_url,source_type,is_primary,source_published_at)
         VALUES(?,?,?,?,?,?,?,1,?)`).bind(sourceId, itemId, article.feed.name, article.title, url, url, article.feed.type, article.publishedAt));
     } else if (changed) {
-      statements.push(database.prepare("UPDATE news_sources SET source_title=?,source_published_at=? WHERE id=?")
-        .bind(article.title, article.publishedAt, sourceId));
+      statements.push(database.prepare("UPDATE news_sources SET source_title=?,source_published_at=?,source_type=? WHERE id=?")
+        .bind(article.title, article.publishedAt, repairCategory ? article.feed.type : source.source_type, sourceId));
       if (item?.status === "candidate" && item.editorial_title === source.source_title) {
         statements.push(database.prepare("UPDATE news_items SET editorial_title=?,updated_at=? WHERE id=? AND status='candidate' AND editorial_title=?")
           .bind(article.title, stamp, itemId, source.source_title));
@@ -147,14 +153,12 @@ export async function importNewsCandidates(database: CommunityDatabase, articles
     }
     const evidence = { feed: article.feed.url, url, publishedAt: article.publishedAt, updatedAt: article.updatedAt,
       title: article.title, digest: article.fingerprint };
-    const previous = await database.prepare("SELECT details FROM news_events WHERE news_item_id=? AND actor_kind='system' ORDER BY rowid DESC LIMIT 1")
-      .bind(itemId).first<{ details: string }>();
-    const previousDigest = previous ? (JSON.parse(previous.details) as { digest?: string }).digest : null;
-    if (previousDigest !== evidence.digest) {
-      const eventId = uuid(previous ? `event:update:${itemId}:${evidence.digest}` : `event:create:${itemId}`);
+    const previousDigest = previousEvidence?.digest ?? null;
+    if (previousDigest !== evidence.digest || repairCategory) {
+      const eventId = uuid(previous ? `event:update:${itemId}:${evidence.digest}${repairCategory ? ':category:'+article.feed.type : ''}` : `event:create:${itemId}`);
       statements.push(database.prepare(`INSERT OR IGNORE INTO news_events(id,news_item_id,actor_kind,action,previous_status,next_status,details,created_at)
         VALUES(?,?,'system',?,?,?,?,?)`).bind(eventId, itemId, previous ? "edit" : "create_candidate", previous ? item?.status ?? "candidate" : null, item?.status ?? "candidate",
-          JSON.stringify(evidence), stamp));
+          JSON.stringify({ ...evidence, ...(repairCategory ? { categoryCorrection: { from: source!.source_type, to: article.feed.type } } : {}) }), stamp));
     }
     if (!item) created++; else if (changed || previousDigest !== evidence.digest) updated++; else unchanged++;
   }
