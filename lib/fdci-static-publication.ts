@@ -38,6 +38,15 @@ async function readPublicJson(url: string, fetcher: typeof fetch, limit: number,
   }
   return JSON.parse(text + decoder.decode());
 }
+// Daily 06:37 Tucuman check, with a one-hour scheduler grace period.
+// A missing check is uncertainty, never evidence of an empty current source.
+export function fdciDailyCheckOverdue(checkedAt: string, now: number) {
+  const local = new Date(now - 3 * 3_600_000);
+  const day = local.toISOString().slice(0, 10);
+  const deadline = Date.parse(`${day}T07:37:00-03:00`);
+  const checkedDay = new Date(Date.parse(checkedAt) - 3 * 3_600_000).toISOString().slice(0, 10);
+  return now >= deadline && checkedDay < day;
+}
 export function createFdciVersionedReader(url: string, fetcher: typeof fetch = fetch, now = () => Date.now(), maxBytes = CATALOG_MAX_BYTES) {
   if (![FDCI_RAW_ACTIVE_URL, "https://possee41.github.io/docentetuc-fdci-catalog-pilot/fdci-catalog/active.json"].includes(url)) throw Error("FDCI_PUBLICATION_ORIGIN_FORBIDDEN");
   const raw = url === FDCI_RAW_ACTIVE_URL;
@@ -56,7 +65,7 @@ export function createFdciVersionedReader(url: string, fetcher: typeof fetch = f
       last = { pointer, catalog };
     } catch { error = "FDCI_PUBLICATION_UNAVAILABLE"; }
     const ageMs = last ? Math.max(0, now() - Date.parse(last.catalog.updatedAt)) : null;
-    return { status: !last ? "unavailable" : error || last.pointer.lastAttempt.status !== "complete" || ageMs! > 86_400_000 ? "stale" : "ready",
+    return { status: !last ? "unavailable" : error || last.pointer.lastAttempt.status !== "complete" || ageMs! > 86_400_000 || fdciDailyCheckOverdue(last.catalog.updatedAt, now()) ? "stale" : "ready",
       catalog: last ? structuredClone(last.catalog) : null, items: structuredClone(last?.catalog.items ?? []),
       updatedAt: last?.catalog.updatedAt ?? null, ageMs, generation: last?.pointer.generation ?? null,
       catalogSha256: last?.catalog.sha256 ?? null, lastAttempt: last ? { ...last.pointer.lastAttempt } : null, error };

@@ -134,8 +134,8 @@ export function trainingStatus(commission: OfficialCommission | undefined, now =
   const finishes = localDateTime(commission.fecha_fin, true);
   const closed = Boolean(Number(commission.comision_cerrada));
   if (closed) return "inscripción cerrada";
-  if (opens && commission.isActivePre != null && !Boolean(Number(commission.isActivePre))) return "inscripción cerrada";
   if (opens && time < new Date(opens).getTime()) return "próximamente";
+  if (opens && commission.isActivePre != null && !Boolean(Number(commission.isActivePre))) return "inscripción cerrada";
   if (closes && time > new Date(closes).getTime()) return "inscripción cerrada";
   if (opens && (closes || Boolean(Number(commission.isActivePre)))) return "inscripción abierta";
   if (starts && time < new Date(starts).getTime()) return "consultar";
