@@ -1067,7 +1067,26 @@ function PublicationList({ items, sync, loading, savedMap, reminderMap, matchRes
       : lifecycle === "ACTIVE" ? "success" : lifecycle === "UPCOMING" ? "info" : "warning";
     return <Card as="article" key={item.id} className={`dt-publication-card flex flex-col rounded-3xl p-4 shadow-[0_8px_30px_rgba(20,64,52,.04)] ${item.kind === "vacante" ? "min-h-[190px]" : "min-h-[230px]"}`}>
       <div className="mb-3 flex items-start justify-between gap-3"><div className="flex flex-wrap gap-2"><StatusBadge>{publicationLabel(item)}</StatusBadge>{training && <StatusBadge tone="info">{item.source}</StatusBadge>}<StatusBadge tone={statusTone}>{!unverified && trainingState === "ABIERTA" ? "🟢 " : ""}{statusText}</StatusBadge><MatchBadge result={compatibility} /></div>{!training && <button onClick={() => onSave(item, !saved)} aria-label={saved ? "Quitar de guardados" : "Guardar publicación"} className={`grid size-10 shrink-0 place-items-center rounded-xl ${saved ? "bg-[#fff3dd] text-[#a46c20]" : "bg-[#f1f5f2] text-[#6d837a]"}`}><Star className={`size-5 ${saved ? "fill-current" : ""}`} /></button>}</div>
-      {metadata?.registrationOpensAt && (trainingState === "PROXIMAMENTE" || trainingState === "ABRE_HOY") && <div className="mb-4 rounded-2xl bg-[#fff4d6] p-4 text-[#6f4c00]"><strong className="block text-lg">{unverified || metadata.dateStatus === "tentative" ? "Fecha prevista · confirmar en fuente" : openingCountdown(metadata.registrationOpensAt, new Date(), metadata.registrationHasTime)}</strong><span className="text-sm">Abre: {dateLabel(metadata.registrationOpensAt, Boolean(metadata.registrationHasTime))}{metadata.registrationHasTime ? " hs" : ""}</span></div>}
+      {metadata?.registrationOpensAt && (trainingState === "PROXIMAMENTE" || trainingState === "ABRE_HOY" || (trainingState === "ABIERTA" && opensToday(item) && metadata.dateStatus === "confirmed")) && (trainingState === "ABRE_HOY" ? (
+        <div className="mb-4 flex items-start gap-3 rounded-2xl border-l-4 border-[#dc2626] bg-[#fef2f2] p-4 text-[#991b1b] dark:border-[#ef4444] dark:bg-[#450a0a] dark:text-[#fca5a5]">
+          <span className="text-2xl leading-none" role="img" aria-label="urgente">🔥</span>
+          <div className="min-w-0 flex-1">
+            <strong className="mb-1 block text-xs font-black uppercase tracking-wider">Inscripción hoy</strong>
+            <strong className="block text-xl font-black">{unverified || metadata.dateStatus === "tentative" ? "Fecha prevista · confirmar en fuente" : openingCountdown(metadata.registrationOpensAt, new Date(), metadata.registrationHasTime)}</strong>
+            <span className="text-sm">Abre: {dateLabel(metadata.registrationOpensAt, Boolean(metadata.registrationHasTime))}{metadata.registrationHasTime ? " hs" : ""}</span>
+          </div>
+        </div>
+      ) : trainingState === "ABIERTA" && opensToday(item) && metadata?.dateStatus === "confirmed" ? (
+        <div className="mb-4 flex items-start gap-3 rounded-2xl border-l-4 border-[#dc2626] bg-[#fef2f2] p-4 text-[#991b1b] dark:border-[#ef4444] dark:bg-[#450a0a] dark:text-[#fca5a5]">
+          <span className="text-2xl leading-none" role="img" aria-label="urgente">🔥</span>
+          <div className="min-w-0 flex-1">
+            <strong className="mb-1 block text-xs font-black uppercase tracking-wider">Inscripción abierta hoy</strong>
+            {metadata.registrationClosesAt && <span className="text-sm">Cierra: {dateLabel(metadata.registrationClosesAt, true)}{metadata.registrationHasTime ? "" : ""}</span>}
+          </div>
+        </div>
+      ) : (
+        <div className="mb-4 rounded-2xl bg-[#fff4d6] p-4 text-[#6f4c00]"><strong className="block text-lg">{unverified || metadata.dateStatus === "tentative" ? "Fecha prevista · confirmar en fuente" : openingCountdown(metadata.registrationOpensAt, new Date(), metadata.registrationHasTime)}</strong><span className="text-sm">Abre: {dateLabel(metadata.registrationOpensAt, Boolean(metadata.registrationHasTime))}{metadata.registrationHasTime ? " hs" : ""}</span></div>
+      ))}
       <button onClick={() => onOpen(item)} className="text-left"><h2 className="line-clamp-2 text-lg font-bold leading-snug hover:underline">{item.title}</h2><p className="mt-2 line-clamp-2 text-sm leading-relaxed text-[#657b73]">{summaryText(item.summary) || `Información publicada por ${item.source}.`}</p></button>
       {simeCode && <p className="mt-2 text-xs font-bold text-[#315d7a]">ID de trámite: {simeCode}</p>}
       <OfficialPublicationSummary item={item} />
