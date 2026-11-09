@@ -65,6 +65,12 @@ export async function integrateFdciCatalog(current: Publication[], input: FdciCa
       }
       continue; // D1 (including moderation/admin edits) wins; never overwrite.
     }
+    // V2 carries verified public commission dates, not personal/reminder evidence.
+    // Accept an explicit timed window only after catalog validation, while fresh.
+    const timed = (value: string | null) => typeof value === "string" && /T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value));
+    const publicDates = catalog.schemaVersion === 2 && !stale && timed(item.registrationOpenAt) && timed(item.registrationCloseAt) &&
+      Date.parse(item.registrationOpenAt!) < Date.parse(item.registrationCloseAt!)
+      ? { dateStatus: "confirmed", registrationHasTime: true } : {};
     publications.push({ id, source: "Capacitación Docente", external_id: item.externalId!, kind: "capacitacion", category: item.category!,
       title: item.title!, summary: item.summary!, level: item.level!, area: item.area!, location: item.location!, character: item.character!,
       junta: "", shift: "", starts_at: item.startsAt, ends_at: item.endsAt, status: item.status!, official_url: item.officialUrl!,
@@ -74,7 +80,7 @@ export async function integrateFdciCatalog(current: Publication[], input: FdciCa
       first_seen_at: "", updated_at: item.sourceUpdatedAt ?? "", removed_at: null,
       metadata: JSON.stringify({ ...fdciPersonalMetadata(catalog, item, generation ?? 0), source: "FDCI Tucumán", sourceUrl: item.officialUrl, entity: "commission",
         commissionId: item.externalId, registrationOpensAt: item.registrationOpenAt, registrationClosesAt: item.registrationCloseAt,
-        dateStatus: catalog.reminderEvidence?.[item.id!]?.dateStatus ?? "unknown", catalogCheckedAt: observed?.checkedAt ?? null, catalogCompletedAt: catalog.updatedAt,
+        dateStatus: catalog.reminderEvidence?.[item.id!]?.dateStatus ?? "unknown", ...publicDates, catalogCheckedAt: observed?.checkedAt ?? null, catalogCompletedAt: catalog.updatedAt,
         catalogOnly: true, catalogStale: stale, catalogGeneration: generation, catalogSha256: catalog.sha256 }),
     });
   }
