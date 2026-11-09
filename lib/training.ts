@@ -1,8 +1,8 @@
 import { calendarDayDistance } from "./home-dashboard.ts";
 import { htmlToText } from "./public-documents.ts";
 
-export type TrainingStatus = "inscripción abierta" | "próximamente" | "inscripción cerrada" | "en curso" | "finalizada" | "consultar";
-export type EnrollmentState = "PROXIMAMENTE" | "ABRE_HOY" | "ABIERTA" | "SIN_CUPO" | "CERRADA" | "SIN_FECHA_CONFIRMADA";
+export type TrainingStatus = "inscripción abierta" | "próximamente" | "inscripción cerrada" | "en curso" | "finalizada" | "consultar" | "oferta no disponible";
+export type EnrollmentState = "PROXIMAMENTE" | "ABRE_HOY" | "ABIERTA" | "SIN_CUPO" | "CERRADA" | "SIN_FECHA_CONFIRMADA" | "NO_DISPONIBLE";
 
 export type TrainingMetadata = {
   entity: "course" | "commission";
@@ -21,6 +21,7 @@ export type TrainingMetadata = {
   duration?: string;
   certifiedHours?: string;
   registrationUrl?: string;
+  registrationVerification?: { status: "OPEN" | "CLOSED" | "UNAVAILABLE" | "UNVERIFIED"; url: string; checkedAt: string | null; reason: string };
   dateStatus?: "confirmed" | "tentative" | "course_confirmed" | "general_window" | "unknown";
   generalWindowOpensAt?: string;
   generalWindowClosesAt?: string;
@@ -76,9 +77,25 @@ export const summaryText = (value: unknown) => {
   return htmlToText(htmlToText(cleaned)).replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 };
 
+export const isInfdRegistration = (metadata: TrainingMetadata | null) => Boolean(typeof metadata?.trainingId === 'string' && metadata.trainingId.startsWith('infd:') && /^https:\/\/aulastic\.infd\.edu\.ar\/catalogo\.cgi\?/i.test(metadata.registrationUrl || ''));
+
 export function enrollmentState(metadata: TrainingMetadata | null, sourceStatus = "", normalizedStatus = "", now = new Date()): EnrollmentState {
+  const verification = metadata?.registrationVerification;
+  const infd = isInfdRegistration(metadata);
+  if (infd && metadata && verification && verification.url === metadata.registrationUrl) {
+    if (verification.status === 'UNAVAILABLE') return 'NO_DISPONIBLE';
+    if (verification.status === 'CLOSED') return 'CERRADA';
+  }
   if (["CLOSED", "EXPIRED", "REMOVED_FROM_SOURCE"].includes(normalizedStatus)) return "CERRADA";
   if (/cerrad|finaliz|vencid|desaparecid/i.test(sourceStatus)) return "CERRADA";
+  if (infd && metadata?.registrationUrl) {
+    // An informational page/calendar does not prove that its enrollment destination works.
+    const checked = typeof verification?.checkedAt === 'string' ? Date.parse(verification.checkedAt) : Number.NaN, age = now.getTime() - checked;
+    if (verification?.url !== metadata.registrationUrl || verification.status !== 'OPEN' || !Number.isFinite(age) || age < 0 || age > 24 * 3600_000) return 'SIN_FECHA_CONFIRMADA';
+    if (metadata.registrationClosesAt && now.getTime() > Date.parse(metadata.registrationClosesAt)) return 'CERRADA';
+    if (metadata.registrationOpensAt && now.getTime() < Date.parse(metadata.registrationOpensAt)) return 'PROXIMAMENTE';
+    return 'ABIERTA';
+  }
   if (!metadata || ["general_window", "unknown"].includes(metadata.dateStatus || "unknown")) return "SIN_FECHA_CONFIRMADA";
   const opens = metadata.registrationOpensAt ? Date.parse(metadata.registrationOpensAt) : Number.NaN;
   const closes = metadata.registrationClosesAt ? Date.parse(metadata.registrationClosesAt) : Number.NaN;

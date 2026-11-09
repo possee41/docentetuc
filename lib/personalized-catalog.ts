@@ -37,7 +37,7 @@ export function publicationLifecycleForDisplay(item: Publication, now = new Date
   if (item.kind === "capacitacion") {
     if (item.normalized_status === "REMOVED_FROM_SOURCE" || item.source_status === "REMOVED_FROM_SOURCE") return "REMOVED_FROM_SOURCE";
     const state = enrollmentForDisplay(item, now);
-    return state === "ABIERTA" ? "ACTIVE" : state === "PROXIMAMENTE" || state === "ABRE_HOY" ? "UPCOMING" : state === "CERRADA" ? "CLOSED" : "UNKNOWN";
+    return state === "ABIERTA" ? "ACTIVE" : state === "PROXIMAMENTE" || state === "ABRE_HOY" ? "UPCOMING" : state === "CERRADA" || state === "NO_DISPONIBLE" ? "CLOSED" : "UNKNOWN";
   }
   const official = officialLifecycle(item, now);
   if (official) return official;

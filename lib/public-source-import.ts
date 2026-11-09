@@ -32,6 +32,6 @@ export async function prepareTrainingImport(item: PublicTraining, source: "CeNET
     shift: "", character: item.modality, startsAt: item.startsAt, endsAt: item.endsAt, status: item.status,
     officialUrl: item.officialUrl, metadata: JSON.stringify(m), contentHash, sourceUpdatedAt: null,
     sourcePublishedAt: null, registrationOpenAt, registrationCloseAt, expiresAt: registrationCloseAt,
-    normalizedStatus: publicationLifecycle({ sourceStatus: item.status, sourceStatusIsExplicit: true,
+    normalizedStatus: source === 'INFoD / AulaS-TIC' && item.status === 'oferta no disponible' ? 'CLOSED' : publicationLifecycle({ sourceStatus: item.status, sourceStatusIsExplicit: true,
       registrationOpenAt, registrationCloseAt, dateStatus: m.dateStatus, now }) };
 }

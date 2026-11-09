@@ -289,3 +289,29 @@ test("INFoD: cursos importados, página fallida deja éxito anterior y cursos in
   assert.equal(h.sqlite.prepare("SELECT last_successful_sync_at FROM sync_state WHERE source='INFoD / AulaS-TIC'").get()?.last_successful_sync_at, success);
   assert.equal(h.sqlite.prepare("SELECT count(*) AS n FROM publications WHERE id=?").get(row.id)?.n, 1);
 });
+
+test("INFoD: aviso HTTP 200 afecta solo a su oferta, conserva históricos y no toma tarjetas recomendadas", async () => {
+  const courseUrl='https://red.infd.edu.ar/programa-nacional-de-fortalecimiento-de-matematica-2026/';
+  const unavailable=readFileSync(new URL('./fixtures/infd-offer-unavailable.html',import.meta.url),'utf8');
+  const course=(title:string,id:string)=>`<p style="font-size:30px"><strong>${title}</strong></p><p>Comienza el curso: 20/12/2026</p><a href="https://aulastic.infd.edu.ar/catalogo.cgi?wAccion=oferta_view&amp;oferta_id=${id}">INSCRIPCIÓN</a>`;
+  let registrationRequests=0;
+  const sourceFetch=(async(input:RequestInfo|URL)=>{
+    const url=String(input);
+    if(url.endsWith('/cursos-nacionales-2/'))return new Response(`<a href="${courseUrl}">Curso</a>`);
+    if(url===courseUrl)return new Response('<h1>Programa Nacional de Matemática 2026</h1>'+course('Oferta retirada','736')+course('Otra capacitación','737'));
+    registrationRequests++;
+    return url.includes('oferta_id=736')?new Response(Buffer.from(unavailable,'latin1'),{headers:{'Content-Type':'text/html; charset=iso-8859-1'}}):new Response('',{status:503});
+  })as typeof fetch;
+  const h=harness(sourceFetch);
+  try{
+    const result=await h.run('infd');assert.equal(result.created,2);assert.equal(registrationRequests,2);
+    const rows=h.sqlite.prepare('SELECT id,title,status,metadata,normalized_status,removed_at FROM publications ORDER BY title').all()as {id:string;title:string;status:string;metadata:string;normalized_status:string;removed_at:null}[];
+    const unavailableRow=rows.find(row=>row.title==='Oferta retirada')!,other=rows.find(row=>row.title==='Otra capacitación')!;
+    assert.equal(unavailableRow.status,'oferta no disponible');assert.equal(unavailableRow.normalized_status,'CLOSED');assert.equal(JSON.parse(unavailableRow.metadata).registrationVerification.status,'UNAVAILABLE');
+    assert.equal(other.status,'consultar');assert.equal(other.normalized_status,'UNKNOWN');assert.equal(JSON.parse(other.metadata).registrationVerification.status,'UNVERIFIED');
+    assert(rows.every(row=>row.removed_at===null));
+    const repeat=await h.run('infd');assert.equal(repeat.created,0);assert.equal(repeat.unchanged,2);assert.equal(repeat.rowsWritten,0);
+    assert.equal(h.sqlite.prepare('SELECT COUNT(*) n FROM publications').get()?.n,2);
+    assert(!rows.some(row=>row.id.includes('756')));
+  }finally{h.sqlite.close();}
+});

@@ -4,6 +4,7 @@ import { JUNTA_EXTERNAL_SOURCES } from "../lib/junta-external-sources.ts";
 import { isCenetMarkupRecognized, parseCenetTrainings, parseInfdCatalog, parseInfdTrainings, parseInfdWebinars } from "../lib/external-trainings.ts";
 import { prepareJuntaImport, prepareTrainingImport } from "../lib/public-source-import.ts";
 import { sourceErrorCode } from "../lib/publication-lifecycle.ts";
+import { createInfdRegistrationVerifier } from './infd-registration.mjs';
 
 const urls = { cenet: "https://cenet.inet.edu.ar/mod/page/view.php?id=30493", infd: "https://red.infd.edu.ar/cursos-nacionales-2/" };
 async function getText(url, fetcher) {
@@ -32,10 +33,11 @@ export async function runPublicSourceImport({ source, endpoint, token, driveKey,
   const result = { discovered: 0, created: 0, updated: 0, unchanged: 0, queries: 0, rowsRead: 0, rowsWritten: 0 };
   const counts = Object.fromEntries(health.map((name) => [name, 0]));
   const rejected = [];
+  const verifyRegistration = source === 'infd' ? createInfdRegistrationVerifier(sourceFetch, now) : null;
   const apply = async (items, sourceCategory) => {
     for (const item of items) {
       const row = source === "juntas" ? await prepareJuntaImport(item, now) :
-        await prepareTrainingImport(item, source === "cenet" ? "CeNET / INET" : "INFoD / AulaS-TIC", now);
+        await prepareTrainingImport(verifyRegistration ? await verifyRegistration(item) : item, source === "cenet" ? "CeNET / INET" : "INFoD / AulaS-TIC", now);
       const payload = { mode: "batch", items: [row] };
       const bytes = source === "juntas" ? Buffer.byteLength(JSON.stringify(payload), "utf8") : 0;
       const sizes = { bodyBytes: bytes, summaryBytes: Buffer.byteLength(row.summary, "utf8"),

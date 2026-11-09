@@ -25,7 +25,7 @@ import { designationRoleFromTitle, isEligibleForPersonalizedHome, isEligibleMatc
 import { isGeneralNotice } from "@/lib/notice-classification";
 import type { MatchResult } from "@/lib/matching";
 import { safeDate } from "@/lib/safe-date";
-import { canScheduleTrainingReminder, openingCountdown, parseTrainingMetadata, summaryText, trainingReminderKey } from "@/lib/training";
+import { canScheduleTrainingReminder, isInfdRegistration, openingCountdown, parseTrainingMetadata, summaryText, trainingReminderKey } from "@/lib/training";
 import { calendarDayDistance, compareHomePriority, homePriority, homeTrainingEnrollmentRank, registrationState } from "@/lib/home-dashboard";
 import { DESIGNATION_STATUSES, designationFacts } from "@/lib/designations";
 import { TUCUMAN_CIRCUITS } from "@/lib/circuits";
@@ -114,6 +114,8 @@ const enrollmentLabel = (item: Publication, now = new Date()) => {
   if (verification?.status === "historical") return "Referencia histórica — sin inscripción activa verificada";
   if (verification?.status === "unverified") return "Inscripción sin verificación actual";
   const state = enrollmentForUI(item, now), tentative = parseTrainingMetadata(item.metadata)?.dateStatus === "tentative";
+  if (state === 'NO_DISPONIBLE') return 'Oferta no disponible';
+  if (state === 'SIN_FECHA_CONFIRMADA' && isInfdRegistration(parseTrainingMetadata(item.metadata))) return 'Inscripción no verificada';
   return state === "PROXIMAMENTE" ? tentative ? "Preinscripción prevista · fecha tentativa" : "Próximamente"
     : state === "ABRE_HOY" ? tentative ? "Apertura prevista hoy · confirmar en fuente" : "Abre hoy"
     : state === "ABIERTA" ? "Inscripción abierta" : state === "SIN_CUPO" ? "Sin cupos disponibles" : state === "CERRADA" ? item.status === "en curso" ? "En cursado — inscripción cerrada" : item.status === "finalizada" ? "Finalizado — inscripción cerrada" : "Inscripción cerrada" : "Fecha de inscripción no confirmada";
@@ -423,7 +425,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   function filteredPublications(search = query) {
     const trainingCompare = (a: Publication, b: Publication) => {
       const opening = (item: Publication) => Date.parse(parseTrainingMetadata(item.metadata)?.registrationOpensAt || "") || Number.MAX_SAFE_INTEGER;
-      const rank = (item: Publication) => ({ ABRE_HOY: 0, PROXIMAMENTE: 1, ABIERTA: 2, SIN_CUPO: 3, SIN_FECHA_CONFIRMADA: 4, CERRADA: 5 })[enrollmentForUI(item)];
+      const rank = (item: Publication) => ({ ABRE_HOY: 0, PROXIMAMENTE: 1, ABIERTA: 2, SIN_CUPO: 3, SIN_FECHA_CONFIRMADA: 4, CERRADA: 5, NO_DISPONIBLE: 6 })[enrollmentForUI(item)];
       if (trainingSort === "opening") return opening(a) - opening(b);
       if (trainingSort === "open") return Number(enrollmentForUI(b) === "ABIERTA") - Number(enrollmentForUI(a) === "ABIERTA") || opening(a) - opening(b);
       if (trainingSort === "recent") return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
@@ -1428,6 +1430,7 @@ function PublicationSheet({ publication, sync, saved, tracking, match, onClose, 
   void onSchedule;
   const training = publication?.kind === "capacitacion" ? parseTrainingMetadata(publication.metadata) : null;
   const trainingState = publication?.kind === "capacitacion" ? enrollmentForUI(publication) : null;
+  const infdRegistration = isInfdRegistration(training);
   const info = publication?.kind === "informacion" ? usefulMetadata(publication.metadata) : null;
   const lifecycle = publication ? publicationLifecycleForUI(publication) : "UNKNOWN";
   const unverified = Boolean(publication && publication.kind !== "informacion" && fdciPublicVerification(publication)?.status !== "verified" && sourceHealth(healthForPublication(publication, sync)) !== "current" && (lifecycle === "ACTIVE" || lifecycle === "UPCOMING" || trainingState === "ABIERTA" || trainingState === "ABRE_HOY" || trainingState === "PROXIMAMENTE"));
@@ -1503,7 +1506,9 @@ function PublicationSheet({ publication, sync, saved, tracking, match, onClose, 
           {publication.kind === "vacante"
             ? <Button type="button" onClick={() => onExternal(publication)} className="min-h-12 w-full rounded-xl bg-[#17362d] px-5 text-white">{!unverified && lifecycle === "ACTIVE" && hasOfficialTopic(publication, "INSCRIPCION_SIME") ? "Inscribirme en sitio oficial" : "Ver procedimiento en fuente oficial"} <ExternalLink className="size-4" /></Button>
             : publication.id === FDCI_PERSONAL_FIXTURE_ID ? <p className="rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-950">Fixture ficticio privado: sin inscripción ni entrega de avisos.</p> : <a href={publication.official_url} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#17362d] px-5 text-center font-bold text-white">{publication.kind === "capacitacion" ? !unverified && trainingState === "ABIERTA" && training?.commissionId ? "CONTINUAR INSCRIPCIÓN EN SITIO OFICIAL" : "Ver detalle en sitio oficial" : publication.kind === "informacion" && info?.access === "private" ? "Abrir sistema oficial" : "Abrir fuente oficial"} <ExternalLink className="size-4" /></a>}
-          {training?.registrationUrl && training.registrationUrl !== publication.official_url && <a href={training.registrationUrl} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#0878be] bg-white px-5 text-center font-bold text-[#0878be]">{!unverified && trainingState === "ABIERTA" ? "Ingresar a inscripción oficial" : "Consultar inscripción en sitio oficial"} <ExternalLink className="size-4" /></a>}
+          {infdRegistration && trainingState === 'NO_DISPONIBLE' && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-950">La oferta no está disponible en la plataforma oficial. Se conserva como referencia; no hay una inscripción válida confirmada.</p>}
+          {training?.registrationUrl && training.registrationUrl !== publication.official_url && !(infdRegistration && (trainingState === 'NO_DISPONIBLE' || trainingState === 'CERRADA')) && <a href={training.registrationUrl} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#0878be] bg-white px-5 text-center font-bold text-[#0878be]">{infdRegistration && trainingState !== 'ABIERTA' ? 'Verificar disponibilidad de la oferta' : !unverified && trainingState === "ABIERTA" ? "Ingresar a inscripción oficial" : "Consultar inscripción en sitio oficial"} <ExternalLink className="size-4" /></a>}
+          {infdRegistration && training?.registrationVerification?.checkedAt && <p className="text-xs text-[var(--text-secondary)]">{training.registrationVerification.status === 'UNVERIFIED' ? 'Último intento de comprobación' : 'Última comprobación del enlace'}: {dateLabel(training.registrationVerification.checkedAt, true)}</p>}
           <p className="rounded-xl bg-[#fff3dd] p-4 text-sm leading-relaxed text-[#7d541b]">{publication.kind === "vacante" ? "DocenteTuc organiza información pública. Abrir el sitio oficial no marca una inscripción; el estado sólo cambia cuando vos lo confirmás." : publication.kind === "junta" ? "DocenteTuc muestra el contenido público recuperable. Para archivos PDF o carpetas sin texto exportable, la fuente oficial conserva el documento completo." : publication.kind === "informacion" ? `Información oficial verificada el ${info?.lastVerified || "día no informado"}. DocenteTuc nunca solicita credenciales de sistemas gubernamentales.` : "La inscripción y cualquier gestión se completan siempre en el sitio oficial."}</p>
         </div>}
       </SheetContent>
