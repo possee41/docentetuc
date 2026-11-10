@@ -60,7 +60,7 @@ import { boardItems } from "@/lib/board-view";
 import { isPublicPublication } from "@/lib/publication-visibility";
 import { FDCI_PERSONAL_FIXTURE_ID } from "@/lib/fdci-personal-fixture-id";
 import { fdciPersonalBlocked, fdciCatalogReference } from "@/lib/fdci-personal-contract";
-import { useFdciCatalogPilot, FdciCatalogPilotBanner, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
+import { useFdciCatalogPilot, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
 import { sourceHealth } from "@/lib/source-health";
 import { fdciPublicVerification } from "@/lib/fdci-catalog-integration";
 import type { BoardView } from "@/lib/board-view";
@@ -605,7 +605,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         : view === "junta" ? <OfficialConsultations onView={navigateToView} />
         : view === "padrones" ? <PadronSection query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} />
         : ["comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection key={`${view}:${query}`} view={view as BoardView} publications={data?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
-            {view === "capacitaciones" && <FdciCatalogPilotBanner pilot={trainingPilot} />}
+            {/* FDCI catalog diagnostics moved to Admin panel (FdciCatalogPilotBanner removed from public UI) */}
             <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void refreshSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
             <Filters filter={filter} setFilter={setFilter} junta={juntaFilter} setJunta={setJuntaFilter} character={character} setCharacter={setCharacter} query={designationQuery} setQuery={setDesignationQuery} kind={view} date={trainingDate} setDate={setTrainingDate} source={trainingSource} setSource={setTrainingSource} compatibility={trainingCompatibility} setCompatibility={setTrainingCompatibility} sort={trainingSort} setSort={setTrainingSort} hasTrainingTerritoryData={hasTrainingTerritoryData} circuit={view === "vacantes" ? designationCircuit : trainingCircuit} setCircuit={view === "vacantes" ? setDesignationCircuit : setTrainingCircuit} />
             {view === "vacantes" && items.some(item => hasOfficialTopic(item, "CLASIFICACION_PENDIENTE")) && <p role="note" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Los registros con «Procedimiento pendiente de verificar» no están confirmados como inscripciones online. Consultá el detalle oficial antes de actuar.</p>}
