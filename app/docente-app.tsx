@@ -61,7 +61,7 @@ import { isPublicPublication } from "@/lib/publication-visibility";
 import { FDCI_PERSONAL_FIXTURE_ID } from "@/lib/fdci-personal-fixture-id";
 import { fdciPersonalBlocked, fdciCatalogReference } from "@/lib/fdci-personal-contract";
 import { useFdciCatalogPilot, FdciCatalogPilotBanner, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
-import { sourceHealth, sourceNotices } from "@/lib/source-health";
+import { sourceHealth } from "@/lib/source-health";
 import { fdciPublicVerification } from "@/lib/fdci-catalog-integration";
 import type { BoardView } from "@/lib/board-view";
 import { groupPadrones, padronDocuments, padronSelection, padronTitleFacts, padronYear } from "@/lib/padron-documents";
@@ -554,7 +554,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const openDesignationOfficial = (item: Publication) => { if (hasOfficialTopic(item, "INSCRIPCION_SIME")) localStorage.setItem("docentetuc-pending-designation", item.id); window.open(item.official_url, "_blank", "noopener,noreferrer"); };
   const accessState = privateAccessState(installationBootstrapComplete, installationSecurity, privateAccess);
   const privateView = ["agenda", "alertas", "guardados", "perfil"].includes(view);
-  const sourceWarnings = data || !loading ? sourceNotices(view, trainingSource, data?.sync || []).filter(item => !(trainingPilot.enabled && view === "capacitaciones" && item.source === "Capacitación Docente")) : [];
+  // Source health diagnostics available in Admin panel (sourceWarnings removed from public UI)
   return (
     <SidebarProvider open={sidebar.open} onOpenChange={sidebar.onOpenChange} data-sidebar-pinned={sidebar.pinned} className="dt-app-shell" style={{ "--sidebar-width": "17rem" } as CSSProperties}>
       <AppSidebarEdge pinned={sidebar.pinned} onEnter={sidebar.enter} onLeave={sidebar.leave} />
@@ -576,15 +576,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
 
         <div className="mobile-content mx-auto w-full max-w-7xl p-4 md:p-8">
       {loadError && data && view !== "noticias" && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950"><span>{loadError}</span><Button variant="outline" onClick={() => { void loadPublic(); void load(false); }} className="min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div>}
-      {sourceWarnings.length > 0 && <section aria-label="Estado de actualización de las fuentes" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-        <p className="font-bold">Algunas fuentes no tienen una verificación reciente. Confirmá fechas y vacantes antes de actuar.</p>
-        <ul className="mt-2 space-y-1">{sourceWarnings.map((item) => {
-          const timestamp = item.lastSuccess ? safeDate(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(item.lastSuccess) ? item.lastSuccess : `${item.lastSuccess.replace(" ", "T")}Z`) : null;
-          const verified = timestamp ? new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Tucuman", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(timestamp) : "no disponible";
-          const state = item.health === "partial" ? "actualización parcial; quedan registros pendientes" : item.health === "running" ? "verificación en curso" : item.health === "interrupted" ? "último intento inconcluso" : item.health === "failed" ? "última verificación fallida" : item.health === "stale" ? "información desactualizada" : "sin verificación confirmada";
-          return <li key={item.source} className="flex flex-wrap items-center gap-x-2"><span><strong>{item.label}:</strong> {state}. Último éxito: {verified}.</span><a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-bold underline">Fuente oficial <ExternalLink className="size-3" /></a></li>;
-        })}</ul>
-      </section>}
+      {/* Source health diagnostics moved to Admin panel (sourceWarnings removed from public UI) */}
       {privateView && !privateReady ? accessState === "checking" ? <section role="status" aria-live="polite" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><RefreshCw aria-hidden="true" className="mx-auto mb-3 size-6 animate-spin text-[var(--accent-text)] motion-reduce:animate-none" /><h1 className="font-bold text-[var(--text-primary)]">Comprobando sesión y acceso a tus datos…</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">Estamos preparando tu sección.</p></div></section>
         : accessState === "recovery_required" ? <RecoveryRequiredNotice onOpenAccount={() => setView("cuentas")} />
         : <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><h1 className="font-black text-[var(--text-primary)]">{accessState === "error" ? "No pudimos comprobar el acceso en este momento" : "No podemos mostrar tus datos privados todavía"}</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{accessState === "error" ? "Hubo un problema de conexión o del servicio. Tus datos permanecen conservados; intentá nuevamente." : "Verificá esta instalación o iniciá sesión con la cuenta vinculada. Tus datos permanecen conservados."}</p><Button onClick={() => void load(false)} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
