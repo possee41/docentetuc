@@ -7,8 +7,11 @@
     "AI_PROVIDER": "gemini",
     "AI_MODEL": "gemini-3.5-flash-lite",
     "AI_WEB_SEARCH_ENABLED": "0",
-    "PUSH_DISPATCH_MODE": "disabled"
+    "PUSH_DISPATCH_MODE": "disabled",
+    "BETTER_AUTH_URL": "https://docentetuc.com.ar",
+    "GOOGLE_CLIENT_ID": "925169162467-l01hsrjtrc58ik311r7hkih6jc791gkm.apps.googleusercontent.com"
   },
+  "keep_vars": true,
   "no_bundle": true,
   "rules": [{ "type": "ESModule", "globs": ["**/*.js", "**/*.mjs"] }],
   "assets": { "directory": "dist/client" },
