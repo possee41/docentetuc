@@ -1,89 +1,81 @@
-name: SIME external import pilot
+name: SIME Canary fair allocation (manual)
 on:
-  # Manual only. Scheduling stays disabled until gateway, legacy drain and quotas
-  # are validated; the first productive pass must stay bounded.
-  # schedule: [{ cron: '12 * * * *' }]
   workflow_dispatch:
     inputs:
       target:
-        description: 'Destino del gateway: canary (por defecto) o production'
         type: choice
-        options: [canary, production]
+        options: [canary]
         default: canary
-      confirm_production:
-        description: 'Habilitación explícita de producción (obligatoria con target=production)'
-        type: boolean
-        default: false
+        required: true
       juntas:
-        description: 'Juntas a recorrer (ids 1-4 separados por coma)'
         type: string
-        default: '1'
+        default: '1,2,3,4'
+        required: true
       limit:
-        description: 'Máximo de registros enviados en esta corrida (1-1000)'
         type: string
-        default: '5'
+        default: '50'
+        required: true
       resume_after:
-        description: 'Reanudar después de este id (sime:<n>); vacío para empezar de cero'
+        description: 'Empty for the first pilot; verified per-Junta cursor only after separate approval'
         type: string
         default: ''
 permissions:
   contents: read
 concurrency:
-  group: sime-import-pilot
+  group: sime-canary-single-pilot
   cancel-in-progress: false
 jobs:
   import:
-    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/release/sime-first-production-1.2'
+    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/pilot/sime-fair-canary' && github.event_name == 'workflow_dispatch' && github.run_attempt == 1
+    environment: canary-sime
     runs-on: ubuntu-latest
-    environment: sime-first-production
-    timeout-minutes: 15
+    timeout-minutes: 12
+    env:
+      SIME_CANARY_ENABLED: ${{ vars.SIME_CANARY_ENABLED }}
+      SIME_CANARY_APPROVED_SHA: ${{ vars.SIME_CANARY_APPROVED_SHA }}
+      SIME_CANARY_AUTHORIZED_RUN_ID: ${{ vars.SIME_CANARY_AUTHORIZED_RUN_ID }}
+      SYNC_SOURCE: sime
+      IMPORT_GATEWAY_TARGET: ${{ inputs.target }}
+      IMPORT_GATEWAY_PRODUCTION_ENABLED: 'false'
+      IMPORT_GATEWAY_ORIGIN: https://docentetuc-import-canary-1-2.possee41.workers.dev
+      IMPORT_GATEWAY_DATABASE_ID: 853e2f5d-89b1-46a3-9c1c-5cbd46784756
+      IMPORT_GATEWAY_DATABASE_NAME: docentetuc-web-canary-1-2
+      SIME_IMPORT_JUNTAS: ${{ inputs.juntas }}
+      SIME_IMPORT_LIMIT: ${{ inputs.limit }}
+      SIME_IMPORT_RESUME_AFTER: ${{ inputs.resume_after }}
     steps:
-      - name: Verify destination
-        env:
-          TARGET: ${{ inputs.target }}
-          CONFIRM_PRODUCTION: ${{ inputs.confirm_production }}
-          SELECTED_JUNTAS: ${{ inputs.juntas }}
-          SELECTED_LIMIT: ${{ inputs.limit }}
-          RESUME_AFTER: ${{ inputs.resume_after }}
-        run: |
-          [[ "$TARGET" == 'canary' || "$TARGET" == 'production' ]] || { echo 'target must be canary or production'; exit 1; }
-          if [[ "$TARGET" == 'production' ]]; then
-            [[ "$SELECTED_JUNTAS" == '1' && "$SELECTED_LIMIT" == '5' && -z "$RESUME_AFTER" ]] || { echo 'first productive run requires Junta 1, limit 5, empty resume'; exit 1; }
-          fi
-          if [[ "$TARGET" == 'production' && "$CONFIRM_PRODUCTION" != 'true' ]]; then
-            echo 'production requires confirm_production=true'; exit 1
-          fi
-      - name: Verify approved revision
-        env:
-          IMPORT_REF: ${{ vars.SIME_IMPORT_REF }}
-        run: |
-          [[ "$IMPORT_REF" =~ ^[a-f0-9]{40}$ ]] || { echo 'SIME_IMPORT_REF must be an approved commit SHA'; exit 1; }
       - uses: actions/checkout@v4
         with:
-          ref: ${{ vars.SIME_IMPORT_REF }}
-          fetch-depth: 0
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Verify approved revision
-        env:
-          IMPORT_REF: ${{ vars.SIME_IMPORT_REF }}
+      - name: Verify immutable revision and single authorized run
+        id: verify
         run: |
-          test "$(git rev-parse HEAD)" = "$IMPORT_REF"
-          git merge-base --is-ancestor d321e7225e7dc75ff76a0e612525386855e05e08 HEAD
-      - name: Import public SIME listings through isolated gateway
+          node --input-type=module <<'NODE'
+          import {execFileSync} from 'node:child_process';
+          const c = process.env;
+          if (!/^[a-f0-9]{40}$/.test(c.SIME_CANARY_APPROVED_SHA || '') ||
+              execFileSync('git', ['rev-parse', 'HEAD'], {encoding:'utf8'}).trim() !== c.SIME_CANARY_APPROVED_SHA ||
+              c.GITHUB_SHA !== c.SIME_CANARY_APPROVED_SHA || c.SIME_CANARY_AUTHORIZED_RUN_ID !== c.GITHUB_RUN_ID ||
+              c.SIME_CANARY_ENABLED !== 'true' || c.SIME_IMPORT_RESUME_AFTER !== '')
+            throw Error('SIME_EXECUTION_NOT_APPROVED');
+          NODE
+      - name: Run one bounded SIME pilot
         env:
-          IMPORT_GATEWAY_ENABLED: 'true'
-          SYNC_SOURCE: sime
-          IMPORT_GATEWAY_TARGET: ${{ inputs.target }}
-          IMPORT_GATEWAY_PRODUCTION_ENABLED: ${{ inputs.confirm_production && 'true' || 'false' }}
-          IMPORT_GATEWAY_APPROVED_SHA: ${{ vars.SIME_IMPORT_REF }}
-          IMPORT_GATEWAY_ORIGIN: ${{ vars.IMPORT_GATEWAY_ORIGIN }}
-          IMPORT_GATEWAY_DATABASE_ID: ${{ vars.IMPORT_GATEWAY_DATABASE_ID }}
-          IMPORT_GATEWAY_DATABASE_NAME: ${{ vars.IMPORT_GATEWAY_DATABASE_NAME }}
-          SIME_IMPORT_JUNTAS: ${{ inputs.juntas }}
-          SIME_IMPORT_LIMIT: ${{ inputs.limit }}
-          SIME_IMPORT_RESUME_AFTER: ${{ inputs.resume_after }}
           SIME_IMPORT_SECRET: ${{ secrets.SIME_IMPORT_SECRET }}
-        run: node --experimental-strip-types scripts/import-via-gateway.mjs
+        run: node --experimental-strip-types scripts/import-via-gateway.mjs run
+      - name: Independent idempotent close (never retries an import)
+        if: always() && steps.verify.outcome == 'success'
+        env:
+          SIME_IMPORT_SECRET: ${{ secrets.SIME_IMPORT_SECRET }}
+        run: node --experimental-strip-types scripts/import-via-gateway.mjs close
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sime-canary-result-${{ github.run_id }}
+          path: sime-canary-result.json
+          if-no-files-found: ignore
+          retention-days: 30

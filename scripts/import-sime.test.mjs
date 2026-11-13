@@ -1,163 +1,219 @@
-import assert from "node:assert/strict";
-import test from "node:test";
-import { readFileSync } from "node:fs";
-import { parseSimeOptions, runSimeImport } from "./import-sime.mjs";
-import { resolveGatewayConfig } from "./import-via-gateway.mjs";
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import receiver from '../workers/sime-receiver.mjs';
+import { runSimeImport, parseSimeOptions, parseSimeCursor } from './import-sime.mjs';
+import { CANARY, runSimeCanaryPilot, closeSimeCanary, verifyExecution, readSimeCheckpoint, sealReport } from './import-via-gateway.mjs';
 
-const endpoint = "https://sime-receiver.example/api/internal/sime-import";
-const token = "synthetic_sime_gateway_secret_123456789";
-const now = new Date("2026-10-22T15:00:00Z");
+// Any accidental fallback to a real HTTP client fails the local suite.
+globalThis.fetch = () => { throw Error('REMOTE_NETWORK_FORBIDDEN_IN_LOCAL_TEST'); };
 
-const vacancy = (id) => ({ id, codigo: `PDVC-20261022-${id}`, caracter: "SUPLENTE",
-  fechaPublicacionInicio: "22/10/2026 08:00", fechaPublicacionFin: "23/10/2026 18:00",
-  cargos: `[9000306/00] ESC. 172 - MAESTRO DE JARDIN ${id}`, abierto: true });
+const sha = 'a'.repeat(40), secret = 'synthetic_canary_secret_12345678901234567890';
+const labels = ['Inicial y Primaria', 'Secundaria', 'Técnica, Agrotécnica y No Formal', 'Superior, Especial y Artística'];
+const config = {
+  SYNC_SOURCE: 'sime', IMPORT_GATEWAY_TARGET: 'canary', IMPORT_GATEWAY_PRODUCTION_ENABLED: 'false',
+  IMPORT_GATEWAY_ORIGIN: CANARY.origin, IMPORT_GATEWAY_DATABASE_ID: CANARY.id, IMPORT_GATEWAY_DATABASE_NAME: CANARY.name,
+  SIME_IMPORT_SECRET: secret, SIME_IMPORT_JUNTAS: '1,2,3,4', SIME_IMPORT_LIMIT: '50', SIME_IMPORT_RESUME_AFTER: '',
+  SIME_CANARY_ENABLED: 'true', SIME_CANARY_APPROVED_SHA: sha, SIME_CANARY_AUTHORIZED_RUN_ID: '123',
+  GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', GITHUB_EVENT_NAME: 'workflow_dispatch',
+  GITHUB_REPOSITORY: 'possee41/docentetuc', GITHUB_REF: 'refs/heads/pilot/sime-fair-canary', GITHUB_SHA: sha,
+};
 
-// Synthetic SIME: per-Junta vacancy lists. IDs arrive unsorted on purpose.
-function source({ ids = [], broken = [] } = {}) {
-  return (async (input) => {
-    const url = new URL(String(input));
-    const junta = url.pathname.match(/Obtener(?:Periodos|Vacantes)\/(\d)/)?.[1];
-    if (junta && broken.includes(Number(junta))) return new Response("", { status: 503 });
-    if (url.pathname.startsWith("/Vacantes/ObtenerPeriodos/"))
-      return Response.json({ periodos: junta === "1" ? [{ text: "10/2026" }] : [] });
-    if (url.pathname.startsWith("/Vacantes/ObtenerVacantes/"))
-      return Response.json({ vacantes: junta === "1" ? [...ids].reverse().map(vacancy) : [] });
-    if (url.pathname.startsWith("/Vacantes/ObtenerVacante/"))
-      return Response.json({ vacante: { descripcion: "Inscripción online por SIME" } });
-    throw new Error("SIME_SOURCE_URL_UNEXPECTED");
+// Real SQLite persistence + unchanged SIME receiver. The lease adapter simulates the
+// deployed gateway protocol/CAS locally; its counters are not Cloudflare D1 metrics.
+function fixture(options = {}) {
+  const sqlite = new DatabaseSync(':memory:');
+  sqlite.exec(`CREATE TABLE publications (
+    id TEXT PRIMARY KEY,source TEXT NOT NULL,external_id TEXT NOT NULL,kind TEXT NOT NULL,category TEXT NOT NULL,
+    title TEXT NOT NULL,summary TEXT NOT NULL DEFAULT '',level TEXT NOT NULL DEFAULT '',area TEXT NOT NULL DEFAULT '',
+    junta TEXT NOT NULL DEFAULT '',location TEXT NOT NULL DEFAULT '',shift TEXT NOT NULL DEFAULT '',character TEXT NOT NULL DEFAULT '',
+    starts_at TEXT,ends_at TEXT,status TEXT NOT NULL,official_url TEXT NOT NULL,metadata TEXT NOT NULL,content_hash TEXT NOT NULL,
+    source_updated_at TEXT,source_published_at TEXT,registration_open_at TEXT,registration_close_at TEXT,expires_at TEXT,
+    source_status TEXT NOT NULL DEFAULT 'UNKNOWN',normalized_status TEXT NOT NULL DEFAULT 'UNKNOWN',removed_at TEXT,
+    last_seen_at TEXT NOT NULL DEFAULT '',last_changed_at TEXT NOT NULL DEFAULT '',first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE sync_state(source TEXT PRIMARY KEY,synced_at TEXT NOT NULL,item_count INTEGER NOT NULL DEFAULT 0,error TEXT,
+    last_attempt_at TEXT,last_successful_sync_at TEXT,sync_status TEXT NOT NULL DEFAULT 'UNKNOWN',error_code TEXT,error_message TEXT);
+    CREATE TABLE lease(id INTEGER PRIMARY KEY,owner TEXT NOT NULL,expires INTEGER NOT NULL);`);
+  const prepare = (sql, args = []) => ({
+    bind: (...values) => prepare(sql, values),
+    async all() { const results = sqlite.prepare(sql).all(...args); return {results, meta:{rows_read:results.length,rows_written:0}}; },
+    async first() { return sqlite.prepare(sql).get(...args) ?? null; },
+    async run() { const r = sqlite.prepare(sql).run(...args); return {meta:{changes:r.changes,rows_read:0,rows_written:r.changes}}; },
   });
+  const db = {prepare, async batch(statements) { sqlite.exec('BEGIN'); try { const result = []; for (const s of statements) result.push(await s.run()); sqlite.exec('COMMIT'); return result; } catch(e) { sqlite.exec('ROLLBACK'); throw e; } }};
+  const f = {sqlite, sourceCalls:0, batches:0, closes:0, opens:0, calls:[], now:Date.parse('2026-10-22T15:00:00Z')};
+  f.sourceFetch = async (input) => {
+    f.sourceCalls++;
+    if (options.expireSource) f.now += 601_000;
+    if (options.sourceFailure) return new Response('', {status:503});
+    if (options.sourceInvalid) return Response.json({unexpected:true});
+    const u = new URL(input), board = Number(u.pathname.match(/Obtener(?:Periodos|Vacantes)\/(\d)/)?.[1]);
+    if (u.pathname.includes('ObtenerPeriodos/')) return Response.json({periodos:options.empty ? [] : [{text:'10/2026'}]});
+    if (u.pathname.includes('ObtenerVacantes/')) return Response.json({vacantes:Array.from({length:options.count ?? 20},(_,i)=>({
+      id:board*1000+i+1,codigo:`FIXTURE-${board}-${i}`,caracter:'SUPLENTE',fechaPublicacionInicio:'22/10/2026 08:00',
+      fechaPublicacionFin:'23/10/2026 18:00',cargos:'[9000306/00] CARGO FICTICIO LOCAL',abierto:true,
+    }))});
+    if (u.pathname.includes('ObtenerVacante/')) return Response.json({vacante:{descripcion:'Fixture local sin datos reales'}});
+    throw Error('UNEXPECTED_SOURCE');
+  };
+  f.receiverFetch = async (input, init = {}) => {
+    const u = new URL(input), headers = new Headers(init.headers);
+    assert.equal(u.origin, CANARY.origin);
+    assert.equal(headers.get('authorization'), 'Bearer '+secret);
+    f.calls.push(u.pathname);
+    if (u.pathname.endsWith('/import-identity')) return Response.json(options.wrongIdentity ? {...CANARY,id:'baaf5886-0123-4948-96da-aa7106424549'} : {id:CANARY.id,name:CANARY.name});
+    if (u.pathname.endsWith('/import-gate')) {
+      const p = JSON.parse(init.body), lease = sqlite.prepare('SELECT * FROM lease WHERE id=1').get();
+      assert.equal(p.ttlSeconds,600); assert.equal(p.source,'sime');
+      if (p.action === 'close') {
+        f.closes++;
+        if (options.closeFailure) return new Response('',{status:503});
+        if (lease && lease.owner !== p.owner) return new Response('',{status:409});
+        sqlite.prepare('DELETE FROM lease WHERE id=1 AND owner=?').run(p.owner);
+        return Response.json({ok:true,closed:true,source:'sime',owner:p.owner});
+      }
+      f.opens++;
+      if (lease && lease.expires > f.now) return new Response('',{status:409});
+      sqlite.prepare('INSERT OR REPLACE INTO lease VALUES(1,?,?)').run(p.owner,f.now+600_000);
+      if (options.openAckLost) throw Error('OPEN_ACK_LOST');
+      return Response.json({ok:true,source:'sime',owner:p.owner,expiresAt:new Date(f.now+(options.badTtl ? 900_000 : 600_000)).toISOString()});
+    }
+    const lease = sqlite.prepare('SELECT * FROM lease WHERE id=1').get();
+    if (!lease || lease.expires<=f.now || lease.owner!==headers.get('x-import-gate-owner')) return new Response('',{status:409});
+    if (init.method==='POST' && JSON.parse(init.body).mode==='batch') {
+      f.batches++;
+      if (options.rejectAt===f.batches) return new Response('',{status:503});
+      if (options.badAck===f.batches) return Response.json({ok:true,received:1,created:-1,updated:2,unchanged:0});
+      const response = await receiver.fetch(new Request(input,init),{DB:db,SIME_IMPORT_SECRET:secret});
+      if (options.ackLost===f.batches) throw Error('ACK_LOST');
+      if (options.abortAt===f.batches) options.controller.abort();
+      return response;
+    }
+    return receiver.fetch(new Request(input,init),{DB:db,SIME_IMPORT_SECRET:secret});
+  };
+  f.run = (patch = {}) => runSimeCanaryPilot({...config,...patch},sha,{sourceFetch:f.sourceFetch,receiverFetch:f.receiverFetch,clock:()=>f.now,signal:options.controller?.signal});
+  f.count = () => sqlite.prepare('SELECT count(*) AS n FROM publications').get().n;
+  f.leases = () => sqlite.prepare('SELECT count(*) AS n FROM lease').get().n;
+  return f;
 }
 
-function receiver() {
-  const calls = [], sent = [];
-  const fetchImpl = async (input, init = {}) => {
-    assert.equal(new URL(String(input)).pathname, "/api/internal/sime-import");
-    if (!init.method || init.method === "GET") return Response.json({ items: [], nextCursor: null });
-    const payload = JSON.parse(init.body);
-    calls.push(payload);
-    if (payload.mode !== "batch") return Response.json({ ok: true });
-    for (const item of payload.items) sent.push(item.id);
-    return Response.json({ ok: true, received: payload.items.length, created: payload.items.length,
-      updated: 0, unchanged: 0, queries: 1, rowsRead: 1, rowsWritten: payload.items.length });
-  };
-  return { calls, sent, fetch: fetchImpl,
-    modes: () => calls.map((call) => call.mode),
-    batches: () => calls.filter((call) => call.mode === "batch").flatMap((call) => call.items.map((item) => item.id)) };
-}
+for (const [name,patch] of Object.entries({
+  production:{IMPORT_GATEWAY_TARGET:'production'}, missingTarget:{IMPORT_GATEWAY_TARGET:undefined},
+  wrongDb:{IMPORT_GATEWAY_DATABASE_ID:'baaf5886-0123-4948-96da-aa7106424549'}, wrongHost:{IMPORT_GATEWAY_ORIGIN:'https://docentetuc-import-1-2.possee41.workers.dev'},
+  localhost:{IMPORT_GATEWAY_ORIGIN:'http://127.0.0.1:8787'}, source:{SYNC_SOURCE:'fdci'},
+  schedule:{GITHUB_EVENT_NAME:'schedule'}, rerun:{GITHUB_RUN_ATTEMPT:'2'}, otherRun:{GITHUB_RUN_ID:'124'},
+  noPermit:{SIME_CANARY_AUTHORIZED_RUN_ID:undefined}, wrongSha:{GITHUB_SHA:'b'.repeat(40)}, branch:{GITHUB_REF:'refs/heads/fix/navigation-community-1.1'},
+  overLimit:{SIME_IMPORT_LIMIT:'51'}, wrongJuntas:{SIME_IMPORT_JUNTAS:'1,2'}, disabled:{SIME_CANARY_ENABLED:'false'},
+})) test('rechazo antes de red: '+name,()=>assert.throws(()=>verifyExecution({...config,...patch},sha)));
 
-function run(options, sourceFetch, sink) {
-  return runSimeImport({ endpoint, token, sourceFetch, receiverFetch: sink.fetch, now, ...options });
-}
-
-test("el límite acota los envíos, no confirma éxito y deja un punto de reanudación verificable", async () => {
-  const sink = receiver();
-  const result = await run({ juntas: [1], limit: 2 }, source({ ids: [103, 101, 102] }), sink);
-  assert.deepEqual(result, { discovered: 3, created: 2, updated: 0, unchanged: 0, queries: 2, rowsRead: 2,
-    rowsWritten: 2, resumedAfter: null, nextResumeAfter: "sime:102", truncated: true, completed: false });
-  assert.deepEqual(sink.batches(), ["sime:101", "sime:102"]);
-  assert.deepEqual(sink.modes(), ["start", "batch", "batch"]);
+test('fair allocation 12/12/12/12, dos slots sin usar y filas SQLite reales',async t=>{
+  const f=fixture();t.after(()=>f.sqlite.close());const r=await f.run();
+  assert.equal(r.data.status,'PARTIAL');assert.equal(r.data.closed,true);assert.equal(f.count(),48);assert.equal(f.leases(),0);
+  assert.deepEqual(r.data.result.processedByJunta,{1:12,2:12,3:12,4:12});
+  assert.deepEqual(r.data.result.byJunta[2],{created:12,updated:0,unchanged:0});
+  assert.deepEqual(labels.map(l=>f.sqlite.prepare('SELECT count(*) AS n FROM publications WHERE junta=?').get(l).n),[12,12,12,12]);
+  assert.equal(f.sqlite.prepare("SELECT sync_status FROM sync_state WHERE source='SIME'").get().sync_status,'PARTIAL');
 });
 
-test("la reanudación continúa donde quedó, sin repetir, y solo la corrida completa confirma", async () => {
-  const sink = receiver();
-  const first = await run({ juntas: [1], limit: 2 }, source({ ids: [103, 101, 102] }), sink);
-  const second = await run({ juntas: [1], limit: 2, resumeAfter: first.nextResumeAfter },
-    source({ ids: [103, 101, 102] }), sink);
-  assert.deepEqual(sink.batches(), ["sime:101", "sime:102", "sime:103"]);
-  assert.deepEqual([second.discovered, second.nextResumeAfter, second.truncated, second.completed], [1, "", false, false]);
-  assert.equal(sink.modes().includes("finish"), false);
-  const full = await run({ limit: 50 }, source({ ids: [103, 101, 102] }), sink);
-  assert.deepEqual([full.discovered, full.completed], [3, true]);
-  assert.deepEqual({ ...sink.calls.at(-1) }, { mode: "finish", complete: true, count: 3 });
-  assert.deepEqual(sink.batches().slice(3), ["sime:101", "sime:102", "sime:103"]);
+test('cursor durable: proceso nuevo verifica checksum y reanuda todas las juntas sin starvation',async t=>{
+  const f=fixture();t.after(()=>f.sqlite.close());const dir=mkdtempSync(join(tmpdir(),'sime-cursor-'));t.after(()=>rmSync(dir,{recursive:true}));
+  const a=await f.run();writeFileSync(join(dir,'checkpoint.json'),JSON.stringify(a));
+  const moduleUrl=new URL('./import-via-gateway.mjs',import.meta.url).href;
+  const child=spawnSync(process.execPath,['--experimental-strip-types','--input-type=module','-e',
+    `import{readFileSync}from'node:fs';import{readSimeCheckpoint}from ${JSON.stringify(moduleUrl)};console.log(readSimeCheckpoint(JSON.parse(readFileSync(process.argv[1],'utf8')),process.argv[2],'123'));`,join(dir,'checkpoint.json'),sha],{encoding:'utf8'});
+  assert.equal(child.status,0,child.stderr);const cursor=child.stdout.trim();
+  const b=await f.run({SIME_IMPORT_RESUME_AFTER:cursor});assert.equal(b.data.result.created,32);assert.equal(f.count(),80);
+  assert.deepEqual(b.data.result.processedByJunta,{1:8,2:8,3:8,4:8});
+  const c=await f.run({SIME_IMPORT_RESUME_AFTER:readSimeCheckpoint(b,sha,'123')});assert.equal(c.data.result.created,0);assert.equal(f.count(),80);
 });
 
-test("un límite que trunca las cuatro Juntas tampoco declara OK", async () => {
-  const sink = receiver();
-  const result = await run({ limit: 1 }, source({ ids: [101, 102] }), sink);
-  assert.deepEqual([result.truncated, result.completed, sink.modes().includes("finish")], [true, false, false]);
+test('replay sin duplicados ni escrituras de publicaciones innecesarias',async t=>{
+  const f=fixture({count:3});t.after(()=>f.sqlite.close());await f.run();const r=await f.run();
+  assert.equal(r.data.result.created,0);assert.equal(r.data.result.updated,0);assert.equal(r.data.result.unchanged,12);
+  assert.equal(r.data.result.rowsWritten,0);assert.equal(f.count(),12);
+  assert.equal(f.sqlite.prepare('SELECT count(DISTINCT external_id) AS n FROM publications').get().n,12);
 });
 
-test("una Junta inaccesible conserva lo enviado y deja el estado en PARTIAL", async () => {
-  const sink = receiver();
-  await assert.rejects(run({ limit: 50 }, source({ ids: [101], broken: [2] }), sink), /SIME_PARTIAL_SOURCE/);
-  assert.deepEqual(sink.batches(), ["sime:101"]);
-  assert.deepEqual(sink.calls.at(-1), { mode: "error", code: "PARTIAL" });
-  assert.equal(sink.modes().includes("finish"), false);
+test('replay con nuevos detalles oficiales actualiza hashes, sin crear duplicados',async t=>{
+  const f=fixture();t.after(()=>f.sqlite.close());await f.run();const r=await f.run();
+  assert.equal(r.data.result.created,0);assert.equal(r.data.result.updated,12);assert.equal(r.data.result.unchanged,36);assert.equal(f.count(),48);
 });
 
-test("las opciones por entorno son acotadas y fallan cerradas", () => {
-  assert.deepEqual(parseSimeOptions({}), { juntas: [1, 2, 3, 4], limit: 50, resumeAfter: "" });
-  assert.deepEqual(parseSimeOptions({ SIME_IMPORT_JUNTAS: "3, 1", SIME_IMPORT_LIMIT: "7", SIME_IMPORT_RESUME_AFTER: "sime:42" }),
-    { juntas: [1, 3], limit: 7, resumeAfter: "sime:42" });
-  for (const config of [{ SIME_IMPORT_JUNTAS: "" }, { SIME_IMPORT_JUNTAS: "1,5" }, { SIME_IMPORT_JUNTAS: "1,1" },
-    { SIME_IMPORT_LIMIT: "" }, { SIME_IMPORT_LIMIT: "0" }, { SIME_IMPORT_LIMIT: "1001" }, { SIME_IMPORT_LIMIT: "2.5" },
-    { SIME_IMPORT_RESUME_AFTER: "101" }, { SIME_IMPORT_RESUME_AFTER: "sime:x" }])
-    assert.throws(() => parseSimeOptions(config), /SIME_IMPORT_OPTIONS_INVALID/);
-  const canary = { IMPORT_GATEWAY_ORIGIN: "http://127.0.0.1:8798/",
-    IMPORT_GATEWAY_DATABASE_ID: "00000000-0000-4000-8000-000000000012",
-    IMPORT_GATEWAY_DATABASE_NAME: "docentetuc-web-canary-1-2-local" };
-  assert.throws(() => resolveGatewayConfig({ ...canary, SYNC_SOURCE: "juntas", SIME_IMPORT_SECRET: token }), /GATEWAY_SECRET_INVALID/);
-  assert.equal(resolveGatewayConfig({ ...canary, SYNC_SOURCE: "sime", SIME_IMPORT_SECRET: token }).source, "sime");
+for (const [name,opts] of Object.entries({reject:{rejectAt:2},badAck:{badAck:2},ackLost:{ackLost:2}}))
+  test('detención y cierre sin reintentos: '+name,async t=>{
+    const f=fixture(opts);t.after(()=>f.sqlite.close());const r=await f.run();
+    assert.equal(r.data.status,'ERROR');assert.equal(r.data.halted,true);assert.equal(r.data.closed,true);assert.equal(f.batches,2);assert.equal(f.leases(),0);
+    assert.equal(parseSimeCursor(r.data.result.nextResumeAfter)[1],'sime:1001');
+    assert.throws(()=>readSimeCheckpoint(r,sha,'123'),/REVIEW_REQUIRED/);
+    if(opts.ackLost)assert.equal(f.count(),2); // Second write persisted but its ACK is uncertain.
+  });
+
+for(const [name,opts] of Object.entries({expiry:{expireSource:true},sourceError:{sourceFailure:true},openAck:{openAckLost:true},ttl:{badTtl:true}}))
+  test('suspensión antes de publicaciones: '+name,async t=>{
+    const f=fixture(opts);t.after(()=>f.sqlite.close());const r=await f.run();assert.equal(r.data.status,'ERROR');assert.equal(r.data.closed,true);assert.equal(f.count(),0);assert.equal(f.leases(),0);
+  });
+
+test('cancelación detiene nuevos lotes y el cierre usa señal independiente',async t=>{
+  const controller=new AbortController(),f=fixture({controller,abortAt:1});t.after(()=>f.sqlite.close());const r=await f.run();
+  assert.equal(f.batches,1);assert.equal(r.data.closed,true);assert.equal(r.data.status,'ERROR');assert.equal(f.leases(),0);
 });
 
-test("el cursor no avanza si el gateway no confirma el lote", async () => {
-  const calls = [];
-  const failing = async (input, init = {}) => {
-    if (!init.method || init.method === "GET") return Response.json({ items: [], nextCursor: null });
-    const payload = JSON.parse(init.body);
-    calls.push(payload);
-    if (payload.mode !== "batch") return Response.json({ ok: true });
-    return calls.filter((call) => call.mode === "batch").length === 2
-      ? Response.json({ error: "sin confirmación" }, { status: 503 })
-      : Response.json({ ok: true, received: 1, created: 1, updated: 0, unchanged: 0, queries: 1, rowsRead: 1, rowsWritten: 1 });
-  };
-  await assert.rejects(run({ juntas: [1], limit: 3 }, source({ ids: [101, 102, 103] }), { fetch: failing }),
-    /SIME_RECEIVER_HTTP_503/);
-  assert.equal(calls.some((call) => call.mode === "finish"), false);
-  assert.equal(calls.some((call) => call.mode === "error"), true);
+test('dos propietarios concurrentes: una concesión, el perdedor no cierra la ajena',async t=>{
+  const f=fixture();t.after(()=>f.sqlite.close());const [a,b]=await Promise.all([f.run(),f.run({GITHUB_RUN_ID:'124',SIME_CANARY_AUTHORIZED_RUN_ID:'124'})]);
+  assert.equal([a,b].filter(r=>r.data.status==='PARTIAL').length,1);assert.equal([a,b].filter(r=>r.data.status==='ERROR').length,1);assert.equal(f.count(),48);assert.equal(f.leases(),0);
 });
 
-test("un ACK incompleto no cuenta como confirmación ni permite seguir escribiendo", async () => {
-  const calls = [];
-  const invalid = async (input, init = {}) => {
-    if (!init.method || init.method === "GET") return Response.json({ items: [], nextCursor: null });
-    const payload = JSON.parse(init.body);
-    calls.push(payload);
-    if (payload.mode !== "batch") return Response.json({ ok: true });
-    return Response.json({ ok: true, received: 1, created: 0, updated: 0, unchanged: 0, queries: 1, rowsRead: 1, rowsWritten: 0 });
-  };
-  await assert.rejects(run({ juntas: [1], limit: 3 }, source({ ids: [101, 102] }), { fetch: invalid }),
-    /SIME_RECEIVER_ACK_INVALID/);
-  assert.equal(calls.filter((call) => call.mode === "batch").length, 1);
-  assert.equal(calls.some((call) => call.mode === "finish"), false);
+test('identidad inesperada no abre concesión',async t=>{const f=fixture({wrongIdentity:true});t.after(()=>f.sqlite.close());const r=await f.run();assert.equal(r.data.status,'ERROR');assert.equal(f.opens,0);assert.equal(f.sourceCalls,0);});
+
+test('schema inesperado de la primera fuente detiene las otras juntas y no publica',async t=>{
+  const f=fixture({sourceInvalid:true});t.after(()=>f.sqlite.close());const r=await f.run();
+  assert.equal(r.data.status,'ERROR');assert.equal(r.data.closed,true);assert.equal(f.sourceCalls,1);assert.equal(f.count(),0);
 });
 
-test("producción exige habilitación explícita y el SHA aprobado", () => {
-  const production = { SYNC_SOURCE: "sime", IMPORT_GATEWAY_ORIGIN: "https://docentetuc-import-1-2.example.workers.dev/",
-    IMPORT_GATEWAY_DATABASE_ID: "baaf5886-0123-4948-96da-aa7106424549", IMPORT_GATEWAY_DATABASE_NAME: "docentetuc-db",
-    SIME_IMPORT_SECRET: token };
-  const approved = "a".repeat(40);
-  assert.throws(() => resolveGatewayConfig({ ...production, IMPORT_GATEWAY_TARGET: "production" }, approved),
-    /GATEWAY_PRODUCTION_NOT_APPROVED/);
-  assert.throws(() => resolveGatewayConfig({ ...production, IMPORT_GATEWAY_TARGET: "production",
-    IMPORT_GATEWAY_PRODUCTION_ENABLED: "true" }, "b".repeat(40)), /GATEWAY_PRODUCTION_NOT_APPROVED/);
-  assert.throws(() => resolveGatewayConfig({ ...production, IMPORT_GATEWAY_PRODUCTION_ENABLED: "true",
-    IMPORT_GATEWAY_APPROVED_SHA: approved }, approved), /GATEWAY_TARGET_FORBIDDEN/);
-  assert.equal(resolveGatewayConfig({ ...production, IMPORT_GATEWAY_TARGET: "production",
-    IMPORT_GATEWAY_PRODUCTION_ENABLED: "true", IMPORT_GATEWAY_APPROVED_SHA: approved }, approved).source, "sime");
+test('fallo de cierre marca incidente; cierre independiente es idempotente',async t=>{
+  const options={closeFailure:true},f=fixture(options);t.after(()=>f.sqlite.close());const r=await f.run();assert.equal(r.data.closed,false);assert.equal(r.data.status,'ERROR');assert.equal(f.leases(),1);
+  options.closeFailure=false;
+  assert.equal((await closeSimeCanary(config,sha,f.receiverFetch)).closed,true);assert.equal(f.leases(),0);
+  assert.equal((await closeSimeCanary(config,sha,f.receiverFetch)).closed,true);
 });
 
-test("el workflow sigue siendo manual, solo SIME y con destino canary por defecto", () => {
-  const workflow = readFileSync(new URL("../.github/workflows/sime-import.yml", import.meta.url), "utf8");
-  assert.match(workflow, /^\s{2}workflow_dispatch:/m);
-  assert.equal(/^\s*schedule:/m.test(workflow), false);
-  assert.match(workflow, /^\s*SYNC_SOURCE: sime$/m);
-  assert.match(workflow, /^\s*IMPORT_GATEWAY_TARGET: \$\{\{ inputs\.target \}\}$/m);
-  assert.match(workflow, /^\s*IMPORT_GATEWAY_PRODUCTION_ENABLED: \$\{\{ inputs\.confirm_production && 'true' \|\| 'false' \}\}$/m);
-  assert.match(workflow, /^\s*IMPORT_GATEWAY_APPROVED_SHA: \$\{\{ vars\.SIME_IMPORT_REF \}\}$/m);
-  assert.match(workflow, /default: canary/);
-  assert.match(workflow, /^\s*SIME_IMPORT_SECRET: \$\{\{ secrets\.SIME_IMPORT_SECRET \}\}$/m);
-  for (const other of ["FDCI", "CENET", "INFD", "JUNTAS"])
-    assert.equal(workflow.includes(`${other}_IMPORT_SECRET`), false);
+test('catálogo vacío: cero publicaciones y cierre confirmado',async t=>{const f=fixture({empty:true});t.after(()=>f.sqlite.close());const r=await f.run();assert.equal(r.data.result.created,0);assert.equal(r.data.closed,true);assert.equal(f.count(),0);});
+
+test('checkpoint alterado o de otra revisión no permite recuperación',async t=>{
+  const f=fixture();t.after(()=>f.sqlite.close());const r=await f.run();assert.throws(()=>readSimeCheckpoint(r,'b'.repeat(40),'123'));assert.throws(()=>readSimeCheckpoint(r,sha,'124'));r.data.result.nextResumeAfter='sime:999';assert.throws(()=>readSimeCheckpoint(r,sha,'123'));
+});
+
+test('entradas inválidas y cuota menor al número de juntas',async()=>{
+  for(const c of [{SIME_IMPORT_JUNTAS:'1,1'},{SIME_IMPORT_LIMIT:'0'},{SIME_IMPORT_LIMIT:'51'},{SIME_IMPORT_LIMIT:'51.5'},{SIME_IMPORT_RESUME_AFTER:'bad'}])assert.throws(()=>parseSimeOptions(c));
+  for(const cursor of [null,0,false,'null','[]','{"version":1,"after":{}}'])assert.throws(()=>parseSimeCursor(cursor));
+  await assert.rejects(runSimeImport({endpoint:CANARY.origin+'/api/internal/sime-import',token:secret,limit:1,receiverFetch:()=>assert.fail('no network')}));
+});
+
+test('paginación cíclica se detiene antes de escribir',async()=>{
+  let calls=0;
+  await assert.rejects(runSimeImport({endpoint:CANARY.origin+'/api/internal/sime-import',token:secret,
+    receiverFetch:async(input,init)=>{assert.equal(init.method,'GET');calls++;return Response.json({items:[],nextCursor:calls%2?'sime:1':'sime:2'});}}),/SIME_PREVIOUS_PAGE_INVALID/);
+  assert.equal(calls,3);
+});
+
+test('cada ACK conserva un checkpoint; un fallo de persistencia detiene y cierra',async t=>{
+  const f=fixture();t.after(()=>f.sqlite.close());const saved=[];
+  const r=await runSimeCanaryPilot(config,sha,{sourceFetch:f.sourceFetch,receiverFetch:f.receiverFetch,clock:()=>f.now,
+    onProgress:report=>{saved.push(structuredClone(report));if(saved.length===2)throw Error('CHECKPOINT_DISK_FAILED');}});
+  assert.equal(f.batches,2);assert.equal(f.count(),2);assert.equal(r.data.closed,true);assert.equal(r.data.halted,true);
+  assert.equal(saved[0].checksum,sealReport(saved[0].data).checksum);
+  assert.equal(parseSimeCursor(saved[0].data.result.nextResumeAfter)[1],'sime:1001');
+  assert.throws(()=>readSimeCheckpoint(saved[1],sha,'123'),/REVIEW_REQUIRED/);
+});
+
+test('workflow: manual, SHA actual fijado, run-id, sin secretos D1 ni schedule',()=>{
+  const w=readFileSync(new URL('../.github/workflows/sime-import.yml',import.meta.url),'utf8');
+  assert.match(w,/workflow_dispatch:/);assert.doesNotMatch(w,/^\s+schedule:/m);assert.match(w,/contents: read/);
+  assert.match(w,/github.run_attempt == 1/);assert.match(w,/SIME_CANARY_AUTHORIZED_RUN_ID/);assert.match(w,/ref: \$\{\{ github.sha \}\}/);
+  assert.match(w,/steps.verify.outcome == 'success'/);assert.doesNotMatch(w,/D1_IMPORT_TOKEN|CF_ACCOUNT_ID|contents: write|wrangler/);
 });
