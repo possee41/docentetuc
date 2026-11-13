@@ -64,7 +64,7 @@ function fixture(options = {}) {
   f.receiverFetch = async (input, init = {}) => {
     const u = new URL(input), headers = new Headers(init.headers);
     assert.equal(u.origin, CANARY.origin);
-    assert.equal(headers.get('authorization'), 'Bearer '+secret);
+    if (headers.get('authorization') !== 'Bearer '+secret) return new Response('',{status:401});
     f.calls.push(u.pathname);
     if (u.pathname.endsWith('/import-identity')) return Response.json(options.wrongIdentity ? {...CANARY,id:'baaf5886-0123-4948-96da-aa7106424549'} : {id:CANARY.id,name:CANARY.name});
     if (u.pathname.endsWith('/import-gate')) {
@@ -197,8 +197,68 @@ test('entradas inválidas y cuota menor al número de juntas',async()=>{
 test('paginación cíclica se detiene antes de escribir',async()=>{
   let calls=0;
   await assert.rejects(runSimeImport({endpoint:CANARY.origin+'/api/internal/sime-import',token:secret,
+    now:new Date('2026-10-22T15:00:00Z'),execution:{target:'canary',approvedSha:sha,codeSha:sha,runId:'123',authorizedRunId:'123',owner:'sime-canary:123:1',expiresAt:'2026-10-22T15:10:00Z'},
     receiverFetch:async(input,init)=>{assert.equal(init.method,'GET');calls++;return Response.json({items:[],nextCursor:calls%2?'sime:1':'sime:2'});}}),/SIME_PREVIOUS_PAGE_INVALID/);
   assert.equal(calls,3);
+});
+
+for(const [name,patch] of Object.entries({empty:{},production:{IMPORT_GATEWAY_TARGET:'production'},
+  incomplete:{IMPORT_GATEWAY_TARGET:'canary'},complete:{...config}}))
+  test('CLI directa rechaza antes de HTTP: '+name,()=>{
+    const preload='data:text/javascript,'+encodeURIComponent("globalThis.fetch=async()=>{console.log('UNEXPECTED_HTTP');throw Error('HTTP_FORBIDDEN');};");
+    const child=spawnSync(process.execPath,['--experimental-strip-types','--import',preload,'scripts/import-sime.mjs'],{
+      env:{SystemRoot:process.env.SystemRoot,...patch,SIME_IMPORT_URL:'https://docentetuc-import-1-2.possee41.workers.dev/api/internal/sime-import',SIME_IMPORT_SECRET:secret},encoding:'utf8',timeout:10000});
+    assert.equal(child.status,1);assert.equal(child.stdout,'');assert.match(child.stderr,/SIME_PROTECTED_ENTRYPOINT_REQUIRED/);
+  });
+
+test('API Canary también exige autorización completa antes de HTTP',async()=>{
+  const execution={target:'canary',approvedSha:sha,codeSha:sha,runId:'123',authorizedRunId:'123',owner:'sime-canary:123:1',expiresAt:'2026-10-22T15:10:00Z'};
+  for(const auth of [undefined,{...execution,target:'production'},{...execution,owner:'other'},{...execution,authorizedRunId:'999'},
+    {...execution,codeSha:'b'.repeat(40)},{...execution,expiresAt:'2026-10-22T14:00:00Z'}])
+    await assert.rejects(runSimeImport({endpoint:CANARY.origin+'/api/internal/sime-import',token:secret,execution:auth,
+      now:new Date('2026-10-22T15:00:00Z'),receiverFetch:()=>assert.fail('HTTP must not happen')}),/SIME_CANARY_AUTHORIZATION_REQUIRED/);
+  await assert.rejects(runSimeImport({endpoint:'https://docentetuc-import-1-2.possee41.workers.dev/api/internal/sime-import',token:secret,execution,
+    now:new Date('2026-10-22T15:00:00Z'),receiverFetch:()=>assert.fail('HTTP must not happen')}),/SIME_CANARY_AUTHORIZATION_REQUIRED/);
+});
+
+test('API de biblioteca fuera del Canary conserva su uso local legítimo',async()=>{
+  let writes=0;
+  const r=await runSimeImport({endpoint:'https://fixture.invalid/api/internal/sime-import',token:secret,
+    sourceFetch:async()=>Response.json({periodos:[]}),receiverFetch:async(input,init)=>{
+      if(init.method==='GET')return Response.json({items:[],nextCursor:null});writes++;return Response.json({ok:true});}});
+  assert.equal(r.completed,true);assert.equal(r.created,0);assert.equal(writes,2);
+});
+
+test('cierre con SIME deshabilitado, repetido y sin habilitar importaciones',async t=>{
+  const f=fixture({closeFailure:true});t.after(()=>f.sqlite.close());await f.run();assert.equal(f.leases(),1);
+  const disabled={...config,SIME_CANARY_ENABLED:'false'};f.receiverFetch=async(input,init)=>{
+    const p=JSON.parse(init.body);assert.equal(p.action,'close');assert.equal(p.owner,'sime-canary:123:1');
+    f.sqlite.prepare('DELETE FROM lease WHERE owner=?').run(p.owner);
+    return Response.json({ok:true,closed:true,source:'sime',owner:p.owner});};
+  assert.equal((await closeSimeCanary(disabled,sha,f.receiverFetch)).closed,true);
+  assert.equal((await closeSimeCanary(disabled,sha,f.receiverFetch)).closed,true);assert.equal(f.leases(),0);
+  await assert.rejects(runSimeCanaryPilot(disabled,sha,{receiverFetch:()=>assert.fail('disabled import must not use HTTP')}));
+});
+
+test('cierre rechaza permiso de propietario ajeno antes de HTTP',async()=>{
+  await assert.rejects(closeSimeCanary({...config,SIME_CANARY_ENABLED:'false',SIME_CANARY_AUTHORIZED_RUN_ID:'999'},sha,
+    ()=>assert.fail('HTTP must not happen')),/SIME_EXECUTION_NOT_APPROVED/);
+});
+
+test('cierre autenticado nunca elimina una concesión de otro propietario',async t=>{
+  const f=fixture();t.after(()=>f.sqlite.close());f.sqlite.prepare('INSERT INTO lease VALUES(1,?,?)').run('sime-canary:999:1',f.now+600000);
+  await assert.rejects(closeSimeCanary({...config,SIME_CANARY_ENABLED:'false'},sha,f.receiverFetch),/GATE_HTTP_409/);assert.equal(f.leases(),1);
+});
+
+test('cierre requiere credencial válida y no toca concesiones con token incorrecto',async t=>{
+  const f=fixture();t.after(()=>f.sqlite.close());f.sqlite.prepare('INSERT INTO lease VALUES(1,?,?)').run('sime-canary:123:1',f.now+600000);
+  await assert.rejects(closeSimeCanary({...config,SIME_CANARY_ENABLED:'false',SIME_IMPORT_SECRET:'wrong_synthetic_secret_12345678901234567890'},sha,f.receiverFetch),/GATE_HTTP_401/);
+  assert.equal(f.leases(),1);
+});
+
+test('cierre sin credencial falla antes de HTTP',async()=>{
+  await assert.rejects(closeSimeCanary({...config,SIME_CANARY_ENABLED:'false',SIME_IMPORT_SECRET:undefined},sha,
+    ()=>assert.fail('HTTP must not happen')),/GATEWAY_SECRET_INVALID/);
 });
 
 test('cada ACK conserva un checkpoint; un fallo de persistencia detiene y cierra',async t=>{

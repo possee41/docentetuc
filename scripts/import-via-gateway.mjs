@@ -2,12 +2,9 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, openSync, closeSync, writeFileSync, renameSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { runSimeImport, parseSimeOptions, parseSimeCursor } from "./import-sime.mjs";
+import { runSimeImport, parseSimeOptions, parseSimeCursor, SIME_CANARY as CANARY } from "./import-sime.mjs";
 
-export const CANARY = Object.freeze({
-  origin: "https://docentetuc-import-canary-1-2.possee41.workers.dev",
-  id: "853e2f5d-89b1-46a3-9c1c-5cbd46784756", name: "docentetuc-web-canary-1-2",
-});
+export { CANARY };
 const repository = "possee41/docentetuc";
 const ref = "refs/heads/pilot/sime-fair-canary";
 const fail = code => { throw new Error(code); };
@@ -22,14 +19,14 @@ export function resolveGatewayConfig(config) {
   return { ...CANARY, source: "sime", endpoint: CANARY.origin + "/api/internal/sime-import", secret: config.SIME_IMPORT_SECRET };
 }
 
-export function verifyExecution(config, revision) {
-  const target = resolveGatewayConfig(config), options = parseSimeOptions(config);
-  if (config.SIME_CANARY_ENABLED !== "true" || config.GITHUB_EVENT_NAME !== "workflow_dispatch" ||
+export function verifyExecution(config, revision, { closing = false } = {}) {
+  const target = resolveGatewayConfig(config), options = closing ? null : parseSimeOptions(config);
+  if ((!closing && config.SIME_CANARY_ENABLED !== "true") || config.GITHUB_EVENT_NAME !== "workflow_dispatch" ||
       config.GITHUB_REPOSITORY !== repository || config.GITHUB_REF !== ref || config.GITHUB_RUN_ATTEMPT !== "1" ||
       !/^\d+$/.test(config.GITHUB_RUN_ID || "") || config.SIME_CANARY_AUTHORIZED_RUN_ID !== config.GITHUB_RUN_ID ||
       !/^[a-f0-9]{40}$/.test(config.SIME_CANARY_APPROVED_SHA || "") ||
       revision !== config.SIME_CANARY_APPROVED_SHA || config.GITHUB_SHA !== revision ||
-      options.juntas.join() !== "1,2,3,4" || options.limit !== 50)
+      (!closing && (options.juntas.join() !== "1,2,3,4" || options.limit !== 50)))
     fail("SIME_EXECUTION_NOT_APPROVED");
   return { target, options, owner: `sime-canary:${config.GITHUB_RUN_ID}:1` };
 }
@@ -60,7 +57,7 @@ async function gate(action, target, owner, fetcher) {
 }
 
 export async function closeSimeCanary(config, revision, fetcher = fetch) {
-  const { target, owner } = verifyExecution(config, revision);
+  const { target, owner } = verifyExecution(config, revision, { closing: true });
   await gate("close", target, owner, fetcher);
   return { closed: true, owner };
 }
@@ -115,6 +112,9 @@ export async function runSimeCanaryPilot(config, revision, { sourceFetch = fetch
       fail("GATE_EXPIRY_INVALID");
     report.expiresAt = opened.expiresAt;
     report.result = await runSimeImport({ ...options, endpoint: target.endpoint, token: target.secret,
+      execution: { target: "canary", codeSha: revision, approvedSha: config.SIME_CANARY_APPROVED_SHA,
+        runId: config.GITHUB_RUN_ID, authorizedRunId: config.SIME_CANARY_AUTHORIZED_RUN_ID,
+        owner, expiresAt: opened.expiresAt },
       sourceFetch: guarded(sourceFetch), receiverFetch: guarded(receiverFetch), now: new Date(clock()),
       onProgress: result => onProgress(sealReport({ ...report, result, status: "IN_PROGRESS", halted: true })) });
     report.status = report.result.completed ? "OK" : "PARTIAL";
@@ -138,9 +138,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   process.once("SIGINT", abort); process.once("SIGTERM", abort);
   try {
     const config = process.env, revision = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-    verifyExecution(config, revision);
     if (process.argv[2] === "close") console.log(JSON.stringify(await closeSimeCanary(config, revision)));
     else {
+      verifyExecution(config, revision);
       if (process.argv[2] !== "run") fail("SIME_ACTION_REQUIRED");
       if (existsSync("sime-canary-result.json")) fail("SIME_RESULT_ALREADY_EXISTS");
       // A persistent local latch also blocks a second invocation in this workspace.

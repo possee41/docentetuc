@@ -15,6 +15,21 @@ async function request(url, token, fetcher, body) {
 
 const ALL_JUNTAS = [1, 2, 3, 4];
 const MAX_ITEMS_PER_RUN = 50;
+export const SIME_CANARY = Object.freeze({
+  origin: "https://docentetuc-import-canary-1-2.possee41.workers.dev",
+  id: "853e2f5d-89b1-46a3-9c1c-5cbd46784756", name: "docentetuc-web-canary-1-2",
+});
+
+function verifyCanaryInvocation(url, execution, now) {
+  if (url.origin !== SIME_CANARY.origin && execution === undefined) return; // Non-Canary library callers remain supported.
+  const expires = Date.parse(execution?.expiresAt);
+  if (url.origin !== SIME_CANARY.origin || url.search || url.hash || url.username || url.password ||
+      execution?.target !== "canary" || !/^[a-f0-9]{40}$/.test(execution.approvedSha || "") ||
+      execution.codeSha !== execution.approvedSha || !/^[1-9]\d*$/.test(execution.runId || "") ||
+      execution.runId !== execution.authorizedRunId || execution.owner !== `sime-canary:${execution.runId}:1` ||
+      !Number.isFinite(now.getTime()) || !Number.isFinite(expires) || expires <= now.getTime() || expires > now.getTime() + 600_000)
+    throw new Error("SIME_CANARY_AUTHORIZATION_REQUIRED");
+}
 
 // A per-Junta checkpoint avoids replaying a faster Junta while another catches up.
 export function parseSimeCursor(value = "") {
@@ -48,11 +63,12 @@ export function parseSimeOptions(config = {}) {
 }
 
 export async function runSimeImport({ endpoint, token, sourceFetch = fetch, receiverFetch = fetch, now = new Date(),
-  juntas = ALL_JUNTAS, limit = 50, resumeAfter = "", onProgress = () => {} }) {
+  juntas = ALL_JUNTAS, limit = 50, resumeAfter = "", onProgress = () => {}, execution }) {
   let url;
   try { url = new URL(endpoint); } catch { throw new Error("SIME_IMPORT_CONFIGURATION_INVALID"); }
   if ((url.protocol !== "https:" && !(url.protocol === "http:" && url.hostname === "127.0.0.1")) ||
       url.pathname !== "/api/internal/sime-import" || !/^[A-Za-z0-9_-]{32,}$/.test(token)) throw new Error("SIME_IMPORT_CONFIGURATION_INVALID");
+  verifyCanaryInvocation(url, execution, now);
   const selected = [...new Set(juntas)].sort((a, b) => a - b);
   if (!selected.length || selected.some((id) => !ALL_JUNTAS.includes(id)) ||
       !(Number.isInteger(limit) && limit >= 1 && limit <= MAX_ITEMS_PER_RUN) ||
@@ -129,12 +145,7 @@ export async function runSimeImport({ endpoint, token, sourceFetch = fetch, rece
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try {
-    const result = await runSimeImport({ endpoint: process.env.SIME_IMPORT_URL || "", token: process.env.SIME_IMPORT_SECRET || "",
-      ...parseSimeOptions(process.env) });
-    console.log(JSON.stringify(result));
-  } catch (error) {
-    console.error("SIME_IMPORT_FAILED", sourceErrorCode(error));
-    process.exitCode = 1;
-  }
+  // Keep the library API for local/legacy callers, never a second Canary executable.
+  console.error("SIME_PROTECTED_ENTRYPOINT_REQUIRED");
+  process.exitCode = 1;
 }

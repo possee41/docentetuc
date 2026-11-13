@@ -16,7 +16,7 @@ on:
         default: '50'
         required: true
       resume_after:
-        description: 'Empty for the first pilot; verified per-Junta cursor only after separate approval'
+        description: 'Empty for this first pilot'
         type: string
         default: ''
 permissions:
@@ -25,15 +25,53 @@ concurrency:
   group: sime-canary-single-pilot
   cancel-in-progress: false
 jobs:
+  preflight:
+    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/pilot/sime-fair-canary' && github.event_name == 'workflow_dispatch' && github.run_attempt == 1 && vars.SIME_CANARY_PREFLIGHT_ENABLED == 'true'
+    # No environment here: GET-only inspection must precede any protected job.
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+      environment_id: ${{ steps.check.outputs.environment_id }}
+      policy_checksum: ${{ steps.check.outputs.policy_checksum }}
+      code_sha: ${{ steps.check.outputs.code_sha }}
+    env:
+      SIME_CANARY_APPROVED_SHA: ${{ vars.SIME_CANARY_APPROVED_SHA }}
+      SIME_CANARY_OWNER_ID: ${{ vars.SIME_CANARY_OWNER_ID }}
+      SIME_CANARY_ENVIRONMENT_ID: ${{ vars.SIME_CANARY_ENVIRONMENT_ID }}
+      IMPORT_GATEWAY_TARGET: ${{ inputs.target }}
+      SIME_IMPORT_JUNTAS: ${{ inputs.juntas }}
+      SIME_IMPORT_LIMIT: ${{ inputs.limit }}
+      SIME_IMPORT_RESUME_AFTER: ${{ inputs.resume_after }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify existing Environment, owner, branch and immutable code
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/sime-canary-environment.mjs
   import:
-    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/pilot/sime-fair-canary' && github.event_name == 'workflow_dispatch' && github.run_attempt == 1
+    needs: preflight
+    if: needs.preflight.result == 'success' && needs.preflight.outputs.ready == 'true'
     environment: canary-sime
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    permissions:
+      contents: read
+      actions: read
     env:
-      SIME_CANARY_ENABLED: ${{ vars.SIME_CANARY_ENABLED }}
-      SIME_CANARY_APPROVED_SHA: ${{ vars.SIME_CANARY_APPROVED_SHA }}
-      SIME_CANARY_AUTHORIZED_RUN_ID: ${{ vars.SIME_CANARY_AUTHORIZED_RUN_ID }}
+      SIME_CANARY_APPROVED_SHA: ${{ needs.preflight.outputs.code_sha }}
+      SIME_CANARY_OWNER_ID: ${{ vars.SIME_CANARY_OWNER_ID }}
+      SIME_CANARY_ENVIRONMENT_ID: ${{ needs.preflight.outputs.environment_id }}
       SYNC_SOURCE: sime
       IMPORT_GATEWAY_TARGET: ${{ inputs.target }}
       IMPORT_GATEWAY_PRODUCTION_ENABLED: 'false'
@@ -51,8 +89,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Recheck unchanged Environment after protection rules
+        id: recheck
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIME_CANARY_PREFLIGHT_CHECKSUM: ${{ needs.preflight.outputs.policy_checksum }}
+        run: node scripts/sime-canary-environment.mjs
       - name: Verify immutable revision and single authorized run
         id: verify
+        env:
+          SIME_CANARY_ENABLED: ${{ vars.SIME_CANARY_ENABLED }}
+          SIME_CANARY_AUTHORIZED_RUN_ID: ${{ vars.SIME_CANARY_AUTHORIZED_RUN_ID }}
         run: |
           node --input-type=module <<'NODE'
           import {execFileSync} from 'node:child_process';
@@ -65,11 +112,15 @@ jobs:
           NODE
       - name: Run one bounded SIME pilot
         env:
+          SIME_CANARY_ENABLED: ${{ vars.SIME_CANARY_ENABLED }}
+          SIME_CANARY_AUTHORIZED_RUN_ID: ${{ vars.SIME_CANARY_AUTHORIZED_RUN_ID }}
           SIME_IMPORT_SECRET: ${{ secrets.SIME_IMPORT_SECRET }}
         run: node --experimental-strip-types scripts/import-via-gateway.mjs run
       - name: Independent idempotent close (never retries an import)
         if: always() && steps.verify.outcome == 'success'
         env:
+          SIME_CANARY_ENABLED: ${{ vars.SIME_CANARY_ENABLED }}
+          SIME_CANARY_AUTHORIZED_RUN_ID: ${{ vars.SIME_CANARY_AUTHORIZED_RUN_ID }}
           SIME_IMPORT_SECRET: ${{ secrets.SIME_IMPORT_SECRET }}
         run: node --experimental-strip-types scripts/import-via-gateway.mjs close
       - uses: actions/upload-artifact@v4
