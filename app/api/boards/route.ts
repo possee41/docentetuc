@@ -1,8 +1,9 @@
 import { getD1 } from "@/db";
 import { boardItems } from "@/lib/board-view";
-import { boardPageQuery, BOARD_PAGE_SIZE, type BoardPageMode, type BoardPageView } from "@/lib/board-page";
+import { boardPageQuery, BOARD_PAGE_SIZE, DESIGNATION_PAGE_SIZE, type BoardPageMode, type BoardPageView } from "@/lib/board-page";
 import type { JuntaId } from "@/lib/juntas";
 import type { Publication } from "@/lib/types";
+import { designationCatalog } from "@/lib/designation-catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -23,9 +24,10 @@ export async function GET(request: Request) {
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Tucuman", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
     const binds = [cursor, ...(query.needsNow ? [today, today] : []), ...query.binds];
     const rows = (await getD1().prepare(query.sql).bind(...binds).all<Publication>()).results;
-    const page = rows.slice(0, BOARD_PAGE_SIZE);
-    const items = view === "llamados" && mode === "current" ? boardItems(page, "llamados", now) : page;
-    return Response.json({ items, nextCursor: rows.length > BOARD_PAGE_SIZE ? page.at(-1)?.id : null },
+    const pageSize = view === "actos" ? DESIGNATION_PAGE_SIZE : BOARD_PAGE_SIZE;
+    const page = rows.slice(0, pageSize);
+    const items = view === "actos" ? designationCatalog(page, now, mode === "references") : view === "llamados" && mode === "current" ? boardItems(page, "llamados", now) : page;
+    return Response.json({ items, nextCursor: rows.length > pageSize ? page.at(-1)?.id : null },
       { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("[api/boards] GET failed", error);

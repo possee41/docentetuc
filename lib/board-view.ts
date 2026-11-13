@@ -1,6 +1,7 @@
 import type { Publication } from "./types";
 import { eventDate, hasOfficialTopic, officialMetadata } from "./official-publication.ts";
 import { isPublicPublication } from "./publication-visibility.ts";
+import { simeDesignationView } from "./designation-catalog.ts";
 
 export type BoardView = "padrones" | "comunicados" | "llamados" | "actos";
 export type BoardPublication = Pick<Publication, "id" | "kind" | "category" | "metadata" | "starts_at" | "ends_at" | "updated_at" | "source_published_at" | "removed_at" | "normalized_status">;
@@ -9,6 +10,7 @@ export type BoardPublication = Pick<Publication, "id" | "kind" | "category" | "m
 export function isVerifiedCurrentBoardItem(item: BoardPublication, view: "actos" | "llamados", now = new Date()) {
   if (item.removed_at || ["EXPIRED", "CLOSED", "REMOVED_FROM_SOURCE"].includes(item.normalized_status || "")) return false;
   const m = officialMetadata(item);
+  if (view === "actos" && m?.detailStatus === "STALE") return false;
   if (!m) {
     const start = Date.parse(item.starts_at || ""), end = Date.parse(item.ends_at || "");
     return !item.id.startsWith("padrones:") && Number.isFinite(start) && (Number.isFinite(end) ? end : start) >= now.getTime();
@@ -30,7 +32,8 @@ export function isVerifiedCurrentBoardItem(item: BoardPublication, view: "actos"
 export function boardItems<T extends BoardPublication>(publications: T[], view: BoardView, now = new Date()): T[] {
   const category = { padrones: "Padrones", comunicados: "Comunicados", llamados: "Llamados abiertos", actos: "Actos de designación" }[view];
   const topic = { padrones: "PADRON", comunicados: "OTRO_COMUNICADO", llamados: "LLAMADO_ABIERTO", actos: "ACTO_DESIGNACION" } as const;
-  const items = publications.filter((item) => {
+  const candidates = view === "actos" ? publications.map(item => (simeDesignationView(item as unknown as Publication, now) || item) as T) : publications;
+  const items = candidates.filter((item) => {
     if (!isPublicPublication(item)) return false;
     const m = officialMetadata(item);
     if (!m) return item.kind === "junta" && item.category === category;
@@ -40,6 +43,11 @@ export function boardItems<T extends BoardPublication>(publications: T[], view: 
     return hasOfficialTopic(item, topic[view]) && (view !== "actos" || m.entity === "event");
   });
   if (view === "padrones" || view === "comunicados") return items.sort((a, b) => Date.parse(b.source_published_at || b.updated_at) - Date.parse(a.source_published_at || a.updated_at));
-  return items.filter(item => isVerifiedCurrentBoardItem(item, view, now))
+  const unique = new Map<string, T>();
+  for (const item of items) {
+    const key = view === "actos" && item.id.startsWith("acto:sime:") ? item.id.slice(5) : item.id;
+    if (!unique.has(key) || item.id === key) unique.set(key, item);
+  }
+  return [...unique.values()].filter(item => isVerifiedCurrentBoardItem(item, view, now))
     .sort((a, b) => (Date.parse(eventDate(a) || a.starts_at || "") || Number.MAX_SAFE_INTEGER) - (Date.parse(eventDate(b) || b.starts_at || "") || Number.MAX_SAFE_INTEGER));
 }

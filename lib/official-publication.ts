@@ -161,7 +161,7 @@ export function officialLifecycle(item: MetadataLike, now = new Date()): "ACTIVE
   }
   if (m.entity !== "event") return null;
   const day = m.facts.designation?.value.slice(0, 10);
-  if (!day || m.facts.designation.status === "conflict") return "UNKNOWN";
+  if (!day || m.facts.designation.status === "conflict" || m.detailStatus === "STALE") return "UNKNOWN";
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
   return day < today ? "EXPIRED" : day === today ? "ACTIVE" : "UPCOMING";
 }
