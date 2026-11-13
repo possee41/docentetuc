@@ -3,6 +3,16 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { validateDailyState, sealDailyState, SIME_JUNTAS } from './daily-sync-state.mjs';
 
+// Offline identity upgrade of a clean ledger. It never clears suspension or a consumed recovery run.
+export function upgradeSimeRuntime(state, oldSha, newSha) {
+  validateDailyState(state,'sime',oldSha);
+  const d=state.data;
+  if(!/^[a-f0-9]{40}$/.test(newSha)||newSha===oldSha||d.environment!=='production'||d.owner!==null||d.expiresAt!==null||d.inFlight!==null||d.halted)
+    throw Error('SIME_RUNTIME_UPGRADE_REVIEW_REQUIRED');
+  return sealDailyState({...structuredClone(d),codeSha:newSha,generation:d.generation+1,
+    runtimeReview:{previousCodeSha:oldSha,previousChecksum:state.sha256}});
+}
+
 export function prepareSimeRecovery(state, oldSha, newSha, receipt, now = new Date()) {
   validateDailyState(state, 'sime', oldSha);
   const d = structuredClone(state.data), checkedAt = Date.parse(receipt?.at);
@@ -26,11 +36,13 @@ export function prepareSimeRecovery(state, oldSha, newSha, receipt, now = new Da
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [statePath, receiptPath, oldSha, newSha, output] = process.argv.slice(2);
+  const args=process.argv.slice(2);
+  const upgrade=args[0]==='upgrade';
+  const [statePath,receiptPath,oldSha,newSha,output]=upgrade?[args[1],null,args[2],args[3],args[4]]:args;
   if (!output) throw Error('SIME_RECOVERY_LOCAL_OUTPUT_REQUIRED');
-  const state = JSON.parse(readFileSync(statePath,'utf8')),receipt=JSON.parse(readFileSync(receiptPath,'utf8'));
-  const result = prepareSimeRecovery(state,oldSha,newSha,receipt);
+  const state = JSON.parse(readFileSync(statePath,'utf8'));
+  const result = upgrade ? upgradeSimeRuntime(state,oldSha,newSha) : prepareSimeRecovery(state,oldSha,newSha,JSON.parse(readFileSync(receiptPath,'utf8')));
   writeFileSync(output,JSON.stringify(result)+'\n',{flag:'wx'});
   console.log(JSON.stringify({localOnly:true,generation:result.data.generation,confirmed:Object.keys(result.data.confirmed).length,
-    pending:result.data.pending,resolvedId:result.data.recoveryReview.resolvedId,checksum:result.sha256}));
+    pending:result.data.pending,...(upgrade?{runtimeUpgradeOnly:true}:{resolvedId:result.data.recoveryReview.resolvedId}),checksum:result.sha256}));
 }

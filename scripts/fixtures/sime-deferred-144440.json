@@ -1,0 +1,16 @@
+{
+  "provenance": {
+    "observedAt": "2026-11-13T16:12:31.366Z",
+    "path": "/Vacantes/ObtenerVacante/144440",
+    "http": 200
+  },
+  "vacante": {
+    "id": 144440,
+    "codigo": "PDVC-20261105-145377",
+    "fechaPublicacionInicio": "06/11/2026 08:00",
+    "fechaPublicacionFin": "11/11/2026 08:00",
+    "fechaDesignacion": "13/11/2026 11:45 a.m.",
+    "descripcion": "LLAMADO ABIERTO - CAUSAL: -RENUNCIA. REPUBLICACION DE ID PDVC-20261028-144649.\r\n*** VER EL CRONOGRAMA DE LA PUBLICACIÓN EN SITIO WEB (COMUNICADOS Y PADRONES) HTTPS://PADRONES.EDUCACIONTUC.GOV.AR / PADRONES LLAMADOS ABIERTO/ CARGOS / FECHA DE DESIGNACIÓN SEGÚN PUBLICACIÓN. ***",
+    "estadoId": 12
+  }
+}

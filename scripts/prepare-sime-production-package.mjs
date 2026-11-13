@@ -36,10 +36,23 @@ export function patchSimeWorkflow(workflow, approvedSha) {
   workflow+="\n      - uses: actions/upload-artifact@v4\n        if: always() && env.SYNC_SOURCE == 'sime'\n        with:\n          name: sime-production-result-${{ github.run_id }}\n          path: sime-production-result.json\n          if-no-files-found: ignore\n          retention-days: 30\n";
   return workflow;
 }
+export function patchSimeMaintenanceWorkflow(workflow, approvedSha) {
+  const old='301bd106a94ae7354f37bab66ee6dcf9f30c3ce8';
+  if(!/^[a-f0-9]{40}$/.test(approvedSha||'')||[old,'e7fc12fe3454f865b53c0c45f36b5568653dc02c'].includes(approvedSha)||workflow.split(old).length!==6||
+      !workflow.includes('group: daily-production-source-writes')||!workflow.includes("github.actor_id == '296786704'"))throw Error('SIME_MAINTENANCE_WORKFLOW_BASELINE');
+  const next=workflow.replaceAll(old,approvedSha);
+  return next+"\n      - name: Report SIME progress without exposing source payloads\n        if: always() && env.SYNC_SOURCE == 'sime'\n        run: node scripts/sime-daily-summary.mjs\n";
+}
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+  if(process.argv[2]==='maintenance'){
+    const [,workflowPath,approvedSha,output]=process.argv.slice(2);if(!output)throw Error('SIME_LOCAL_OUTPUT_REQUIRED');
+    writeFileSync(output,patchSimeMaintenanceWorkflow(readFileSync(workflowPath,'utf8'),approvedSha),{flag:'wx'});
+    console.log(JSON.stringify({localOnly:true,workflow:output,codeSha:approvedSha}));
+  }else{
   const [bundlePath,workflowPath,out,approvedSha]=process.argv.slice(2);if(!out)throw Error('SIME_LOCAL_OUTPUT_REQUIRED');
   const bundle=patchSimeReceiver(readFileSync(bundlePath,'utf8')),workflow=patchSimeWorkflow(readFileSync(workflowPath,'utf8'),approvedSha);mkdirSync(out,{recursive:true});
   writeFileSync(out+'/daily-source-gateway.js',bundle,{flag:'wx'});
   writeFileSync(out+'/daily-production-sources.yml',workflow,{flag:'wx'});
   console.log(JSON.stringify({localOnly:true,files:['daily-source-gateway.js','daily-production-sources.yml']}));
+  }
 }

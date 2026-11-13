@@ -7,8 +7,8 @@ import { resolveGatewayConfig, verifyGatewayIdentity, runGatewayImport } from ".
 import { createDailyGitStore, runDailyBatch, runDailyCheckpoint, sealDailyState, validateDailyState } from "./daily-sync-state.mjs";
 import { callGate } from "./import-gate.mjs";
 
-// Reuse collectors unchanged. Their writes are staged in Node, not sent to D1.
-export async function collectDailySnapshot(target, { sourceFetch = fetch, receiverFetch = fetch, now = new Date() } = {}) {
+// Reuse the existing collectors. Their writes are staged in Node, not sent to D1.
+export async function collectDailySnapshot(target, { sourceFetch = fetch, receiverFetch = fetch, now = new Date(), maintenance } = {}) {
   const items = [], health = new Set(); let complete = false;
   const stage = async (url, init = {}) => {
     if (init.method === "GET" || !init.method) return receiverFetch(url, init); // SIME prior public metadata only.
@@ -20,11 +20,12 @@ export async function collectDailySnapshot(target, { sourceFetch = fetch, receiv
     return Response.json({ ok: true, received: payload.items?.length ?? 0, created: payload.items?.length ?? 0,
       updated: 0, unchanged: 0, queries: 0, rowsRead: 0, rowsWritten: 0 });
   };
-  if (target.source === "sime") await runSimeImport({ endpoint: target.endpoint, token: target.secret, sourceFetch, receiverFetch: stage, now });
+  let progress;
+  if (target.source === "sime") progress = await runSimeImport({ endpoint: target.endpoint, token: target.secret, sourceFetch, receiverFetch: stage, now, maintenance });
   else if (["infd", "cenet"].includes(target.source)) await runPublicSourceImport({ source: target.source,
     endpoint: target.endpoint, token: target.secret, sourceFetch, receiverFetch: stage, now });
   else throw Error("DAILY_SOURCE_UNSUPPORTED");
-  return { items, complete, ...(health.size ? { health: [...health] } : {}) };
+  return { items, complete, ...(health.size ? { health: [...health] } : {}), ...(progress?.maintenance ? {maintenance:progress.maintenance} : {}) };
 }
 export function dailyReceiver(target, fetcher = fetch) {
   return async payload => {
@@ -41,11 +42,14 @@ export async function runDailySource(config, codeSha, { store, sourceFetch = fet
   config = { ...config, [secretName]: config[secretName] || config.DAILY_IMPORT_SECRET };
   const target = resolveGatewayConfig(config, codeSha);
   const sime = target.source === 'sime', invocations = [];
+  const maintenanceMode = sime && config.DAILY_EVENT_NAME === 'schedule';
+  const scheduleDay = maintenanceMode ? new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Tucuman',year:'numeric',month:'2-digit',day:'2-digit'}).format(now) : undefined;
   if (sime && config.IMPORT_GATEWAY_TARGET === 'production') {
     if (config.GITHUB_REPOSITORY !== 'possee41/docentetuc' || config.GITHUB_REF !== 'refs/heads/fix/navigation-community-1.1' ||
         config.GITHUB_RUN_ATTEMPT !== '1' || !/^[1-9]\d*$/.test(config.GITHUB_RUN_ID || '')) throw Error('SIME_PRODUCTION_EXECUTION_FORBIDDEN');
     if (config.DAILY_EVENT_NAME === 'schedule') {
       if (config.SIME_PRODUCTION_DAILY_ENABLED !== 'true') throw Error('SIME_PRODUCTION_DAILY_DISABLED');
+      if (config.DAILY_EVENT_SCHEDULE !== '7 9 * * *' || config.SIME_PRODUCTION_APPROVED_SHA !== codeSha) throw Error('SIME_PRODUCTION_SCHEDULE_NOT_APPROVED');
     } else if (config.DAILY_EVENT_NAME !== 'workflow_dispatch' || config.GITHUB_ACTOR_ID !== '296786704' ||
         config.SIME_PRODUCTION_RECOVERY_ENABLED !== 'true' || config.SIME_PRODUCTION_RECOVERY_CONFIRM !== 'true')
       throw Error('SIME_PRODUCTION_RECOVERY_NOT_APPROVED');
@@ -67,6 +71,7 @@ export async function runDailySource(config, codeSha, { store, sourceFetch = fet
       (!['sime','infd','cenet'].includes(target.source) || config.DAILY_STATE_ENVIRONMENT !== 'production' || initial.state.data.environment !== 'production'))
     throw Error('DAILY_PRODUCTION_STATE_REQUIRED');
   if (initial.state.data.halted || initial.state.data.inFlight) throw Error("DAILY_HALTED_REVIEW_REQUIRED");
+  if (scheduleDay && initial.state.data.lastScheduledDay === scheduleDay) throw Error('SIME_DAILY_ALREADY_ATTEMPTED_OR_INVALID');
   const recoveryRunId = sime && config.IMPORT_GATEWAY_TARGET === 'production' && config.DAILY_EVENT_NAME === 'workflow_dispatch' ? config.GITHUB_RUN_ID : undefined;
   if (recoveryRunId && initial.state.data.recoveryRunId) throw Error('DAILY_RECOVERY_ALREADY_USED_OR_INVALID');
   if (sime && signal?.aborted) throw Error('SIME_CANCELLED');
@@ -83,10 +88,20 @@ export async function runDailySource(config, codeSha, { store, sourceFetch = fet
     headers: { ...Object.fromEntries(new Headers(init.headers)), "X-Import-Gate-Owner": owner }, redirect: "error",
     ...(sime ? {signal:AbortSignal.any([AbortSignal.timeout(Math.max(1,Math.min(20_000,deadline-Date.now()))),...(init.signal?[init.signal]:[]),...(signal?[signal]:[])])}: {}) });
   };
+  let sourceRequests = 0;
+  const detailReads = new Map();
   const boundedSource = (url, init = {}) => {
     check();
-    return sourceFetch(url, { ...init, ...(sime && Number.isFinite(deadline) ? {
+    const official = new URL(url);
+    if (maintenanceMode && (official.protocol!=='https:'||official.hostname!=='sime.educaciontuc.gov.ar'||official.username||official.password)) throw Error('SIME_SOURCE_ORIGIN_INVALID');
+    const cached = maintenanceMode && new URL(url).pathname.startsWith('/Vacantes/ObtenerVacante/');
+    if (cached && detailReads.has(url)) return detailReads.get(url).then(r=>r.clone());
+    if (maintenanceMode && sourceRequests >= 24) throw Error('SIME_SOURCE_REQUEST_BUDGET');
+    sourceRequests++;
+    const response = sourceFetch(url, { ...init,...(maintenanceMode?{redirect:'error'}:{}), ...(sime && Number.isFinite(deadline) ? {
       signal: AbortSignal.any([AbortSignal.timeout(Math.max(1,Math.min(15_000,deadline-Date.now()))), ...(init.signal ? [init.signal] : []),...(signal?[signal]:[])]) } : {}) });
+    if (cached) { const promise = Promise.resolve(response); detailReads.set(url,promise); return promise.then(r=>r.clone()); }
+    return response;
   };
   const operation = async () => {
     let attempted = false;
@@ -95,19 +110,25 @@ export async function runDailySource(config, codeSha, { store, sourceFetch = fet
       if (sime && (!Number.isFinite(deadline) || deadline <= Date.now() || deadline > Date.now()+600_000)) throw Error('DAILY_LEASE_EXPIRY_INVALID'); };
     try {
       if (target.source === "juntas") { await open(); return await runGatewayImport(target, config, sourceFetch, ownedFetch); }
-      return await runDailyBatch({ source: target.source, codeSha, store, now, owner, limit: 50, recoveryRunId, check,
-        collect: async () => { await open(); return collectDailySnapshot(target, { sourceFetch: sime ? boundedSource : sourceFetch, receiverFetch: ownedFetch, now }); },
+      return await runDailyBatch({ source: target.source, codeSha, store, now, owner, limit: maintenanceMode ? 48 : 50, recoveryRunId, check,
+        redistribute:maintenanceMode,scheduleDay,
+        collect: async state => { await open(); const snapshot = await collectDailySnapshot(target, { sourceFetch: sime ? boundedSource : sourceFetch, receiverFetch: ownedFetch, now,
+          maintenance: maintenanceMode ? {...state.simeMaintenance,queue:state.queue} : undefined });
+          if (snapshot.maintenance) snapshot.maintenance.sourceRequests=sourceRequests;
+          return snapshot; },
         send: dailyReceiver(target, ownedFetch) });
     } finally {
       if (attempted) {
         try { await callGate("close", gateConfig, receiverFetch, codeSha); closed = true; }
         catch {
           closed = false;
+          const error=Error('DAILY_GATE_CLOSE_FAILED');
           if (target.source !== "juntas") {
             const p = await store.load();
             await store.save(p, sealDailyState({ ...p.state.data, generation: p.state.data.generation + 1, halted: true }));
+            if (sime && p.state.data.lastRun) error.diagnostics={lastRun:p.state.data.lastRun};
           }
-          throw Error("DAILY_GATE_CLOSE_FAILED");
+          throw error;
         }
       }
     }
@@ -117,7 +138,7 @@ export async function runDailySource(config, codeSha, { store, sourceFetch = fet
   const previous = await store.load();
   if (previous.state.data.halted || previous.state.data.inFlight) throw Error("DAILY_HALTED_REVIEW_REQUIRED");
   try { const result = await operation(); return sime ? { ...result, closed, invocations } : result; }
-  catch (error) { if (sime) error.diagnostics = { closed, invocations }; throw error; }
+  catch (error) { if (sime) error.diagnostics = { ...error.diagnostics,closed,invocations,sourceRequests }; throw error; }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const controller = new AbortController(),abort=()=>controller.abort();

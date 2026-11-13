@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import { collectSimePublications } from "../lib/sime-collector.ts";
 import { prepareSimeImport } from "../lib/sime-import.ts";
 import { sourceErrorCode } from "../lib/publication-lifecycle.ts";
+import { resolveSimeDeferred, emptyBoardCursors } from './sime-maintenance.mjs';
 
 async function request(url, token, fetcher, body) {
   const response = await fetcher(url, { method: body ? "POST" : "GET", headers: {
@@ -31,7 +32,7 @@ export function parseSimeOptions(config = {}) {
 }
 
 export async function runSimeImport({ endpoint, token, sourceFetch = fetch, receiverFetch = fetch, now = new Date(),
-  juntas = ALL_JUNTAS, limit = Number.POSITIVE_INFINITY, resumeAfter = "" }) {
+  juntas = ALL_JUNTAS, limit = Number.POSITIVE_INFINITY, resumeAfter = "", maintenance }) {
   let url;
   try { url = new URL(endpoint); } catch { throw new Error("SIME_IMPORT_CONFIGURATION_INVALID"); }
   if ((url.protocol !== "https:" && !(url.protocol === "http:" && url.hostname === "127.0.0.1")) ||
@@ -40,6 +41,7 @@ export async function runSimeImport({ endpoint, token, sourceFetch = fetch, rece
   if (!selected.length || selected.some((id) => !ALL_JUNTAS.includes(id)) ||
       !(limit === Number.POSITIVE_INFINITY || Number.isInteger(limit) && limit >= 1 && limit <= MAX_ITEMS_PER_RUN) ||
       (resumeAfter && !/^sime:\d+$/.test(resumeAfter))) throw new Error("SIME_IMPORT_CONFIGURATION_INVALID");
+  if (maintenance && (selected.length !== 4 || resumeAfter || limit !== Number.POSITIVE_INFINITY)) throw Error('SIME_MAINTENANCE_FULL_READ_REQUIRED');
   const previous = new Map();
   let cursor = "";
   do {
@@ -51,19 +53,34 @@ export async function runSimeImport({ endpoint, token, sourceFetch = fetch, rece
     }
     cursor = page.nextCursor || "";
   } while (cursor);
+  if (maintenance) for (const row of Object.values(maintenance.queue || {}))
+    if (!previous.has(row.id)) previous.set(row.id,{metadata:row.metadata});
   await request(endpoint, token, receiverFetch, { mode: "start" });
   let created = 0, updated = 0, unchanged = 0, queries = 0, rowsRead = 0, rowsWritten = 0;
   try {
     const discovered = new Map();
+    const detailCursors = {...emptyBoardCursors(),...maintenance?.detailCursors};
+    const listed = new Set();
+    const boards = Object.fromEntries(ALL_JUNTAS.map(board=>[board,false])),boardErrors=[];
     let complete = true;
     for (const juntaId of selected) {
       try {
-        const result = await collectSimePublications(previous, sourceFetch, now, [juntaId]);
+        const result = await collectSimePublications(previous, sourceFetch, now, [juntaId], maintenance ? detailCursors[juntaId] : undefined);
+        if (maintenance && result.detailCursor !== undefined) detailCursors[juntaId]=result.detailCursor;
+        boards[juntaId]=result.complete===true;
+        if (maintenance && !result.complete) {complete=false;boardErrors.push({board:juntaId,code:'SIME_DETAIL_INCOMPLETE'});continue;}
+        for (const id of result.listedIds || []) listed.add(id);
         // A repeated id keeps the last Junta snapshot, as the sequential batches did.
-        for (const item of result.items) discovered.set(item.id, item);
+        for (const item of result.items) {
+          if (maintenance && discovered.has(item.id) && discovered.get(item.id).junta !== item.junta) throw Error('SIME_SOURCE_IDENTITY_CONFLICT');
+          if (!maintenance || !maintenance.queue?.[item.id] || listed.has(item.id)) discovered.set(item.id, item);
+        }
         complete &&= result.complete;
-      } catch { complete = false; }
+      } catch (error) { if(error?.message==='SIME_SOURCE_IDENTITY_CONFLICT')throw error;
+        complete = false;boards[juntaId]=false;boardErrors.push({board:juntaId,code:sourceErrorCode(error)}); }
     }
+    const deferred = maintenance ? await resolveSimeDeferred(maintenance.queue || {},listed,maintenance.deferredCursors,sourceFetch,now,boards,previous) : null;
+    for (const item of deferred?.items || []) discovered.set(item.id,item);
     // A failed Junta cannot block healthy siblings. Never infer removals from a partial traversal.
     // Deterministic id order makes the limit and the resume point reproducible.
     const ordered = [...discovered.values()].sort((a, b) => Number(a.id.slice(5)) - Number(b.id.slice(5)));
@@ -78,13 +95,14 @@ export async function runSimeImport({ endpoint, token, sourceFetch = fetch, rece
       created += ack.created; updated += ack.updated; unchanged += ack.unchanged;
       queries += ack.queries; rowsRead += ack.rowsRead; rowsWritten += ack.rowsWritten;
     }
-    if (!complete) throw new Error("SIME_PARTIAL_SOURCE");
+    if (!complete && !maintenance) throw new Error("SIME_PARTIAL_SOURCE");
     const result = { discovered: pending.length, created, updated, unchanged, queries, rowsRead, rowsWritten,
-      resumedAfter: resumeAfter || null, nextResumeAfter: truncated ? batch.at(-1).id : "", truncated };
+      resumedAfter: resumeAfter || null, nextResumeAfter: truncated ? batch.at(-1).id : "", truncated,
+      ...(maintenance ? {maintenance:{boards,boardErrors,detailCursors,deferredCursors:deferred?.cursors||maintenance.deferredCursors||emptyBoardCursors(),deferredErrors:deferred?.errors||[],historicalVerified:deferred?.items.length||0,historicalIds:(deferred?.items||[]).map(r=>r.id)}} : {}) };
     // Only a full scan of the four Juntas, started from the beginning and without
     // truncation, may advance sync_state to OK. Bounded runs stay PARTIAL so a
     // later run never treats an incomplete catalog as the source of truth.
-    if (truncated || resumeAfter || selected.length !== ALL_JUNTAS.length) return { ...result, completed: false };
+    if (!complete || truncated || resumeAfter || selected.length !== ALL_JUNTAS.length) return { ...result, completed: false };
     await request(endpoint, token, receiverFetch, { mode: "finish", complete: true, count: batch.length });
     return { ...result, completed: true };
   } catch (error) {

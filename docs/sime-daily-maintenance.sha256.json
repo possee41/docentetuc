@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "base": "301bd106a94ae7354f37bab66ee6dcf9f30c3ce8",
+  "normalization": "UTF-8 text; CRLF normalized to LF",
+  "files": {
+    "lib/sime-collector.ts": "9e14561edf25a251c5d3157756938be9127ed6ae8fcf6afd18c42dca979f554e",
+    "scripts/daily-sources.mjs": "0ae0f42a80dfa3b6067811c5f5a49b398c4de851559375ee42ea341f03832d5e",
+    "scripts/daily-sync-state.mjs": "d24fc5f628868869bfbeebe73479af036ba19d01a66b301869d5e30c7d62c3b7",
+    "scripts/import-sime.mjs": "2d4a8974d853590c2ace507ebfa657f559f6bfe30016e30a9f29d9e84b731b41",
+    "scripts/sime-maintenance.mjs": "55ffaeb79432f5b4a9df35fa9f3c1b5b148c16fb2f7d0a908eef2e378a2b8e45",
+    "scripts/sime-daily-summary.mjs": "9a1d259d064b521c4edcdf65c695c130fd5d65651fedca4d994d9aca7bbf50a3",
+    "scripts/prepare-sime-recovery.mjs": "7a5628c8fec4a5fc11d399e0dad716c311e3da77dd99d76bbbcf833423a04866",
+    "scripts/prepare-sime-production-package.mjs": "a914d704bb22608cbcb834a7d138e10ee96221d5390e1ce2a4b1abea72a56eca",
+    "scripts/sime-production-recovery.test.mjs": "a16cc40d2a2daf6a742ed05e6fc0ecbd2d17feea01eea1dc4be40f230642503c",
+    "scripts/sime-maintenance.test.mjs": "7a75600e95db6132256f743b250c7d1436117f0c31c83753b56af2a9db7b3ab3",
+    "scripts/fixtures/sime-deferred-144440.json": "f9359295dd97d02e9d76ad816a087aa4b3fc9002ec6281eaa28cf951e6a0d5af",
+    "scripts/fixtures/daily-production-sime-maintenance.yml": "d26c371cb232f95a0033bb587b363278dfeb942c9707bdfdeef2e7873303c698",
+    "scripts/fixtures/sime-production-schema.sql": "cd4f75f4b1d846b8a49f6f965729a0e550ab829abf62f90ca6e77b95b3c4fd2f"
+  }
+}

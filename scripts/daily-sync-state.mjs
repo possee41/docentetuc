@@ -9,6 +9,9 @@ const blob = bytes => createHash("sha1").update(`blob ${Buffer.byteLength(bytes)
 const hex = /^[a-f0-9]{40}$/;
 export const SIME_JUNTAS = ["Inicial y Primaria", "Secundaria", "Técnica, Agrotécnica y No Formal", "Superior, Especial y Artística"];
 const emptySimeCursors = () => Object.fromEntries(SIME_JUNTAS.map((_, i) => [i+1, ""]));
+const validCursors = c => c && Object.keys(c).sort().join() === '1,2,3,4' &&
+  Object.values(c).every(id => typeof id === 'string' && (id === '' || /^sime:\d{1,15}$/.test(id)));
+const validBoards = c => c && Object.keys(c).sort().join() === '1,2,3,4' && Object.values(c).every(v=>typeof v==='boolean');
 export const sealDailyState = data => ({ data, sha256: hash(JSON.stringify(data)) });
 export function initialDailyState(source, codeSha, environment = 'canary') {
   if (!DAILY_SOURCES.includes(source) || !hex.test(codeSha) || !['canary','production'].includes(environment)) throw Error("DAILY_STATE_IDENTITY_INVALID");
@@ -35,6 +38,11 @@ export function validateDailyState(state, source, codeSha) {
         Object.values(d.simeCursors).some(id => typeof id !== "string" || id !== "" && !/^sime:\d{1,15}$/.test(id))) ||
       d.recoveryRunId !== undefined && (source !== "sime" || !/^[1-9]\d*$/.test(d.recoveryRunId)))
     throw Error("DAILY_STATE_INVALID");
+  if (source === 'sime' && (d.pending !== Object.keys(d.queue).length ||
+      d.lastScheduledDay !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(d.lastScheduledDay) ||
+      d.simeMaintenance !== undefined && (!validCursors(d.simeMaintenance.detailCursors) || !validCursors(d.simeMaintenance.deferredCursors) ||
+        !Array.isArray(d.simeMaintenance.deferredErrors) || d.simeMaintenance.deferredErrors.some(e=>!/^sime:\d{1,15}$/.test(e.id)||!Number.isInteger(e.board)||e.board<1||e.board>4||!/^SIME_DEFERRED_[A-Z_]+$/.test(e.code)))))
+    throw Error('DAILY_SIME_PROGRESS_INVALID');
   return state;
 }
 
@@ -87,13 +95,15 @@ export function createDailyGitStore({ source, codeSha, token, fetcher = fetch, e
 }
 
 export async function runDailyBatch({ store, source, codeSha, owner, collect, send, limit = 50, now = new Date(), recoveryRunId,
-  check = () => {} }) {
+  check = () => {}, redistribute = false, scheduleDay }) {
   if (!/^[A-Za-z0-9_-]{1,100}$/.test(owner) || !Number.isInteger(limit) || limit < 1 || limit > 50) throw Error("DAILY_OPTIONS_INVALID");
   let previous = await store.load();
   validateDailyState(previous.state, source, codeSha);
   let d = structuredClone(previous.state.data);
   if (d.halted || d.inFlight) throw Error("DAILY_HALTED_REVIEW_REQUIRED");
   if (d.owner && Date.parse(d.expiresAt) > now.getTime()) throw Error("DAILY_BUSY");
+  if (scheduleDay !== undefined && (source !== 'sime' || !/^\d{4}-\d{2}-\d{2}$/.test(scheduleDay) || d.lastScheduledDay === scheduleDay)) throw Error('SIME_DAILY_ALREADY_ATTEMPTED_OR_INVALID');
+  if (redistribute && (source !== 'sime' || limit > 48)) throw Error('SIME_MAINTENANCE_LIMIT_INVALID');
   if (recoveryRunId !== undefined && (source !== 'sime' || !/^[1-9]\d*$/.test(recoveryRunId) || d.recoveryRunId))
     throw Error('DAILY_RECOVERY_ALREADY_USED_OR_INVALID');
   const persist = async patch => {
@@ -102,7 +112,7 @@ export async function runDailyBatch({ store, source, codeSha, owner, collect, se
   };
   const duration = source === 'sime' ? 600_000 : 1_800_000;
   await persist({ owner, expiresAt: new Date(now.getTime() + duration).toISOString(), lastAttemptAt: now.toISOString(),
-    ...(recoveryRunId ? { recoveryRunId } : {}) });
+    ...(recoveryRunId ? { recoveryRunId } : {}), ...(scheduleDay ? {lastScheduledDay:scheduleDay} : {}) });
   const deadline = performance.now() + duration;
   const write = async payload => {
     if (performance.now() >= deadline) throw Error("DAILY_LEASE_EXPIRED");
@@ -117,9 +127,18 @@ export async function runDailyBatch({ store, source, codeSha, owner, collect, se
       throw Error('DAILY_RECEIVER_ACK_INVALID');
     return ack;
   };
+  const totals = { created: 0, updated: 0, unchanged: 0 }, metrics = { queries: 0, rowsRead: 0, rowsWritten: 0 };
+  const byJunta = Object.fromEntries(SIME_JUNTAS.map((_,i) => [i+1,{created:0,updated:0,unchanged:0}]));
+  let processed = 0;
   try {
-    const snapshot = await collect(); // Complete source validation before any receiver write.
-    if (snapshot.complete !== true || !Array.isArray(snapshot.items)) throw Error("DAILY_SOURCE_INCOMPLETE");
+    const snapshot = await collect(structuredClone(d)); // Validate source/board completeness before any receiver write.
+    const partialSime = redistribute && source === 'sime' && validBoards(snapshot.maintenance?.boards) && Object.values(snapshot.maintenance.boards).some(Boolean);
+    if (redistribute && snapshot.maintenance?.boards && (!validBoards(snapshot.maintenance.boards)||snapshot.complete!==Object.values(snapshot.maintenance.boards).every(Boolean))) throw Error('SIME_SOURCE_COMPLETENESS_INVALID');
+    if ((snapshot.complete !== true && !partialSime) || !Array.isArray(snapshot.items)) {
+      const error=Error('DAILY_SOURCE_INCOMPLETE');
+      if(source==='sime'&&snapshot.maintenance)error.diagnostics={maintenance:snapshot.maintenance};
+      throw error;
+    }
     const items = new Map();
     for (const row of snapshot.items) {
       if (typeof row.id !== "string" || !/^[A-Za-z0-9:_-]{1,260}$/.test(row.id) ||
@@ -128,6 +147,7 @@ export async function runDailyBatch({ store, source, codeSha, owner, collect, se
         throw Error("DAILY_SOURCE_CONFLICT");
       items.set(row.id, row);
     }
+    if (partialSime && snapshot.items.some(row=>snapshot.maintenance.boards[SIME_JUNTAS.indexOf(row.junta)+1]!==true)) throw Error('SIME_INCOMPLETE_BOARD_WRITE_FORBIDDEN');
     const ordered = [...items.values()].sort((a, b) => a.id.localeCompare(b.id, "en"));
     const backlog = { ...d.queue };
     for (const row of ordered) {
@@ -140,20 +160,33 @@ export async function runDailyBatch({ store, source, codeSha, owner, collect, se
       if (limit < 4 || pending.some(row => !/^sime:\d{1,15}$/.test(row.id) || row.externalId !== row.id.slice(5) || !SIME_JUNTAS.includes(row.junta))) throw Error('DAILY_SIME_JUNTA_INVALID');
       const cursors = d.simeCursors || emptySimeCursors(), eligible = pending.filter(row => items.has(row.id));
       deferred = pending.length - eligible.length; // Keep absent pending rows, but never publish their old snapshot.
-      queue = SIME_JUNTAS.flatMap((junta, i) => {
+      const verifiedHistory = new Set(snapshot.maintenance?.historicalIds || []);
+      const boards = SIME_JUNTAS.map((junta, i) => {
         const rows = eligible.filter(row => row.junta === junta).sort((a,b) => Number(a.externalId) - Number(b.externalId));
         const after = Number(cursors[i+1]?.slice(5) || -1);
-        return [...rows.filter(row => Number(row.externalId) > after), ...rows.filter(row => Number(row.externalId) <= after)].slice(0, Math.floor(limit/4));
+        const rotated = [...rows.filter(row => Number(row.externalId) > after), ...rows.filter(row => Number(row.externalId) <= after)];
+        if (!redistribute) return rotated;
+        const verified = rotated.filter(r=>verifiedHistory.has(r.id));
+        const historical = rotated.filter(r=>!verifiedHistory.has(r.id)&&['CLOSED','EXPIRED'].includes(r.normalizedStatus));
+        const relevant = rotated.filter(r=>!verifiedHistory.has(r.id)&&!['CLOSED','EXPIRED'].includes(r.normalizedStatus));
+        // One reserved history slot prevents starvation; the rest prioritizes current/upcoming offers.
+        const reserved = verified.length ? 0 : 1;
+        return [...verified,...historical.slice(0,reserved),...relevant,...historical.slice(reserved)];
       });
+      const allocations = boards.map(rows=>rows.splice(0,Math.floor(limit/4)));
+      if (redistribute) for (let slots=limit-allocations.reduce((n,r)=>n+r.length,0);slots>0 && boards.some(r=>r.length);)
+        for (let i=0;i<4 && slots>0;i++) if (boards[i].length) { allocations[i].push(boards[i].shift());slots--; }
+      queue = allocations.flat();
     }
     const health = snapshot.health ? { health: snapshot.health } : {};
-    await persist({ queue: backlog, pending: pending.length });
+    await persist({ queue: backlog, pending: pending.length,
+      ...(source === 'sime' && snapshot.maintenance ? {simeMaintenance:{...snapshot.maintenance,attemptedAt:now.toISOString(),
+        sourceCheckedAt:snapshot.complete===true?now.toISOString():d.simeMaintenance?.sourceCheckedAt||null}} : {}) });
     await write({ mode: "start", ...health }); await persist({ inFlight: null, pending: pending.length });
-    const totals = { created: 0, updated: 0, unchanged: 0 }, metrics = { queries: 0, rowsRead: 0, rowsWritten: 0 };
-    const byJunta = Object.fromEntries(SIME_JUNTAS.map((_,i) => [i+1,{created:0,updated:0,unchanged:0}]));
     for (const row of queue.slice(0, limit)) {
       const ack = await write({ mode: "batch", items: [row] });
       for (const key of Object.keys(totals)) totals[key] += ack[key];
+      processed++;
       if (source === 'sime') {
         for (const key of Object.keys(metrics)) metrics[key] += ack[key];
         for (const key of Object.keys(totals)) byJunta[SIME_JUNTAS.indexOf(row.junta)+1][key] += ack[key];
@@ -162,18 +195,23 @@ export async function runDailyBatch({ store, source, codeSha, owner, collect, se
       await persist({ inFlight: null, confirmed: { ...d.confirmed, [row.id]: row.contentHash }, queue: remaining, cursor: row.id, pending: d.pending - 1,
         ...(source === 'sime' ? { simeCursors: { ...(d.simeCursors || emptySimeCursors()), [SIME_JUNTAS.indexOf(row.junta)+1]: row.id } } : {}) });
     }
-    const complete = d.pending === 0;
+    const complete = d.pending === 0 && snapshot.complete === true;
     if (complete) {
       await write({ mode: "finish", complete: true, count: ordered.length, ...health });
       await persist({ inFlight: null, lastSuccessAt: now.toISOString(), cursor: "" });
     }
-    await persist({ owner: null, expiresAt: null });
+    const lastRun = {owner,at:now.toISOString(),processed,pending:d.pending,completed:complete,...totals,...metrics,byJunta};
+    await persist({ owner: null, expiresAt: null, ...(source === 'sime' ? {lastRun} : {}) });
     return { source, examined: ordered.length, processed: Math.min(queue.length, limit), pending: d.pending, completed: complete,
       ...totals, lastSuccessAt: d.lastSuccessAt, cursor: d.cursor,
-      ...(source === 'sime' ? { ...metrics, byJunta, simeCursors: d.simeCursors || emptySimeCursors(), deferred } : {}) };
+      ...(source === 'sime' ? { ...metrics, byJunta, simeCursors: d.simeCursors || emptySimeCursors(), deferred,maintenance:d.simeMaintenance } : {}) };
   } catch (error) {
     // A source failure before writes can resume tomorrow. An uncertain receiver write cannot.
-    await persist({ owner: null, expiresAt: null, halted: Boolean(d.inFlight) });
+    const code = /^[A-Z0-9_]+$/.test(error?.message || '') ? error.message : 'SIME_DAILY_FAILED';
+    const lastRun = {owner,at:now.toISOString(),processed,pending:d.pending,completed:false,...totals,...metrics,byJunta,code,uncertainId:d.inFlight?.id || null};
+    const integrityError = source === 'sime' && ['SIME_SOURCE_IDENTITY_CONFLICT','SIME_DEFERRED_IDENTITY_MISMATCH','SIME_DEFERRED_CACHE_INVALID','SIME_DEFERRED_IDENTITY_INVALID','SIME_SOURCE_COMPLETENESS_INVALID','SIME_INCOMPLETE_BOARD_WRITE_FORBIDDEN'].includes(code);
+    await persist({ owner: null, expiresAt: null, halted: Boolean(d.inFlight)||integrityError, ...(source === 'sime' ? {lastRun} : {}) });
+    if (source === 'sime') error.diagnostics = {...error.diagnostics,lastRun};
     throw error;
   }
 }

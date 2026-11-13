@@ -6,11 +6,13 @@ import { applySimeDetail, normalizeSimeVacancy, selectSimeDetails, validSimeDeta
 const juntas = [
   [1, "Inicial y Primaria"], [2, "Secundaria"], [3, "Técnica, Agrotécnica y No Formal"], [4, "Superior, Especial y Artística"],
 ] as const;
+const historicalNote = 'No visible en listado vigente; el Acto se verifica por el detalle público.';
 
 // Shared by the legacy route and the external runner; this only reads the public SIME API.
-export async function collectSimePublications(previous: Map<string, { metadata: string }>, fetcher: typeof fetch = fetch, now = new Date(), juntaIds?: readonly number[]) {
+export async function collectSimePublications(previous: Map<string, { metadata: string }>, fetcher: typeof fetch = fetch, now = new Date(), juntaIds?: readonly number[], detailAfter?: string) {
   const items: CollectedPublication[] = [];
   const records = new Map<string, { vacancy: SimeVacancy; junta: string; juntaId: number }>();
+  const listedIds = new Set<string>();
   const selected = juntas.filter(([id]) => !juntaIds || juntaIds.includes(id));
   for (const [juntaId, junta] of selected) {
     const options = { source: "SIME", signal: AbortSignal.timeout(15_000), headers: { Accept: "application/json", "User-Agent": "DocenteTuc/1.0 (+agregador de fuentes publicas)" }, fetcher };
@@ -24,6 +26,7 @@ export async function collectSimePublications(previous: Map<string, { metadata: 
     if (!Array.isArray(data?.vacantes)) throw new SourceSyncError("SCHEMA_ERROR", "SIME vacantes shape changed");
     if (data.vacantes.some((vacancy) => !vacancy || !Number.isFinite(vacancy.id) || typeof vacancy.cargos !== "string")) throw new SourceSyncError("SCHEMA_ERROR", "SIME vacancy record shape changed");
     for (const vacancy of data.vacantes) {
+      listedIds.add(`sime:${vacancy.id}`);
       records.set(`sime:${vacancy.id}`, { vacancy, junta, juntaId });
       items.push(normalizeSimeVacancy(vacancy, junta, juntaId, previous.get(`sime:${vacancy.id}`)?.metadata, now));
     }
@@ -38,12 +41,17 @@ export async function collectSimePublications(previous: Map<string, { metadata: 
     records.set(id, { vacancy: raw, junta: board[1], juntaId: board[0] });
     const item = normalizeSimeVacancy(raw, board[1], board[0], row.metadata, now);
     const normalized = officialMetadata(item)!;
-    normalized.issues.push("No visible en listado vigente; el Acto se verifica por el detalle público.");
+    normalized.issues.push(historicalNote);
     item.metadata = withOfficial(item.metadata, normalized);
     items.push(item);
   }
   const warnings: string[] = [];
-  for (const item of selectSimeDetails(items, juntaIds ? 3 : 12)) {
+  const detailLimit = juntaIds ? 3 : 12;
+  const floor = detailAfter ? Number(detailAfter.slice(5)) : -1;
+  const byId = detailAfter === undefined ? [] : [...items].sort((a,b)=>Number(a.externalId)-Number(b.externalId));
+  const details = detailAfter === undefined ? selectSimeDetails(items, detailLimit) :
+    [...byId.filter(r=>Number(r.externalId)>floor),...byId.filter(r=>Number(r.externalId)<=floor)].slice(0,detailLimit);
+  for (const item of details) {
     try {
       const response = await fetchSourceJson<{ vacante: SimeDetail }>(`https://sime.educaciontuc.gov.ar/Vacantes/ObtenerVacante/${item.externalId}?origen=&postulante=`, {
         source: "SIME", signal: AbortSignal.timeout(15_000), headers: { Accept: "application/json" }, fetcher,
@@ -56,7 +64,13 @@ export async function collectSimePublications(previous: Map<string, { metadata: 
     }
     const record = records.get(item.id)!;
     const refreshed = normalizeSimeVacancy(record.vacancy, record.junta, record.juntaId, item.metadata, now);
+    if (!listedIds.has(item.id)) {
+      const normalized = officialMetadata(refreshed)!;
+      normalized.issues.push(historicalNote);
+      refreshed.metadata = withOfficial(refreshed.metadata, normalized);
+    }
     items[items.findIndex((row) => row.id === item.id)] = refreshed;
   }
-  return { items, complete: warnings.length === 0, warnings: warnings.length ? { SIME: `Detalles parciales: ${warnings.join("; ")}` } : {} };
+  return { items, complete: warnings.length === 0, warnings: warnings.length ? { SIME: `Detalles parciales: ${warnings.join("; ")}` } : {},
+    ...(detailAfter === undefined ? {} : { detailCursor: details.at(-1)?.id || detailAfter, listedIds: [...listedIds] }) };
 }
