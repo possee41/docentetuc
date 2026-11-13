@@ -1,0 +1,63 @@
+{
+  "referenceCommit": "649ddb2b81204e9fab01a57f78ad4308dfafad15",
+  "branch": "local/etapa38-run-id-secret",
+  "encoding": "Committed Git blobs: UTF-8 without BOM, LF",
+  "functionalFilesChanged": [
+    ".github/workflows/sime-import.yml"
+  ],
+  "artifacts": [
+    {
+      "path": ".github/workflows/sime-import.yml",
+      "sha256": "a1f9f9cb04f4df053ba4dbe98120d02ca5889ada7b8835f2c824f3af2c7b7ebd",
+      "bytes": 5403,
+      "gitBlob": "35504ec76ecada1f76b92e6f19c558ea1df68e2f",
+      "changed": true
+    },
+    {
+      "path": "scripts/import-sime.mjs",
+      "sha256": "2b975dfdd14c15da195a2f277ce43eac69ad05ee9ec649aeee41e877f02cbef9",
+      "bytes": 9627,
+      "gitBlob": "fff6ab02bfb0f7716316575250e7e39a4cd84e79",
+      "changed": false
+    },
+    {
+      "path": "scripts/import-via-gateway.mjs",
+      "sha256": "1fc252d65514cff435544e651b5a3794024353a563552b777dcbc110a2780d3e",
+      "bytes": 9034,
+      "gitBlob": "fafb0737b7e976a4b0e074d3880d2d9412df4ab9",
+      "changed": false
+    },
+    {
+      "path": "scripts/import-sime.test.mjs",
+      "sha256": "b6c5fbddc2510edb3bf2c35e5098c257974d466bf05f4660c91d098cd14576c9",
+      "bytes": 21938,
+      "gitBlob": "9435b132a5bb68e8b1168a0dff760dc2cc9bd0cb",
+      "changed": false
+    },
+    {
+      "path": "scripts/sime-canary-environment.mjs",
+      "sha256": "5c5e38c9165f8b5470bafe1b885a3ef39a6768a8b5f4cf20de1659f42023fb5e",
+      "bytes": 5889,
+      "gitBlob": "35ecbf61b670dd88e265257178f56042efb72b0c",
+      "changed": false
+    },
+    {
+      "path": "scripts/sime-canary-environment.test.mjs",
+      "sha256": "36b0b6fc9b195c6b86ccfd3a90db7a59bfd47b79ff85ee898973ec5dd2e4da33",
+      "bytes": 6908,
+      "gitBlob": "3af6682d816564be1d82943a4dc552b8908f84b1",
+      "changed": false
+    }
+  ],
+  "diff": {
+    "path": ".wrangler/etapa38/run-id-applied.patch",
+    "sha256": "cbf73b44a56c1be088960d0b1b7bcad18d58df3bfa4ac6c8fca5eb6e2dc0b11b"
+  },
+  "checks": {
+    "testsPassed": 9,
+    "testsFailed": 0,
+    "general82Repeated": false,
+    "remoteOperations": false,
+    "realSecretsUsed": false
+  }
+}

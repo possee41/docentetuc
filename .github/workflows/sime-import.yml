@@ -99,7 +99,7 @@ jobs:
         id: verify
         env:
           SIME_CANARY_ENABLED: ${{ vars.SIME_CANARY_ENABLED }}
-          SIME_CANARY_AUTHORIZED_RUN_ID: ${{ vars.SIME_CANARY_AUTHORIZED_RUN_ID }}
+          SIME_CANARY_AUTHORIZED_RUN_ID: ${{ secrets.SIME_CANARY_AUTHORIZED_RUN_ID }}
         run: |
           node --input-type=module <<'NODE'
           import {execFileSync} from 'node:child_process';
@@ -113,14 +113,14 @@ jobs:
       - name: Run one bounded SIME pilot
         env:
           SIME_CANARY_ENABLED: ${{ vars.SIME_CANARY_ENABLED }}
-          SIME_CANARY_AUTHORIZED_RUN_ID: ${{ vars.SIME_CANARY_AUTHORIZED_RUN_ID }}
+          SIME_CANARY_AUTHORIZED_RUN_ID: ${{ secrets.SIME_CANARY_AUTHORIZED_RUN_ID }}
           SIME_IMPORT_SECRET: ${{ secrets.SIME_IMPORT_SECRET }}
         run: node --experimental-strip-types scripts/import-via-gateway.mjs run
       - name: Independent idempotent close (never retries an import)
         if: always() && steps.verify.outcome == 'success'
         env:
           SIME_CANARY_ENABLED: ${{ vars.SIME_CANARY_ENABLED }}
-          SIME_CANARY_AUTHORIZED_RUN_ID: ${{ vars.SIME_CANARY_AUTHORIZED_RUN_ID }}
+          SIME_CANARY_AUTHORIZED_RUN_ID: ${{ secrets.SIME_CANARY_AUTHORIZED_RUN_ID }}
           SIME_IMPORT_SECRET: ${{ secrets.SIME_IMPORT_SECRET }}
         run: node --experimental-strip-types scripts/import-via-gateway.mjs close
       - uses: actions/upload-artifact@v4
