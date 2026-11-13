@@ -3,7 +3,9 @@ const reply = (body, status = 200) => Response.json(body, { status, headers: { "
 const clean = (value, max) => typeof value === "string" && value.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value);
 const date = (value) => value === null || (clean(value, 40) && Number.isFinite(Date.parse(value)));
 const fields = { externalId: 40, category: 120, title: 500, summary: 8000, level: 300, area: 300, junta: 300,
-  location: 300, shift: 150, character: 300, status: 100, metadata: 16000, contentHash: 64 };
+  // Multi-position SIME offers repeat source evidence in metadata; keep it lossless.
+  // The independent 100,000-byte request cap still applies before parsing/storing.
+  location: 300, shift: 150, character: 300, status: 100, metadata: 32000, contentHash: 64 };
 const dates = ["startsAt", "endsAt", "sourceUpdatedAt", "sourcePublishedAt", "registrationOpenAt", "registrationCloseAt", "expiresAt"];
 
 async function authorized(header, secret) {
