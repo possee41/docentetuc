@@ -13,6 +13,9 @@ const dailyGateway = { async fetch(request, env) {
     return Response.json({ error: "DAILY_DISABLED" }, { status: 503 });
   if (!routes.has(url.pathname) || url.pathname.endsWith("import-identity") && !sources.has(url.searchParams.get("source")))
     return Response.json({ error: "NOT_FOUND" }, { status: 404 });
+  if (env.SIME_IMPORT_ENABLED !== "true" && (url.pathname === "/api/internal/sime-import" ||
+      url.pathname === "/api/internal/import-identity" && url.searchParams.get("source") === "sime"))
+    return Response.json({ error: "SIME_DISABLED" }, { status: 503 });
   if (url.pathname === "/api/internal/import-gate") {
     if (Number(request.headers.get("content-length") || 0) > 1024) return new Response(null, { status: 413 });
     // The existing bounded body reader remains authoritative. Do not read an unbounded clone.
@@ -24,6 +27,9 @@ const dailyGateway = { async fetch(request, env) {
         bytes += value.byteLength; if (bytes > 1024) { await reader.cancel(); return new Response(null, { status: 413 }); }
         text += decoder.decode(value, { stream: true }); }
       const body = JSON.parse(text + decoder.decode());
+      // Closing remains authenticated by the gateway even after SIME is disabled.
+      if (body.source === "sime" && body.action !== "close" && env.SIME_IMPORT_ENABLED !== "true")
+        return Response.json({ error: "SIME_DISABLED" }, { status: 503 });
       if (!sources.has(body.source) || body.action === "open" &&
           (!Number.isInteger(body.ttlSeconds) || body.ttlSeconds < 60 || body.ttlSeconds > 600)) return new Response(null, { status: 400 });
       request = new Request(request.url, { method: request.method, headers: request.headers, body: text });

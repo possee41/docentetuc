@@ -7,6 +7,8 @@ export const DAILY_SOURCES = ["sime", "infd", "cenet", "juntas", "news"];
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const blob = bytes => createHash("sha1").update(`blob ${Buffer.byteLength(bytes)}\0`).update(bytes).digest("hex");
 const hex = /^[a-f0-9]{40}$/;
+export const SIME_JUNTAS = ["Inicial y Primaria", "Secundaria", "Técnica, Agrotécnica y No Formal", "Superior, Especial y Artística"];
+const emptySimeCursors = () => Object.fromEntries(SIME_JUNTAS.map((_, i) => [i+1, ""]));
 export const sealDailyState = data => ({ data, sha256: hash(JSON.stringify(data)) });
 export function initialDailyState(source, codeSha, environment = 'canary') {
   if (!DAILY_SOURCES.includes(source) || !hex.test(codeSha) || !['canary','production'].includes(environment)) throw Error("DAILY_STATE_IDENTITY_INVALID");
@@ -28,7 +30,10 @@ export function validateDailyState(state, source, codeSha) {
       [d.lastAttemptAt, d.lastSuccessAt, d.expiresAt].some(v => v !== null && (typeof v !== "string" || !Number.isFinite(Date.parse(v)))) ||
       d.owner !== null && !/^[A-Za-z0-9_-]{1,100}$/.test(d.owner) ||
       (d.owner === null) !== (d.expiresAt === null) ||
-      d.inFlight !== null && (typeof d.inFlight !== "object" || !["start", "batch", "finish", "checkpoint"].includes(d.inFlight.mode)))
+      d.inFlight !== null && (typeof d.inFlight !== "object" || !["start", "batch", "finish", "checkpoint"].includes(d.inFlight.mode)) ||
+      d.simeCursors !== undefined && (source !== "sime" || !d.simeCursors || Object.keys(d.simeCursors).sort().join() !== "1,2,3,4" ||
+        Object.values(d.simeCursors).some(id => typeof id !== "string" || id !== "" && !/^sime:\d{1,15}$/.test(id))) ||
+      d.recoveryRunId !== undefined && (source !== "sime" || !/^[1-9]\d*$/.test(d.recoveryRunId)))
     throw Error("DAILY_STATE_INVALID");
   return state;
 }
@@ -72,6 +77,7 @@ export function createDailyGitStore({ source, codeSha, token, fetcher = fetch, e
     try { r = await request(`/contents/${path}`, "PUT", { branch, sha: previous.revision,
       message: `${source} progress ${state.data.generation}`, content: Buffer.from(content).toString("base64") }); }
     catch { return confirm(); } // Read back only; never retry the write.
+    if (r.status >= 500) return confirm(); // GET only: never repeat an ambiguous Git write.
     if (!r.ok) throw Error([409, 422].includes(r.status) ? "DAILY_STATE_CONFLICT" : `DAILY_STATE_WRITE_${r.status}`);
     let result; try { result = await r.json(); } catch { return confirm(); }
     if (result.content?.sha !== proposed) throw Error("DAILY_STATE_WRITE_UNCERTAIN");
@@ -80,27 +86,35 @@ export function createDailyGitStore({ source, codeSha, token, fetcher = fetch, e
   return { load, save, branch, path };
 }
 
-export async function runDailyBatch({ store, source, codeSha, owner, collect, send, limit = 50, now = new Date() }) {
+export async function runDailyBatch({ store, source, codeSha, owner, collect, send, limit = 50, now = new Date(), recoveryRunId,
+  check = () => {} }) {
   if (!/^[A-Za-z0-9_-]{1,100}$/.test(owner) || !Number.isInteger(limit) || limit < 1 || limit > 50) throw Error("DAILY_OPTIONS_INVALID");
   let previous = await store.load();
   validateDailyState(previous.state, source, codeSha);
   let d = structuredClone(previous.state.data);
   if (d.halted || d.inFlight) throw Error("DAILY_HALTED_REVIEW_REQUIRED");
   if (d.owner && Date.parse(d.expiresAt) > now.getTime()) throw Error("DAILY_BUSY");
+  if (recoveryRunId !== undefined && (source !== 'sime' || !/^[1-9]\d*$/.test(recoveryRunId) || d.recoveryRunId))
+    throw Error('DAILY_RECOVERY_ALREADY_USED_OR_INVALID');
   const persist = async patch => {
     const next = sealDailyState({ ...d, ...patch, generation: d.generation + 1 });
     previous = await store.save(previous, next); d = structuredClone(previous.state.data);
   };
-  await persist({ owner, expiresAt: new Date(now.getTime() + 1_800_000).toISOString(), lastAttemptAt: now.toISOString() });
-  const deadline = performance.now() + 1_800_000;
+  const duration = source === 'sime' ? 600_000 : 1_800_000;
+  await persist({ owner, expiresAt: new Date(now.getTime() + duration).toISOString(), lastAttemptAt: now.toISOString(),
+    ...(recoveryRunId ? { recoveryRunId } : {}) });
+  const deadline = performance.now() + duration;
   const write = async payload => {
     if (performance.now() >= deadline) throw Error("DAILY_LEASE_EXPIRED");
+    check();
     // Persist intent BEFORE any potentially ambiguous receiver request.
     await persist({ inFlight: { mode: payload.mode, id: payload.items?.[0]?.id ?? null } });
     const ack = await send(payload);
     if (ack?.ok !== true || payload.mode === "batch" && (ack.received !== 1 ||
         ![ack.created, ack.updated, ack.unchanged].every(n => Number.isSafeInteger(n) && n >= 0) || ack.created + ack.updated + ack.unchanged !== 1))
       throw Error("DAILY_RECEIVER_ACK_INVALID");
+    if (source === 'sime' && payload.mode === 'batch' && !['queries','rowsRead','rowsWritten'].every(k => Number.isSafeInteger(ack[k]) && ack[k] >= 0))
+      throw Error('DAILY_RECEIVER_ACK_INVALID');
     return ack;
   };
   try {
@@ -121,16 +135,32 @@ export async function runDailyBatch({ store, source, codeSha, owner, collect, se
       else backlog[row.id] = row; // Latest complete observation supersedes an older pending version.
     }
     const pending = Object.values(backlog).sort((a, b) => a.id.localeCompare(b.id, "en"));
-    const queue = [...pending.filter(row => row.id > d.cursor), ...pending.filter(row => row.id <= d.cursor)];
+    let queue = [...pending.filter(row => row.id > d.cursor), ...pending.filter(row => row.id <= d.cursor)], deferred = 0;
+    if (source === 'sime') {
+      if (limit < 4 || pending.some(row => !/^sime:\d{1,15}$/.test(row.id) || row.externalId !== row.id.slice(5) || !SIME_JUNTAS.includes(row.junta))) throw Error('DAILY_SIME_JUNTA_INVALID');
+      const cursors = d.simeCursors || emptySimeCursors(), eligible = pending.filter(row => items.has(row.id));
+      deferred = pending.length - eligible.length; // Keep absent pending rows, but never publish their old snapshot.
+      queue = SIME_JUNTAS.flatMap((junta, i) => {
+        const rows = eligible.filter(row => row.junta === junta).sort((a,b) => Number(a.externalId) - Number(b.externalId));
+        const after = Number(cursors[i+1]?.slice(5) || -1);
+        return [...rows.filter(row => Number(row.externalId) > after), ...rows.filter(row => Number(row.externalId) <= after)].slice(0, Math.floor(limit/4));
+      });
+    }
     const health = snapshot.health ? { health: snapshot.health } : {};
     await persist({ queue: backlog, pending: pending.length });
     await write({ mode: "start", ...health }); await persist({ inFlight: null, pending: pending.length });
-    const totals = { created: 0, updated: 0, unchanged: 0 };
+    const totals = { created: 0, updated: 0, unchanged: 0 }, metrics = { queries: 0, rowsRead: 0, rowsWritten: 0 };
+    const byJunta = Object.fromEntries(SIME_JUNTAS.map((_,i) => [i+1,{created:0,updated:0,unchanged:0}]));
     for (const row of queue.slice(0, limit)) {
       const ack = await write({ mode: "batch", items: [row] });
       for (const key of Object.keys(totals)) totals[key] += ack[key];
+      if (source === 'sime') {
+        for (const key of Object.keys(metrics)) metrics[key] += ack[key];
+        for (const key of Object.keys(totals)) byJunta[SIME_JUNTAS.indexOf(row.junta)+1][key] += ack[key];
+      }
       const remaining = { ...d.queue }; delete remaining[row.id];
-      await persist({ inFlight: null, confirmed: { ...d.confirmed, [row.id]: row.contentHash }, queue: remaining, cursor: row.id, pending: d.pending - 1 });
+      await persist({ inFlight: null, confirmed: { ...d.confirmed, [row.id]: row.contentHash }, queue: remaining, cursor: row.id, pending: d.pending - 1,
+        ...(source === 'sime' ? { simeCursors: { ...(d.simeCursors || emptySimeCursors()), [SIME_JUNTAS.indexOf(row.junta)+1]: row.id } } : {}) });
     }
     const complete = d.pending === 0;
     if (complete) {
@@ -139,7 +169,8 @@ export async function runDailyBatch({ store, source, codeSha, owner, collect, se
     }
     await persist({ owner: null, expiresAt: null });
     return { source, examined: ordered.length, processed: Math.min(queue.length, limit), pending: d.pending, completed: complete,
-      ...totals, lastSuccessAt: d.lastSuccessAt, cursor: d.cursor };
+      ...totals, lastSuccessAt: d.lastSuccessAt, cursor: d.cursor,
+      ...(source === 'sime' ? { ...metrics, byJunta, simeCursors: d.simeCursors || emptySimeCursors(), deferred } : {}) };
   } catch (error) {
     // A source failure before writes can resume tomorrow. An uncertain receiver write cannot.
     await persist({ owner: null, expiresAt: null, halted: Boolean(d.inFlight) });
