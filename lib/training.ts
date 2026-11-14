@@ -127,6 +127,22 @@ export function trainingStatus(commission: OfficialCommission | undefined, now =
   return "consultar";
 }
 
+export function isUrgentOpening(metadata: TrainingMetadata | null, now = new Date()): boolean {
+  if (!metadata?.registrationOpensAt || metadata.dateStatus === "tentative" || metadata.dateStatus === "unknown") return false;
+  const opens = Date.parse(metadata.registrationOpensAt);
+  if (!Number.isFinite(opens)) return false;
+  const diff = opens - now.getTime();
+  return diff > 0 && diff <= 24 * 60 * 60 * 1000;
+}
+
+export function isClosingSoon(metadata: TrainingMetadata | null, now = new Date()): boolean {
+  if (!metadata?.registrationClosesAt) return false;
+  const closes = Date.parse(metadata.registrationClosesAt);
+  if (!Number.isFinite(closes)) return false;
+  const diff = closes - now.getTime();
+  return diff > 0 && diff <= 3 * 24 * 60 * 60 * 1000;
+}
+
 export function openingCountdown(opensAt: string, now = new Date(), hasTime = true) {
   const difference = new Date(opensAt).getTime() - now.getTime();
   if (difference <= 0) return "Abre hoy";
