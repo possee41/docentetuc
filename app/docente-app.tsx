@@ -48,6 +48,7 @@ import { AccountSignInSection } from "@/components/account-sign-in-section";
 import { GoogleAccountPhoto } from "@/components/google-account-photo";
 import { GlobalPublicationSearch } from "@/components/global-publication-search";
 import { usePersonalizedCatalog } from "@/components/use-personalized-catalog";
+import { useTrainingCatalog } from "@/components/use-training-catalog";
 import { enrollmentForDisplay, matchProfileFromUser, publicationForMatch, publicationLifecycleForDisplay } from "@/lib/personalized-catalog";
 import { publicationCircuitMatch, publicationSearchText, trainingPlatform, type PersonalFilters } from "@/lib/personalized-filters";
 import type { PublicationSearchKind } from "@/lib/publication-search";
@@ -397,7 +398,14 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const savedMap = useMemo(() => officialSavedLookup(data?.saved || [], data?.publications || []), [data]);
   const reminderMap = useMemo(() => new Map((data?.reminders || []).map((item) => [item.training_id, item])), [data]);
   const profile = data?.profile ?? undefined;
-  const trainingPilot = useFdciCatalogPilot(data?.publications, view === "capacitaciones");
+  const trainingCatalog = useTrainingCatalog(view === "capacitaciones" && Boolean(data), data?.sync);
+  const trainingPublications = useMemo(() => {
+    if (!trainingCatalog.complete) return data?.publications || [];
+    const rows = new Map((data?.publications || []).filter(item => item.kind === "capacitacion").map(item => [item.id, item]));
+    for (const item of trainingCatalog.items) rows.set(item.id, item);
+    return [...rows.values()];
+  }, [data, trainingCatalog]);
+  const trainingPilot = useFdciCatalogPilot(trainingPublications, view === "capacitaciones");
   const designationAvailability = data ? designationEmptyState({
     filter, profileConfigured: hasDesignationProfilePreferences(profile),
     availableCount: data.publications.filter((item) => item.kind === "vacante").length,
@@ -516,7 +524,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     return followedPublicationIds.has(item.id) || isGeneralNotice(item) || (["ACTIVE", "UPCOMING"].includes(lifecycle) && Boolean(matchProfile && isEligibleForPersonalizedHome(publicationForMatch(item), matchProfile)));
   }).map((notice) => notice.publication_id)).size;
   const items = view === "inicio" ? [] : filteredPublications();
-  const hasTrainingTerritoryData = (data?.publications || []).some((item) => item.kind === "capacitacion" && trainingPlatform(item.source) === "fdci" && item.circuit && item.circuit !== "UNKNOWN");
+  const hasTrainingTerritoryData = trainingPublications.some((item) => item.kind === "capacitacion" && trainingPlatform(item.source) === "fdci" && item.circuit && item.circuit !== "UNKNOWN");
   const designationMap = officialSavedLookup(data?.designations || [], data?.publications || []);
   const roleOptions = [...new Set((data?.publications || []).filter((item) => item.kind === "vacante").map((item) => designationFacts(item).role).filter(Boolean))].slice(0, 80);
   const navigateToView = (target: View, term = "", archiveKind: PublicationSearchKind = "all") => {
@@ -587,20 +595,21 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         : view === "padrones" ? <PadronSection query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} />
         : ["comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection key={`${view}:${query}`} view={view as BoardView} publications={data?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
             {view === "capacitaciones" && <FdciCatalogPilotBanner pilot={trainingPilot} />}
+            {view === "capacitaciones" && trainingCatalog.error && <p role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">{trainingCatalog.error}</p>}
             <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void refreshSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
             <Filters filter={filter} setFilter={setFilter} junta={juntaFilter} setJunta={setJuntaFilter} character={character} setCharacter={setCharacter} query={designationQuery} setQuery={setDesignationQuery} kind={view} date={trainingDate} setDate={setTrainingDate} source={trainingSource} setSource={setTrainingSource} compatibility={trainingCompatibility} setCompatibility={setTrainingCompatibility} sort={trainingSort} setSort={setTrainingSort} hasTrainingTerritoryData={hasTrainingTerritoryData} circuit={view === "capacitaciones" ? trainingCircuit : "todos"} setCircuit={view === "capacitaciones" ? setTrainingCircuit : () => {}} />
             {view === "vacantes" && items.some(item => hasOfficialTopic(item, "CLASIFICACION_PENDIENTE")) && <p role="note" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Los registros con «Procedimiento pendiente de verificar» no están confirmados como inscripciones online. Consultá el detalle oficial antes de actuar.</p>}
              {view === "vacantes" && filter !== "para-mi" && !loading && items.length === 0 && (designationAvailability.profileRequired || designationAvailability.sourceUnavailable || designationAvailability.sourceVerifiedEmpty)
                ? <DesignationEmptyState {...designationAvailability} onCompleteProfile={() => setView("perfil")} />
                : filter === "para-mi" && (view === "vacantes" || view === "capacitaciones") && !items.length && (personalized.loading || personalized.nextCursor || personalized.totalMatches > 0 || personalized.error || !profile || personalized.profileRequired) ? null
-               : <PublicationList items={items} sync={data?.sync || []} loading={loading || personalized.loading && filter === "para-mi"} savedMap={savedMap} reminderMap={reminderMap} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} emptyContext={view === "capacitaciones" ? trainingSource === "platform:fdci" ? "FDCI" : trainingSource === "platform:infod" ? "INFoD" : trainingSource === "platform:cenet" ? "CeNET / INET" : "las plataformas seleccionadas" : "esta búsqueda"} onClearFilters={() => { setTrainingSource("todas"); setTrainingDate(""); setTrainingCircuit("todos"); setTrainingCompatibility("todas"); setJuntaFilter("todas"); setCharacter("todos"); setFilter("todas"); setDesignationQuery(""); setQuery(""); }} />}
+               : <PublicationList items={items} sync={data?.sync || []} loading={loading || view === "capacitaciones" && filter !== "para-mi" && !trainingCatalog.complete && !trainingCatalog.error || personalized.loading && filter === "para-mi"} savedMap={savedMap} reminderMap={reminderMap} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} emptyContext={view === "capacitaciones" ? trainingSource === "platform:fdci" ? "FDCI" : trainingSource === "platform:infod" ? "INFoD" : trainingSource === "platform:cenet" ? "CeNET / INET" : "las plataformas seleccionadas" : "esta búsqueda"} onClearFilters={() => { setTrainingSource("todas"); setTrainingDate(""); setTrainingCircuit("todos"); setTrainingCompatibility("todas"); setJuntaFilter("todas"); setCharacter("todos"); setFilter("todas"); setDesignationQuery(""); setQuery(""); }} />}
             {filter === "para-mi" && (view === "vacantes" || view === "capacitaciones") && <div role="status" className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-4 text-sm text-[var(--text-secondary)]">
               {personalized.loading ? "Buscando coincidencias en el catálogo…" : personalized.error || (!profile || personalized.profileRequired ? "Completá tu perfil para buscar coincidencias." : personalized.nextCursor ? `Revisados ${personalized.scanned} registros; ${personalized.totalMatches} coincidencias encontradas. Todavía quedan páginas por examinar.` : `Búsqueda completa: ${personalized.scanned} registros examinados; ${personalized.totalMatches} coincidencias encontradas.`)}
               {personalized.error ? <Button type="button" variant="outline" onClick={personalized.retry} className="mt-3 min-h-11 rounded-xl">Reintentar</Button> : personalized.nextCursor && <Button type="button" variant="outline" disabled={personalized.loading} onClick={() => void personalized.loadMore()} className="mt-3 min-h-11 rounded-xl">Buscar más coincidencias</Button>}
               {personalized.page > 1 && <Button type="button" variant="ghost" onClick={personalized.retry} className="mt-3 min-h-11 rounded-xl">Volver al inicio</Button>}
             </div>}
             {(view === "vacantes" || view === "capacitaciones") && <div className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-4 text-sm text-[var(--text-secondary)]">
-              {filter === "para-mi" ? "Estas coincidencias se consultan por páginas sobre el catálogo completo. El orden visible se aplica a la página actual." : "Esta vista muestra una selección reciente. El catálogo completo, incluidos registros anteriores y resultados fuera de esta selección, se puede recorrer por páginas."}
+              {filter === "para-mi" ? "Estas coincidencias se consultan por páginas sobre el catálogo completo. El orden visible se aplica a la página actual." : view === "capacitaciones" && trainingCatalog.complete ? "Esta vista incluye todas las capacitaciones almacenadas. También podés recorrer el catálogo por páginas." : "Esta vista muestra una selección reciente. El catálogo completo, incluidos registros anteriores y resultados fuera de esta selección, se puede recorrer por páginas."}
               <Button type="button" variant="outline" onClick={() => navigateToView("busqueda", "", view === "vacantes" ? "vacante" : "capacitacion")} className="mt-3 min-h-11 rounded-xl">Ver catálogo completo</Button>
             </div>}
           </>}

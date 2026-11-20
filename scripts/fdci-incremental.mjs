@@ -31,7 +31,7 @@ export async function checkpointRequest(target, owner, payload, fetcher) {
 
 // One bounded piece of the existing active importer; all content normalization
 // and publication writes still use the original helpers and receiver.
-export async function runIncrementalFdci(target, safety, fetcher) {
+export async function runIncrementalFdci(target, safety, fetcher, at = new Date()) {
   let state, examined = 0, created = 0, updated = 0, unchanged = 0, rejected = 0, skipped = 0, batches = 0;
   let discovered = 0, coursesAvailable = 0, coursesFetched = 0, cycleComplete = false;
   const errors = [], sourceErrors = {};
@@ -52,7 +52,21 @@ export async function runIncrementalFdci(target, safety, fetcher) {
       if (ids.has(String(item.id)) && ids.get(String(item.id)) !== key) throw new Error("FDCI_SCHEMA_CHANGED");
       ids.set(String(item.id), key); keyed.set(key, item);
     }
-    const entries = [...keyed].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+    const upcoming = new Set();
+    const now = at.getTime();
+    for (const course of courses) {
+      if (!course?.proxima_fecha_preinscripcion) continue;
+      const raw = String(course.proxima_fecha_preinscripcion);
+      if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) throw new Error("FDCI_SCHEMA_CHANGED");
+      const opening = Date.parse(`${raw.replace(" ", "T")}-03:00`);
+      if (!Number.isFinite(opening)) throw new Error("FDCI_SCHEMA_CHANGED");
+      if (opening > now) upcoming.add(String(course.capacitacion_id));
+    }
+    // A course marker is above every commission key. Detail IDs, not the
+    // catalogue headline, become durable progress and verified publications.
+    const entries = [...keyed].filter(([, c]) => !upcoming.has(String(c.capacitacion_id)));
+    for (const courseId of upcoming) entries.push([`${fdciKey(courseId, 1).slice(0, 12)}:999999999999`, { capacitacion_id: courseId, upcoming: true }]);
+    entries.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
     discovered = entries.length;
     const activeCourses = new Set(entries.map(([, c]) => String(c.capacitacion_id)));
     coursesAvailable = activeCourses.size;
@@ -73,7 +87,7 @@ export async function runIncrementalFdci(target, safety, fetcher) {
       if (examined >= safety.maxPublications) break;
       const courseId = String(commission.capacitacion_id);
       if (String(commission.id) === "6375") { examined++; skipped++; await advance(key); continue; }
-      let item;
+      let items;
       try {
         const course = parents.get(courseId);
         if (!course || !/^[A-Za-z0-9_-]{1,80}$/.test(course.token || "") || !/^[a-z0-9-]{1,160}$/.test(course.slug || ""))
@@ -89,11 +103,20 @@ export async function runIncrementalFdci(target, safety, fetcher) {
         }
         const detail = details.get(courseId);
         if (detail instanceof Error) throw detail;
-        const matches = detail.filter(c => String(c.id) === String(commission.id) && String(c.capacitacion_id) === courseId);
-        if (matches.length !== 1) throw new Error("FDCI_COMMISSION_UNAVAILABLE");
-        [item] = await prepareFdciImports([course], matches);
-        if (!item || item.normalizedStatus === "UNKNOWN") item = null;
-        else if (!validFdciImport(item)) throw new Error("FDCI_RECORD_INVALID");
+        if (commission.upcoming) {
+          const matching = detail.filter(c => String(c.capacitacion_id) === courseId);
+          if (matching.length !== detail.length || !matching.length) throw new Error("FDCI_COMMISSION_UNAVAILABLE");
+          items = (await prepareFdciImports([course], matching, at)).filter(item =>
+            ["ACTIVE", "UPCOMING"].includes(item.normalizedStatus) &&
+            (ids.has(item.externalId) || item.normalizedStatus === "UPCOMING"))
+            .sort((a, b) => fdciKey(courseId, a.externalId).localeCompare(fdciKey(courseId, b.externalId)));
+          if (!items.length) throw new Error("FDCI_COMMISSION_UNAVAILABLE");
+        } else {
+          const matches = detail.filter(c => String(c.id) === String(commission.id) && String(c.capacitacion_id) === courseId);
+          if (matches.length !== 1) throw new Error("FDCI_COMMISSION_UNAVAILABLE");
+          items = await prepareFdciImports([course], matches, at);
+        }
+        if (items.some(item => !validFdciImport(item))) throw new Error("FDCI_RECORD_INVALID");
       } catch (error) {
         // Budget exhaustion / rate limiting never discards the pending key.
         if (["FDCI_PROBE_REQUEST_LIMIT", "HTTP_429", "FDCI_CANCELLED"].includes(error.message)) {
@@ -108,16 +131,23 @@ export async function runIncrementalFdci(target, safety, fetcher) {
         examined++; rejected++; errors.push({ key, code });
         await advance(key, true, code); continue;
       }
-      if (!item) { examined++; skipped++; await advance(key); continue; }
-      examined++;
-      let ack;
-      try { ack = await sendFdci(target.endpoint, target.secret, { mode: "batch", items: [item] }, fetcher, safety.owner); }
-      catch (error) {
-        if (error.message === "HTTP_422") { skipped++; await advance(key); continue; }
-        throw error; // Never advance after uncertain ACK, auth, D1 or lease failures.
+      for (const item of items) {
+        const itemKey = commission.upcoming ? fdciKey(courseId, item.externalId) : key;
+        if (itemKey <= state.after_key) continue;
+        if (examined >= safety.maxPublications) break;
+        if (item.normalizedStatus === "UNKNOWN") { examined++; skipped++; await advance(itemKey); continue; }
+        examined++;
+        let ack;
+        try { ack = await sendFdci(target.endpoint, target.secret, { mode: "batch", items: [item] }, fetcher, safety.owner); }
+        catch (error) {
+          if (error.message === "HTTP_422") { skipped++; await advance(itemKey); continue; }
+          throw error; // Never advance after uncertain ACK, auth, D1 or lease failures.
+        }
+        created += ack.created; updated += ack.updated; unchanged += ack.unchanged; batches++;
+        await advance(itemKey);
       }
-      created += ack.created; updated += ack.updated; unchanged += ack.unchanged; batches++;
-      await advance(key);
+      if (commission.upcoming && items.some(item => fdciKey(courseId, item.externalId) > state.after_key)) break;
+      if (commission.upcoming && examined < safety.maxPublications) await advance(key);
     }
     const failed = state.failures > 0 || rejected > 0 || Object.keys(sourceErrors).some(k => k !== "requestLimit");
     if (!budgetStop && !entries.some(([key]) => key > state.after_key && key <= state.upper_key)) {

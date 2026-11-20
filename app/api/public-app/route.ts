@@ -1,5 +1,7 @@
 import { getD1 } from "@/db";
 import { APP_PUBLICATIONS_QUERY } from "@/lib/app-publications-query";
+import { fdciSyncStatus } from "@/lib/fdci-sync-status";
+import type { SyncStatus } from "@/lib/types";
 import { env } from "cloudflare:workers";
 
 export const dynamic = "force-dynamic";
@@ -40,11 +42,12 @@ export async function GET(request: Request) {
   const expires = Date.now() + TTL_MS;
   try {
     const db = getD1();
-    const [publications, sync] = await Promise.all([
+    const [publications, sync, fdciCheckpoint] = await Promise.all([
       db.prepare(APP_PUBLICATIONS_QUERY).all(),
-      db.prepare("SELECT source, synced_at, last_attempt_at, last_successful_sync_at, sync_status FROM sync_state ORDER BY source").all(),
+      db.prepare("SELECT source, synced_at, last_attempt_at, last_successful_sync_at, sync_status FROM sync_state ORDER BY source").all<SyncStatus>(),
+      db.prepare("SELECT upper_key, last_cycle_status, last_completed_at FROM fdci_import_checkpoint WHERE id=1").first<{ upper_key: string; last_cycle_status: string | null; last_completed_at: string | null }>(),
     ]);
-    const response = Response.json({ profile: null, publicProfile: null, publications: publications.results, saved: [], notifications: [], reminders: [], designations: [], manualEvents: [], sync: sync.results });
+    const response = Response.json({ profile: null, publicProfile: null, publications: publications.results, saved: [], notifications: [], reminders: [], designations: [], manualEvents: [], sync: fdciSyncStatus(sync.results, fdciCheckpoint) });
     if (cache && Date.now() < expires) {
       const stored = response.clone();
       stored.headers.set("Cache-Control", "public, max-age=60");

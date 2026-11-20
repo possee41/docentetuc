@@ -52,7 +52,7 @@ export function usePersonalizedCatalog(kind: PersonalKind | null, profileKey: st
     setState(previous => ({ ...previous, loading: true, error: "" }));
     try {
       const page = await fetchChunk(kind, current.nextCursor, JSON.parse(filtersKey) as PersonalFilters, request.signal);
-      if (!request.signal.aborted) setState(previous => previous.key === key ? { ...page, key, loading: false, error: "", scanned: previous.scanned + page.scanned, page: previous.page + 1, totalMatches: previous.totalMatches + page.items.length } : previous);
+      if (!request.signal.aborted) setState(previous => previous.key === key ? { ...page, items: [...previous.items, ...page.items], key, loading: false, error: "", scanned: previous.scanned + page.scanned, page: previous.page + 1, totalMatches: previous.totalMatches + page.items.length } : previous);
     } catch { if (!request.signal.aborted) setState(previous => ({ ...previous, loading: false, error: "No pudimos cargar más coincidencias." })); }
   };
   return { ...current, loadMore, retry: () => setRetry(value => value + 1) };

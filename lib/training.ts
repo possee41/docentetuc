@@ -117,8 +117,8 @@ export function trainingStatus(commission: OfficialCommission | undefined, now =
   const finishes = localDateTime(commission.fecha_fin, true);
   const closed = Boolean(Number(commission.comision_cerrada));
   if (closed) return "inscripción cerrada";
-  if (opens && commission.isActivePre != null && !Boolean(Number(commission.isActivePre))) return "inscripción cerrada";
   if (opens && time < new Date(opens).getTime()) return "próximamente";
+  if (opens && commission.isActivePre != null && !Boolean(Number(commission.isActivePre))) return "inscripción cerrada";
   if (closes && time > new Date(closes).getTime()) return "inscripción cerrada";
   if (opens && (closes || Boolean(Number(commission.isActivePre)))) return "inscripción abierta";
   if (starts && time < new Date(starts).getTime()) return "consultar";
@@ -128,7 +128,7 @@ export function trainingStatus(commission: OfficialCommission | undefined, now =
 }
 
 export function isUrgentOpening(metadata: TrainingMetadata | null, now = new Date()): boolean {
-  if (!metadata?.registrationOpensAt || metadata.dateStatus === "tentative" || metadata.dateStatus === "unknown") return false;
+  if (metadata?.dateStatus !== "confirmed" || metadata.registrationHasTime !== true || !metadata.registrationOpensAt) return false;
   const opens = Date.parse(metadata.registrationOpensAt);
   if (!Number.isFinite(opens)) return false;
   const diff = opens - now.getTime();
@@ -136,7 +136,7 @@ export function isUrgentOpening(metadata: TrainingMetadata | null, now = new Dat
 }
 
 export function isClosingSoon(metadata: TrainingMetadata | null, now = new Date()): boolean {
-  if (!metadata?.registrationClosesAt) return false;
+  if (metadata?.dateStatus !== "confirmed" || !metadata.registrationClosesAt) return false;
   const closes = Date.parse(metadata.registrationClosesAt);
   if (!Number.isFinite(closes)) return false;
   const diff = closes - now.getTime();

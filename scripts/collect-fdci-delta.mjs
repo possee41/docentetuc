@@ -6,7 +6,7 @@ import { fdciKey } from "./fdci-incremental.mjs";
 const root = "https://apicapacitaciones.educaciontuc.edu.ar/api";
 const courseKey = id => fdciKey(id, 1).slice(0, 12);
 
-export async function collectFdciDeltaSlice(fetcher, { state, queued, courseLimit = 4 }) {
+export async function collectFdciDeltaSlice(fetcher, { state, queued, courseLimit = 4, now = new Date() }) {
   if (!Number.isSafeInteger(courseLimit) || courseLimit < 1 || courseLimit > 4) throw new Error("FDCI_DETAIL_LIMIT_INVALID");
   if (![state.detail_after, state.detail_upper].every(value => typeof value === "string" && /^(?:\d{12})?$/.test(value)) ||
       state.detail_after > state.detail_upper) throw new Error("FDCI_DELTA_CURSOR_INVALID");
@@ -20,15 +20,23 @@ export async function collectFdciDeltaSlice(fetcher, { state, queued, courseLimi
     if (previous && String(previous.capacitacion_id) !== String(c.capacitacion_id)) throw new Error("FDCI_SCHEMA_CHANGED");
     commissions.set(String(c.id), c);
   }
-  if (!commissions.size && state.detail_upper) throw new Error("FDCI_DELTA_COLLECTION_INCOMPLETE");
   const parents = new Map();
   const activeKeys = new Set([...commissions.values()].map(c => courseKey(c.capacitacion_id)));
+  const upcomingKeys = new Set();
   for (const c of courses) {
+    if (c?.proxima_fecha_preinscripcion) {
+      const raw = String(c.proxima_fecha_preinscripcion);
+      if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) throw new Error("FDCI_SCHEMA_CHANGED");
+      const opening = Date.parse(`${raw.replace(" ", "T")}-03:00`);
+      if (!Number.isFinite(opening)) throw new Error("FDCI_SCHEMA_CHANGED");
+      if (opening > now.getTime()) { const key = courseKey(c.capacitacion_id); activeKeys.add(key); upcomingKeys.add(key); }
+    }
     if (!c || !activeKeys.has(String(c.capacitacion_id).padStart(12, "0"))) continue;
     const key = courseKey(c.capacitacion_id);
     if (parents.has(key)) throw new Error("FDCI_SCHEMA_CHANGED");
     parents.set(key, c);
   }
+  if (!activeKeys.size && state.detail_upper) throw new Error("FDCI_DELTA_COLLECTION_INCOMPLETE");
   const keys = [...activeKeys].sort(), upper = state.detail_upper || keys.at(-1) || "";
   const after = state.detail_after || "";
   const pending = keys.filter(key => key > after && key <= upper);
@@ -61,12 +69,26 @@ export async function collectFdciDeltaSlice(fetcher, { state, queued, courseLimi
       if (rows.length !== 1) throw new Error("FDCI_DELTA_COLLECTION_INCOMPLETE");
       return rows[0];
     });
-    items.push(...await prepareFdciImports([course], matched)); completed.add(key);
+    if (upcomingKeys.has(key)) {
+      for (const row of detail.comisiones) {
+        if (String(row.capacitacion_id) !== String(course.capacitacion_id)) throw new Error("FDCI_SCHEMA_CHANGED");
+        fdciKey(row.capacitacion_id, row.id);
+        if (!matched.some(c => String(c.id) === String(row.id))) matched.push(row);
+      }
+      if (!matched.length) throw new Error("FDCI_DELTA_COLLECTION_INCOMPLETE");
+    }
+    if (new Set(matched.map(c => String(c.id))).size !== matched.length) throw new Error("FDCI_SCHEMA_CHANGED");
+    const verified = (await prepareFdciImports([course], matched, now)).filter(item =>
+      !upcomingKeys.has(key) || commissions.has(item.externalId) || item.normalizedStatus === "UPCOMING");
+    if (upcomingKeys.has(key) && !verified.some(item => item.normalizedStatus === "UPCOMING"))
+      throw new Error("FDCI_DELTA_COLLECTION_INCOMPLETE");
+    items.push(...verified);
+    completed.add(key);
   }
   let next = after;
   for (const key of pending) { if (!completed.has(key)) break; next = key; }
   if (budgetStop && !items.length) throw new Error("FDCI_DELTA_COLLECTION_INCOMPLETE");
   const complete = !pending.some(key => key > next);
-  return { items, failures: 0, activeCommissions: commissions.size,
+  return { items, failures: 0, activeCommissions: Math.max(commissions.size, items.length),
     detail: { after: next, upper, complete }, coursesFetched: completed.size };
 }
