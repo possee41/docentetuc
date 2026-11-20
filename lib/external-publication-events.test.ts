@@ -10,7 +10,9 @@ function fixture() {
     CREATE TABLE publications (id TEXT PRIMARY KEY,source TEXT NOT NULL,kind TEXT,category TEXT,title TEXT,
       summary TEXT,level TEXT,area TEXT,junta TEXT,location TEXT,shift TEXT,character TEXT,circuit TEXT,
       source_circuit_raw TEXT,metadata TEXT,content_hash TEXT,normalized_status TEXT,removed_at TEXT,
-      ends_at TEXT,starts_at TEXT,source_updated_at TEXT);
+      ends_at TEXT,starts_at TEXT,source_updated_at TEXT,last_seen_at TEXT);
+    CREATE TABLE fdci_import_checkpoint(id INTEGER PRIMARY KEY,upper_key TEXT,last_cycle_status TEXT,last_completed_at TEXT);
+    INSERT INTO fdci_import_checkpoint VALUES(1,'','OK','2026-10-22T12:00:00Z');
     CREATE TABLE profiles (user_id TEXT PRIMARY KEY,notify_new_trainings INTEGER,training_notify_scope TEXT,
       level TEXT,area TEXT,subjects TEXT,junta TEXT,roles TEXT,department TEXT,locality TEXT,shifts TEXT,
       characters TEXT,circuits TEXT,personal_match_threshold INTEGER,wants_interim INTEGER,wants_substitute INTEGER,
@@ -30,8 +32,8 @@ function fixture() {
 
 const id = "fdci:commission:synthetic", hash = "a".repeat(64);
 const now = new Date("2026-10-22T12:00:00Z");
-const insert = `INSERT INTO publications(id,source,kind,category,title,metadata,content_hash,normalized_status,circuit)
-  VALUES (?,'Capacitación Docente','capacitacion','Capacitación','Curso sintético',?,?,'ACTIVE','UNKNOWN')`;
+const insert = `INSERT INTO publications(id,source,kind,category,title,metadata,content_hash,normalized_status,circuit,last_seen_at)
+  VALUES (?,'Capacitación Docente','capacitacion','Capacitación','Curso sintético',?,?,'ACTIVE','UNKNOWN','2026-10-22T12:00:00Z')`;
 const metadata = JSON.stringify({ entity: "commission", availablePreCapacity: 5,
   registrationOpensAt: "2026-10-23T12:00:00Z", registrationClosesAt: "2026-10-30T12:00:00Z",
   dateStatus: "confirmed" });

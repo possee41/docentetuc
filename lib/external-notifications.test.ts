@@ -9,7 +9,9 @@ function isolated(count: number) {
   sqlite.exec(`CREATE TABLE publications (id TEXT PRIMARY KEY, content_hash TEXT, normalized_status TEXT,
     removed_at TEXT, kind TEXT, title TEXT, summary TEXT, level TEXT, area TEXT, junta TEXT,
     location TEXT, shift TEXT, character TEXT, circuit TEXT, source_circuit_raw TEXT,
-    category TEXT, metadata TEXT, ends_at TEXT, starts_at TEXT, source_updated_at TEXT);
+    category TEXT, metadata TEXT, ends_at TEXT, starts_at TEXT, source_updated_at TEXT, source TEXT, last_seen_at TEXT);
+    CREATE TABLE fdci_import_checkpoint(id INTEGER PRIMARY KEY,upper_key TEXT,last_cycle_status TEXT,last_completed_at TEXT);
+    INSERT INTO fdci_import_checkpoint VALUES(1,'','OK','2026-10-22T12:00:00Z');
     CREATE TABLE profiles (user_id TEXT PRIMARY KEY, notify_new_trainings INTEGER,
       training_notify_scope TEXT, level TEXT, area TEXT, subjects TEXT, junta TEXT, roles TEXT,
       department TEXT, locality TEXT, shifts TEXT, characters TEXT, circuits TEXT,
@@ -64,6 +66,22 @@ test("cupo cero, retirada y registro cambiado no producen avisos engañosos", as
   assert.equal((await materializeExternalNoticePage(fixture.db, input)).inserted, 0);
   fixture.sqlite.prepare("UPDATE publications SET content_hash=? WHERE id=?").run("b".repeat(64), input.events[0].id);
   await assert.rejects(materializeExternalNoticePage(fixture.db, input), /EXTERNAL_NOTICE_PUBLICATION_CHANGED/);
+  fixture.sqlite.close();
+});
+
+test("un checkpoint FDCI parcial omite solo sus avisos y conserva los de INFoD", async () => {
+  const fixture = isolated(2);
+  const metadata = { entity: "commission", availablePreCapacity: 5, registrationOpensAt: "2026-10-22T12:00:00Z",
+    registrationClosesAt: "2026-10-23T12:00:00Z", dateStatus: "confirmed" };
+  fixture.put("fdci:commission:3", metadata);
+  fixture.put("infd:course:3", metadata);
+  fixture.sqlite.exec("UPDATE publications SET source='Capacitación Docente',last_seen_at='2026-10-22T10:00:00Z' WHERE id='fdci:commission:3'");
+  fixture.sqlite.exec("UPDATE publications SET source='INFoD / AulaS-TIC' WHERE id='infd:course:3'");
+  fixture.sqlite.exec("UPDATE fdci_import_checkpoint SET last_cycle_status='PARTIAL'");
+  const events = ["fdci:commission:3", "infd:course:3"].map(id => ({ id, contentHash: HASH, change: "created" }));
+  const result = await materializeExternalNoticePage(fixture.db, { events, now: new Date("2026-10-22T11:00:00Z") });
+  assert.equal(result.inserted, 1);
+  assert.equal(fixture.sqlite.prepare("SELECT publication_id FROM notifications").get()?.publication_id, "infd:course:3");
   fixture.sqlite.close();
 });
 

@@ -1,6 +1,7 @@
 import { buildPushPayload, type PushSubscription, type VapidKeys } from "@block65/webcrypto-web-push";
 import { isEligibleForPersonalizedHome, matchesProfile } from "./matching.ts";
-import { parseTrainingMetadata } from "./training.ts";
+import { CONFIRMED_TRAINING_REMINDER_SQL, parseTrainingMetadata } from "./training.ts";
+import { FDCI_CURRENT_SQL, fdciPublicationFresh } from "./fdci-freshness.ts";
 import { circuitMatches, inferCircuit } from "./circuits.ts";
 
 export type PushEnvironment = { VAPID_PUBLIC_KEY?: string; VAPID_PRIVATE_KEY?: string; VAPID_SUBJECT?: string };
@@ -109,7 +110,7 @@ export function notificationMessage(type: string, title: string): PushMessage {
   return { title: pushTitle, body, tag: `${type}:${title}`.slice(0, 120), url: "/" };
 }
 
-type PublicationRow = { id: string; kind: string; title: string; summary: string; level: string; area: string; junta: string; location: string; shift: string; character: string; circuit?: string; source_circuit_raw?: string; starts_at: string | null; ends_at: string | null; status: string; metadata: string; normalized_status?: string };
+type PublicationRow = { id: string; source?: string; last_seen_at?: string; kind: string; title: string; summary: string; level: string; area: string; junta: string; location: string; shift: string; character: string; circuit?: string; source_circuit_raw?: string; starts_at: string | null; ends_at: string | null; status: string; metadata: string; normalized_status?: string };
 type ProfileRow = Record<string, unknown> & { user_id: string };
 const dayInTucuman = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(date);
 export const PUSH_DELIVERY_BATCH_SIZE = 2;
@@ -143,6 +144,7 @@ function trainingNotificationsEnabled(publication: PublicationRow, profile: Prof
 export function scheduledNotificationTypes(publication: PublicationRow, profile: ProfileRow, saved: boolean, now = new Date()) {
   const events: string[] = [], metadata = publication.kind === "capacitacion" ? parseTrainingMetadata(publication.metadata) : null;
   if (publication.kind !== "capacitacion" || ["CLOSED", "EXPIRED", "REMOVED_FROM_SOURCE"].includes(String(publication.normalized_status || "").toUpperCase())) return events;
+  if (publication.source === "Capacitación Docente" && !fdciPublicationFresh(publication.last_seen_at, now)) return events;
   if (!trainingNotificationsEnabled(publication, profile)) return events;
   if (!metadata || !["confirmed", "course_confirmed"].includes(String(metadata.dateStatus || "").toLowerCase())) return events;
   if (metadata.entity === "commission" && metadata.availablePreCapacity === 0) return events;
@@ -166,8 +168,8 @@ export function scheduledNotificationTypes(publication: PublicationRow, profile:
 export async function materializeScheduledNotifications(db: D1Database, now = new Date()) {
   let rowsWritten = 0;
   const count = (result: { meta?: { rows_written?: number } }) => { rowsWritten += Number(result.meta?.rows_written || 0); };
-  count(await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type, dedupe_key, scheduled_at) SELECT user_id, publication_id, 'CAPACITACION_ABRE', 'training-reminder:' || id || ':' || opens_at || ':' || COALESCE(advance_minutes,0), ? FROM training_reminders WHERE notified=0 AND datetime(remind_at)<=datetime(?)").bind(now.toISOString(), now.toISOString()).run());
-  count(await db.prepare("UPDATE training_reminders SET notified=1, updated_at=CURRENT_TIMESTAMP WHERE notified=0 AND datetime(remind_at)<=datetime(?)").bind(now.toISOString()).run());
+  count(await db.prepare(`INSERT OR IGNORE INTO notifications (user_id, publication_id, type, dedupe_key, scheduled_at) SELECT user_id, publication_id, 'CAPACITACION_ABRE', 'training-reminder:' || id || ':' || opens_at || ':' || COALESCE(advance_minutes,0), ? FROM training_reminders WHERE notified=0 AND datetime(remind_at)<=datetime(?) AND ${CONFIRMED_TRAINING_REMINDER_SQL}`).bind(now.toISOString(), now.toISOString(), now.toISOString(), now.toISOString(), now.toISOString()).run());
+  count(await db.prepare(`UPDATE training_reminders SET notified=1, updated_at=CURRENT_TIMESTAMP WHERE notified=0 AND datetime(remind_at)<=datetime(?) AND ${CONFIRMED_TRAINING_REMINDER_SQL}`).bind(now.toISOString(), now.toISOString(), now.toISOString(), now.toISOString()).run());
   count(await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type, dedupe_key, scheduled_at) SELECT user_id, publication_id, 'DESIGNACION_RECORDATORIO', 'designation-reminder:' || id || ':' || reminder_at, ? FROM designation_tracking WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?)").bind(now.toISOString(), now.toISOString()).run());
   count(await db.prepare("UPDATE designation_tracking SET reminder_notified=1, updated_at=CURRENT_TIMESTAMP WHERE reminder_notified=0 AND reminder_at IS NOT NULL AND datetime(reminder_at)<=datetime(?)").bind(now.toISOString()).run());
   count(await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type, dedupe_key, scheduled_at) SELECT user_id, publication_id, 'AGENDA_RECORDATORIO', 'agenda-reminder:' || user_id || ':' || publication_id || ':' || agenda_reminder_at, ? FROM saved_publications WHERE in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime(?)").bind(now.toISOString(), now.toISOString()).run());
@@ -181,8 +183,10 @@ export async function materializeScheduledNotifications(db: D1Database, now = ne
     } else await db.prepare("UPDATE manual_events SET reminder_notified=1, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?").bind(event.id, event.user_id).run();
   }
 
-  const publications = await db.prepare("SELECT id, kind, title, summary, level, area, junta, location, shift, character, circuit, source_circuit_raw, starts_at, ends_at, status, metadata, normalized_status FROM publications WHERE kind='capacitacion' AND normalized_status IN ('ACTIVE','UPCOMING') LIMIT 800").all<PublicationRow>();
+  const publications = await db.prepare(`SELECT id, source, last_seen_at, kind, title, summary, level, area, junta, location, shift, character, circuit, source_circuit_raw, starts_at, ends_at, status, metadata, normalized_status FROM publications WHERE kind='capacitacion' AND normalized_status IN ('ACTIVE','UPCOMING')
+    AND (COALESCE(source,'')<>'Capacitación Docente' OR ${FDCI_CURRENT_SQL}) LIMIT 800`).bind(now.toISOString()).all<PublicationRow>();
   const upcomingTrainings = publications.results.filter((publication) => {
+    if (publication.source === "Capacitación Docente" && !fdciPublicationFresh(publication.last_seen_at, now)) return false;
     const metadata = parseTrainingMetadata(publication.metadata);
     if (!metadata?.registrationOpensAt) return false;
     const opening = new Date(metadata.registrationOpensAt).getTime(), remaining = opening - now.getTime(), closing = metadata.registrationClosesAt || publication.ends_at;
@@ -220,9 +224,12 @@ export async function dispatchPushNotifications(db: D1Database, environment: Pus
     FROM notifications n JOIN publications p ON p.id=n.publication_id JOIN push_subscriptions s ON s.user_id=n.user_id AND s.active=1
     LEFT JOIN push_preferences pref ON pref.user_id=n.user_id LEFT JOIN push_deliveries d ON d.endpoint=s.endpoint AND d.event_key='notice:' || n.id
     WHERE n.scheduled_at IS NOT NULL AND datetime(n.scheduled_at)<=datetime(?) AND datetime(n.created_at)>=datetime(s.created_at)
+      AND (COALESCE(p.source,'')<>'Capacitación Docente' OR
+        (datetime(p.last_seen_at)>=datetime(?,'-27 hours') AND datetime(n.scheduled_at)>=datetime(?,'-27 hours')
+          AND ${FDCI_CURRENT_SQL}))
       AND (d.id IS NULL OR (d.status='failed' AND d.attempts<3 AND (d.next_attempt_at IS NULL OR datetime(d.next_attempt_at)<=datetime(?)))
         OR (d.status='pending' AND d.attempts<3 AND datetime(d.attempted_at)<=datetime(?,'-10 minutes')))
-    ORDER BY n.scheduled_at LIMIT ${PUSH_DELIVERY_BATCH_SIZE}`).bind(now.toISOString(), now.toISOString(), now.toISOString()).all<DeliveryRow>();
+    ORDER BY n.scheduled_at LIMIT ${PUSH_DELIVERY_BATCH_SIZE}`).bind(now.toISOString(), now.toISOString(), now.toISOString(), now.toISOString(), now.toISOString(), now.toISOString()).all<DeliveryRow>();
   const eventRows = await db.prepare(`SELECT q.id notification_id, q.user_id, 'manual:' || q.event_id publication_id, 'AGENDA_RECORDATORIO' type, q.created_at queued_at, q.title,
     s.endpoint, s.p256dh, s.auth, s.expiration_time, COALESCE(pref.enabled,1) enabled, COALESCE(pref.vacancies,1) vacancies, COALESCE(pref.trainings,1) trainings,
     COALESCE(pref.commissions,1) commissions, COALESCE(pref.reminders,1) reminders, COALESCE(pref.date_changes,1) date_changes, COALESCE(pref.closing_soon,1) closing_soon,

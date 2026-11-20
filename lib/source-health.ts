@@ -1,5 +1,6 @@
 import type { AppView } from "./app-navigation.ts";
 import type { SyncStatus } from "./types.ts";
+import { FDCI_FRESHNESS_MS } from "./fdci-freshness.ts";
 
 const sources = {
   "Capacitación Docente": { label: "FDCI", url: "https://capacitaciondocente.educaciontuc.gov.ar/" },
@@ -19,7 +20,8 @@ export function sourceHealth(row: SyncStatus | undefined, now = new Date()) {
   if (row.sync_status && row.sync_status !== "OK") return "failed" as const;
   if (Number.isFinite(attempt) && (!Number.isFinite(success) || attempt > success)) return now.getTime() - attempt <= 15 * 60_000 ? "running" as const : "interrupted" as const;
   if (!Number.isFinite(success)) return "unknown" as const;
-  return now.getTime() - success > 3 * 60 * 60_000 ? "stale" as const : "current" as const;
+  if (success > now.getTime()) return "unknown" as const;
+  return now.getTime() - success > (row.source === "Capacitación Docente" ? FDCI_FRESHNESS_MS : 3 * 60 * 60_000) ? "stale" as const : "current" as const;
 }
 
 export function sourceNotices(view: AppView, trainingSource: string, sync: SyncStatus[], now = new Date()) {

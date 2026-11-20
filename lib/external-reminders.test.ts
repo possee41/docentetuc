@@ -5,7 +5,9 @@ import { materializeExternalReminderBatch } from "../scripts/external-reminders.
 
 function isolated() {
   const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec(`CREATE TABLE publications(id TEXT PRIMARY KEY,kind TEXT,normalized_status TEXT,metadata TEXT);
+  sqlite.exec(`CREATE TABLE publications(id TEXT PRIMARY KEY,kind TEXT,normalized_status TEXT,metadata TEXT,source TEXT,last_seen_at TEXT);
+    CREATE TABLE fdci_import_checkpoint(id INTEGER PRIMARY KEY,upper_key TEXT,last_cycle_status TEXT,last_completed_at TEXT);
+    INSERT INTO fdci_import_checkpoint VALUES(1,'','OK','2026-10-22T12:00:00Z');
     CREATE TABLE training_reminders (id TEXT PRIMARY KEY,user_id TEXT,publication_id TEXT,opens_at TEXT,advance_minutes INTEGER,remind_at TEXT,notified INTEGER DEFAULT 0,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE designation_tracking (id TEXT PRIMARY KEY,user_id TEXT,publication_id TEXT,reminder_at TEXT,reminder_notified INTEGER DEFAULT 0,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE saved_publications (user_id TEXT,publication_id TEXT,agenda_reminder_at TEXT,in_agenda INTEGER,agenda_reminder_notified INTEGER DEFAULT 0);
@@ -14,7 +16,7 @@ function isolated() {
     CREATE TABLE notifications (id INTEGER PRIMARY KEY,user_id TEXT,publication_id TEXT,type TEXT,dedupe_key TEXT,scheduled_at TEXT);
     CREATE UNIQUE INDEX idx_notice_dedupe ON notifications(user_id,dedupe_key);`);
   sqlite.prepare("INSERT INTO training_reminders(id,user_id,publication_id,opens_at,advance_minutes,remind_at) VALUES('t','a','p1','2026-10-23T12:00:00Z',60,'2026-10-22T10:00:00Z')").run();
-  sqlite.prepare("INSERT INTO publications VALUES('p1','capacitacion','UPCOMING',?)").run(JSON.stringify({ entity: "commission", trainingId: "p1", dateStatus: "confirmed", registrationHasTime: true, registrationOpensAt: "2026-10-23T12:00:00Z", registrationClosesAt: "2026-10-24T12:00:00Z" }));
+  sqlite.prepare("INSERT INTO publications(id,kind,normalized_status,metadata) VALUES('p1','capacitacion','UPCOMING',?)").run(JSON.stringify({ entity: "commission", trainingId: "p1", dateStatus: "confirmed", registrationHasTime: true, registrationOpensAt: "2026-10-23T12:00:00Z", registrationClosesAt: "2026-10-24T12:00:00Z" }));
   sqlite.prepare("INSERT INTO designation_tracking(id,user_id,publication_id,reminder_at) VALUES('d','b','p2','2026-10-22T10:00:00Z')").run();
   sqlite.prepare("INSERT INTO saved_publications(user_id,publication_id,agenda_reminder_at,in_agenda) VALUES('a','p3','2026-10-22T10:00:00Z',1)").run();
   const db = { prepare: (sql: string) => ({ bind: (...params: unknown[]) => ({
@@ -83,6 +85,21 @@ test("un recordatorio antiguo espera confirmación y no avisa tras el cierre", a
   assert.equal((await materializeExternalReminderBatch(db, { now })).inserted, 0);
   sqlite.prepare("UPDATE publications SET metadata=? WHERE id='p1'").run(JSON.stringify({ dateStatus: "confirmed", registrationHasTime: true, registrationOpensAt: "2026-10-23T12:00:00Z", registrationClosesAt: "2026-10-24T12:00:00Z" }));
   assert.equal((await materializeExternalReminderBatch(db, { now })).inserted, 1);
+  sqlite.close();
+});
+
+test("FDCI no avisa por una comisión sin verificación reciente", async () => {
+  const { sqlite, db } = isolated();
+  sqlite.exec("DELETE FROM designation_tracking; DELETE FROM saved_publications");
+  const now = new Date("2026-10-22T12:00:00Z");
+  sqlite.prepare("UPDATE publications SET source='Capacitación Docente',last_seen_at=? WHERE id='p1'")
+    .run("2026-10-20T12:00:00Z");
+  assert.equal((await materializeExternalReminderBatch(db, { now })).inserted, 0);
+  assert.equal(sqlite.prepare("SELECT notified FROM training_reminders WHERE id='t'").get()?.notified, 0);
+  sqlite.prepare("UPDATE publications SET last_seen_at=? WHERE id='p1'").run(now.toISOString());
+  assert.equal((await materializeExternalReminderBatch(db, { now })).inserted, 1);
+  sqlite.exec("UPDATE training_reminders SET notified=0; DELETE FROM notifications; UPDATE fdci_import_checkpoint SET last_cycle_status='PARTIAL'");
+  assert.equal((await materializeExternalReminderBatch(db, { now })).inserted, 0);
   sqlite.close();
 });
 

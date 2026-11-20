@@ -10,7 +10,9 @@ function fixture(profiles = 0) {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(`CREATE TABLE publications(id TEXT PRIMARY KEY,source TEXT,kind TEXT,title TEXT,summary TEXT,
     level TEXT,area TEXT,junta TEXT,location TEXT,shift TEXT,character TEXT,circuit TEXT,source_circuit_raw TEXT,
-    starts_at TEXT,ends_at TEXT,status TEXT,metadata TEXT,normalized_status TEXT,removed_at TEXT,content_hash TEXT);
+    starts_at TEXT,ends_at TEXT,status TEXT,metadata TEXT,normalized_status TEXT,removed_at TEXT,content_hash TEXT,last_seen_at TEXT);
+    CREATE TABLE fdci_import_checkpoint(id INTEGER PRIMARY KEY,upper_key TEXT,last_cycle_status TEXT,last_completed_at TEXT);
+    INSERT INTO fdci_import_checkpoint VALUES(1,'','OK','2026-10-26T12:00:00Z');
     CREATE TABLE profiles(user_id TEXT PRIMARY KEY,notify_new_trainings INTEGER,training_notify_scope TEXT,
       level TEXT,area TEXT,subjects TEXT,junta TEXT,roles TEXT,department TEXT,locality TEXT,shifts TEXT,
       characters TEXT,circuits TEXT,personal_match_threshold INTEGER,training_interests TEXT);
@@ -40,11 +42,21 @@ function fixture(profiles = 0) {
       metrics.rowsWritten += changes; return { meta: { changes, rows_written: changes } }; },
   }) }) };
   const addTraining = (id = "training", overrides = {}) => sqlite.prepare(`INSERT INTO publications
-    (id,source,kind,title,normalized_status,metadata,content_hash) VALUES(?,'Capacitación Docente','capacitacion','Curso confirmado','UPCOMING',?,?)`)
+    (id,source,kind,title,normalized_status,metadata,content_hash,last_seen_at) VALUES(?,'Capacitación Docente','capacitacion','Curso confirmado','UPCOMING',?,?,?)`)
     .run(id, JSON.stringify({ dateStatus: "confirmed", registrationOpensAt: "2026-10-27T12:00:00Z",
-      registrationClosesAt: "2026-11-03T12:00:00Z", ...overrides }), "a".repeat(64));
+      registrationClosesAt: "2026-11-03T12:00:00Z", ...overrides }), "a".repeat(64), now.toISOString());
   return { sqlite, db, metrics, addTraining };
 }
+
+test("un ciclo FDCI parcial suspende avisos automáticos sin retirar la publicación", async () => {
+  const f = fixture(1);
+  f.addTraining();
+  assert.equal((await loadScheduledTrainings(f.db, now)).length, 1);
+  f.sqlite.exec("UPDATE fdci_import_checkpoint SET last_cycle_status='PARTIAL'");
+  assert.equal((await loadScheduledTrainings(f.db, now)).length, 0);
+  assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM publications").get()?.n, 1);
+  f.sqlite.close();
+});
 
 test("ciclos externos con 0, 100, 500 y 1001 perfiles; reintento y avisos sin duplicados", async () => {
   for (const count of [0, 100, 500, 1001]) {

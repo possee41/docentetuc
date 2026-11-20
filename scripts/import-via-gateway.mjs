@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { runIncrementalFdci } from "./fdci-incremental.mjs";
+import { runFdciImport } from "./import-fdci.mjs";
 import { runDeltaFdci } from "./fdci-delta.mjs";
 import { runSimeImport, parseSimeOptions } from "./import-sime.mjs";
 import { runPublicSourceImport } from "./import-public-sources.mjs";
@@ -78,7 +79,12 @@ export async function runGatewayImport(target, config, sourceFetch = fetch, rece
       return sourceFetch(url, { ...init, redirect: "error" });
     };
     try {
-      return { ...await (config.FDCI_DELTA_ENABLED === "true" ? runDeltaFdci : runIncrementalFdci)(target, safety, fetcher),
+      const selected = config.FDCI_SCOPE === "single"
+        ? await runFdciImport({ endpoint: target.endpoint, token: target.secret, fetcher,
+          selection: { token: config.FDCI_COURSE_TOKEN, slug: config.FDCI_COURSE_SLUG, commissionId: config.FDCI_COMMISSION_ID },
+          scope: "single", safety, owner: safety.owner })
+        : await (config.FDCI_DELTA_ENABLED === "true" ? runDeltaFdci : runIncrementalFdci)(target, safety, fetcher);
+      return { ...selected,
         sourceRequests: requests, elapsedMs: Date.now() - started };
     } catch (error) {
       error.result = { ...error.result, sourceRequests: requests, elapsedMs: Date.now() - started };
@@ -102,7 +108,7 @@ export async function runGatewayImport(target, config, sourceFetch = fetch, rece
 }
 
 export function fdciSafety(config) {
-  if (config.FDCI_SCOPE !== "active") throw new Error("FDCI_ACTIVE_SCOPE_REQUIRED");
+  if (!["active", "single"].includes(config.FDCI_SCOPE)) throw new Error("FDCI_SCOPE_INVALID");
   const owner = config.IMPORT_GATE_RUN_ID || (config.GITHUB_RUN_ID ? `${config.GITHUB_RUN_ID}-${config.GITHUB_RUN_ATTEMPT || "1"}` : "");
   if (!/^[A-Za-z0-9_:-]{1,100}$/.test(owner)) throw new Error("GATE_RUN_ID_REQUIRED");
   const maxRequests = Number(config.FDCI_MAX_REQUESTS || 6);
@@ -110,8 +116,15 @@ export function fdciSafety(config) {
   const pauseMs = Number(config.FDCI_PAUSE_MS || 400);
   if (!Number.isInteger(maxRequests) || maxRequests < 2 || maxRequests > 6 ||
       !Number.isInteger(maxPublications) || maxPublications < 1 || maxPublications > 5 ||
-      !Number.isInteger(pauseMs) || pauseMs < 400 || pauseMs > 1000) throw new Error("FDCI_BUDGET_INVALID");
-  return { maxRequests, maxPublications, pauseMs, owner };
+      !Number.isInteger(pauseMs) || pauseMs < 400 || pauseMs > 5000 ||
+      config.IMPORT_GATEWAY_TARGET === "production" && pauseMs < 3500) throw new Error("FDCI_BUDGET_INVALID");
+  if (config.FDCI_SCOPE === "single" && (maxRequests > 3 || maxPublications !== 1 || config.FDCI_DELTA_ENABLED === "true" ||
+      config.FDCI_RECOVERY_CLOSED_ONLY !== "true" ||
+      !/^[A-Za-z0-9_-]{1,80}$/.test(config.FDCI_COURSE_TOKEN || "") ||
+      !/^[a-z0-9-]{1,160}$/.test(config.FDCI_COURSE_SLUG || "") ||
+      !/^[1-9]\d{0,11}$/.test(config.FDCI_COMMISSION_ID || ""))) throw new Error("FDCI_RECOVERY_SELECTION_INVALID");
+  return { maxRequests, maxPublications, pauseMs, owner,
+    ...(config.FDCI_SCOPE === "single" ? { closedOnly: true } : {}) };
 }
 
 // Never serialize arbitrary exceptions, remote bodies, headers, URLs or config.

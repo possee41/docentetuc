@@ -5,7 +5,7 @@ const fence = `EXISTS (SELECT 1 FROM import_gate_lease WHERE id=1 AND source='fd
 const reply = (body, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
 export async function fdciCheckpoint(payload, db, owner) {
-  if (!payload || !["get", "start", "advance", "finish"].includes(payload.op)) return reply({ error: "CHECKPOINT_INVALID" }, 400);
+  if (!payload || !["get", "start", "advance", "finish", "empty", "fail", "abandon"].includes(payload.op)) return reply({ error: "CHECKPOINT_INVALID" }, 400);
   try {
     if (payload.op === "get") {
       const state = await db.prepare("SELECT * FROM fdci_import_checkpoint WHERE id=1").first();
@@ -22,6 +22,20 @@ export async function fdciCheckpoint(payload, db, owner) {
         last_error_code=CASE WHEN ? THEN ? ELSE last_error_code END
         WHERE id=1 AND revision=? AND upper_key<>'' AND after_key<? AND upper_key>=? AND ${fence} RETURNING *`)
         .bind(payload.after, Number(payload.failed), Number(payload.failed), payload.code, payload.revision, payload.after, payload.after, owner);
+    } else if (payload.op === "fail" && /^FDCI_[A-Z_0-9]{1,60}$/.test(payload.code || "")) {
+      statement = db.prepare(`UPDATE fdci_import_checkpoint SET revision=revision+1,last_cycle_status='PARTIAL',last_error_code=?
+        WHERE id=1 AND revision=? AND ${fence} RETURNING *`).bind(payload.code, payload.revision, owner);
+    } else if (payload.op === "empty") {
+      // A verified empty active/upcoming listing is a completed cycle too.
+      statement = db.prepare(`UPDATE fdci_import_checkpoint SET revision=revision+1,cycle=cycle+1,
+        last_cycle_status='OK',last_completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),failures=0,last_error_code=NULL
+        WHERE id=1 AND revision=? AND upper_key='' AND ${fence} RETURNING *`).bind(payload.revision, owner);
+    } else if (payload.op === "abandon") {
+      // A previously pending key disappeared from both official listings. A
+      // partial cycle may be restarted, but cannot be declared successful.
+      statement = db.prepare(`UPDATE fdci_import_checkpoint SET revision=revision+1,upper_key='',after_key='',
+        last_cycle_status='PARTIAL',last_error_code='FDCI_PENDING_DISAPPEARED'
+        WHERE id=1 AND revision=? AND upper_key<>'' AND ${fence} RETURNING *`).bind(payload.revision, owner);
     } else if (payload.op === "finish") {
       statement = db.prepare(`UPDATE fdci_import_checkpoint SET revision=revision+1,cycle=cycle+1,upper_key='',after_key='',
         last_cycle_status=CASE WHEN failures=0 THEN 'OK' ELSE 'PARTIAL' END,

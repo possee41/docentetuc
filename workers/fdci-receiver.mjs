@@ -1,5 +1,7 @@
 // Standalone FDCI receiver. The GitHub runner prepares publications; this Worker only persists them.
 const SOURCE = "Capacitación Docente";
+const LEASE_FENCE = `EXISTS (SELECT 1 FROM import_gate_lease WHERE id=1 AND source='fdci'
+  AND opened_by=? AND julianday(expires_at)>julianday('now'))`;
 const MAX_BYTES = 150_000;
 const MAX_ITEMS = 5;
 const TEXT_FIELDS = {
@@ -92,12 +94,15 @@ async function readBody(request) {
   catch { throw new Error("INVALID_JSON"); }
 }
 
-async function store(db, items, owner, delta) {
+async function store(db, items, owner, delta, createOnly = false) {
   const ids = items.map((item) => item.id);
   const existing = await db.prepare(`SELECT id, source, content_hash, removed_at, normalized_status FROM publications WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
   if (existing.results.some((row) => row.source !== SOURCE)) throw new Error("SOURCE_CONFLICT");
   if (owner && existing.results.some((row) => row.normalized_status === "UNKNOWN")) throw new Error("PROTECTED_RECORD");
   const previous = new Map(existing.results.map((row) => [row.id, row]));
+  if (createOnly && items.some((item) => previous.has(item.id) &&
+      (previous.get(item.id).content_hash !== item.contentHash || previous.get(item.id).removed_at !== null)))
+    throw new Error("RECOVERY_EXISTING_CONFLICT");
   const changes = items.filter((item) => {
     const prior = previous.get(item.id);
     return !prior || prior.content_hash !== item.contentHash || prior.removed_at !== null;
@@ -118,14 +123,21 @@ async function store(db, items, owner, delta) {
   const written = statements.length ? await db.batch(statements) : [];
   const applied = written.map((result) => Number(result.meta?.rows_written || 0) > 0);
   if (owner && applied.some((changed) => !changed)) throw new Error("LEASE_OR_CONCURRENT_CHANGE");
+  // An identical record was still verified against the official detail. Keep
+  // that observation separate from the content hash and historical first seen.
+  const unchangedItems = items.filter((item) => !changes.includes(item));
+  const verified = unchangedItems.length ? await db.batch(unchangedItems.map((item) => db.prepare(`UPDATE publications SET last_seen_at=?
+    WHERE id=? AND source='${SOURCE}' AND content_hash=?${owner ? ` AND ${LEASE_FENCE}` : ""}`)
+    .bind(now, item.id, item.contentHash, ...(owner ? [owner] : [])))) : [];
+  if (owner && verified.some((result) => Number(result.meta?.rows_written || 0) !== 1)) throw new Error("LEASE_OR_CONCURRENT_CHANGE");
   return {
     received: items.length,
     created: changes.filter((item, index) => applied[index] && !previous.has(item.id)).length,
     updated: changes.filter((item, index) => applied[index] && previous.has(item.id)).length,
     unchanged: items.length - applied.filter(Boolean).length,
-    queries: 1 + statements.length,
-    rowsRead: Number(existing.meta?.rows_read || 0) + written.reduce((sum, result) => sum + Number(result.meta?.rows_read || 0), 0),
-    rowsWritten: written.reduce((sum, result) => sum + Number(result.meta?.rows_written || 0), 0),
+    queries: 1 + statements.length + verified.length,
+    rowsRead: Number(existing.meta?.rows_read || 0) + [...written, ...verified].reduce((sum, result) => sum + Number(result.meta?.rows_read || 0), 0),
+    rowsWritten: [...written, ...verified].reduce((sum, result) => sum + Number(result.meta?.rows_written || 0), 0),
   };
 }
 
@@ -147,6 +159,9 @@ export async function receiveAuthenticatedFdci(request, env) {
     const items = payload.items;
     if (payload.mode !== "batch" || !Array.isArray(items) || items.length < 1 || items.length > MAX_ITEMS || !items.every(validFdciPrepared) ||
         new Set(items.map((item) => item.id)).size !== items.length) return reply({ error: "Lote inválido." }, 400);
+    if (payload.recovery !== undefined && (payload.recovery !== "create-only" || items.length !== 1 ||
+        !items[0].id.startsWith("fdci:commission:") || env.IMPORT_GATE_LEASE_REQUIRED !== "true"))
+      return reply({ error: "RECOVERY_INVALID" }, 400);
     const owner = env.IMPORT_GATE_LEASE_REQUIRED === "true" ? request.headers.get("x-import-gate-owner") : null;
     if (env.IMPORT_GATE_LEASE_REQUIRED === "true" && (!owner || !/^[A-Za-z0-9_:-]{1,100}$/.test(owner))) return reply({ error: "GATE_OWNER_INVALID" }, 409);
     if (owner && (items.length !== 1 || items.some((item) => item.id === "fdci:commission:6375" ||
@@ -154,10 +169,11 @@ export async function receiveAuthenticatedFdci(request, env) {
     const delta = env.FDCI_DELTA_ENABLED === "true" ? payload.delta : null;
     if (env.FDCI_DELTA_ENABLED === "true" && (!owner || !delta || !Number.isSafeInteger(delta.version) || delta.version < 1 ||
         !Number.isSafeInteger(delta.revision) || delta.revision < 0)) return reply({ error: "DELTA_PROOF_REQUIRED" }, 409);
-    return reply({ ok: true, ...await store(env.DB, items, owner, delta) });
+    return reply({ ok: true, ...await store(env.DB, items, owner, delta, payload.recovery === "create-only") });
   } catch (error) {
     if (error?.message === "SOURCE_CONFLICT") return reply({ error: "Conflicto de fuente." }, 409);
     if (error?.message === "PROTECTED_RECORD") return reply({ error: "PROTECTED_RECORD" }, 422);
+    if (error?.message === "RECOVERY_EXISTING_CONFLICT") return reply({ error: "RECOVERY_EXISTING_CONFLICT" }, 409);
     if (error?.message === "LEASE_OR_CONCURRENT_CHANGE") return reply({ error: "LEASE_OR_CONCURRENT_CHANGE" }, 409);
     return reply({ error: "No se pudo guardar el lote." }, 503);
   }

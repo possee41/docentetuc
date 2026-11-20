@@ -6,7 +6,9 @@ import { dispatchPushNotifications, type NotificationProvider, type PushMessage 
 
 test("recordatorios externos respetan preferencias, envían una vez y no mezclan eventos manuales con avisos", async () => {
   const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec(`CREATE TABLE publications (id TEXT PRIMARY KEY,title TEXT,content_hash TEXT,normalized_status TEXT,removed_at TEXT,kind TEXT,summary TEXT,level TEXT,area TEXT,junta TEXT,location TEXT,shift TEXT,character TEXT,circuit TEXT,source_circuit_raw TEXT,category TEXT,metadata TEXT,ends_at TEXT,starts_at TEXT,source_updated_at TEXT);
+  sqlite.exec(`CREATE TABLE publications (id TEXT PRIMARY KEY,title TEXT,content_hash TEXT,normalized_status TEXT,removed_at TEXT,kind TEXT,summary TEXT,level TEXT,area TEXT,junta TEXT,location TEXT,shift TEXT,character TEXT,circuit TEXT,source_circuit_raw TEXT,category TEXT,metadata TEXT,ends_at TEXT,starts_at TEXT,source_updated_at TEXT,source TEXT,last_seen_at TEXT);
+    CREATE TABLE fdci_import_checkpoint(id INTEGER PRIMARY KEY,upper_key TEXT,last_cycle_status TEXT,last_completed_at TEXT);
+    INSERT INTO fdci_import_checkpoint VALUES(1,'','OK','2026-10-22T12:00:00Z');
     CREATE TABLE profiles (user_id TEXT PRIMARY KEY,notify_new_trainings INTEGER,training_notify_scope TEXT,level TEXT,area TEXT,subjects TEXT,junta TEXT,roles TEXT,department TEXT,locality TEXT,shifts TEXT,characters TEXT,circuits TEXT,personal_match_threshold INTEGER,wants_interim INTEGER,wants_substitute INTEGER,training_interests TEXT);
     CREATE TABLE training_reminders (id TEXT PRIMARY KEY,user_id TEXT,publication_id TEXT,opens_at TEXT,advance_minutes INTEGER,remind_at TEXT,notified INTEGER DEFAULT 0,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE designation_tracking (id TEXT PRIMARY KEY,user_id TEXT,publication_id TEXT,reminder_at TEXT,reminder_notified INTEGER DEFAULT 0,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);

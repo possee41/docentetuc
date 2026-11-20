@@ -1,5 +1,6 @@
 import { calendarDayDistance } from "./home-dashboard.ts";
 import { htmlToText } from "./public-documents.ts";
+import { FDCI_CURRENT_SQL } from "./fdci-freshness.ts";
 
 export type TrainingStatus = "inscripción abierta" | "próximamente" | "inscripción cerrada" | "en curso" | "finalizada" | "consultar";
 export type EnrollmentState = "PROXIMAMENTE" | "ABRE_HOY" | "ABIERTA" | "SIN_CUPO" | "CERRADA" | "SIN_FECHA_CONFIRMADA";
@@ -228,6 +229,8 @@ export const trainingReminderKey = (metadata: TrainingMetadata) => metadata.comm
 export const CONFIRMED_TRAINING_REMINDER_SQL = `EXISTS (SELECT 1 FROM publications p
   WHERE p.id=training_reminders.publication_id AND p.kind='capacitacion'
   AND p.normalized_status NOT IN ('CLOSED','EXPIRED','REMOVED_FROM_SOURCE')
+  AND (COALESCE(p.source,'')<>'Capacitación Docente' OR
+    (datetime(p.last_seen_at)>=datetime(?,'-27 hours') AND ${FDCI_CURRENT_SQL}))
   AND CASE WHEN json_valid(p.metadata) THEN
     json_extract(p.metadata,'$.dateStatus')='confirmed'
     AND json_extract(p.metadata,'$.registrationHasTime')=1

@@ -7,7 +7,7 @@ const sources = [
     select: `SELECT id,user_id,publication_id,opens_at,advance_minutes,remind_at FROM training_reminders WHERE notified=0 AND datetime(remind_at)<=datetime(?) AND ${CONFIRMED_TRAINING_REMINDER_SQL} ORDER BY remind_at,id LIMIT ?`,
     key: (row) => `training-reminder:${row.id}:${row.opens_at}:${row.advance_minutes ?? 0}`,
     where: `id=? AND remind_at=? AND notified=0 AND ${CONFIRMED_TRAINING_REMINDER_SQL}`,
-    args: (row, now) => [row.id, row.remind_at, now],
+    args: (row, now) => [row.id, row.remind_at, now, now, now],
     confirmedTraining: true,
   },
   {
@@ -53,7 +53,7 @@ export async function materializeExternalReminderBatch(db, { limit = 10, now = n
   const writes = [];
   for (const source of sources) {
     if (!remaining) break;
-    const due = await db.prepare(source.select).bind(now.toISOString(), ...(source.confirmedTraining ? [now.toISOString()] : []), remaining).all();
+    const due = await db.prepare(source.select).bind(now.toISOString(), ...(source.confirmedTraining ? [now.toISOString(), now.toISOString(), now.toISOString()] : []), remaining).all();
     for (const row of due.results || []) {
       const key = source.key(row);
       const args = source.args(row, now.toISOString());

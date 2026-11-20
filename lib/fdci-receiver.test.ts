@@ -84,17 +84,18 @@ test("gateway autentica una vez; el endpoint independiente no acepta cabeceras d
   } finally { crypto.subtle.digest = digest; }
 });
 
-test("concesión: importa una vez y repetir no produce ninguna escritura", async () => {
+test("concesión: repetir verifica la observación sin cambiar el contenido", async () => {
   const { sqlite, send } = leasedDb();
   const [item] = await prepareFdciImports([course], [commission]);
   const first = await send(item);
   assert.equal(first.status, 200);
   assert.equal((await first.json()).created, 1);
-  const before = sqlite.prepare("SELECT total_changes() AS n").get()?.n;
+  const before = sqlite.prepare("SELECT first_seen_at,content_hash FROM publications WHERE id=?").get(item.id);
   const repeated = await send(item);
   assert.equal(repeated.status, 200);
-  assert.equal((await repeated.json()).rowsWritten, 0);
-  assert.equal(sqlite.prepare("SELECT total_changes() AS n").get()?.n, before);
+  assert.equal((await repeated.json()).rowsWritten, 1);
+  const after = sqlite.prepare("SELECT first_seen_at,content_hash FROM publications WHERE id=?").get(item.id);
+  assert.deepEqual(after, before);
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sync_state").get()?.n, 0);
 });
 
@@ -148,7 +149,7 @@ test("el Worker independiente exige autorización, limita a cinco e ignora dupli
   assert.equal(five.status, 200);
   assert.equal((await five.json() as { created: number }).created, 4);
   const repeat = await worker.fetch(request({ mode: "batch", items }), env);
-  assert.equal((await repeat.json() as { rowsWritten: number }).rowsWritten, 0);
+  assert.equal((await repeat.json() as { rowsWritten: number }).rowsWritten, 5);
   assert.equal(sqlite.prepare("SELECT count(*) AS n FROM publications").get()?.n, 6);
   assert.equal(sqlite.prepare("SELECT title FROM publications WHERE id='legacy'").get()?.title, "Histórica");
   assert.equal(sqlite.prepare("SELECT count(*) AS n FROM sync_state").get()?.n, 0);
@@ -176,7 +177,7 @@ test("dos lotes simultáneos no duplican filas ni confirman escrituras inexisten
   assert.deepEqual(responses.map((response) => response.status), [200, 200]);
   const results = await Promise.all(responses.map((response) => response.json() as Promise<{ created: number; unchanged: number; rowsWritten: number }>));
   assert.equal(results.reduce((sum, result) => sum + result.created, 0), 1);
-  assert.equal(results.reduce((sum, result) => sum + result.rowsWritten, 0), 1);
+  assert.ok([1, 2].includes(results.reduce((sum, result) => sum + result.rowsWritten, 0)));
   assert.equal(sqlite.prepare("SELECT count(*) AS n FROM publications").get()?.n, 1);
 });
 

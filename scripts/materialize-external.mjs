@@ -5,12 +5,13 @@ import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { scheduledNotificationTypes } from "../lib/push.ts";
 import { parseTrainingMetadata } from "../lib/training.ts";
+import { FDCI_CURRENT_SQL } from "../lib/fdci-freshness.ts";
 import { createD1Rest } from "./d1-rest.mjs";
 import { resolveDirectD1Target, verifyDirectD1Identity } from "./import-direct-d1.mjs";
 import { materializeNextPersistedNoticePage } from "./external-notifications.mjs";
 import { materializeExternalReminderBatch } from "./external-reminders.mjs";
 
-const trainingColumns = `id,kind,title,summary,level,area,junta,location,shift,character,circuit,
+const trainingColumns = `id,source,last_seen_at,kind,title,summary,level,area,junta,location,shift,character,circuit,
   source_circuit_raw,starts_at,ends_at,status,metadata,normalized_status`;
 
 export async function loadScheduledTrainings(db, now = new Date()) {
@@ -19,7 +20,9 @@ export async function loadScheduledTrainings(db, now = new Date()) {
   while (true) {
     const page = await db.prepare(`SELECT ${trainingColumns} FROM publications
       WHERE kind='capacitacion' AND normalized_status IN ('ACTIVE','UPCOMING')
-        AND removed_at IS NULL AND id>? ORDER BY id LIMIT 100`).bind(cursor).all();
+        AND removed_at IS NULL AND id>?
+        AND (COALESCE(source,'')<>'Capacitación Docente' OR ${FDCI_CURRENT_SQL})
+        ORDER BY id LIMIT 100`).bind(cursor, now.toISOString()).all();
     for (const row of page.results || []) {
       const metadata = parseTrainingMetadata(row.metadata);
       if (!metadata?.registrationOpensAt || !["confirmed", "course_confirmed"].includes(metadata.dateStatus) ||

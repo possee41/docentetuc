@@ -6,6 +6,7 @@ import { designationRoleFromTitle, isEligibleForPersonalizedHome, matchesProfile
 import { notificationDedupeKey } from "../lib/notification-events.ts";
 import { officialLifecycle, officialMetadata } from "../lib/official-publication.ts";
 import { enrollmentState, parseTrainingMetadata } from "../lib/training.ts";
+import { FDCI_CURRENT_SQL, fdciPublicationFresh } from "../lib/fdci-freshness.ts";
 import { registrationState } from "../lib/home-dashboard.ts";
 import { dispatchPushNotifications } from "../lib/push.ts";
 import { materializeExternalReminderBatch } from "./external-reminders.mjs";
@@ -69,8 +70,11 @@ export async function materializeExternalNoticePage(db, { events, cursor = "", l
 
   const rows = [];
   for (const event of events) {
-    const row = await db.prepare("SELECT * FROM publications WHERE id=? AND content_hash=?").bind(event.id, event.contentHash).first();
+    const row = await db.prepare(`SELECT p.*, CASE WHEN COALESCE(p.source,'')<>'Capacitación Docente' OR ${FDCI_CURRENT_SQL}
+      THEN 1 ELSE 0 END AS fdci_current FROM publications p WHERE p.id=? AND p.content_hash=?`)
+      .bind(now.toISOString(), event.id, event.contentHash).first();
     if (!row) throw new Error("EXTERNAL_NOTICE_PUBLICATION_CHANGED");
+    if (!row.fdci_current) continue;
     const official = officialMetadata(row);
     if (!["ACTIVE", "UPCOMING"].includes(row.normalized_status) || row.removed_at || row.kind === "informacion" ||
         row.id.startsWith("drive:") || (official && (official.canonicalId || official.entity === "reference" ||
@@ -78,6 +82,7 @@ export async function materializeExternalNoticePage(db, { events, cursor = "", l
     if (row.kind === "vacante" && !["ACTIVE", "UPCOMING"].includes(officialLifecycle(row, now))) continue;
     if (row.kind === "capacitacion") {
       const metadata = parseTrainingMetadata(row.metadata);
+      if (row.source === "Capacitación Docente" && !fdciPublicationFresh(row.last_seen_at, now)) continue;
       if (metadata?.dateStatus !== "confirmed" || !["PROXIMAMENTE", "ABRE_HOY", "ABIERTA"].includes(
         enrollmentState(metadata, row.source_status || row.status, row.normalized_status, now))) continue;
     }

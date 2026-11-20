@@ -37,6 +37,7 @@ import type { PrivateAppData } from "@/lib/app-data";
 import { usefulMetadata } from "@/lib/useful-information";
 import { licenseForms } from "@/lib/license-forms";
 import { canRecommendCurrentPublication, publicationLifecycle } from "@/lib/publication-lifecycle";
+import { FDCI_FRESHNESS_MS, fdciPublicationFresh } from "@/lib/fdci-freshness";
 import { designationEmptyState, hasDesignationProfilePreferences } from "@/lib/designation-state";
 import { AppHeader, BottomNavigation, Card, CompatibilityBadge, EmptyState, FilterChip, StatusBadge } from "@/components/docentetuc-ui";
 import { privateAccessState } from "@/lib/private-access-state";
@@ -102,7 +103,11 @@ const fromNow = (value: string | null) => {
 const tucumanDay = (value: Date | string) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(typeof value === "string" ? new Date(value) : value);
 const opensToday = (item: Publication) => { const opens = parseTrainingMetadata(item.metadata)?.registrationOpensAt; return Boolean(opens && tucumanDay(opens) === tucumanDay(new Date())); };
 const healthNameForPublication = (item: Publication) => item.source === "Padrones y Comunicados" ? officialMetadata(item)?.sourceCategory || item.category : item.source;
-const healthForPublication = (item: Publication, sync: SyncStatus[]) => sync.find((source) => source.source === healthNameForPublication(item));
+const healthForPublication = (item: Publication, sync: SyncStatus[]) => {
+  const row = sync.find((source) => source.source === healthNameForPublication(item));
+  return item.source === "Capacitación Docente" && row && !fdciPublicationFresh(item.last_seen_at)
+    ? { ...row, sync_status: "STALE" } : row;
+};
 const publicationLifecycleForUI = publicationLifecycleForDisplay;
 const enrollmentForUI = enrollmentForDisplay;
 const enrollmentLabel = (item: Publication, now = new Date()) => {
@@ -826,7 +831,8 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const visibleHomeShortcuts = homeShortcuts.filter(({ view }) =>
     view !== "actos" && view !== "llamados" || boardItems(publications, view, now).some((item) => sourceHealth(healthForPublication(item, sync), now) === "current"));
   const publicationMap = new Map(publications.map((item) => [item.id, item]));
-  const currentForHome = (item: Publication) => canRecommendCurrentPublication({ lifecycle: publicationLifecycleForUI(item, now), health: healthForPublication(item, sync), now }) &&
+  const currentForHome = (item: Publication) => canRecommendCurrentPublication({ lifecycle: publicationLifecycleForUI(item, now), health: healthForPublication(item, sync), now,
+    maxAgeMs: item.source === "Capacitación Docente" ? FDCI_FRESHNESS_MS : undefined }) &&
     (item.kind !== "capacitacion" || parseTrainingMetadata(item.metadata)?.dateStatus === "confirmed" &&
       ["ABRE_HOY", "PROXIMAMENTE", "ABIERTA"].includes(enrollmentForUI(item, now)));
   const eventDate = (item: Publication) => savedMap.get(item.id)?.agenda_at || officialEventDate(item) || parseTrainingMetadata(item.metadata)?.registrationOpensAt || item.ends_at || item.starts_at;

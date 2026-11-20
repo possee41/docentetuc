@@ -77,8 +77,15 @@ export async function runIncrementalFdci(target, safety, fetcher, at = new Date(
       if (parents.has(String(course.capacitacion_id))) throw new Error("FDCI_SCHEMA_CHANGED");
       parents.set(String(course.capacitacion_id), course);
     }
-    if (!entries.length) return { ...snapshot(), ...(state.upper_key ? { code: "FDCI_EMPTY_RESPONSE" } : {}), status: state.upper_key ? "PARTIAL" : "OK",
-      failed: Boolean(state.upper_key), empty: true, progressPending: false };
+    if (!entries.length && !state.upper_key) {
+      await checkpoint({ op: "empty", revision: state.revision }); cycleComplete = true;
+      return { ...snapshot(), status: "OK", failed: false, empty: true, progressPending: false };
+    }
+    if (!entries.length) {
+      await checkpoint({ op: "abandon", revision: state.revision });
+      return { ...snapshot(), code: "FDCI_PENDING_DISAPPEARED", status: "PARTIAL",
+        failed: true, empty: true, progressPending: false };
+    }
     if (!state.upper_key) await checkpoint({ op: "start", revision: state.revision, upper: entries.at(-1)[0] });
     const pending = entries.filter(([key]) => key > state.after_key && key <= state.upper_key);
     const details = new Map();
@@ -155,5 +162,12 @@ export async function runIncrementalFdci(target, safety, fetcher, at = new Date(
     }
     return { ...snapshot(), status: failed || !cycleComplete ? "PARTIAL" : "OK", failed,
       progressPending: !cycleComplete, deferred: entries.filter(([key]) => !cycleComplete && key > state.after_key && key <= state.upper_key).length };
-  } catch (error) { error.result = { ...snapshot(), uncertain: ["IMPORT_RESULT_UNCERTAIN", "IMPORT_ACK_INVALID"].includes(error.message) ? 1 : 0 }; throw error; }
+  } catch (error) {
+    if (state && !/CHECKPOINT/.test(error.message || "")) {
+      const code = /^FDCI_[A-Z_0-9]{1,60}$/.test(error.message || "") ? error.message : "FDCI_CYCLE_FAILED";
+      try { await checkpoint({ op: "fail", revision: state.revision, code }); } catch { /* An uncertain failure still stops the job. */ }
+    }
+    error.result = { ...snapshot(), uncertain: ["IMPORT_RESULT_UNCERTAIN", "IMPORT_ACK_INVALID"].includes(error.message) ? 1 : 0 };
+    throw error;
+  }
 }

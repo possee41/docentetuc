@@ -61,7 +61,7 @@ for (let round = 0; round < 3; round++) for (const variant of round % 2 ? ["curr
     };
     await measure("firstImport", "fdci-import", { mode: "batch", items: [item] });
     const repeated = await measure("warmUnchanged", "fdci-import", { mode: "batch", items: [item] });
-    assert.equal(repeated.ack.rowsWritten, 0);
+    assert.equal(repeated.ack.rowsWritten, variant === "current" ? 1 : 0);
     await measure("warmChanged", "fdci-import", { mode: "batch", items: [{ ...item, title: "Actualizado", contentHash: "b".repeat(64) }] });
     if (variant === "current") {
       await measure("checkpointGet", "fdci-checkpoint", { op: "get" });

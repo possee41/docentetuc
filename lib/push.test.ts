@@ -104,7 +104,9 @@ test("sin capacitaciones en ventana se conservan recordatorios y se omite el rec
       CREATE TABLE manual_events(id TEXT,user_id TEXT,title TEXT,starts_at TEXT,recurrence TEXT,reminder_minutes INTEGER,reminder_at TEXT,reminder_notified INTEGER,updated_at TEXT);
       CREATE TABLE manual_event_push_queue(id INTEGER PRIMARY KEY,user_id TEXT,event_id TEXT,title TEXT,occurrence_at TEXT,UNIQUE(event_id,occurrence_at));
       CREATE TABLE profiles(user_id TEXT,notify_new_trainings INTEGER);
-      CREATE TABLE publications(id TEXT,kind TEXT,title TEXT,summary TEXT,level TEXT,area TEXT,junta TEXT,location TEXT,shift TEXT,character TEXT,circuit TEXT,source_circuit_raw TEXT,starts_at TEXT,ends_at TEXT,status TEXT,normalized_status TEXT,metadata TEXT);
+      CREATE TABLE publications(id TEXT,kind TEXT,title TEXT,summary TEXT,level TEXT,area TEXT,junta TEXT,location TEXT,shift TEXT,character TEXT,circuit TEXT,source_circuit_raw TEXT,starts_at TEXT,ends_at TEXT,status TEXT,normalized_status TEXT,metadata TEXT,source TEXT,last_seen_at TEXT);
+      CREATE TABLE fdci_import_checkpoint(id INTEGER PRIMARY KEY,upper_key TEXT,last_cycle_status TEXT,last_completed_at TEXT);
+      INSERT INTO fdci_import_checkpoint VALUES(1,'','OK','2026-10-26T12:00:00Z');
       INSERT INTO training_reminders VALUES('t','u','training','2026-10-27T12:00:00Z',60,0,'2026-10-26T11:00:00Z',NULL);
       INSERT INTO designation_tracking VALUES('d','u','vacancy',0,'2026-10-26T11:00:00Z',NULL);
       INSERT INTO saved_publications VALUES('u','agenda',1,0,'2026-10-26T11:00:00Z');
@@ -126,9 +128,9 @@ test("sin capacitaciones en ventana se conservan recordatorios y se omite el rec
     await materializeScheduledNotifications(db as never, now);
     await materializeScheduledNotifications(db as never, now);
     assert.equal(profileQueries, 0);
-    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM notifications").get()?.n, 3);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM notifications").get()?.n, 2);
     assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM manual_event_push_queue").get()?.n, 1);
-    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM training_reminders WHERE notified=1").get()?.n, 1);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM training_reminders WHERE notified=1").get()?.n, 0);
   } finally { raw.close(); }
 });
 

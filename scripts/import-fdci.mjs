@@ -112,6 +112,8 @@ export async function runFdciImport({ endpoint, token, fetcher = fetch, collect 
       error.diagnostics = diagnostics;
       throw error;
     }
+    if (scope === "single" && safety?.closedOnly && !["CLOSED", "EXPIRED"].includes(items[0].normalizedStatus))
+      throw new Error("FDCI_RECOVERY_NOT_CLOSED");
     // One row per invocation keeps the receiver well below its five-row hard limit.
     for (const item of items) {
       if (safety && (item.id === "fdci:commission:6375" || !item.id.startsWith("fdci:commission:") || item.normalizedStatus === "UNKNOWN")) {
@@ -122,7 +124,8 @@ export async function runFdciImport({ endpoint, token, fetcher = fetch, collect 
         rejected++; count(rejectedStatuses, item.normalizedStatus || "UNKNOWN"); continue;
       }
       let result;
-      try { result = await sendFdci(endpoint, token, { mode: "batch", items: [item] }, fetcher, owner); }
+      try { result = await sendFdci(endpoint, token, { mode: "batch", items: [item],
+        ...(scope === "single" && owner ? { recovery: "create-only" } : {}) }, fetcher, owner); }
       catch (error) {
         // A rejected public record cannot prevent later healthy records from arriving.
         // Authentication, D1, and transient server failures still stop the run.
