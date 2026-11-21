@@ -35,6 +35,9 @@ const FENCED_UPSERT = UPSERT.replace(/VALUES \(([^\n]+)\)/, `SELECT $1 WHERE EXI
     SELECT 1 FROM import_gate_lease WHERE id=1 AND source='fdci' AND opened_by=?
       AND julianday(expires_at)>julianday('now'))`)
   .replace("WHERE publications.source=", "WHERE publications.normalized_status<>'UNKNOWN' AND publications.source=");
+// Recovery must never turn a concurrent insertion into an update. An identical
+// retry is handled by the separate, hash-fenced last_seen_at observation.
+const FENCED_CREATE = `${FENCED_UPSERT.slice(0, FENCED_UPSERT.indexOf("ON CONFLICT(id)"))}ON CONFLICT(id) DO NOTHING`;
 const DELTA_UPSERT = FENCED_UPSERT.replace("ON CONFLICT(id)", `AND EXISTS (
   SELECT 1 FROM fdci_delta_queue q JOIN fdci_delta_state s ON s.id=1
   WHERE q.publication_id=? AND q.content_hash=? AND q.version=? AND s.revision=?) ON CONFLICT(id)`);
@@ -110,7 +113,7 @@ async function store(db, items, owner, delta, createOnly = false) {
   const now = new Date().toISOString();
   // Fence the write itself: a request admitted before expiry cannot write after
   // another execution acquires the lease. No additional table or round trip.
-  const sql = delta ? DELTA_UPSERT : owner ? FENCED_UPSERT : UPSERT;
+  const sql = createOnly ? FENCED_CREATE : delta ? DELTA_UPSERT : owner ? FENCED_UPSERT : UPSERT;
   const statements = changes.map((item) => db.prepare(sql).bind(
     item.id, item.externalId, item.category, item.title, item.summary, item.level, item.area,
     item.location, item.character, item.circuit, item.sourceCircuitRaw, item.circuitInferenceSource,
@@ -160,7 +163,8 @@ export async function receiveAuthenticatedFdci(request, env) {
     if (payload.mode !== "batch" || !Array.isArray(items) || items.length < 1 || items.length > MAX_ITEMS || !items.every(validFdciPrepared) ||
         new Set(items.map((item) => item.id)).size !== items.length) return reply({ error: "Lote inválido." }, 400);
     if (payload.recovery !== undefined && (payload.recovery !== "create-only" || items.length !== 1 ||
-        !items[0].id.startsWith("fdci:commission:") || env.IMPORT_GATE_LEASE_REQUIRED !== "true"))
+        !items[0].id.startsWith("fdci:commission:") || env.IMPORT_GATE_LEASE_REQUIRED !== "true" ||
+        env.FDCI_DELTA_ENABLED === "true"))
       return reply({ error: "RECOVERY_INVALID" }, 400);
     const owner = env.IMPORT_GATE_LEASE_REQUIRED === "true" ? request.headers.get("x-import-gate-owner") : null;
     if (env.IMPORT_GATE_LEASE_REQUIRED === "true" && (!owner || !/^[A-Za-z0-9_:-]{1,100}$/.test(owner))) return reply({ error: "GATE_OWNER_INVALID" }, 409);

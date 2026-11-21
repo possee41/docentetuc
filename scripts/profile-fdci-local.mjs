@@ -27,6 +27,11 @@ const secret = "synthetic_local_fdci_profile_secret_1234567890";
 const [item] = await prepareFdciImports([{ capacitacion_id: 100, nombre: "Ficticio", token: "ficticio", slug: "ficticio",
   contenido: "Contenido sintético ".repeat(180) }], [{ id: 9001, capacitacion_id: 100,
   fecha_apertura_preinscripcion: "2026-10-17 23:00:00", fecha_cierre_preinscripcion: "2026-10-19 08:00:00" }]);
+const heavy = { ...item, id: "fdci:commission:9002", externalId: "9002", title: "T".repeat(500),
+  summary: "S".repeat(2000), officialUrl: item.officialUrl.replace(/9001$/, "9002"),
+  metadata: JSON.stringify({ ...JSON.parse(item.metadata), commissionId: "9002", stressText: "x".repeat(1800) }),
+  contentHash: "c".repeat(64) };
+assert.ok(heavy.metadata.length <= 6000);
 const rows = [];
 for (let round = 0; round < 3; round++) for (const variant of round % 2 ? ["current", "baseline"] : ["baseline", "current"]) {
   const bundle = await build({ stdin: { contents: source, resolveDir: process.cwd(), loader: "js" },
@@ -48,18 +53,20 @@ for (let round = 0; round < 3; round++) for (const variant of round % 2 ? ["curr
     const db = await mf.getD1Database("DB");
     for (const text of fdciFixtureSql()) for (const sql of text.replace(/^--.*$/gm, "").split(";").map(s => s.trim()).filter(Boolean)) await db.prepare(sql).run();
     await db.prepare("INSERT INTO import_gateway_identity VALUES(1,'synthetic-canary','synthetic-id')").run();
-    await db.prepare("INSERT INTO import_gate_lease VALUES(1,'fdci','2099-01-01T00:00:00Z','2026-01-01T00:00:00Z','profile')").run();
     profiler = await connectWorkerdCpuProfiler(await mf.getInspectorURL());
-    const measure = async (phase, path, payload) => {
-      const result = await profiler.measure(() => mf.dispatchFetch(`http://local/api/internal/${path}`, { method: "POST",
+    const measure = async (phase, path, payload, method = "POST") => {
+      const result = await profiler.measure(() => mf.dispatchFetch(`http://local/api/internal/${path}`, { method,
         headers: { authorization: `Bearer ${secret}`, "content-type": "application/json", "x-import-gate-owner": "profile" },
-        body: JSON.stringify(payload) }));
+        ...(method === "POST" ? { body: JSON.stringify(payload) } : {}) }));
       const value = await result.value.json();
       assert.equal(value.http, 200);
       rows.push({ variant, round, phase, ...value, sampledCpu: result.cpu });
       return value;
     };
+    await measure("identityGet", "import-identity?source=fdci", null, "GET");
+    await measure("gateFirstOpen", "import-gate", { source: "fdci", action: "open", ttlSeconds: 600, owner: "profile" });
     await measure("firstImport", "fdci-import", { mode: "batch", items: [item] });
+    await measure("firstImportHeavy", "fdci-import", { mode: "batch", items: [heavy] });
     const repeated = await measure("warmUnchanged", "fdci-import", { mode: "batch", items: [item] });
     assert.equal(repeated.ack.rowsWritten, variant === "current" ? 1 : 0);
     await measure("warmChanged", "fdci-import", { mode: "batch", items: [{ ...item, title: "Actualizado", contentHash: "b".repeat(64) }] });
@@ -69,6 +76,7 @@ for (let round = 0; round < 3; round++) for (const variant of round % 2 ? ["curr
       await measure("checkpointAdvance", "fdci-checkpoint", { op: "advance", revision: 1, after: "000000000100:000000009001", failed: false, code: null });
       await measure("checkpointFinish", "fdci-checkpoint", { op: "finish", revision: 2 });
     }
+    await measure("gateClose", "import-gate", { source: "fdci", action: "close", owner: "profile" });
   } finally { profiler?.close(); await mf.dispose(); }
 }
 const median = values => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];

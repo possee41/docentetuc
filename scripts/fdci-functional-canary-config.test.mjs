@@ -44,6 +44,22 @@ test("exclusive canary config is closed, has only the authorized exclusive DB an
   assert.equal(resolveGatewayConfig({ ...base, IMPORT_GATEWAY_DATABASE_ID: config.vars.IMPORT_DATABASE_ID }).id, config.vars.IMPORT_DATABASE_ID);
 });
 
+test("finite canary config arms only lease-gated FDCI on the same isolated DB", () => {
+  const closed = JSON.parse(readFileSync(new URL("../wrangler.1.2-fdci-functional-canary.jsonc", import.meta.url), "utf8"));
+  const finite = JSON.parse(readFileSync(new URL("../wrangler.1.2-fdci-functional-canary-finite.jsonc", import.meta.url), "utf8"));
+  assert.deepEqual(finite.d1_databases, closed.d1_databases);
+  assert.equal(finite.name, closed.name);
+  assert.equal(finite.account_id, closed.account_id);
+  assert.equal(finite.main, closed.main);
+  assert.equal(finite.workers_dev, true);
+  assert.equal(finite.preview_urls, false);
+  assert.deepEqual(finite.routes, []);
+  assert.deepEqual(finite.triggers, { crons: [] });
+  assert.deepEqual(finite.observability, closed.observability);
+  assert.deepEqual(finite.vars, { ...closed.vars, IMPORT_GATE_LEASE_REQUIRED: "true", FDCI_EXTERNAL_ENABLED: "true" });
+  assert.equal(JSON.stringify(finite).includes("SECRET"), false);
+});
+
 test("ten required migrations create exclusive delta schema closed and empty without reminder/AI migration", t => {
   const sqlite = new DatabaseSync(":memory:"); t.after(() => sqlite.close());
   for (const file of ["drizzle/0000_docentetuc.sql", "drizzle/0001_training_metadata.sql", "drizzle/0003_web_push.sql",

@@ -8,6 +8,7 @@ import { fdciPublicationFresh } from "../lib/fdci-freshness.ts";
 import { sourceHealth } from "../lib/source-health.ts";
 import { inventorySummary } from "./fdci-recovery-inventory.mjs";
 import { recoveryCandidates, runRecoveryBatch } from "./fdci-recovery-batch.mjs";
+import { prepareFdciImports } from "../lib/fdci-import.ts";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, writeFile, unlink, rmdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -32,7 +33,7 @@ function fixture() {
     IMPORT_GATE_ENABLED: "false", IMPORT_GATE_LEASE_REQUIRED: "true", IMPORT_GATE_ALLOWED_SOURCE: "fdci",
     FDCI_EXTERNAL_ENABLED: "true" };
   const receiver = (url, init) => gateway.fetch(new Request(url, init), env);
-  return { sqlite, receiver };
+  return { sqlite, db, receiver };
 }
 
 test("el ciclo diario vacío confirma lectura sin eliminar el historial ni repetir tramos", async t => {
@@ -115,6 +116,30 @@ test("recuperación individual acepta una comisión histórica verificada y reej
   assert.equal(f.sqlite.prepare("SELECT removed_at FROM publications WHERE id='fdci:commission:6441'").get().removed_at,
     "2026-11-19T00:00:00Z");
   assert.throws(() => fdciSafety({ ...single, FDCI_MAX_PUBLICATIONS: "2" }), /FDCI_RECOVERY_SELECTION_INVALID/);
+});
+
+test("recuperación create-only rechaza una inserción concurrente sin modificarla", async t => {
+  const f = fixture(); t.after(() => f.sqlite.close());
+  f.sqlite.exec("INSERT INTO import_gate_lease VALUES(1,'fdci','2099-01-01T00:00:00Z','2026-01-01T00:00:00Z','daily-local')");
+  const source = async url => Response.json(String(url).endsWith("getCapaActivas") ? [] :
+    String(url).endsWith("getRestoCapas") ? [course] : { comisiones: [commission] });
+  const single = { ...config, FDCI_SCOPE: "single", FDCI_MAX_REQUESTS: "3", FDCI_MAX_PUBLICATIONS: "1",
+    FDCI_RECOVERY_CLOSED_ONLY: "true", FDCI_COURSE_TOKEN: course.token,
+    FDCI_COURSE_SLUG: course.slug, FDCI_COMMISSION_ID: "6441" };
+  const [item] = await prepareFdciImports([course], [commission]);
+  const batch = f.db.batch.bind(f.db);
+  f.db.batch = statements => {
+    f.sqlite.prepare(`INSERT INTO publications(id,source,external_id,kind,category,title,status,official_url,
+      content_hash,metadata,normalized_status,last_seen_at,last_changed_at)
+      VALUES(?,'Capacitación Docente','6441','capacitacion','','Concurrente','cerrada',?,?,'{}','CLOSED',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`)
+      .run(item.id, item.officialUrl, "d".repeat(64));
+    f.db.batch = batch;
+    return batch(statements);
+  };
+  await assert.rejects(runGatewayImport(resolveGatewayConfig(single), single, source, f.receiver), /HTTP_409/);
+  const row = f.sqlite.prepare("SELECT title,content_hash FROM publications WHERE id=?").get(item.id);
+  assert.equal(row.title, "Concurrente");
+  assert.equal(row.content_hash, "d".repeat(64));
 });
 
 test("27 horas de frescura FDCI no amplían INFoD ni verifican comisiones antiguas", () => {
