@@ -66,7 +66,7 @@ test("Node → D1 REST aislada conserva históricos, actualiza y no duplica FDCI
   assert.equal(sqlite.prepare("SELECT title FROM publications WHERE id='historic:1'").get()?.title, "Histórica");
   assert.equal(sqlite.prepare("SELECT registration_close_at FROM publications WHERE id='fdci:commission:6397'").get()?.registration_close_at,
     "2026-10-27T08:00:00-03:00");
-  assert.equal(db.metrics().rowsWritten, 2);
+  assert.equal(db.metrics().rowsWritten, 3); // create, reobservation, update
   assert.deepEqual(sqlite.prepare("SELECT change,content_hash FROM external_publication_events WHERE publication_id=? ORDER BY id").all("fdci:commission:6397")
     .map((row) => row.change), ["created", "updated"]);
   sqlite.close();
@@ -171,11 +171,13 @@ test("materialización por REST agrupa 25 avisos e idempotencia en cuatro consul
   const { sqlite, db } = isolatedRest();
   sqlite.exec(`CREATE TABLE profiles(user_id TEXT PRIMARY KEY,notify_new_trainings INTEGER,training_notify_scope TEXT);
     CREATE TABLE notifications(id INTEGER PRIMARY KEY,user_id TEXT,publication_id TEXT,type TEXT,
-      dedupe_key TEXT,scheduled_at TEXT,UNIQUE(user_id,dedupe_key));`);
+      dedupe_key TEXT,scheduled_at TEXT,UNIQUE(user_id,dedupe_key));
+    CREATE TABLE fdci_import_checkpoint(id INTEGER PRIMARY KEY,upper_key TEXT,last_cycle_status TEXT,last_completed_at TEXT);
+    INSERT INTO fdci_import_checkpoint VALUES(1,'','OK','2026-10-24T12:00:00Z');`);
   const id = "fdci:commission:rest-test", hash = "c".repeat(64);
   sqlite.prepare(`INSERT INTO publications(id,source,external_id,kind,category,title,status,official_url,metadata,
-    content_hash,source_status,normalized_status) VALUES(?,'Capacitación Docente','rest-test','capacitacion',
-    'Capacitación','Ensayo aislado','vigente','https://capacitaciondocente.educaciontuc.gov.ar/',?,?,'vigente','ACTIVE')`)
+    content_hash,source_status,normalized_status,last_seen_at) VALUES(?,'Capacitación Docente','rest-test','capacitacion',
+    'Capacitación','Ensayo aislado','vigente','https://capacitaciondocente.educaciontuc.gov.ar/',?,?,'vigente','ACTIVE','2026-10-24T12:00:00Z')`)
     .run(id, JSON.stringify({ entity: "commission", availablePreCapacity: 5,
       registrationOpensAt: "2026-10-25T12:00:00Z", registrationClosesAt: "2026-10-30T12:00:00Z",
       dateStatus: "confirmed" }), hash);
