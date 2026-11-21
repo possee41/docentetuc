@@ -1,0 +1,22 @@
+{
+  "at": "2026-11-06T01:42:29.194Z",
+  "verified": true,
+  "browser": "Playwright Chromium using installed Edge, isolated context",
+  "origin": "https://canary.docentetuc.com.ar",
+  "http": 200,
+  "responseType": "cors",
+  "contentType": "application/json; charset=utf-8",
+  "count": 2,
+  "ids": [
+    "fdci:commission:9000",
+    "fdci:commission:9001"
+  ],
+  "synthetic": true,
+  "version": "14ffa0ebd934c43d36757b89be76318ee0053a45352912f758786ee5377c613b",
+  "checksumValid": true,
+  "sha256": "656bf823a932eb82d178621641d825379a48f86188d1201b6a6b79998876ca8b",
+  "credentials": "omit",
+  "canaryDocumentHttp": 200,
+  "canaryApiRequestsAllowed": 0,
+  "blockedRequestCount": 25
+}

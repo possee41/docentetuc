@@ -1,0 +1,27 @@
+{
+  "at": "2026-11-01T04:28:43.939Z",
+  "worker": "docentetuc-import-canary-1-2",
+  "database": {
+    "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756",
+    "name": "docentetuc-web-canary-1-2"
+  },
+  "authType": "oauth",
+  "apiPreflight": {
+    "http": 401,
+    "code": 10000,
+    "stage": "database-identity-read"
+  },
+  "version": "d349291f-1e49-40e0-9e69-ca5d120b3ec9",
+  "http": 503,
+  "d1": {
+    "rpc": 0,
+    "queries": 0,
+    "rowsRead": 0,
+    "rowsWritten": 0
+  },
+  "backupCreated": false,
+  "migrationApplied": false,
+  "deployed": false,
+  "temporaryAccessCreated": false,
+  "productionAccessed": false
+}

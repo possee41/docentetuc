@@ -1,0 +1,77 @@
+{
+  "localWorkerd": true,
+  "sameSyntheticSchemaAndData": true,
+  "baseline": "9b5bcae",
+  "results": {
+    "before": {
+      "empty": {
+        "http": 200,
+        "ack": {
+          "ok": true,
+          "considered": 0,
+          "inserted": 0,
+          "processed": 0
+        },
+        "metrics": {
+          "rpc": 5,
+          "queries": 5,
+          "rowsRead": 9,
+          "rowsWritten": 0
+        },
+        "elapsedMs": 22.065000000000055
+      },
+      "two": {
+        "http": 200,
+        "ack": {
+          "ok": true,
+          "considered": 2,
+          "inserted": 2,
+          "processed": 2
+        },
+        "metrics": {
+          "rpc": 6,
+          "queries": 9,
+          "rowsRead": 19,
+          "rowsWritten": 12
+        },
+        "elapsedMs": 14.702800000000025
+      }
+    },
+    "after": {
+      "empty": {
+        "http": 200,
+        "ack": {
+          "ok": true,
+          "considered": 0,
+          "inserted": 0,
+          "processed": 0
+        },
+        "metrics": {
+          "rpc": 5,
+          "queries": 5,
+          "rowsRead": 9,
+          "rowsWritten": 0
+        },
+        "elapsedMs": 17.255499999999756
+      },
+      "two": {
+        "http": 200,
+        "ack": {
+          "ok": true,
+          "considered": 2,
+          "inserted": 2,
+          "processed": 2
+        },
+        "metrics": {
+          "rpc": 6,
+          "queries": 9,
+          "rowsRead": 19,
+          "rowsWritten": 12
+        },
+        "elapsedMs": 19.48279999999977
+      }
+    }
+  },
+  "cpuTimeMs": null,
+  "wallTimeIsNotCPU": true
+}

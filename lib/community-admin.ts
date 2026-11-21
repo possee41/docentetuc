@@ -21,11 +21,13 @@ export async function adminCommunityOverview(database: CommunityDatabase) {
   const hidden = await database.prepare(`
     SELECT 'post' AS target_type, p.id, p.body, p.moderated_at, p.moderation_reason, pp.display_name, pp.avatar_id
       FROM community_posts p JOIN public_profiles pp ON pp.user_id=p.author_user_id
-      WHERE p.moderation_status='hidden'
+      WHERE p.moderation_status='hidden' AND NOT EXISTS
+        (SELECT 1 FROM community_pre_moderation m WHERE m.post_id=p.id AND m.decision<>'approved')
     UNION ALL
     SELECT 'comment', c.id, c.body, c.moderated_at, c.moderation_reason, pp.display_name, pp.avatar_id
       FROM community_comments c JOIN public_profiles pp ON pp.user_id=c.author_user_id
-      WHERE c.moderation_status='hidden'
+      WHERE c.moderation_status='hidden' AND NOT EXISTS
+        (SELECT 1 FROM community_pre_moderation m WHERE m.comment_id=c.id AND m.decision<>'approved')
     ORDER BY moderated_at DESC LIMIT 100
   `).bind().all<Record<string, unknown>>();
   const recent = await database.prepare(`

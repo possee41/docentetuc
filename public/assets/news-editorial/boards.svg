@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-label="Ilustración de comunicados y padrones">
+  <defs><linearGradient id="g"><stop stop-color="#14283e"/><stop offset="1" stop-color="#447d79"/></linearGradient></defs>
+  <rect width="1200" height="675" fill="url(#g)"/><circle cx="930" cy="335" r="265" fill="#fff" opacity=".05"/>
+  <g fill="none" stroke="#e8d59e" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="704" y="135" width="393" height="407" rx="25"/><path d="M770 212h260M770 282h260M770 352h200M770 422h260M770 492h155"/>
+    <path d="M824 136v-31m155 31v-31"/>
+  </g><path d="M0 590c250-100 455-88 660 52H0" fill="#071a29" opacity=".22"/>
+</svg>

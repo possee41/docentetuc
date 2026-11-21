@@ -1,7 +1,8 @@
 "use client";
 
+/* eslint-disable @next/next/no-html-link-for-pages -- vinext Link currently throws during client navigation from Comunidad. */
+
 import Image from "next/image";
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, FormEvent } from "react";
 import { ArrowUpRight, Bookmark, BookmarkCheck, BookOpen, Check, ChevronDown, CircleUserRound, Clock3, Flag, Home, MessageCircle, MessagesSquare, MoreHorizontal, Send, ShieldCheck, UserRound, UsersRound, X } from "lucide-react";
@@ -21,6 +22,7 @@ type CommunityStatus = {
 };
 type CommunityResponse = { status: CommunityStatus; posts: CommunityPost[]; nextCursor: string | null; hasMore: boolean };
 type Block = { id: string; profile: { displayName: string; avatarId: PublicAvatarId; bio: string } };
+type OwnReview = { type: "post" | "comment"; decision: "pending_review" | "rejected"; text: string; createdAt: string };
 type Reason = typeof COMMUNITY_REPORT_REASONS[number];
 
 const reasonLabels: Record<Reason, string> = {
@@ -112,8 +114,8 @@ function CommentList({ post, canContribute, onNotice, onRefresh }: {
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true);
     try {
-      await readResponse(await fetch(`/api/community/posts/${post.id}/comments`, jsonRequest({ text })));
-      setText(""); await load(); onRefresh(); onNotice("Respuesta publicada.");
+      const created = await readResponse<{ moderationStatus: "approved" | "pending_review" | "rejected" }>(await fetch(`/api/community/posts/${post.id}/comments`, jsonRequest({ text })));
+      setText(""); await load(); onRefresh(); onNotice(created.moderationStatus === "approved" ? "Respuesta publicada." : created.moderationStatus === "pending_review" ? "Tu respuesta está siendo revisada antes de aparecer en Comunidad." : "No pudimos publicar este contenido porque incumple las normas de Comunidad.");
     } catch (error) { onNotice(error instanceof Error ? error.message : "No se pudo agregar la respuesta.", true); }
     finally { setBusy(false); }
   };
@@ -134,7 +136,7 @@ function CommentList({ post, canContribute, onNotice, onRefresh }: {
         </div>
         {editing?.id === comment.id ? <form className="mt-2" onSubmit={async (event) => {
           event.preventDefault(); setBusy(true);
-          try { await readResponse(await fetch(`/api/community/comments/${comment.id}`, jsonRequest({ text: editing.text }, "PATCH"))); setEditing(null); await load(); onRefresh(); onNotice("Respuesta actualizada."); }
+          try { const result = await readResponse<{ moderationStatus: "approved" | "pending_review" | "rejected" }>(await fetch(`/api/community/comments/${comment.id}`, jsonRequest({ text: editing.text }, "PATCH"))); setEditing(null); await load(); onRefresh(); onNotice(result.moderationStatus === "approved" ? "Respuesta actualizada." : result.moderationStatus === "pending_review" ? "Tu respuesta está siendo revisada antes de aparecer en Comunidad." : "No pudimos publicar este contenido porque incumple las normas de Comunidad."); }
           catch (error) { onNotice(error instanceof Error ? error.message : "No se pudo editar.", true); }
           finally { setBusy(false); }
         }}><textarea value={editing.text} maxLength={1000} onChange={(event) => setEditing({ ...editing, text: event.target.value })} rows={3} className="w-full resize-y rounded-xl border border-sky-100 bg-white p-3 text-base outline-none focus:border-sky-400" /><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setEditing(null)} className="min-h-10 rounded-lg px-3 text-sm font-semibold">Cancelar</button><button disabled={busy || !editing.text.trim()} className="min-h-10 rounded-lg bg-[#0878be] px-4 text-sm font-bold text-white disabled:opacity-50">Guardar</button></div></form>
@@ -189,6 +191,7 @@ export function CommunityPhase3A() {
   const [savingPostId, setSavingPostId] = useState<string | null>(null);
   const [snapshotSort, setSnapshotSort] = useState<CommunityFeedSort | null>(null);
   const [blocks, setBlocks] = useState<Block[]>([]);
+  const [ownReviews, setOwnReviews] = useState<OwnReview[]>([]);
   const [sort, setSort] = useState<CommunityFeedSort>("recent");
   const [text, setText] = useState("");
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
@@ -239,6 +242,11 @@ export function CommunityPhase3A() {
   }, []);
 
   useEffect(() => {
+    const saved = localStorage.getItem("docentetuc-theme");
+    document.documentElement.dataset.theme = saved === "dark" || saved === "light" ? saved : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }, []);
+
+  useEffect(() => {
     let active = true;
     const loadInitial = async () => {
       try {
@@ -265,6 +273,13 @@ export function CommunityPhase3A() {
   }, [sort]);
 
   const status = snapshot?.status;
+  const loadOwnReviews = useCallback(async () => {
+    const response = await fetch("/api/community/my-moderation", { cache: "no-store", credentials: "same-origin" });
+    if (response.ok) setOwnReviews(((await response.json()) as { items: OwnReview[] }).items);
+  }, []);
+  useEffect(() => {
+    queueMicrotask(() => { if (status?.authenticated) void loadOwnReviews(); else setOwnReviews([]); });
+  }, [status?.authenticated, loadOwnReviews]);
   const accepted = Boolean(status && status.acceptedRulesVersion === status.rulesVersion);
   const canContribute = Boolean(status?.authenticated && status.profileConfigured && accepted);
   const feedLoading = loading || (snapshotSort !== sort && !error);
@@ -273,7 +288,7 @@ export function CommunityPhase3A() {
   const visibleHasMore = view === "saved" ? savedSnapshot?.hasMore : snapshot?.hasMore;
   const visibleCursor = view === "saved" ? savedSnapshot?.nextCursor : snapshot?.nextCursor;
   const moreLoading = view === "saved" ? savedLoadingMore : loadingMore;
-  const setNoticeState = (message: string, isError = false) => { setNotice(isError ? "" : message); setError(isError ? message : ""); };
+  const setNoticeState = (message: string, isError = false) => { setNotice(isError ? "" : message); setError(isError ? message : ""); if (!isError) void loadOwnReviews(); };
 
   const refreshCurrentView = () => { if (view === "saved") void loadSavedPage(); else void loadPage(); };
 
@@ -309,8 +324,8 @@ export function CommunityPhase3A() {
   const submitPost = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError("");
     try {
-      await readResponse(await fetch("/api/community/posts", jsonRequest({ text })));
-      setText(""); setNotice("Publicación creada."); await loadPage();
+      const created = await readResponse<{ moderationStatus: "approved" | "pending_review" | "rejected" }>(await fetch("/api/community/posts", jsonRequest({ text })));
+      setText(""); setNotice(created.moderationStatus === "approved" ? "Publicación creada." : created.moderationStatus === "pending_review" ? "Tu publicación está siendo revisada antes de aparecer en Comunidad." : "No pudimos publicar este contenido porque incumple las normas de Comunidad."); await Promise.all([loadPage(), loadOwnReviews()]);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo crear la publicación."); }
     finally { setBusy(false); }
   };
@@ -331,17 +346,17 @@ export function CommunityPhase3A() {
     <AppSidebarEdge pinned={sidebar.pinned} onEnter={sidebar.enter} onLeave={sidebar.leave} />
     <AppSidebar view="comunidad" pinned={sidebar.pinned} onTogglePin={sidebar.togglePin} onHoverEnter={sidebar.enter} onHoverLeave={sidebar.leave} />
     <SidebarInset className="min-w-0">
-    <div className="min-h-dvh w-full bg-[radial-gradient(ellipse_at_top,_#dff2ff_0%,_#f3f9fd_38%,_#f7fafc_100%)] pb-[calc(7rem+env(safe-area-inset-bottom))] text-[#0c2d5b] md:pb-8">
+    <div className="community-theme min-h-dvh w-full bg-[radial-gradient(ellipse_at_top,_#dff2ff_0%,_#f3f9fd_38%,_#f7fafc_100%)] pb-[calc(7rem+env(safe-area-inset-bottom))] text-[#0c2d5b] md:pb-8">
     <div className="mx-auto max-w-6xl px-3 pt-3 sm:px-6 sm:pt-5">
       <nav aria-label="Cabecera de DocenteTuc" className="mb-3 flex items-center justify-between gap-3 rounded-full border border-white/80 bg-white/75 px-3 py-2 shadow-sm backdrop-blur sm:mb-4 sm:px-5">
         <div className="flex min-w-0 items-center gap-2">
         <AppSidebarTrigger pinned={sidebar.pinned} open={sidebar.open} onTogglePin={sidebar.togglePin} />
-        <Link href="/" className="flex min-h-11 min-w-0 items-center gap-2.5 rounded-full pr-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600">
+        <a href="/" className="flex min-h-11 min-w-0 items-center gap-2.5 rounded-full pr-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600">
           <Image src="/icon-192.png" alt="" width={38} height={38} unoptimized className="size-9 shrink-0 rounded-xl" />
           <span className="truncate text-lg font-black tracking-tight sm:text-xl">Docente<span className="text-sky-600">Tuc</span></span>
-        </Link>
+        </a>
         </div>
-        <Link href="/" className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-bold text-sky-800 hover:bg-sky-50"><Home className="size-4" /><span className="hidden sm:inline">Inicio</span><ArrowUpRight className="size-3.5" /></Link>
+        <a href="/" className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-bold text-sky-800 hover:bg-sky-50"><Home className="size-4" /><span className="hidden sm:inline">Inicio</span><ArrowUpRight className="size-3.5" /></a>
       </nav>
 
       <header className="community-hero relative isolate flex min-h-[220px] items-center overflow-hidden rounded-[1.7rem] border border-white/80 bg-[#d7efff] shadow-[0_14px_36px_rgba(32,111,173,.12)] sm:min-h-[290px]">
@@ -361,11 +376,11 @@ export function CommunityPhase3A() {
       {notice && <p role="status" className="mb-3 flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-900 shadow-sm"><Check className="mt-0.5 size-4 shrink-0" />{notice}</p>}
 
       {!loading && status && !status.authenticated && <section className="mb-4 rounded-[1.6rem] border border-amber-200 bg-white p-4 shadow-sm sm:p-5">
-        <p className="font-extrabold text-[#173b5e]">Sumate a la conversación</p><p className="mt-1 text-sm leading-relaxed text-slate-600">Para publicar o responder, iniciá sesión con tu cuenta de DocenteTuc. Podés leer las publicaciones sin compartir datos privados.</p><Link href="/?section=cuentas" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#0878be] px-4 font-bold text-white">Continuar con Google<ArrowUpRight className="size-4" /></Link>
+        <p className="font-extrabold text-[#173b5e]">Sumate a la conversación</p><p className="mt-1 text-sm leading-relaxed text-slate-600">Para publicar o responder, iniciá sesión con tu cuenta de DocenteTuc. Podés leer las publicaciones sin compartir datos privados.</p><a href="/?section=cuentas" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#0878be] px-4 font-bold text-white">Continuar con Google<ArrowUpRight className="size-4" /></a>
       </section>}
 
       {!loading && status?.authenticated && !status.profileConfigured && <section className="mb-4 rounded-[1.6rem] border border-amber-200 bg-white p-4 shadow-sm sm:p-5">
-        <p className="font-extrabold text-[#173b5e]">Prepará tu perfil público</p><p className="mt-1 text-sm leading-relaxed text-slate-600">Antes de participar, elegí el nombre y el avatar que se mostrarán en Comunidad. Tu correo y tu perfil docente privado no son públicos.</p><Link href="/?section=perfil" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#0878be] px-4 font-bold text-white">Configurar perfil público<ArrowUpRight className="size-4" /></Link>
+        <p className="font-extrabold text-[#173b5e]">Prepará tu perfil público</p><p className="mt-1 text-sm leading-relaxed text-slate-600">Antes de participar, elegí el nombre y el avatar que se mostrarán en Comunidad. Tu correo y tu perfil docente privado no son públicos.</p><a href="/?section=perfil" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#0878be] px-4 font-bold text-white">Configurar perfil público<ArrowUpRight className="size-4" /></a>
       </section>}
 
       {!loading && status?.authenticated && status.profileConfigured && !accepted && <CommunityRulesCard version={status.rulesVersion} text={status.rulesText} checked={normsChecked} busy={busy} onCheckedChange={setNormsChecked} onAccept={() => void acceptRules()} />}
@@ -378,6 +393,8 @@ export function CommunityPhase3A() {
           <div className="mt-2 flex items-center justify-between gap-3 border-t border-slate-100 pt-3"><span className="text-xs text-slate-500">Solo texto · relacionado con la docencia · {[...text].length}/2000</span><button type="submit" disabled={busy || !text.trim()} aria-label="Publicar consulta" className="grid size-11 shrink-0 place-items-center rounded-full bg-[#1689ed] text-white shadow-md transition hover:bg-[#0878be] disabled:cursor-not-allowed disabled:opacity-40">{busy ? <span className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Send className="size-5" />}</button></div>
         </form>
       </section>}
+
+      {status?.authenticated && ownReviews.length > 0 && <details className="mb-4 min-w-0 rounded-2xl border border-amber-200 bg-white p-4 text-sm"><summary className="cursor-pointer font-bold">Mis contenidos en revisión o rechazados ({ownReviews.length})</summary><div className="mt-3 space-y-3">{ownReviews.map((item, index) => <article key={`${item.createdAt}-${index}`} className="min-w-0 border-t border-slate-100 pt-3"><p className="font-semibold">{item.type === "post" ? "Publicación" : "Respuesta"} · {item.decision === "pending_review" ? "En revisión" : "No publicada"}</p><p className="mt-1 whitespace-pre-wrap break-words text-slate-700">{item.text}</p></article>)}</div></details>}
 
       {accepted && <details className="mb-4 rounded-2xl border border-emerald-100 bg-white/85 px-4 py-3 text-sm text-slate-600"><summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 font-semibold [&::-webkit-details-marker]:hidden"><ShieldCheck className="size-4 shrink-0 text-emerald-600" />Normas aceptadas · versión {status?.rulesVersion}<ChevronDown className="ml-auto size-4 shrink-0" /></summary><div role="region" aria-label="Texto completo de las Normas aceptadas" tabIndex={0} className="mt-2 max-h-48 overflow-y-auto border-t border-slate-100 pt-3 leading-relaxed break-words focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600"><p className="whitespace-pre-wrap first-line:font-bold">{status?.rulesText}</p></div></details>}
 
@@ -407,7 +424,7 @@ export function CommunityPhase3A() {
           <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-widest text-sky-700">Tu publicación</p><h2 id="edit-post-title" className="mt-1 text-xl font-black">Editar consulta</h2></div><button type="button" aria-label="Cerrar edición" onClick={() => setEditing(null)} className="grid size-10 place-items-center rounded-full text-slate-500 hover:bg-slate-100"><X className="size-5" /></button></div>
           <form className="mt-4" onSubmit={async (event) => {
             event.preventDefault(); setBusy(true);
-            try { await readResponse(await fetch(`/api/community/posts/${editing.id}`, jsonRequest({ text: editing.text }, "PATCH"))); setEditing(null); setNotice("Publicación actualizada."); refreshCurrentView(); }
+            try { const result = await readResponse<{ moderationStatus: "approved" | "pending_review" | "rejected" }>(await fetch(`/api/community/posts/${editing.id}`, jsonRequest({ text: editing.text }, "PATCH"))); setEditing(null); setNotice(result.moderationStatus === "approved" ? "Publicación actualizada." : result.moderationStatus === "pending_review" ? "Tu publicación está siendo revisada antes de aparecer en Comunidad." : "No pudimos publicar este contenido porque incumple las normas de Comunidad."); refreshCurrentView(); void loadOwnReviews(); }
             catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo editar la publicación."); }
             finally { setBusy(false); }
           }}><label htmlFor="edit-community-post" className="sr-only">Editar texto de la publicación</label><textarea id="edit-community-post" autoFocus value={editing.text} maxLength={2000} onChange={(event) => setEditing({ ...editing, text: event.target.value })} rows={5} className="w-full resize-y rounded-2xl border border-sky-100 p-3 text-base leading-relaxed outline-none focus:border-sky-400" /><div className="mt-3 flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-slate-500">Solo texto · {[...editing.text].length}/2000</span><div className="flex gap-2"><button type="button" disabled={busy} onClick={() => setEditing(null)} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button><button type="submit" disabled={busy || !editing.text.trim()} className="min-h-11 rounded-xl bg-[#0878be] px-5 font-bold text-white disabled:opacity-50">{busy ? "Guardando…" : "Guardar cambios"}</button></div></div></form>
@@ -428,7 +445,7 @@ export function CommunityPhase3A() {
           { label: "Agenda", href: "/?section=agenda", icon: Clock3 },
           { label: "Perfil", href: "/?section=perfil", icon: UserRound },
           { label: "Cuenta", href: "/?section=cuentas", icon: CircleUserRound },
-        ].map(({ label, href, icon: Icon }) => <Link key={label} href={href} aria-current={label === "Comunidad" ? "page" : undefined} className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 text-[9px] font-bold transition sm:min-h-16 sm:text-xs ${label === "Comunidad" ? "bg-[#e8f5ff] text-[#0878be]" : "text-slate-500 hover:bg-slate-50"}`}><Icon className="size-5 sm:size-[1.35rem]" aria-hidden="true" /><span className="whitespace-nowrap">{label}</span></Link>)}
+        ].map(({ label, href, icon: Icon }) => <a key={label} href={href} aria-current={label === "Comunidad" ? "page" : undefined} className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0 text-[9px] font-bold transition sm:min-h-16 sm:text-xs ${label === "Comunidad" ? "bg-[#e8f5ff] text-[#0878be]" : "text-slate-500 hover:bg-slate-50"}`}><Icon className="size-5 sm:size-[1.35rem]" aria-hidden="true" /><span className="whitespace-nowrap">{label}</span></a>)}
       </div>
     </nav>
     </div>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { enrollmentState, mergeTrainingData, openingCountdown, trainingReminderKey, trainingStatus } from "./training.ts";
+import { canScheduleTrainingReminder, enrollmentState, mergeTrainingData, openingCountdown, summaryText, trainingReminderKey, trainingStatus } from "./training.ts";
 
 const now = new Date("2026-09-26T12:00:00-03:00");
 const course = { capacitacion_id: 10, nombre: "Curso oficial", token: "abc", slug: "curso-oficial", niveles: "Secundario" };
@@ -79,8 +79,34 @@ test("FDCI prefiere las fechas y horas de la comisión al catálogo y al cursado
 
 test("FDCI respeta un cierre oficial aunque la ventana todavía no terminó", () => {
   assert.equal(trainingStatus({ ...commission, isActivePre: 0 }, now), "inscripción cerrada");
+  assert.equal(trainingStatus({ ...commission, isActivePre: 0 }, new Date("2026-09-24T12:00:00-03:00")), "próximamente");
   assert.equal(trainingStatus({ ...commission, comision_cerrada: 1 }, new Date("2026-09-24T12:00:00-03:00")), "inscripción cerrada");
   assert.equal(trainingStatus({ ...commission, fecha_cierre_preinscripcion: undefined }, now), "consultar", "sin cierre ni estado abierto oficial no se presume abierta indefinidamente");
+});
+
+test("cupo, apertura ausente y recordatorios no crean oportunidades falsas", () => {
+  const future = { entity: "commission" as const, trainingId: "20", registrationOpensAt: "2026-09-27T23:00:00-03:00",
+    registrationClosesAt: "2026-09-29T08:00:00-03:00", registrationHasTime: true, dateStatus: "confirmed" as const };
+  assert.equal(enrollmentState({ ...future, availablePreCapacity: 0 }, "próximamente", "UPCOMING", now), "SIN_CUPO");
+  assert.equal(enrollmentState({ ...future, registrationOpensAt: undefined }, "inscripción abierta", "ACTIVE", now), "SIN_FECHA_CONFIRMADA");
+  assert.equal(enrollmentState({ ...future, registrationOpensAt: undefined, dateStatus: "tentative" }, "inscripción abierta", "ACTIVE", now), "SIN_FECHA_CONFIRMADA");
+  assert.equal(canScheduleTrainingReminder(future, "próximamente", "UPCOMING", now), true);
+  assert.equal(canScheduleTrainingReminder({ ...future, dateStatus: "tentative" }, "próximamente", "UPCOMING", now), false);
+  assert.equal(canScheduleTrainingReminder({ ...future, registrationHasTime: false }, "próximamente", "UPCOMING", now), false);
+  assert.equal(canScheduleTrainingReminder({ ...future, availablePreCapacity: 0 }, "próximamente", "UPCOMING", now), false);
+  assert.equal(canScheduleTrainingReminder(future, "inscripción abierta", "ACTIVE", new Date("2026-09-27T23:00:00-03:00")), false);
+  assert.equal(canScheduleTrainingReminder(future, "inscripción cerrada", "CLOSED", now), false);
+});
+
+test("FDCI conserva cupo cero sin anunciar inscripción disponible", () => {
+  const observedAt = new Date("2026-10-20T13:00:00-03:00");
+  const [item] = mergeTrainingData([course], [{ ...commission, id: 6397, fecha_apertura_preinscripcion: "2026-10-19 22:00:00", fecha_cierre_preinscripcion: "2026-10-21 08:00:00", cupo: 300, cupo_preinscripcion: 450, cupo_disponible_pre: 0 }], observedAt);
+  assert.equal(item.metadata.capacity, 300);
+  assert.equal(item.metadata.preCapacity, 450);
+  assert.equal(item.metadata.availablePreCapacity, 0);
+  assert.equal(item.metadata.registrationOpensAt, "2026-10-19T22:00:00-03:00");
+  assert.equal(item.metadata.registrationClosesAt, "2026-10-21T08:00:00-03:00");
+  assert.equal(enrollmentState(item.metadata, item.status, "ACTIVE", observedAt), "SIN_CUPO");
 });
 
 test("calcula la cuenta regresiva sin inventar hora", () => {
@@ -90,6 +116,21 @@ test("calcula la cuenta regresiva sin inventar hora", () => {
 });
 
 test("admite respuestas oficiales vacías", () => assert.deepEqual(mergeTrainingData([], [], now), []));
+
+test("el resumen visible descarta restos de HTML, CSS y JavaScript sin perder contenido ni enlaces", () => {
+  const summary = '<style>.wp-block-x{color:#333;margin:0}</style><p>Curso de <strong>lectura</strong> &amp; escritura en Tucum&aacute;n</p>'
+    + '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Course"}</script>'
+    + '<p>M&aacute;s info: <a href="https://red.infd.edu.ar/curso/">https://red.infd.edu.ar/curso/</a></p>'
+    + 'function init(){window.tracked=1}';
+  assert.equal(summaryText(summary), "Curso de lectura & escritura en Tucumán\nMás info: https://red.infd.edu.ar/curso/");
+  assert.equal(summaryText("Texto&nbsp;escapado &lt;p&gt;visible&lt;/p&gt;"), "Texto escapado visible");
+  assert.equal(summaryText(""), "");
+  assert.equal(summaryText(null), "");
+  assert.equal(summaryText(".wp-block-x{color:#333} Contenido real"), "Contenido real");
+  const plain = "Curso autoasistido de 4 semanas.\nInscripción: 14/09 al 26/09.";
+  assert.equal(summaryText(plain), plain);
+  assert.equal(summaryText("Ver https://aulastic.infd.edu.ar/catalogo.cgi?wAccion=oferta_view&oferta_id=751"), "Ver https://aulastic.infd.edu.ar/catalogo.cgi?wAccion=oferta_view&oferta_id=751");
+});
 
 test("propaga una caída temporal para conservar los datos almacenados", async () => {
   const load = async (fetcher: () => Promise<Parameters<typeof mergeTrainingData>[0]>) => mergeTrainingData(await fetcher(), [], now);

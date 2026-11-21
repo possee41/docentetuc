@@ -1,0 +1,876 @@
+{
+  "baseCommit": "563832f6ee95879b8eb461ee66a6db7c977d7b8d",
+  "environment": "local Workerd/D1 ephemeral",
+  "syntheticPublications": 7200,
+  "samplesPerQuery": 5,
+  "cpu": null,
+  "note": "Wall time is not CPU; index-free fixture reproduces the prior benchmark",
+  "scenarios": [
+    {
+      "existingIndexes": false,
+      "plans": {
+        "before": [
+          {
+            "id": 5,
+            "parent": 0,
+            "notused": 92,
+            "detail": "SEARCH publications USING INDEX sqlite_autoindex_publications_1 (id=?)"
+          },
+          {
+            "id": 9,
+            "parent": 0,
+            "notused": 0,
+            "detail": "LIST SUBQUERY 4"
+          },
+          {
+            "id": 11,
+            "parent": 9,
+            "notused": 0,
+            "detail": "COMPOUND QUERY"
+          },
+          {
+            "id": 12,
+            "parent": 11,
+            "notused": 0,
+            "detail": "LEFT-MOST SUBQUERY"
+          },
+          {
+            "id": 14,
+            "parent": 12,
+            "notused": 0,
+            "detail": "CO-ROUTINE (subquery-1)"
+          },
+          {
+            "id": 18,
+            "parent": 14,
+            "notused": 216,
+            "detail": "SCAN publications"
+          },
+          {
+            "id": 43,
+            "parent": 14,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          },
+          {
+            "id": 49,
+            "parent": 12,
+            "notused": 69,
+            "detail": "SCAN (subquery-1)"
+          },
+          {
+            "id": 56,
+            "parent": 12,
+            "notused": 0,
+            "detail": "CREATE BLOOM FILTER"
+          },
+          {
+            "id": 58,
+            "parent": 11,
+            "notused": 0,
+            "detail": "UNION ALL"
+          },
+          {
+            "id": 60,
+            "parent": 58,
+            "notused": 0,
+            "detail": "CO-ROUTINE (subquery-3)"
+          },
+          {
+            "id": 64,
+            "parent": 60,
+            "notused": 216,
+            "detail": "SCAN publications"
+          },
+          {
+            "id": 120,
+            "parent": 60,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          },
+          {
+            "id": 126,
+            "parent": 58,
+            "notused": 102,
+            "detail": "SCAN (subquery-3)"
+          },
+          {
+            "id": 133,
+            "parent": 58,
+            "notused": 0,
+            "detail": "CREATE BLOOM FILTER"
+          },
+          {
+            "id": 180,
+            "parent": 0,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          }
+        ],
+        "after": [
+          {
+            "id": 2,
+            "parent": 0,
+            "notused": 0,
+            "detail": "CO-ROUTINE selected"
+          },
+          {
+            "id": 3,
+            "parent": 2,
+            "notused": 0,
+            "detail": "COMPOUND QUERY"
+          },
+          {
+            "id": 4,
+            "parent": 3,
+            "notused": 0,
+            "detail": "LEFT-MOST SUBQUERY"
+          },
+          {
+            "id": 6,
+            "parent": 4,
+            "notused": 0,
+            "detail": "CO-ROUTINE (subquery-1)"
+          },
+          {
+            "id": 10,
+            "parent": 6,
+            "notused": 216,
+            "detail": "SCAN publications"
+          },
+          {
+            "id": 35,
+            "parent": 6,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          },
+          {
+            "id": 41,
+            "parent": 4,
+            "notused": 69,
+            "detail": "SCAN (subquery-1)"
+          },
+          {
+            "id": 47,
+            "parent": 3,
+            "notused": 0,
+            "detail": "UNION ALL"
+          },
+          {
+            "id": 49,
+            "parent": 47,
+            "notused": 0,
+            "detail": "CO-ROUTINE (subquery-3)"
+          },
+          {
+            "id": 53,
+            "parent": 49,
+            "notused": 216,
+            "detail": "SCAN publications"
+          },
+          {
+            "id": 109,
+            "parent": 49,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          },
+          {
+            "id": 115,
+            "parent": 47,
+            "notused": 102,
+            "detail": "SCAN (subquery-3)"
+          },
+          {
+            "id": 126,
+            "parent": 0,
+            "notused": 103,
+            "detail": "SCAN selected"
+          },
+          {
+            "id": 129,
+            "parent": 0,
+            "notused": 46,
+            "detail": "SEARCH publications USING INDEX sqlite_autoindex_publications_1 (id=?)"
+          },
+          {
+            "id": 172,
+            "parent": 0,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          }
+        ],
+        "sync": [
+          {
+            "id": 3,
+            "parent": 0,
+            "notused": 216,
+            "detail": "SCAN sync_state"
+          },
+          {
+            "id": 13,
+            "parent": 0,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          }
+        ]
+      },
+      "before": {
+        "publications": {
+          "queries": 1,
+          "rowsRead": 22920,
+          "rowsWritten": 0,
+          "resultCount": 400,
+          "sqlDurationMs": 8
+        },
+        "sync": {
+          "queries": 1,
+          "rowsRead": 2,
+          "rowsWritten": 0,
+          "resultCount": 1,
+          "sqlDurationMs": 0
+        },
+        "queriesPerMiss": 2,
+        "rowsReadPerMiss": 22922,
+        "rowsWrittenPerMiss": 0,
+        "medianMissWallMs": 22.014899999999898,
+        "samples": [
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 22920,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 8
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 26.40039999999999,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 22920,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 7
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 22.258499999999913,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 22920,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 7
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 22.014899999999898,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 22920,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 7
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 21.53729999999996,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 22920,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 7
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 20.7186999999999,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          }
+        ]
+      },
+      "after": {
+        "publications": {
+          "queries": 1,
+          "rowsRead": 22480,
+          "rowsWritten": 0,
+          "resultCount": 400,
+          "sqlDurationMs": 7
+        },
+        "sync": {
+          "queries": 1,
+          "rowsRead": 2,
+          "rowsWritten": 0,
+          "resultCount": 1,
+          "sqlDurationMs": 0
+        },
+        "queriesPerMiss": 2,
+        "rowsReadPerMiss": 22482,
+        "rowsWrittenPerMiss": 0,
+        "medianMissWallMs": 22.682599999999866,
+        "samples": [
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 22480,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 7
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 23.342499999999973,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 22480,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 7
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 1
+            },
+            "wallMs": 22.330099999999902,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 22480,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 7
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 22.682599999999866,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 22480,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 7
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 23.822800000000143,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 22480,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 7
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 20.9233999999999,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          }
+        ]
+      }
+    },
+    {
+      "existingIndexes": true,
+      "plans": {
+        "before": [
+          {
+            "id": 5,
+            "parent": 0,
+            "notused": 92,
+            "detail": "SEARCH publications USING INDEX sqlite_autoindex_publications_1 (id=?)"
+          },
+          {
+            "id": 9,
+            "parent": 0,
+            "notused": 0,
+            "detail": "LIST SUBQUERY 4"
+          },
+          {
+            "id": 11,
+            "parent": 9,
+            "notused": 0,
+            "detail": "COMPOUND QUERY"
+          },
+          {
+            "id": 12,
+            "parent": 11,
+            "notused": 0,
+            "detail": "LEFT-MOST SUBQUERY"
+          },
+          {
+            "id": 14,
+            "parent": 12,
+            "notused": 0,
+            "detail": "CO-ROUTINE (subquery-1)"
+          },
+          {
+            "id": 19,
+            "parent": 14,
+            "notused": 62,
+            "detail": "SEARCH publications USING INDEX idx_publications_kind_ends (kind=?)"
+          },
+          {
+            "id": 45,
+            "parent": 14,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          },
+          {
+            "id": 51,
+            "parent": 12,
+            "notused": 48,
+            "detail": "SCAN (subquery-1)"
+          },
+          {
+            "id": 58,
+            "parent": 12,
+            "notused": 0,
+            "detail": "CREATE BLOOM FILTER"
+          },
+          {
+            "id": 60,
+            "parent": 11,
+            "notused": 0,
+            "detail": "UNION ALL"
+          },
+          {
+            "id": 62,
+            "parent": 60,
+            "notused": 0,
+            "detail": "CO-ROUTINE (subquery-3)"
+          },
+          {
+            "id": 67,
+            "parent": 62,
+            "notused": 78,
+            "detail": "SEARCH publications USING INDEX idx_publications_kind_ends (kind=?)"
+          },
+          {
+            "id": 126,
+            "parent": 62,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          },
+          {
+            "id": 132,
+            "parent": 60,
+            "notused": 64,
+            "detail": "SCAN (subquery-3)"
+          },
+          {
+            "id": 139,
+            "parent": 60,
+            "notused": 0,
+            "detail": "CREATE BLOOM FILTER"
+          },
+          {
+            "id": 186,
+            "parent": 0,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          }
+        ],
+        "after": [
+          {
+            "id": 2,
+            "parent": 0,
+            "notused": 0,
+            "detail": "CO-ROUTINE selected"
+          },
+          {
+            "id": 3,
+            "parent": 2,
+            "notused": 0,
+            "detail": "COMPOUND QUERY"
+          },
+          {
+            "id": 4,
+            "parent": 3,
+            "notused": 0,
+            "detail": "LEFT-MOST SUBQUERY"
+          },
+          {
+            "id": 6,
+            "parent": 4,
+            "notused": 0,
+            "detail": "CO-ROUTINE (subquery-1)"
+          },
+          {
+            "id": 11,
+            "parent": 6,
+            "notused": 62,
+            "detail": "SEARCH publications USING INDEX idx_publications_kind_ends (kind=?)"
+          },
+          {
+            "id": 37,
+            "parent": 6,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          },
+          {
+            "id": 43,
+            "parent": 4,
+            "notused": 48,
+            "detail": "SCAN (subquery-1)"
+          },
+          {
+            "id": 49,
+            "parent": 3,
+            "notused": 0,
+            "detail": "UNION ALL"
+          },
+          {
+            "id": 51,
+            "parent": 49,
+            "notused": 0,
+            "detail": "CO-ROUTINE (subquery-3)"
+          },
+          {
+            "id": 56,
+            "parent": 51,
+            "notused": 78,
+            "detail": "SEARCH publications USING INDEX idx_publications_kind_ends (kind=?)"
+          },
+          {
+            "id": 115,
+            "parent": 51,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          },
+          {
+            "id": 121,
+            "parent": 49,
+            "notused": 64,
+            "detail": "SCAN (subquery-3)"
+          },
+          {
+            "id": 132,
+            "parent": 0,
+            "notused": 68,
+            "detail": "SCAN selected"
+          },
+          {
+            "id": 135,
+            "parent": 0,
+            "notused": 46,
+            "detail": "SEARCH publications USING INDEX sqlite_autoindex_publications_1 (id=?)"
+          },
+          {
+            "id": 178,
+            "parent": 0,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          }
+        ],
+        "sync": [
+          {
+            "id": 3,
+            "parent": 0,
+            "notused": 216,
+            "detail": "SCAN sync_state"
+          },
+          {
+            "id": 13,
+            "parent": 0,
+            "notused": 0,
+            "detail": "USE TEMP B-TREE FOR ORDER BY"
+          }
+        ]
+      },
+      "before": {
+        "publications": {
+          "queries": 1,
+          "rowsRead": 15726,
+          "rowsWritten": 0,
+          "resultCount": 400,
+          "sqlDurationMs": 6
+        },
+        "sync": {
+          "queries": 1,
+          "rowsRead": 2,
+          "rowsWritten": 0,
+          "resultCount": 1,
+          "sqlDurationMs": 0
+        },
+        "queriesPerMiss": 2,
+        "rowsReadPerMiss": 15728,
+        "rowsWrittenPerMiss": 0,
+        "medianMissWallMs": 19.654999999999973,
+        "samples": [
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 15726,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 6
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 21.273299999999836,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 15726,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 6
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 19.950400000000172,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 15726,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 5
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 19.08270000000016,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 15726,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 5
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 19.654999999999973,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 15726,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 6
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 18.681600000000117,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          }
+        ]
+      },
+      "after": {
+        "publications": {
+          "queries": 1,
+          "rowsRead": 15286,
+          "rowsWritten": 0,
+          "resultCount": 400,
+          "sqlDurationMs": 5
+        },
+        "sync": {
+          "queries": 1,
+          "rowsRead": 2,
+          "rowsWritten": 0,
+          "resultCount": 1,
+          "sqlDurationMs": 0
+        },
+        "queriesPerMiss": 2,
+        "rowsReadPerMiss": 15288,
+        "rowsWrittenPerMiss": 0,
+        "medianMissWallMs": 20.058700000000044,
+        "samples": [
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 15286,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 5
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 20.999900000000025,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 15286,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 5
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 20.058700000000044,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 15286,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 5
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 17.860200000000077,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 15286,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 5
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 18.764999999999873,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          },
+          {
+            "publications": {
+              "queries": 1,
+              "rowsRead": 15286,
+              "rowsWritten": 0,
+              "resultCount": 400,
+              "sqlDurationMs": 6
+            },
+            "sync": {
+              "queries": 1,
+              "rowsRead": 2,
+              "rowsWritten": 0,
+              "resultCount": 1,
+              "sqlDurationMs": 0
+            },
+            "wallMs": 20.16060000000016,
+            "digest": "d18a6ef2ebc27d2ae9a9ca1031d721493ac71505f5ce7f1edf0d1ec35c0582fc"
+          }
+        ]
+      }
+    }
+  ]
+}

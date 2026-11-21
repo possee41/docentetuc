@@ -1,12 +1,15 @@
 import { getD1 } from "@/db";
 import { authError, currentUser } from "@/lib/current-user";
-import { enrollmentState, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
+import { canScheduleTrainingReminder, CONFIRMED_TRAINING_REMINDER_SQL, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
 import { hydrateProfile, profileStorage, PROFILE_BOOTSTRAP_SQL } from "@/lib/profile";
 import { DESIGNATION_STATUSES } from "@/lib/designations";
-import { APP_PUBLICATIONS_QUERY } from "@/lib/app-publications-query";
 import { PUBLIC_PROFILE_UPSERT_SQL, publicProfileForClient, validatePublicProfile } from "@/lib/public-profile";
 import { getAuthenticatedAccount } from "@/lib/auth-session";
 import { isSameOriginMutation } from "@/lib/auth-identity";
+import { PERSONAL_PUBLICATIONS_QUERY } from "@/lib/personal-publications";
+import { sourceHealth } from "@/lib/source-health";
+import { privateNotifications, readPrivateNotification } from "@/lib/private-notifications";
+import type { SyncStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -17,25 +20,23 @@ export async function GET(request: Request) {
     const user = await currentUser(request);
     const account = await getAuthenticatedAccount(request);
     const db = getD1();
+    const now = new Date().toISOString();
     await db.prepare(PROFILE_BOOTSTRAP_SQL).bind(user.userId, user.fullName || user.displayName.split("@")[0], user.email).run();
-    await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type, dedupe_key, scheduled_at) SELECT user_id, publication_id, 'CAPACITACION_ABRE', 'training-reminder:' || id || ':' || opens_at || ':' || COALESCE(advance_minutes,0), CURRENT_TIMESTAMP FROM training_reminders WHERE user_id=? AND notified=0 AND datetime(remind_at)<=datetime('now')").bind(user.userId).run();
-    await db.prepare("UPDATE training_reminders SET notified=1, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND notified=0 AND datetime(remind_at)<=datetime('now')").bind(user.userId).run();
+    await db.prepare(`INSERT OR IGNORE INTO notifications (user_id, publication_id, type, dedupe_key, scheduled_at) SELECT user_id, publication_id, 'CAPACITACION_ABRE', 'training-reminder:' || id || ':' || opens_at || ':' || COALESCE(advance_minutes,0), CURRENT_TIMESTAMP FROM training_reminders WHERE user_id=? AND notified=0 AND datetime(remind_at)<=datetime(?) AND ${CONFIRMED_TRAINING_REMINDER_SQL}`).bind(user.userId, now, now, now, now).run();
+    await db.prepare(`UPDATE training_reminders SET notified=1, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND notified=0 AND datetime(remind_at)<=datetime(?) AND ${CONFIRMED_TRAINING_REMINDER_SQL}`).bind(user.userId, now, now, now, now).run();
     await db.prepare("INSERT OR IGNORE INTO notifications (user_id, publication_id, type, dedupe_key, scheduled_at) SELECT user_id, publication_id, 'AGENDA_RECORDATORIO', 'agenda-reminder:' || user_id || ':' || publication_id || ':' || agenda_reminder_at, CURRENT_TIMESTAMP FROM saved_publications WHERE user_id=? AND in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime('now')").bind(user.userId).run();
     await db.prepare("UPDATE saved_publications SET agenda_reminder_notified=1 WHERE user_id=? AND in_agenda=1 AND agenda_reminder_notified=0 AND agenda_reminder_at IS NOT NULL AND datetime(agenda_reminder_at)<=datetime('now')").bind(user.userId).run();
-    const [profile, publicProfile, publications, saved, notifications, reminders, designations, manualEvents, sync] = await Promise.all([
+    const [profile, publicProfile, saved, notifications, reminders, designations, manualEvents, personalPublications] = await Promise.all([
       db.prepare("SELECT * FROM profiles WHERE user_id=?").bind(user.userId).first(),
       account ? db.prepare("SELECT display_name, avatar_id, bio FROM public_profiles WHERE user_id=?").bind(account.accountId).first() : Promise.resolve(null),
-      db.prepare(APP_PUBLICATIONS_QUERY).all(),
       db.prepare("SELECT publication_id, in_agenda, followed, agenda_at, agenda_notes, agenda_reminder_at, agenda_reminder_notified, saved_at FROM saved_publications WHERE user_id=?").bind(user.userId).all(),
-      db.prepare("SELECT n.*, p.title, p.kind FROM notifications n JOIN publications p ON p.id=n.publication_id WHERE n.user_id=? ORDER BY n.created_at DESC LIMIT 100").bind(user.userId).all(),
+      privateNotifications(db, user.userId),
       db.prepare("SELECT id, training_id, publication_id, opens_at, precision, advance_minutes, remind_at, notified FROM training_reminders WHERE user_id=? ORDER BY opens_at").bind(user.userId).all(),
       db.prepare("SELECT id, publication_id, status, role, subject, school, address, locality, applied_at, appointment_at, shift, board, documentation, order_number, notes, official_url, reminder_at, reminder_notified, created_at, updated_at FROM designation_tracking WHERE user_id=? ORDER BY COALESCE(appointment_at, applied_at, updated_at) DESC").bind(user.userId).all(),
       db.prepare("SELECT id, title, notes, category, starts_at, all_day, recurrence, reminder_minutes, reminder_at, reminder_notified, created_at, updated_at FROM manual_events WHERE user_id=? ORDER BY starts_at").bind(user.userId).all(),
-      db.prepare(process.env.NODE_ENV === "development"
-        ? "SELECT * FROM sync_state ORDER BY source"
-        : "SELECT source, synced_at, last_successful_sync_at, sync_status FROM sync_state ORDER BY source").all(),
+      db.prepare(PERSONAL_PUBLICATIONS_QUERY).bind(user.userId, user.userId, user.userId, user.userId).all(),
     ]);
-    return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publicProfile: publicProfileForClient(publicProfile as Record<string, unknown> | null), publications: publications.results, saved: saved.results, notifications: notifications.results, reminders: reminders.results, designations: designations.results, manualEvents: manualEvents.results, sync: sync.results });
+    return Response.json({ profile: profile ? hydrateProfile(profile as Record<string, unknown>) : null, publicProfile: publicProfileForClient(publicProfile as Record<string, unknown> | null), saved: saved.results, notifications: notifications.results, reminders: reminders.results, designations: designations.results, manualEvents: manualEvents.results, personalPublications: personalPublications.results });
   } catch (error) {
     console.error("[api/app] GET failed", error);
     return Response.json({ error: authError(error) ? "Iniciá sesión para continuar." : "No se pudieron cargar los datos." }, { status: authError(error) ? 401 : 500 });
@@ -86,10 +87,12 @@ export async function POST(request: Request) {
         .bind(id, user.userId, publicationId, status, value(body.role, 200), value(body.subject, 200), value(body.school, 250), value(body.address, 250), value(body.locality, 120), optionalDate(body.appliedAt), optionalDate(body.appointmentAt), value(body.shift, 80), value(body.board, 180), value(body.documentation, 500), value(body.orderNumber, 120), value(body.notes, 1000), publication.official_url, reminderAt).run();
     } else if (action === "set_training_reminder") {
       const publicationId = value(body.publicationId, 120);
-      const publication = await db.prepare("SELECT id, metadata, status, normalized_status FROM publications WHERE id=? AND kind='capacitacion'").bind(publicationId).first<{ id: string; metadata: string; status: string; normalized_status: string }>();
+      const publication = await db.prepare("SELECT id, source, metadata, status, normalized_status FROM publications WHERE id=? AND kind='capacitacion'").bind(publicationId).first<{ id: string; source: string; metadata: string; status: string; normalized_status: string }>();
       const metadata = parseTrainingMetadata(publication?.metadata);
       if (!publication || !metadata?.registrationOpensAt || !metadata.trainingId) return Response.json({ error: "La fuente oficial no informó una apertura válida." }, { status: 400 });
-      if (enrollmentState(metadata, publication.status, publication.normalized_status) === "CERRADA") return Response.json({ error: "La preinscripción ya está cerrada según la fuente." }, { status: 400 });
+      const health = await db.prepare("SELECT source, sync_status, last_attempt_at, last_successful_sync_at FROM sync_state WHERE source=?").bind(publication.source).first<SyncStatus>();
+      if (sourceHealth(health || undefined) !== "current") return Response.json({ error: "La fuente requiere una verificación reciente antes de activar avisos." }, { status: 400 });
+      if (!canScheduleTrainingReminder(metadata, publication.status, publication.normalized_status)) return Response.json({ error: "La apertura y su horario deben estar confirmados, ser futuros y conservar cupos." }, { status: 400 });
       const opens = new Date(metadata.registrationOpensAt);
       if (!Number.isFinite(opens.getTime()) || opens.getTime() <= Date.now()) return Response.json({ error: "La apertura ya pasó; no se puede crear un recordatorio nuevo." }, { status: 400 });
       const advances = Array.isArray(body.advanceMinutes) ? [...new Set(body.advanceMinutes.map(Number))] : [];
@@ -141,7 +144,8 @@ export async function POST(request: Request) {
     } else if (action === "delete_event") {
       await db.prepare("DELETE FROM manual_events WHERE id=? AND user_id=?").bind(value(body.id, 100), user.userId).run();
     } else if (action === "read_notification") {
-      await db.prepare("UPDATE notifications SET read=1 WHERE id=? AND user_id=? AND read=0").bind(Number(body.id), user.userId).run();
+      if (!Number.isSafeInteger(Number(body.id)) || Number(body.id) === 0) return Response.json({ error: "Aviso inválido." }, { status: 400 });
+      await readPrivateNotification(db, user.userId, Number(body.id));
     } else return Response.json({ error: "Acción no admitida." }, { status: 400 });
     return Response.json({ ok: true });
   } catch (error) {

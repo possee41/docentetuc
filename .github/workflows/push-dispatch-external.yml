@@ -1,0 +1,39 @@
+name: Push dispatch external canary
+on:
+  workflow_dispatch:
+  # No schedule before D1, VAPID and legacy cut are approved.
+permissions:
+  contents: read
+concurrency:
+  group: push-dispatch-external
+  cancel-in-progress: false
+jobs:
+  dispatch:
+    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/feat/1.2-sync-integration'
+    runs-on: ubuntu-latest
+    environment: push-pilot
+    timeout-minutes: 10
+    steps:
+      - name: Validate approved revision
+        env:
+          PUSH_REF: ${{ vars.PUSH_DISPATCH_REF }}
+        run: '[[ "$PUSH_REF" =~ ^[a-f0-9]{40}$ ]]'
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.PUSH_DISPATCH_REF }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify checked-out revision
+        env:
+          PUSH_REF: ${{ vars.PUSH_DISPATCH_REF }}
+        run: 'test "$(git rev-parse HEAD)" = "$PUSH_REF"'
+      - name: Dispatch synthetic canary only
+        env:
+          EXTERNAL_PUSH_ENABLED: 'true'
+          DIRECT_D1_WRITE_ENABLED: 'true'
+          PUSH_SEND_MODE: simulated
+          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          PUSH_D1_TOKEN: ${{ secrets.PUSH_D1_TOKEN }}
+        run: node --experimental-strip-types scripts/dispatch-push-external.mjs

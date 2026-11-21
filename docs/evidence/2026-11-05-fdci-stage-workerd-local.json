@@ -1,0 +1,659 @@
+{
+  "scope": "Local Workerd/CDP sampled active time, not remote CPU or billing",
+  "baseline": "47707e6",
+  "count": 40,
+  "rounds": 3,
+  "fixture": {
+    "publications": 0,
+    "candidates": 2,
+    "payloadBytes": 2383
+  },
+  "summary": {
+    "before": {
+      "coldMetrics": {
+        "rpc": 7,
+        "sql": 9,
+        "prepared": 9,
+        "read": 14,
+        "written": 7
+      },
+      "repeatedMetrics": {
+        "rpc": 7,
+        "sql": 9,
+        "prepared": 9,
+        "read": 20,
+        "written": 3
+      },
+      "coldActiveSampledMsMedian": 8.964,
+      "repeatActiveSampledMsPerRequestMedian": 10.427375000000001,
+      "repeatGatewayWallMsMedian": 9.275
+    },
+    "after": {
+      "coldMetrics": {
+        "rpc": 6,
+        "sql": 8,
+        "prepared": 8,
+        "read": 14,
+        "written": 7
+      },
+      "repeatedMetrics": {
+        "rpc": 6,
+        "sql": 8,
+        "prepared": 8,
+        "read": 20,
+        "written": 3
+      },
+      "coldActiveSampledMsMedian": 10.722,
+      "repeatActiveSampledMsPerRequestMedian": 9.06485,
+      "repeatGatewayWallMsMedian": 8.075
+    }
+  },
+  "results": [
+    {
+      "variant": "before",
+      "round": 0,
+      "cold": {
+        "status": 200,
+        "ack": {
+          "ok": true,
+          "state": {
+            "revision": 1,
+            "last_staged_id": "fdci:commission:9001",
+            "last_complete_scan_at": null,
+            "detail_after": "",
+            "detail_upper": "",
+            "detail_cycle": 1
+          }
+        },
+        "metrics": {
+          "rpc": 7,
+          "sql": 9,
+          "prepared": 9,
+          "read": 14,
+          "written": 7
+        },
+        "wallMs": 14,
+        "sampledCpu": {
+          "activeSampledMs": 8.964,
+          "idleSampledMs": 12.328,
+          "profileWindowMs": 21.379,
+          "samples": 4,
+          "activeSamples": 2,
+          "lowResolution": true,
+          "topSampledFrames": [
+            {
+              "functionName": "validFdciPrepared",
+              "sampledMs": 6.227
+            },
+            {
+              "functionName": "authorized4",
+              "sampledMs": 2.737
+            }
+          ]
+        }
+      },
+      "repeat": {
+        "requests": 40,
+        "meanGatewayWallMs": 9.15,
+        "metricsPerRequest": {
+          "rpc": 7,
+          "sql": 9,
+          "prepared": 9,
+          "read": 20,
+          "written": 3
+        },
+        "sampledCpu": {
+          "activeSampledMs": 417.095,
+          "idleSampledMs": 22.908,
+          "profileWindowMs": 440.093,
+          "samples": 35,
+          "activeSamples": 32,
+          "lowResolution": false,
+          "topSampledFrames": [
+            {
+              "functionName": "fetch",
+              "sampledMs": 123.467
+            },
+            {
+              "functionName": "addD1MetaToSpan",
+              "sampledMs": 51.497
+            },
+            {
+              "functionName": "",
+              "sampledMs": 42.079
+            },
+            {
+              "functionName": "setAttribute",
+              "sampledMs": 31.18
+            },
+            {
+              "functionName": "(program)",
+              "sampledMs": 29.773
+            },
+            {
+              "functionName": "toJson",
+              "sampledMs": 29.666
+            },
+            {
+              "functionName": "firstIfArray",
+              "sampledMs": 28.067
+            },
+            {
+              "functionName": "withSpan",
+              "sampledMs": 18.79
+            }
+          ]
+        },
+        "activeSampledMsPerRequest": 10.427375000000001
+      },
+      "queueUnchangedOnRepeat": true
+    },
+    {
+      "variant": "after",
+      "round": 0,
+      "cold": {
+        "status": 200,
+        "ack": {
+          "ok": true,
+          "state": {
+            "revision": 1,
+            "last_staged_id": "fdci:commission:9001",
+            "last_complete_scan_at": null,
+            "detail_after": "",
+            "detail_upper": "",
+            "detail_cycle": 1
+          }
+        },
+        "metrics": {
+          "rpc": 6,
+          "sql": 8,
+          "prepared": 8,
+          "read": 14,
+          "written": 7
+        },
+        "wallMs": 12,
+        "sampledCpu": {
+          "activeSampledMs": 7.613,
+          "idleSampledMs": 11.277,
+          "profileWindowMs": 18.969,
+          "samples": 5,
+          "activeSamples": 3,
+          "lowResolution": true,
+          "topSampledFrames": [
+            {
+              "functionName": "automationRequest",
+              "sampledMs": 4.438
+            },
+            {
+              "functionName": "fetch",
+              "sampledMs": 1.608
+            },
+            {
+              "functionName": "get",
+              "sampledMs": 1.567
+            }
+          ]
+        }
+      },
+      "repeat": {
+        "requests": 40,
+        "meanGatewayWallMs": 7.8,
+        "metricsPerRequest": {
+          "rpc": 6,
+          "sql": 8,
+          "prepared": 8,
+          "read": 20,
+          "written": 3
+        },
+        "sampledCpu": {
+          "activeSampledMs": 336.565,
+          "idleSampledMs": 46.368,
+          "profileWindowMs": 383.033,
+          "samples": 29,
+          "activeSamples": 25,
+          "lowResolution": false,
+          "topSampledFrames": [
+            {
+              "functionName": "_send",
+              "sampledMs": 78.01
+            },
+            {
+              "functionName": "(program)",
+              "sampledMs": 43.688
+            },
+            {
+              "functionName": "leaseBody",
+              "sampledMs": 32.71
+            },
+            {
+              "functionName": "mapD1Result",
+              "sampledMs": 31.132
+            },
+            {
+              "functionName": "set",
+              "sampledMs": 28.099
+            },
+            {
+              "functionName": "_wrappedFetch",
+              "sampledMs": 26.472
+            },
+            {
+              "functionName": "fetch",
+              "sampledMs": 23.365
+            },
+            {
+              "functionName": "toJson",
+              "sampledMs": 17.194
+            }
+          ]
+        },
+        "activeSampledMsPerRequest": 8.414125
+      },
+      "queueUnchangedOnRepeat": true
+    },
+    {
+      "variant": "after",
+      "round": 1,
+      "cold": {
+        "status": 200,
+        "ack": {
+          "ok": true,
+          "state": {
+            "revision": 1,
+            "last_staged_id": "fdci:commission:9001",
+            "last_complete_scan_at": null,
+            "detail_after": "",
+            "detail_upper": "",
+            "detail_cycle": 1
+          }
+        },
+        "metrics": {
+          "rpc": 6,
+          "sql": 8,
+          "prepared": 8,
+          "read": 14,
+          "written": 7
+        },
+        "wallMs": 15,
+        "sampledCpu": {
+          "activeSampledMs": 10.722,
+          "idleSampledMs": 13.39,
+          "profileWindowMs": 24.233,
+          "samples": 5,
+          "activeSamples": 3,
+          "lowResolution": true,
+          "topSampledFrames": [
+            {
+              "functionName": "fetch",
+              "sampledMs": 7.572
+            },
+            {
+              "functionName": "(program)",
+              "sampledMs": 3.15
+            }
+          ]
+        }
+      },
+      "repeat": {
+        "requests": 40,
+        "meanGatewayWallMs": 8.45,
+        "metricsPerRequest": {
+          "rpc": 6,
+          "sql": 8,
+          "prepared": 8,
+          "read": 20,
+          "written": 3
+        },
+        "sampledCpu": {
+          "activeSampledMs": 375.374,
+          "idleSampledMs": 48.172,
+          "profileWindowMs": 423.634,
+          "samples": 29,
+          "activeSamples": 26,
+          "lowResolution": false,
+          "topSampledFrames": [
+            {
+              "functionName": "(program)",
+              "sampledMs": 87.731
+            },
+            {
+              "functionName": "leaseBody",
+              "sampledMs": 57.91
+            },
+            {
+              "functionName": "fetch",
+              "sampledMs": 54.756
+            },
+            {
+              "functionName": "fdciDelta",
+              "sampledMs": 46.779
+            },
+            {
+              "functionName": "automationRequest",
+              "sampledMs": 26.582
+            },
+            {
+              "functionName": "Headers",
+              "sampledMs": 25.126
+            },
+            {
+              "functionName": "Request",
+              "sampledMs": 15.604
+            },
+            {
+              "functionName": "json",
+              "sampledMs": 14.073
+            }
+          ]
+        },
+        "activeSampledMsPerRequest": 9.384350000000001
+      },
+      "queueUnchangedOnRepeat": true
+    },
+    {
+      "variant": "before",
+      "round": 1,
+      "cold": {
+        "status": 200,
+        "ack": {
+          "ok": true,
+          "state": {
+            "revision": 1,
+            "last_staged_id": "fdci:commission:9001",
+            "last_complete_scan_at": null,
+            "detail_after": "",
+            "detail_upper": "",
+            "detail_cycle": 1
+          }
+        },
+        "metrics": {
+          "rpc": 7,
+          "sql": 9,
+          "prepared": 9,
+          "read": 14,
+          "written": 7
+        },
+        "wallMs": 14,
+        "sampledCpu": {
+          "activeSampledMs": 15.357,
+          "idleSampledMs": 5.184,
+          "profileWindowMs": 20.639,
+          "samples": 6,
+          "activeSamples": 4,
+          "lowResolution": true,
+          "topSampledFrames": [
+            {
+              "functionName": "text",
+              "sampledMs": 7.877
+            },
+            {
+              "functionName": "",
+              "sampledMs": 4.696
+            },
+            {
+              "functionName": "fetch",
+              "sampledMs": 2.784
+            }
+          ]
+        }
+      },
+      "repeat": {
+        "requests": 40,
+        "meanGatewayWallMs": 9.425,
+        "metricsPerRequest": {
+          "rpc": 7,
+          "sql": 9,
+          "prepared": 9,
+          "read": 20,
+          "written": 3
+        },
+        "sampledCpu": {
+          "activeSampledMs": 415.851,
+          "idleSampledMs": 34.204,
+          "profileWindowMs": 450.153,
+          "samples": 47,
+          "activeSamples": 42,
+          "lowResolution": false,
+          "topSampledFrames": [
+            {
+              "functionName": "json",
+              "sampledMs": 76.449
+            },
+            {
+              "functionName": "fetch",
+              "sampledMs": 73.737
+            },
+            {
+              "functionName": "(program)",
+              "sampledMs": 43.939
+            },
+            {
+              "functionName": "",
+              "sampledMs": 39.054
+            },
+            {
+              "functionName": "text",
+              "sampledMs": 28.2
+            },
+            {
+              "functionName": "leaseBody",
+              "sampledMs": 21.912
+            },
+            {
+              "functionName": "read",
+              "sampledMs": 18.785
+            },
+            {
+              "functionName": "validFdciPrepared",
+              "sampledMs": 17.194
+            }
+          ]
+        },
+        "activeSampledMsPerRequest": 10.396275
+      },
+      "queueUnchangedOnRepeat": true
+    },
+    {
+      "variant": "before",
+      "round": 2,
+      "cold": {
+        "status": 200,
+        "ack": {
+          "ok": true,
+          "state": {
+            "revision": 1,
+            "last_staged_id": "fdci:commission:9001",
+            "last_complete_scan_at": null,
+            "detail_after": "",
+            "detail_upper": "",
+            "detail_cycle": 1
+          }
+        },
+        "metrics": {
+          "rpc": 7,
+          "sql": 9,
+          "prepared": 9,
+          "read": 14,
+          "written": 7
+        },
+        "wallMs": 14,
+        "sampledCpu": {
+          "activeSampledMs": 4.429,
+          "idleSampledMs": 16.121,
+          "profileWindowMs": 20.658,
+          "samples": 3,
+          "activeSamples": 1,
+          "lowResolution": true,
+          "topSampledFrames": [
+            {
+              "functionName": "",
+              "sampledMs": 4.429
+            }
+          ]
+        }
+      },
+      "repeat": {
+        "requests": 40,
+        "meanGatewayWallMs": 9.275,
+        "metricsPerRequest": {
+          "rpc": 7,
+          "sql": 9,
+          "prepared": 9,
+          "read": 20,
+          "written": 3
+        },
+        "sampledCpu": {
+          "activeSampledMs": 431.198,
+          "idleSampledMs": 12.028,
+          "profileWindowMs": 443.328,
+          "samples": 36,
+          "activeSamples": 33,
+          "lowResolution": false,
+          "topSampledFrames": [
+            {
+              "functionName": "setAttribute",
+              "sampledMs": 79.506
+            },
+            {
+              "functionName": "fetch",
+              "sampledMs": 73.352
+            },
+            {
+              "functionName": "toJson",
+              "sampledMs": 67.227
+            },
+            {
+              "functionName": "(program)",
+              "sampledMs": 63.943
+            },
+            {
+              "functionName": "text",
+              "sampledMs": 26.521
+            },
+            {
+              "functionName": "enterSpan",
+              "sampledMs": 25.135
+            },
+            {
+              "functionName": "validFdciPrepared",
+              "sampledMs": 23.428
+            },
+            {
+              "functionName": "read",
+              "sampledMs": 21.963
+            }
+          ]
+        },
+        "activeSampledMsPerRequest": 10.77995
+      },
+      "queueUnchangedOnRepeat": true
+    },
+    {
+      "variant": "after",
+      "round": 2,
+      "cold": {
+        "status": 200,
+        "ack": {
+          "ok": true,
+          "state": {
+            "revision": 1,
+            "last_staged_id": "fdci:commission:9001",
+            "last_complete_scan_at": null,
+            "detail_after": "",
+            "detail_upper": "",
+            "detail_cycle": 1
+          }
+        },
+        "metrics": {
+          "rpc": 6,
+          "sql": 8,
+          "prepared": 8,
+          "read": 14,
+          "written": 7
+        },
+        "wallMs": 13,
+        "sampledCpu": {
+          "activeSampledMs": 14.074,
+          "idleSampledMs": 5.061,
+          "profileWindowMs": 19.217,
+          "samples": 7,
+          "activeSamples": 5,
+          "lowResolution": true,
+          "topSampledFrames": [
+            {
+              "functionName": "addAggregatedD1MetaToSpan",
+              "sampledMs": 4.678
+            },
+            {
+              "functionName": "fetch",
+              "sampledMs": 4.628
+            },
+            {
+              "functionName": "forward",
+              "sampledMs": 3.212
+            },
+            {
+              "functionName": "fdciDelta",
+              "sampledMs": 1.556
+            }
+          ]
+        }
+      },
+      "repeat": {
+        "requests": 40,
+        "meanGatewayWallMs": 8.075,
+        "metricsPerRequest": {
+          "rpc": 6,
+          "sql": 8,
+          "prepared": 8,
+          "read": 20,
+          "written": 3
+        },
+        "sampledCpu": {
+          "activeSampledMs": 362.594,
+          "idleSampledMs": 32.364,
+          "profileWindowMs": 395.057,
+          "samples": 27,
+          "activeSamples": 24,
+          "lowResolution": false,
+          "topSampledFrames": [
+            {
+              "functionName": "set",
+              "sampledMs": 90.675
+            },
+            {
+              "functionName": "URL",
+              "sampledMs": 56.227
+            },
+            {
+              "functionName": "",
+              "sampledMs": 54.832
+            },
+            {
+              "functionName": "leaseValid",
+              "sampledMs": 42.177
+            },
+            {
+              "functionName": "fetch",
+              "sampledMs": 21.893
+            },
+            {
+              "functionName": "fdciDelta",
+              "sampledMs": 21.875
+            },
+            {
+              "functionName": "toJson",
+              "sampledMs": 17.225
+            },
+            {
+              "functionName": "setAttribute",
+              "sampledMs": 14.036
+            }
+          ]
+        },
+        "activeSampledMsPerRequest": 9.06485
+      },
+      "queueUnchangedOnRepeat": true
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Política de Privacidad de DocenteTuc",
   description: "Cómo DocenteTuc trata los datos de quienes usan la aplicación.",
+  alternates: { canonical: "https://docentetuc.com.ar/privacidad" },
 };
 
 const contact = "soporte.docentetuc@gmail.com";

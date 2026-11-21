@@ -25,38 +25,54 @@ import { designationRoleFromTitle, isEligibleForPersonalizedHome, isEligibleMatc
 import { isGeneralNotice } from "@/lib/notice-classification";
 import type { MatchResult } from "@/lib/matching";
 import { safeDate } from "@/lib/safe-date";
-import { enrollmentState, openingCountdown, parseTrainingMetadata, trainingReminderKey } from "@/lib/training";
+import { canScheduleTrainingReminder, isClosingSoon, isUrgentOpening, openingCountdown, parseTrainingMetadata, summaryText, trainingReminderKey } from "@/lib/training";
 import { calendarDayDistance, compareHomePriority, homePriority, homeTrainingEnrollmentRank, registrationState } from "@/lib/home-dashboard";
 import { DESIGNATION_STATUSES, designationFacts } from "@/lib/designations";
-import { circuitMatches, inferCircuit, TUCUMAN_CIRCUITS } from "@/lib/circuits";
+import { TUCUMAN_CIRCUITS } from "@/lib/circuits";
 import { OFFICIAL_CHARACTERS, OFFICIAL_JUNTAS, matchesCharacter, matchesJunta, normalizeJunta, normalizeSearchText } from "@/lib/juntas";
 import type { DesignationTracking } from "@/lib/types";
 import type { AppData, ManualEvent, Notice, Profile, Publication, Saved, SyncStatus, TrainingReminder } from "@/lib/types";
+import { combineAppData } from "@/lib/app-data";
+import type { PrivateAppData } from "@/lib/app-data";
 import { usefulMetadata } from "@/lib/useful-information";
+import { licenseForms } from "@/lib/license-forms";
 import { canRecommendCurrentPublication, publicationLifecycle } from "@/lib/publication-lifecycle";
+import { FDCI_FRESHNESS_MS, fdciPublicationFresh } from "@/lib/fdci-freshness";
 import { designationEmptyState, hasDesignationProfilePreferences } from "@/lib/designation-state";
 import { AppHeader, BottomNavigation, Card, CompatibilityBadge, EmptyState, FilterChip, StatusBadge } from "@/components/docentetuc-ui";
-import { HomeBannerContext } from "@/components/home-banner-context";
+import { privateAccessState } from "@/lib/private-access-state";
+import type { InstallationSecurity, PrivateAccessStatus } from "@/lib/private-access-state";
+import { Agenda, ManualEventDialog } from "@/components/teacher-agenda";
+import { HomeNewsCarousel } from "@/components/home-banner-context";
 import { PublicProfileSection } from "@/components/public-profile-section";
 import { AccountSignInSection } from "@/components/account-sign-in-section";
 import { GoogleAccountPhoto } from "@/components/google-account-photo";
+import { GlobalPublicationSearch } from "@/components/global-publication-search";
+import { usePersonalizedCatalog } from "@/components/use-personalized-catalog";
+import { useTrainingCatalog } from "@/components/use-training-catalog";
+import { enrollmentForDisplay, matchProfileFromUser, publicationForMatch, publicationLifecycleForDisplay } from "@/lib/personalized-catalog";
+import { publicationCircuitMatch, publicationSearchText, trainingPlatform, type PersonalFilters } from "@/lib/personalized-filters";
+import type { PublicationSearchKind } from "@/lib/publication-search";
+import { HomeLatestNews, PublicNewsSection } from "@/components/public-news";
 import { AppSidebar, AppSidebarEdge, AppSidebarTrigger, navigation, useAppSidebarState } from "@/components/app-sidebar";
 import type { AppView as View } from "@/components/app-sidebar";
 import { deviceRequestHeaders } from "@/lib/device-user";
-import { sectionUrl, viewFromSection } from "@/lib/app-navigation";
+import { filterForNavigation, sectionUrl, shouldRevalidateAccount, viewFromSection } from "@/lib/app-navigation";
 import { boardItems } from "@/lib/board-view";
+import { useFdciCatalogPilot, FdciCatalogPilotBanner, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
+import { sourceHealth, sourceNotices } from "@/lib/source-health";
 import type { BoardView } from "@/lib/board-view";
 import { groupPadrones, padronDocuments, padronSelection, padronTitleFacts, padronYear } from "@/lib/padron-documents";
-import { eventDate as officialEventDate, hasOfficialTopic, officialDateLabel, officialDestination, officialLifecycle, officialMetadata, readMetadata } from "@/lib/official-publication";
+import { eventDate as officialEventDate, hasOfficialTopic, officialDestination, officialMetadata, readMetadata } from "@/lib/official-publication";
 import { officialSavedLookup, resolveOfficialAlias } from "@/lib/official-reconciliation";
 import { OfficialPublicationDetails, OfficialPublicationSummary } from "@/components/official-publication-details";
+import type { AdminNotice } from "@/lib/admin-notices";
 
 type Theme = "light" | "dark";
-type InstallationSecurity = "protected" | "linked" | "recovery_required" | "unavailable";
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
 const viewTitles: Record<View, [string, string]> = {
-  inicio: ["Inicio", "Lo más relevante según tus preferencias"], vacantes: ["Inscripciones SIME", "Pedidos de cobertura publicados en SIME"],
+  inicio: ["Inicio", "Lo más relevante según tus preferencias"], busqueda: ["Buscar", "Publicaciones públicas de DocenteTuc"], noticias: ["Noticias", "Actualidad docente revisada"], vacantes: ["Inscripciones SIME", "Pedidos de cobertura publicados en SIME"],
   capacitaciones: ["Capacitaciones", "Formación docente"], junta: ["Consultas oficiales", "Padrones, comunicados y fuentes de las Juntas"],
   padrones: ["Padrones", "Listados y puntajes oficiales por Junta"], comunicados: ["Comunicados", "Documentos y avisos oficiales de las Juntas"],
   actos: ["Actos de designación", "Fechas informadas por SIME y las Juntas; verificar horario y modalidad"], llamados: ["Llamados abiertos", "Convocatorias oficiales según el procedimiento; verificar requisitos y vigencia"],
@@ -71,19 +87,11 @@ const INFOD_LOGIN = "https://aulastic.infd.edu.ar/";
 const EDUCATION_LEVELS = ["Inicial", "Primario", "Secundario", "Superior"];
 
 const normalize = (value = "") => value.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-const publicationCircuitMatch = (item: Publication, circuit: string) => {
-  if (item.circuit === "ALL") return true;
-  const direct = item.circuit && /^[iv]+$|^[1-5]$/i.test(item.circuit) ? `Circuito ${item.circuit}` : item.source_circuit_raw || "";
-  const inference = inferCircuit({ explicit: direct, locality: item.location || item.source_circuit_raw || "" });
-  return circuitMatches(inference, [circuit]) === true;
-};
 const publicationLabel = (item: Publication) => officialMetadata(item)?.entity === "event" ? "ACTO DE DESIGNACIÓN" : hasOfficialTopic(item, "LLAMADO_ABIERTO") ? "LLAMADO ABIERTO" : hasOfficialTopic(item, "INSCRIPCION_SIME") ? "INSCRIPCIÓN SIME" : hasOfficialTopic(item, "CLASIFICACION_PENDIENTE") ? "PROCEDIMIENTO PENDIENTE DE VERIFICAR" : item.kind === "capacitacion" ? "CAPACITACIÓN" : item.category.toUpperCase();
-const publicationSearchText = (item: Publication) => [item.title, item.summary, item.level, item.area, item.junta, item.location, item.character, item.category, item.source, item.metadata, item.circuit, item.source_circuit_raw, item.kind === "vacante" ? "designaciones vacantes" : "", Date.now() - new Date(`${item.updated_at}Z`).getTime() < 30 * 864e5 ? "novedades" : ""].join(" ");
 const simeCodeForPublication = (item?: Pick<Publication, "metadata"> | null) => {
   if (!item?.metadata) return "";
   try { const parsed = JSON.parse(item.metadata) as { simeCode?: unknown }; return typeof parsed.simeCode === "string" ? parsed.simeCode.trim() : ""; } catch { return ""; }
 };
-const trainingPlatform = (source: string) => { const key = normalize(source); return /cenet|inet/.test(key) ? "cenet" : /infod|aulastic/.test(key) ? "infod" : /fdci|capacitacion docente/.test(key) ? "fdci" : "other"; };
 const apiHeaders = (json = false) => {
   return deviceRequestHeaders(localStorage.getItem("docentetuc-device-id"), json);
 };
@@ -95,39 +103,40 @@ const fromNow = (value: string | null) => {
 const tucumanDay = (value: Date | string) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(typeof value === "string" ? new Date(value) : value);
 const opensToday = (item: Publication) => { const opens = parseTrainingMetadata(item.metadata)?.registrationOpensAt; return Boolean(opens && tucumanDay(opens) === tucumanDay(new Date())); };
 const healthNameForPublication = (item: Publication) => item.source === "Padrones y Comunicados" ? officialMetadata(item)?.sourceCategory || item.category : item.source;
-const healthForPublication = (item: Publication, sync: SyncStatus[]) => sync.find((source) => source.source === healthNameForPublication(item));
-const publicationLifecycleForUI = (item: Publication, now = new Date()) => {
-  const official = officialLifecycle(item, now);
-  if (official) return official;
-  const metadata = parseTrainingMetadata(item.metadata);
-  const designation = item.kind === "vacante";
-  return publicationLifecycle({
-    normalizedStatus: item.normalized_status,
-    sourceStatus: item.source_status || item.status,
-    sourceStatusIsExplicit: true,
-    registrationOpenAt: designation ? item.starts_at : metadata?.registrationOpensAt,
-    registrationCloseAt: designation ? item.ends_at : metadata?.registrationClosesAt,
-    expiresAt: designation ? item.ends_at : metadata?.courseEndsAt,
-    dateStatus: designation ? "confirmed" : metadata?.dateStatus,
-    now,
-  });
+const healthForPublication = (item: Publication, sync: SyncStatus[]) => {
+  const row = sync.find((source) => source.source === healthNameForPublication(item));
+  return item.source === "Capacitación Docente" && row && !fdciPublicationFresh(item.last_seen_at)
+    ? { ...row, sync_status: "STALE" } : row;
 };
-const enrollmentForUI = (item: Publication, now = new Date()) => enrollmentState(parseTrainingMetadata(item.metadata), item.source_status || item.status, item.normalized_status, now);
+const publicationLifecycleForUI = publicationLifecycleForDisplay;
+const enrollmentForUI = enrollmentForDisplay;
 const enrollmentLabel = (item: Publication, now = new Date()) => {
   const state = enrollmentForUI(item, now), tentative = parseTrainingMetadata(item.metadata)?.dateStatus === "tentative";
   return state === "PROXIMAMENTE" ? tentative ? "Preinscripción prevista · fecha tentativa" : "Próximamente"
     : state === "ABRE_HOY" ? tentative ? "Apertura prevista hoy · confirmar en fuente" : "Abre hoy"
-    : state === "ABIERTA" ? "Inscripción abierta" : state === "CERRADA" ? item.status === "en curso" ? "En cursado — inscripción cerrada" : item.status === "finalizada" ? "Finalizado — inscripción cerrada" : "Inscripción cerrada" : "Fecha de inscripción no confirmada";
+    : state === "ABIERTA" ? "Inscripción abierta" : state === "SIN_CUPO" ? "Sin cupos disponibles" : state === "CERRADA" ? item.status === "en curso" ? "En cursado — inscripción cerrada" : item.status === "finalizada" ? "Finalizado — inscripción cerrada" : "Inscripción cerrada" : "Fecha de inscripción no confirmada";
 };
 const lifecycleLabel = (status: ReturnType<typeof publicationLifecycle>) => ({ ACTIVE: "Vigente", UPCOMING: "Próxima apertura", CLOSED: "Cerrada", EXPIRED: "Vencida", REMOVED_FROM_SOURCE: "Ya no aparece en la fuente", UNKNOWN: "Estado sin confirmar" })[status];
 
 export default function DocenteApp({ initialSection }: { initialSection?: string }) {
   const router = useRouter();
   const sidebar = useAppSidebarState(true);
+  const [, refreshTime] = useState(0);
+  useEffect(() => {
+    const tick = () => refreshTime((value) => value + 1);
+    const timer = window.setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", tick); };
+  }, []);
   const [data, setData] = useState<AppData | null>(null);
   const publicData = useRef<AppData | null>(null);
-  const privateDataVerified = useRef(false);
-  const [privateReady, setPrivateReady] = useState(false);
+  const privateData = useRef<PrivateAppData | null>(null);
+  const publicLoadSequence = useRef(0);
+  const privateLoadSequence = useRef(0);
+  const publicLoadProblem = useRef("");
+  const privateLoadProblem = useRef("");
+  const [privateAccess, setPrivateAccess] = useState<PrivateAccessStatus>("checking");
+  const privateReady = privateAccess === "ready";
   const [accountPhoto, setAccountPhoto] = useState<{ authenticated: boolean; image: string | null }>({ authenticated: false, image: null });
   const [installationSecurity, setInstallationSecurity] = useState<InstallationSecurity>("unavailable");
   const [installationBootstrapComplete, setInstallationBootstrapComplete] = useState(false);
@@ -135,8 +144,11 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const viewRef = useRef(view);
   useEffect(() => { viewRef.current = view; }, [view]);
   const [query, setQuery] = useState("");
+  const [searchKind, setSearchKind] = useState<PublicationSearchKind>("all");
   const [designationQuery, setDesignationQuery] = useState("");
   const [filter, setFilter] = useState(() => viewFromSection(initialSection) === "capacitaciones" ? "todas" : "para-mi");
+  const trainingFilterRef = useRef("todas");
+  useEffect(() => { if (view === "capacitaciones") trainingFilterRef.current = filter; }, [view, filter]);
   const [juntaFilter, setJuntaFilter] = useState<(typeof OFFICIAL_JUNTAS)[number]["id"] | "todas">("todas");
   const [designationCircuit, setDesignationCircuit] = useState("todos");
   const [character, setCharacter] = useState("todos");
@@ -152,7 +164,6 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const [syncing, setSyncing] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [offline, setOffline] = useState(false);
-  const autoSyncStarted = useRef(false);
   const installationBootstrapStarted = useRef(false);
   const [theme, setTheme] = useState<Theme>("light");
   const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(null);
@@ -166,12 +177,13 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
   const [agendaReminder, setAgendaReminder] = useState("one_day");
   const [manualEvent, setManualEvent] = useState<ManualEvent | null | "new">(null);
   const [manualEventDate, setManualEventDate] = useState("");
-  const loadRef = useRef<(syncIfEmpty?: boolean, showLoading?: boolean) => Promise<void>>(async () => {});
-  const syncSourcesRef = useRef<(notify?: boolean) => Promise<void>>(async () => {});
+  const [agendaFocusAt, setAgendaFocusAt] = useState("");
+  const loadRef = useRef<(showLoading?: boolean) => Promise<void>>(async () => {});
+  const previousAccountView = useRef<View | null>(null);
+  const accountRevalidationInFlight = useRef(false);
   const [navigationRestored, setNavigationRestored] = useState(false);
   const setView = useCallback((target: View) => {
     if (target === "comunidad") { router.push("/comunidad"); return; }
-    if (target === "capacitaciones" && viewRef.current !== "capacitaciones") setFilter("todas");
     const url = sectionUrl(target);
     if (`${location.pathname}${location.search}${location.hash}` !== url) {
       history.pushState({ ...history.state, docentetuc: undefined, publicationId: undefined, usefulCategory: undefined }, "", url);
@@ -217,72 +229,111 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     window.addEventListener("docentetuc:refresh-auth-status", refreshAccountPhoto);
     return () => window.removeEventListener("docentetuc:refresh-auth-status", refreshAccountPhoto);
   }, [refreshAccountPhoto]);
-  const openPublication = (publication: Publication) => { const canonical = resolveOfficialAlias(publication, data?.publications || []); setSelected(canonical); history.pushState({ ...history.state, publicationId: canonical.id }, "", `#publicacion-${encodeURIComponent(canonical.id)}`); };
+  const openPublication = (publication: Publication) => { const canonical = resolveOfficialAlias(publication, data?.publications || []); setData(current => !isFdciCatalogOnly(publication) && current && !current.publications.some(item => item.id === canonical.id) ? { ...current, publications: [...current.publications, canonical] } : current); setSelected(canonical); history.pushState({ ...history.state, publicationId: canonical.id }, "", `#publicacion-${encodeURIComponent(canonical.id)}`); };
   const closePublication = () => { if (history.state?.publicationId) history.back(); else setSelected(null); };
 
+  const resolveDeepLink = useCallback((publications: Publication[]) => {
+    const deepLinkId = new URLSearchParams(location.search).get("publication");
+    if (!deepLinkId) return;
+    const show = (item: Publication) => {
+      const canonical = resolveOfficialAlias(item, publications);
+      const destination = canonical.kind === "capacitacion" ? "capacitaciones" : canonical.kind === "informacion" ? "informacion" : officialDestination(canonical);
+      setData(current => current && !current.publications.some(row => row.id === canonical.id) ? { ...current, publications: [...current.publications, canonical] } : current);
+      setSelected(canonical);
+      setViewState(destination);
+      history.replaceState({ ...history.state, docentetuc: undefined }, "", sectionUrl(destination));
+    };
+    const loaded = publications.find((item) => item.id === deepLinkId);
+    if (loaded) { show(loaded); return; }
+    void fetch(`/api/search?id=${encodeURIComponent(deepLinkId)}`, { cache: "no-store", signal: AbortSignal.timeout(15_000) })
+      .then(response => response.ok ? response.json() as Promise<{ items: Publication[] }> : null)
+      .then(result => { if (result?.items[0]) show(result.items[0]); })
+      .catch(() => {});
+  }, []);
+
+  const refreshLoadError = useCallback(() => setLoadError(privateLoadProblem.current || publicLoadProblem.current), []);
+
   const loadPublic = useCallback(async () => {
+    const requestId = ++publicLoadSequence.current;
     try {
       const response = await fetch("/api/public-app", { cache: "no-store", signal: AbortSignal.timeout(15_000) });
       if (!response.ok) throw new Error("Public source unavailable");
       const result = await response.json() as AppData;
+      if (requestId !== publicLoadSequence.current) return false;
       publicData.current = result;
-      if (!privateDataVerified.current) setData(result);
+      publicLoadProblem.current = "";
+      setData(combineAppData(result, privateData.current));
+      refreshLoadError();
+      resolveDeepLink(result.publications);
       try { localStorage.setItem("docentetuc-public-data-v1", JSON.stringify(result)); } catch { /* The live public response remains usable without offline storage. */ }
+      return true;
     } catch {
+      if (requestId !== publicLoadSequence.current) return false;
+      if (publicData.current) {
+        publicLoadProblem.current = "No pudimos actualizar las fuentes. Mostramos la última copia pública disponible.";
+        refreshLoadError();
+        return false;
+      }
       const cached = localStorage.getItem("docentetuc-public-data-v1");
       if (cached) {
         try {
           const stored = JSON.parse(cached) as AppData;
           publicData.current = stored;
-          if (!privateDataVerified.current) setData(stored);
-          if (!privateDataVerified.current) setLoadError("No pudimos actualizar las fuentes. Mostramos la última copia pública disponible.");
-          return;
+          publicLoadProblem.current = "No pudimos actualizar las fuentes. Mostramos la última copia pública disponible.";
+          setData(combineAppData(stored, privateData.current));
+          resolveDeepLink(stored.publications);
+          refreshLoadError();
+          return false;
         } catch { /* Ignore an invalid public cache. */ }
       }
-      if (!privateDataVerified.current) setLoadError("No pudimos cargar la información pública. Intentá nuevamente.");
-    } finally { setLoading(false); }
-  }, []);
+      publicLoadProblem.current = "No pudimos cargar la información pública. Intentá nuevamente.";
+      refreshLoadError();
+      return false;
+    } finally { if (requestId === publicLoadSequence.current) setLoading(false); }
+  }, [refreshLoadError, resolveDeepLink]);
   useEffect(() => { queueMicrotask(() => { void loadPublic(); }); }, [loadPublic]);
 
-  const load = useCallback(async (syncIfEmpty = true, showLoading = true) => {
+  const load = useCallback(async (showLoading = true) => {
+    const requestId = ++privateLoadSequence.current;
+    setPrivateAccess(current => current === "ready" ? "ready" : "checking");
+    privateLoadProblem.current = "";
+    refreshLoadError();
     if (showLoading) setLoading(true);
-    setLoadError("");
     try {
       const response = await fetch("/api/app", { cache: "no-store", headers: apiHeaders(), signal: AbortSignal.timeout(15000) });
-      if (response.status === 401) { privateDataVerified.current = false; setPrivateReady(false); setData(publicData.current); setLoadError("No se pudo verificar esta instalación o su cuenta. Sus datos privados se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."); return; }
+      if (requestId !== privateLoadSequence.current) return;
+      if (response.status === 401) { privateData.current = null; privateLoadProblem.current = import.meta.env.DEV ? "No se pudo verificar esta instalación en la D1 local. Si pertenece a otra base de prueba, podés iniciar una nueva desde Cuentas y accesos; sus datos no se borran." : "No se pudo verificar esta instalación o su cuenta. Sus datos privados se conservaron; iniciá sesión con la cuenta vinculada o contactá a soporte."; setPrivateAccess("unauthorized"); setData(publicData.current); refreshLoadError(); return; }
       if (!response.ok) throw new Error("No se pudo cargar la información");
-      const result = await response.json() as AppData;
-      result.designations ||= []; result.manualEvents ||= []; if (result.profile) result.profile.roles ||= [];
-      const deepLinkId = new URLSearchParams(location.search).get("publication"), deepLink = deepLinkId ? result.publications.find((item) => item.id === deepLinkId) : null;
-      if (deepLink) { const canonical = resolveOfficialAlias(deepLink, data?.publications || []); const destination = canonical.kind === "capacitacion" ? "capacitaciones" : canonical.kind === "informacion" ? "informacion" : officialDestination(canonical); setSelected(canonical); setViewState(destination); history.replaceState({ ...history.state, docentetuc: undefined }, "", sectionUrl(destination)); }
-      privateDataVerified.current = true;
-      setPrivateReady(true);
-      setData(result);
-      if (syncIfEmpty && result.publications.length === 0 && !autoSyncStarted.current) {
-        autoSyncStarted.current = true;
-        window.setTimeout(() => { void syncSourcesRef.current(false); }, 0);
-      }
-    } catch { privateDataVerified.current = false; setPrivateReady(false); setData(publicData.current); setLoadError("No pudimos cargar los datos privados en este momento. La información pública sigue disponible; intentá nuevamente."); }
-    finally { setLoading(false); }
-  }, []);
+      const result = await response.json() as PrivateAppData;
+      if (requestId !== privateLoadSequence.current) return;
+      result.designations ||= []; result.manualEvents ||= []; result.personalPublications ||= []; if (result.profile) result.profile.roles ||= [];
+      privateData.current = result;
+      privateLoadProblem.current = "";
+      setPrivateAccess("ready");
+      setData(combineAppData(publicData.current, result));
+      refreshLoadError();
+    } catch { if (requestId === privateLoadSequence.current) { privateData.current = null; privateLoadProblem.current = "No pudimos cargar los datos privados en este momento. La información pública sigue disponible; intentá nuevamente."; setPrivateAccess("error"); setData(publicData.current); refreshLoadError(); } }
+    finally { if (requestId === privateLoadSequence.current) setLoading(false); }
+  }, [refreshLoadError]);
 
-  const syncSources = useCallback(async (notify = true) => {
+  const refreshSources = useCallback(async () => {
     setSyncing(true);
     try {
-      const response = await fetch("/api/sync", { method: "POST", headers: apiHeaders(), signal: AbortSignal.timeout(60_000) });
-      const result = await response.json() as { error?: string; skipped?: boolean; count?: number; failures?: number; verifiedSources?: number };
-      if (!response.ok) throw new Error(result.error || "No se pudo actualizar");
-      if (notify) {
-        if (result.skipped) toast.success("Las fuentes ya estaban actualizadas");
-        else if (result.failures) toast.warning(`${result.verifiedSources ?? 0} fuentes verificadas; ${result.failures} pendientes o no disponibles.`);
-        else toast.success(`${result.verifiedSources ?? 0} fuentes verificadas · ${result.count ?? 0} publicaciones revisadas.`);
-      }
-      await loadRef.current(false, false);
-    } catch (error) { const message = error instanceof DOMException && error.name === "TimeoutError" ? "La actualización tardó demasiado. Podría seguir en curso; consultá nuevamente más tarde." : error instanceof Error ? error.message : "No se pudo actualizar"; if (notify) toast.error(message); }
-    finally { setSyncing(false); }
-  }, []);
+      const refreshed = await loadPublic();
+      await loadRef.current(false);
+      if (refreshed) toast.success("Información pública recargada");
+    } finally { setSyncing(false); }
+  }, [loadPublic]);
 
-  useEffect(() => { loadRef.current = load; syncSourcesRef.current = syncSources; }, [load, syncSources]);
+  useEffect(() => { loadRef.current = load; }, [load]);
+
+  useEffect(() => {
+    const previous = previousAccountView.current;
+    previousAccountView.current = view;
+    if (!shouldRevalidateAccount(previous, view, Boolean(privateLoadProblem.current), accountRevalidationInFlight.current)) return;
+    accountRevalidationInFlight.current = true;
+    void load(false).finally(() => { accountRevalidationInFlight.current = false; });
+  }, [view, loadError, load]);
 
   useEffect(() => {
     document.querySelector(".app-background")?.scrollTo(0, 0);
@@ -312,7 +363,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
             } else setInstallationSecurity("unavailable");
           } catch { setInstallationSecurity("unavailable"); }
           finally { setInstallationBootstrapComplete(true); }
-          await loadRef.current(true, false);
+          await loadRef.current(false);
         })();
       });
     }
@@ -344,32 +395,54 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     const context = document.modelContext;
     if (!context?.registerTool) return;
     const controller = new AbortController();
-    void Promise.resolve(context.registerTool({ name: "search_publications", title: "Buscar publicaciones", description: "Busca designaciones, vacantes, capacitaciones, llamados abiertos, padrones, comunicados y novedades visibles en DocenteTuc; cuando hay resultados, abre su módulo con el filtro de búsqueda específico.", inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: true }, execute(input: unknown) { const term = typeof input === "object" && input && "query" in input ? String((input as { query: unknown }).query).trim() : ""; const results = (data?.publications || []).filter((item) => normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(term))).slice(0, 20); const counts = new Map<string, number>(); for (const item of results) counts.set(item.kind, (counts.get(item.kind) || 0) + 1); const kind = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]; const destination: View | undefined = kind === "vacante" ? "vacantes" : kind === "capacitacion" ? "capacitaciones" : kind === "junta" ? "junta" : kind === "informacion" ? "informacion" : undefined; if (destination) { setView(destination); setFilter("todas"); if (destination === "vacantes") setDesignationQuery(term); else setQuery(term); } return { query: term, resultCount: results.length, openedModule: destination || null, results: results.map(({ id, title, kind: publicationKind, source }) => ({ id, title, kind: publicationKind, source })) }; } }, { signal: controller.signal })).catch(() => undefined);
+    void Promise.resolve(context.registerTool({ name: "search_publications", title: "Buscar publicaciones", description: "Busca publicaciones públicas de todas las secciones integradas en DocenteTuc.", inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: true }, async execute(input: unknown) { const term = typeof input === "object" && input && "query" in input ? String((input as { query: unknown }).query).trim() : ""; if (!term) return { query: term, resultCount: 0, openedModule: null, results: [] }; const response = await fetch(`/api/search?q=${encodeURIComponent(term)}`, { cache: "no-store" }); if (!response.ok) throw new Error("No pudimos buscar publicaciones."); const page = await response.json() as { items: Publication[] }; setView("busqueda"); setQuery(term); return { query: term, resultCount: page.items.length, openedModule: "busqueda", results: page.items.map(({ id, title, kind, source }) => ({ id, title, kind, source })) }; } }, { signal: controller.signal })).catch(() => undefined);
     void Promise.resolve(context.registerTool({ name: "open_teacher_profile", title: "Abrir perfil docente", description: "Abre el formulario de preferencias del perfil docente.", inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: false }, execute() { setView("perfil"); return { opened: true }; } }, { signal: controller.signal })).catch(() => undefined);
     return () => controller.abort();
-  }, [data, setView]);
+  }, [setView]);
 
   const savedMap = useMemo(() => officialSavedLookup(data?.saved || [], data?.publications || []), [data]);
   const reminderMap = useMemo(() => new Map((data?.reminders || []).map((item) => [item.training_id, item])), [data]);
   const profile = data?.profile ?? undefined;
+  const trainingCatalog = useTrainingCatalog(view === "capacitaciones" && Boolean(data), data?.sync);
+  const trainingPublications = useMemo(() => {
+    if (!trainingCatalog.complete) return data?.publications || [];
+    const rows = new Map((data?.publications || []).filter(item => item.kind === "capacitacion").map(item => [item.id, item]));
+    for (const item of trainingCatalog.items) rows.set(item.id, item);
+    return [...rows.values()];
+  }, [data, trainingCatalog]);
+  const trainingPilot = useFdciCatalogPilot(trainingPublications, view === "capacitaciones");
   const designationAvailability = data ? designationEmptyState({
     filter, profileConfigured: hasDesignationProfilePreferences(profile),
     availableCount: data.publications.filter((item) => item.kind === "vacante").length,
     sourceStatus: data.sync.find((source) => source.source === "SIME")?.sync_status,
   }) : { profileRequired: false, sourceUnavailable: false, sourceVerifiedEmpty: false };
-  const matchProfile = profile ? { levels: profile.levels, areas: profile.areas, subjects: profile.subjects, boards: profile.boards, roles: profile.roles, department: profile.department, locality: profile.locality, shifts: profile.shifts, characters: profile.characters, circuits: profile.circuits, personalMatchThreshold: profile.personal_match_threshold, wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: profile.training_interests } : null;
-  const publicationForMatch = (publication: Publication) => {
-    const trainingMetadata = publication.kind === "capacitacion" ? parseTrainingMetadata(publication.metadata) : null;
-    let sourceCircuitRaw = publication.source_circuit_raw || "";
-    if (!sourceCircuitRaw && trainingMetadata) sourceCircuitRaw = [trainingMetadata.recipients, trainingMetadata.content].filter(Boolean).join(" ");
-    return { kind: publication.kind, title: publication.title, summary: publication.summary, level: publication.level, area: publication.area, role: publication.kind === "vacante" ? designationFacts(publication).role : undefined, junta: publication.junta, location: publication.location, shift: publication.shift, character: publication.character, circuit: publication.circuit, sourceCircuitRaw, circuitInferenceSource: publication.circuit_inference_source, recipients: trainingMetadata?.recipients };
-  };
+  const matchProfile = profile ? matchProfileFromUser(profile) : null;
+  const personalFilters: PersonalFilters = { query: view === "vacantes" ? designationQuery : query,
+    junta: view === "vacantes" ? juntaFilter : "todas", circuit: view === "vacantes" ? designationCircuit : trainingCircuit,
+    character, source: view === "capacitaciones" ? trainingSource : "todas", compatibility: trainingCompatibility, date: trainingDate };
+  const personalized = usePersonalizedCatalog(filter === "para-mi" && (view === "vacantes" || view === "capacitaciones") ? view === "vacantes" ? "vacante" : "capacitacion" : null, profile ? `${profile.user_id}:${profile.updated_at || ""}` : "", JSON.stringify(personalFilters));
   const matchResult = (publication: Publication) => isGeneralNotice(publication) ? { status: "unconfigured", outcome: "UNKNOWN", score: 0, compatibility: 0, compatibilityScore: 0, confidence: 0, matchConfidence: 0, matched: 0, total: 0, reasons: ["Información general"], criteria: [{ key: "general", label: "Información general", expected: "", matched: false, available: false, outcome: "UNKNOWN", required: false }] } as MatchResult : matchProfile ? profileMatch(publicationForMatch(publication), matchProfile) : { status: "unconfigured", outcome: "UNKNOWN", score: 0, compatibility: 0, compatibilityScore: 0, confidence: 0, matchConfidence: 0, matched: 0, total: 0, reasons: [], criteria: [] } as MatchResult;
   const matches = (publication: Publication) => Boolean(matchProfile && !isGeneralNotice(publication) && isEligibleForPersonalizedHome(publicationForMatch(publication), matchProfile));
   const relevantTraining = (publication: Publication) => publication.kind === "capacitacion" && matchProfile ? isEligibleForPersonalizedHome(publicationForMatch(publication), matchProfile) : false;
 
   function filteredPublications(search = query) {
-    let items = (data?.publications || []).filter(item => !officialMetadata(item)?.canonicalId || resolveOfficialAlias(item, data?.publications || []).id === item.id);
+    const trainingCompare = (a: Publication, b: Publication) => {
+      const opening = (item: Publication) => Date.parse(parseTrainingMetadata(item.metadata)?.registrationOpensAt || "") || Number.MAX_SAFE_INTEGER;
+      const rank = (item: Publication) => ({ ABRE_HOY: 0, PROXIMAMENTE: 1, ABIERTA: 2, SIN_CUPO: 3, SIN_FECHA_CONFIRMADA: 4, CERRADA: 5 })[enrollmentForUI(item)];
+      if (trainingSort === "opening") return opening(a) - opening(b);
+      if (trainingSort === "open") return Number(enrollmentForUI(b) === "ABIERTA") - Number(enrollmentForUI(a) === "ABIERTA") || opening(a) - opening(b);
+      if (trainingSort === "recent") return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      if (trainingSource === "platform:fdci" && ["ABRE_HOY", "PROXIMAMENTE"].includes(enrollmentForUI(a)) && ["ABRE_HOY", "PROXIMAMENTE"].includes(enrollmentForUI(b))) return opening(a) - opening(b);
+      return rank(a) - rank(b) || Number(relevantTraining(b)) - Number(relevantTraining(a)) || matchResult(b).score - matchResult(a).score || opening(a) - opening(b);
+    };
+    if (filter === "para-mi" && (view === "vacantes" || view === "capacitaciones" && !trainingPilot.enabled)) {
+      const now = new Date();
+      const current = personalized.items.filter((item) => view === "vacantes"
+        ? ["ACTIVE", "UPCOMING"].includes(publicationLifecycleForUI(item, now))
+        : ["ABRE_HOY", "PROXIMAMENTE", "ABIERTA"].includes(enrollmentForUI(item, now)));
+      return view === "capacitaciones" ? current.sort(trainingCompare) : current;
+    }
+    let items = (view === "capacitaciones" ? trainingPilot.publications : data?.publications || []).filter(item => !officialMetadata(item)?.canonicalId || resolveOfficialAlias(item, data?.publications || []).id === item.id);
     if (view === "vacantes") items = items.filter((item) => hasOfficialTopic(item, "INSCRIPCION_SIME") || item.source === "SIME" && hasOfficialTopic(item, "CLASIFICACION_PENDIENTE"));
     if (view === "capacitaciones") items = items.filter((item) => item.kind === "capacitacion");
     if (view === "junta") items = items.filter((item) => item.kind === "junta");
@@ -393,7 +466,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
       if (filter === "para-mi") items = items.filter((item) => publicationLifecycleForUI(item) === "ACTIVE" && matches(item));
     }
     if (view === "vacantes" && juntaFilter !== "todas") items = items.filter((item) => matchesJunta(item, juntaFilter));
-    if (view === "vacantes" && designationCircuit !== "todos") items = items.filter((item) => publicationCircuitMatch(item, designationCircuit));
+    // Circuito territorial eliminado de Inscripciones SIME: la fuente no informa circuito de forma confiable y el filtro excluía oportunidades compatibles.
     if (view === "vacantes" && character !== "todos") items = items.filter((item) => matchesCharacter(item.character, character as (typeof OFFICIAL_CHARACTERS)[number]));
     if (view === "capacitaciones" && character !== "todos") {
       const modality = normalizeSearchText(character);
@@ -410,20 +483,13 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     });
     if (view === "capacitaciones" && trainingSource === "platform:fdci" && trainingCircuit !== "todos") items = items.filter((item) => publicationCircuitMatch(item, trainingCircuit));
     const activeSearch = view === "vacantes" ? designationQuery : search;
-    if (activeSearch.trim()) { const term = normalizeSearchText(activeSearch); items = items.filter((item) => normalizeSearchText(publicationSearchText(item)).includes(term)); }
-    if (view === "capacitaciones") items = [...items].sort((a, b) => {
-      const opening = (item: Publication) => Date.parse(parseTrainingMetadata(item.metadata)?.registrationOpensAt || "") || Number.MAX_SAFE_INTEGER;
-      const rank = (item: Publication) => ({ ABRE_HOY: 0, PROXIMAMENTE: 1, ABIERTA: 2, SIN_FECHA_CONFIRMADA: 3, CERRADA: 4 })[enrollmentForUI(item)];
-      if (trainingSort === "opening") return opening(a) - opening(b);
-      if (trainingSort === "open") return Number(enrollmentForUI(b) === "ABIERTA") - Number(enrollmentForUI(a) === "ABIERTA") || opening(a) - opening(b);
-      if (trainingSort === "recent") return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-      if (trainingSource === "platform:fdci" && ["ABRE_HOY", "PROXIMAMENTE"].includes(enrollmentForUI(a)) && ["ABRE_HOY", "PROXIMAMENTE"].includes(enrollmentForUI(b))) return opening(a) - opening(b);
-      return rank(a) - rank(b) || Number(relevantTraining(b)) - Number(relevantTraining(a)) || matchResult(b).score - matchResult(a).score || opening(a) - opening(b);
-    });
+    if (activeSearch.trim()) { const words = normalizeSearchText(activeSearch).split(" ").filter(Boolean); items = items.filter((item) => { const text = normalizeSearchText(publicationSearchText(item)); return words.every((word) => text.includes(word)); }); }
+    if (view === "capacitaciones") items = [...items].sort(trainingCompare);
     return items;
   }
 
   const mutateSaved = async (action: "save" | "agenda" | "follow", publication: Publication, enabled: boolean, agenda?: { at?: string; notes?: string; reminderAt?: string }) => {
+    if (isFdciCatalogOnly(publication)) { toast.info("Capacitación ficticia de consulta: acción privada no disponible."); return; }
     const storedId = savedMap.get(publication.id)?.publication_id || publication.id;
     setData((current) => {
       if (!current) return current;
@@ -463,16 +529,18 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     return followedPublicationIds.has(item.id) || isGeneralNotice(item) || (["ACTIVE", "UPCOMING"].includes(lifecycle) && Boolean(matchProfile && isEligibleForPersonalizedHome(publicationForMatch(item), matchProfile)));
   }).map((notice) => notice.publication_id)).size;
   const items = view === "inicio" ? [] : filteredPublications();
-  const hasTrainingTerritoryData = (data?.publications || []).some((item) => item.kind === "capacitacion" && trainingPlatform(item.source) === "fdci" && item.circuit && item.circuit !== "UNKNOWN");
+  const hasTrainingTerritoryData = trainingPublications.some((item) => item.kind === "capacitacion" && trainingPlatform(item.source) === "fdci" && item.circuit && item.circuit !== "UNKNOWN");
   const designationMap = officialSavedLookup(data?.designations || [], data?.publications || []);
   const roleOptions = [...new Set((data?.publications || []).filter((item) => item.kind === "vacante").map((item) => designationFacts(item).role).filter(Boolean))].slice(0, 80);
-  const navigateToView = (target: View, term = "") => {
+  const navigateToView = (target: View, term = "", archiveKind: PublicationSearchKind = "all") => {
     if (target === "comunidad") { router.push("/comunidad"); return; }
-    setView(target); setQuery(term); setDesignationQuery(""); setFilter(["informacion", "junta", "padrones", "comunicados", "actos", "llamados"].includes(target) ? "todas" : "para-mi");
+    if (target === "busqueda") setSearchKind(archiveKind);
+    setView(target); setQuery(term); setDesignationQuery(""); setFilter(filterForNavigation(target, trainingFilterRef.current));
   };
   const openDesignationOfficial = (item: Publication) => { if (hasOfficialTopic(item, "INSCRIPCION_SIME")) localStorage.setItem("docentetuc-pending-designation", item.id); window.open(item.official_url, "_blank", "noopener,noreferrer"); };
-  const recoveryRequired = installationBootstrapComplete && installationSecurity === "recovery_required";
+  const accessState = privateAccessState(installationBootstrapComplete, installationSecurity, privateAccess);
   const privateView = ["agenda", "alertas", "guardados", "perfil"].includes(view);
+  const sourceWarnings = data || !loading ? sourceNotices(view, trainingSource, data?.sync || []) : [];
   return (
     <SidebarProvider open={sidebar.open} onOpenChange={sidebar.onOpenChange} data-sidebar-pinned={sidebar.pinned} className="dt-app-shell" style={{ "--sidebar-width": "17rem" } as CSSProperties}>
       <AppSidebarEdge pinned={sidebar.pinned} onEnter={sidebar.enter} onLeave={sidebar.leave} />
@@ -482,7 +550,8 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         <AppBackground>
         <AppHeader className="mobile-topbar min-h-20 gap-3 border-[#dce8e1] px-4 md:px-8">
           <AppSidebarTrigger pinned={sidebar.pinned} open={sidebar.open} onTogglePin={sidebar.togglePin} />
-          {view === "inicio" ? <div className="flex flex-1 items-center gap-3"><Image src="/icon-192.png" alt="" width={40} height={40} unoptimized className="size-10 rounded-xl md:hidden" /><span className="font-black text-[#062b55] md:hidden">DocenteTuc</span></div> : !["vacantes", "perfil", "cuentas"].includes(view) ? <div className="relative max-w-2xl flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#52708c]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={view === "capacitaciones" ? "Buscar capacitaciones" : "Buscar en DocenteTuc"} placeholder={view === "capacitaciones" ? "Buscar capacitaciones..." : "¿Qué estás buscando?"} className="h-12 rounded-2xl border-[#c8e1f1] bg-white pl-11 shadow-sm" />{query && <button aria-label="Limpiar búsqueda" onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div> : <div className="flex-1" />}
+          {view === "inicio" ? <div className="flex min-w-0 flex-1 items-center gap-3"><Image src="/icon-192.png" alt="" width={40} height={40} unoptimized className="size-10 shrink-0 rounded-xl md:hidden" /><span className="hidden font-black text-[#062b55] min-[410px]:inline md:hidden">DocenteTuc</span></div> : !["busqueda", "noticias", "vacantes", "perfil", "cuentas"].includes(view) ? <div className="relative min-w-0 max-w-2xl flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#52708c]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={view === "capacitaciones" ? "Buscar capacitaciones" : "Buscar en esta sección"} placeholder={view === "capacitaciones" ? "Buscar capacitaciones..." : "Buscar en esta sección..."} className="h-12 rounded-2xl border-[#c8e1f1] bg-white pl-11 shadow-sm" />{query && <button aria-label="Limpiar búsqueda" onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div> : <div className="min-w-0 flex-1" />}
+          <Button onClick={() => setView("busqueda")} size="icon" variant="outline" className="size-11 shrink-0 rounded-xl border-[#dce8e1] bg-white" aria-label="Abrir buscador global"><Search className="size-5" /></Button>
           {installPrompt && <Button onClick={install} variant="outline" className="hidden h-11 rounded-xl border-[#bdd0c6] bg-white sm:flex"><Download className="size-4" />Instalar</Button>}
           {view === "inicio" && accountPhoto.authenticated && <Button onClick={() => setView("cuentas")} size="icon" variant="outline" aria-label="Ir a Cuentas y accesos" className="size-11 shrink-0 rounded-full border-[#dce8e1] bg-white p-0"><GoogleAccountPhoto src={accountPhoto.image} /></Button>}
           <Button onClick={toggleTheme} size="icon" variant="outline" className="size-11 rounded-xl border-[#dce8e1] bg-white" aria-label={theme === "dark" ? "Usar modo claro" : "Usar modo oscuro"}>{theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}</Button>
@@ -492,11 +561,23 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         {offline && <div className="flex items-center justify-center gap-2 bg-[#fff3dd] px-4 py-2 text-sm font-semibold text-[#7d541b]"><WifiOff className="size-4" />Sin conexión. Podés consultar la última información cargada.</div>}
 
         <div className="mobile-content mx-auto w-full max-w-7xl p-4 md:p-8">
-      {loadError && data && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950"><span>{loadError}</span><Button variant="outline" onClick={() => { void loadPublic(); void load(false, false); }} className="min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div>}
-      {privateView && !privateReady ? recoveryRequired ? <RecoveryRequiredNotice onOpenAccount={() => setView("cuentas")} />
-        : <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><h1 className="font-black text-[var(--text-primary)]">No podemos mostrar tus datos privados todavía</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">Verificá esta instalación o iniciá sesión con la cuenta vinculada. Tus datos permanecen conservados.</p><Button onClick={() => void load(false)} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
-        : loadError && !data && view !== "inicio" && view !== "cuentas" ? <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><WifiOff className="mx-auto mb-3 size-8 text-[var(--accent-text)]" /><h1 className="font-black text-[var(--text-primary)]">No pudimos cargar esta sección</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{loadError}</p><Button onClick={() => { void loadPublic(); void load(false, false); }} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
+      {loadError && data && view !== "noticias" && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950"><span>{loadError}</span><Button variant="outline" onClick={() => { void loadPublic(); void load(false); }} className="min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div>}
+      {sourceWarnings.length > 0 && <section aria-label="Estado de actualización de las fuentes" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <p className="font-bold">Algunas fuentes no tienen una verificación reciente. Confirmá fechas y vacantes antes de actuar.</p>
+        <ul className="mt-2 space-y-1">{sourceWarnings.map((item) => {
+          const timestamp = item.lastSuccess ? safeDate(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(item.lastSuccess) ? item.lastSuccess : `${item.lastSuccess.replace(" ", "T")}Z`) : null;
+          const verified = timestamp ? new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Tucuman", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(timestamp) : "no disponible";
+          const state = item.health === "running" ? "verificación en curso" : item.health === "interrupted" ? "último intento inconcluso" : item.health === "failed" ? "última verificación fallida" : item.health === "stale" ? "información desactualizada" : "sin verificación confirmada";
+          return <li key={item.source} className="flex flex-wrap items-center gap-x-2"><span><strong>{item.label}:</strong> {state}. Último éxito: {verified}.</span><a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-bold underline">Fuente oficial <ExternalLink className="size-3" /></a></li>;
+        })}</ul>
+      </section>}
+      {privateView && !privateReady ? accessState === "checking" ? <section role="status" aria-live="polite" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><RefreshCw aria-hidden="true" className="mx-auto mb-3 size-6 animate-spin text-[var(--accent-text)] motion-reduce:animate-none" /><h1 className="font-bold text-[var(--text-primary)]">Comprobando sesión y acceso a tus datos…</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">Estamos preparando tu sección.</p></div></section>
+        : accessState === "recovery_required" ? <RecoveryRequiredNotice onOpenAccount={() => setView("cuentas")} />
+        : <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><h1 className="font-black text-[var(--text-primary)]">{accessState === "error" ? "No pudimos comprobar el acceso en este momento" : "No podemos mostrar tus datos privados todavía"}</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{accessState === "error" ? "Hubo un problema de conexión o del servicio. Tus datos permanecen conservados; intentá nuevamente." : "Verificá esta instalación o iniciá sesión con la cuenta vinculada. Tus datos permanecen conservados."}</p><Button onClick={() => void load(false)} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
+        : loadError && !data && !["inicio", "cuentas", "busqueda", "noticias"].includes(view) ? <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><WifiOff className="mx-auto mb-3 size-8 text-[var(--accent-text)]" /><h1 className="font-black text-[var(--text-primary)]">No pudimos cargar esta sección</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{loadError}</p><Button onClick={() => { void loadPublic(); void load(false); }} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
         : view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={navigateToView} loading={loading} error={loadError} />
+        : view === "busqueda" ? <GlobalPublicationSearch query={query} onQuery={setQuery} kind={searchKind} onKind={setSearchKind} onOpen={openPublication} />
+        : view === "noticias" ? <PublicNewsSection />
         : view === "perfil" ? <>
           <ProfileForm key={profile?.updated_at || "profile"} profile={profile} roleOptions={roleOptions} onSaved={() => void load(false)} />
           <PublicProfileSection profile={data?.publicProfile ?? null} headers={() => apiHeaders(true)} onSaved={() => void load(false)} />
@@ -507,23 +588,35 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
               <h2 id="accounts-access-title" className="text-xl font-black text-[var(--text-primary)]">Mis cuentas y accesos</h2>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">Google autentica tu cuenta de DocenteTuc. Los accesos externos usan sus propias credenciales y no se comparten con DocenteTuc.</p>
             </div>
-            <AccountSignInSection headers={apiHeaders} installationSecurity={installationSecurity} onLinked={() => void load(false)} onSignedOut={() => { privateDataVerified.current = false; setPrivateReady(false); setData(publicData.current); }} />
+            <AccountSignInSection headers={apiHeaders} installationSecurity={installationSecurity} onLinked={() => void load(false)} onSignedOut={() => { ++privateLoadSequence.current; privateData.current = null; privateLoadProblem.current = ""; setPrivateAccess("unauthorized"); setData(publicData.current); refreshLoadError(); }} />
           </section>
           <PlatformAccessSection />
           <DataDeletionSection profile={profile ?? null} />
         </>
-        : view === "alertas" ? <><PushSettings key={`push:${profile?.updated_at || "profile"}`} profile={profile ?? null} /><Alerts data={data} onOpen={openPublication} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} /></>
-          : view === "agenda" ? <Agenda publications={data?.publications || []} savedMap={savedMap} manualEvents={data?.manualEvents || []} onOpen={openPublication} onNewEvent={(date) => { setManualEventDate(date || ""); setManualEvent("new"); }} onEditEvent={setManualEvent} />
-        : view === "informacion" ? <InformationHub items={items} query={query} onQuery={setQuery} savedMap={savedMap} onOpen={openPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAskAI={() => openAI({ type: "informacion", title: viewTitles.informacion[0] })} />
+        : view === "alertas" ? <><PushSettings key={`push:${profile?.updated_at || "profile"}`} profile={profile ?? null} /><Alerts data={data} onOpen={openPublication} onOpenManual={setManualEvent} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} /></>
+          : view === "agenda" ? <Agenda focusAt={agendaFocusAt} publications={data?.publications || []} savedMap={savedMap} manualEvents={data?.manualEvents || []} onOpen={openPublication} onNewEvent={(date) => { setManualEventDate(date || ""); setManualEvent("new"); }} onEditEvent={setManualEvent} />
+        : view === "informacion" ? <InformationHub items={items} query={query} onQuery={setQuery} onBrowse={() => navigateToView("busqueda", "", "informacion")} savedMap={savedMap} onOpen={openPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAskAI={() => openAI({ type: "informacion", title: viewTitles.informacion[0] })} />
         : view === "junta" ? <OfficialConsultations onView={navigateToView} />
         : view === "padrones" ? <PadronSection query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} />
-        : ["comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection view={view as BoardView} publications={data?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
-            <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void syncSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
-            <Filters filter={filter} setFilter={setFilter} junta={juntaFilter} setJunta={setJuntaFilter} character={character} setCharacter={setCharacter} query={designationQuery} setQuery={setDesignationQuery} kind={view} date={trainingDate} setDate={setTrainingDate} source={trainingSource} setSource={setTrainingSource} compatibility={trainingCompatibility} setCompatibility={setTrainingCompatibility} sort={trainingSort} setSort={setTrainingSort} hasTrainingTerritoryData={hasTrainingTerritoryData} circuit={view === "vacantes" ? designationCircuit : trainingCircuit} setCircuit={view === "vacantes" ? setDesignationCircuit : setTrainingCircuit} />
+        : ["comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection key={`${view}:${query}`} view={view as BoardView} publications={data?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
+            {view === "capacitaciones" && <FdciCatalogPilotBanner pilot={trainingPilot} />}
+            {view === "capacitaciones" && trainingCatalog.error && <p role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">{trainingCatalog.error}</p>}
+            <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void refreshSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
+            <Filters filter={filter} setFilter={setFilter} junta={juntaFilter} setJunta={setJuntaFilter} character={character} setCharacter={setCharacter} query={designationQuery} setQuery={setDesignationQuery} kind={view} date={trainingDate} setDate={setTrainingDate} source={trainingSource} setSource={setTrainingSource} compatibility={trainingCompatibility} setCompatibility={setTrainingCompatibility} sort={trainingSort} setSort={setTrainingSort} hasTrainingTerritoryData={hasTrainingTerritoryData} circuit={view === "capacitaciones" ? trainingCircuit : "todos"} setCircuit={view === "capacitaciones" ? setTrainingCircuit : () => {}} />
             {view === "vacantes" && items.some(item => hasOfficialTopic(item, "CLASIFICACION_PENDIENTE")) && <p role="note" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Los registros con «Procedimiento pendiente de verificar» no están confirmados como inscripciones online. Consultá el detalle oficial antes de actuar.</p>}
-             {view === "vacantes" && !loading && items.length === 0 && (designationAvailability.profileRequired || designationAvailability.sourceUnavailable || designationAvailability.sourceVerifiedEmpty)
+             {view === "vacantes" && filter !== "para-mi" && !loading && items.length === 0 && (designationAvailability.profileRequired || designationAvailability.sourceUnavailable || designationAvailability.sourceVerifiedEmpty)
                ? <DesignationEmptyState {...designationAvailability} onCompleteProfile={() => setView("perfil")} />
-               : <PublicationList items={items} loading={loading} savedMap={savedMap} reminderMap={reminderMap} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} emptyContext={view === "capacitaciones" ? trainingSource === "platform:fdci" ? "FDCI" : trainingSource === "platform:infod" ? "INFoD" : trainingSource === "platform:cenet" ? "CeNET / INET" : "las plataformas seleccionadas" : "esta búsqueda"} onClearFilters={() => { setTrainingSource("todas"); setTrainingDate(""); setTrainingCircuit("todos"); setDesignationCircuit("todos"); setTrainingCompatibility("todas"); setJuntaFilter("todas"); setCharacter("todos"); setFilter("todas"); setDesignationQuery(""); setQuery(""); }} />}
+               : filter === "para-mi" && (view === "vacantes" || view === "capacitaciones") && !items.length && (personalized.loading || personalized.nextCursor || personalized.totalMatches > 0 || personalized.error || !profile || personalized.profileRequired) ? null
+               : <PublicationList items={items} sync={data?.sync || []} loading={loading || view === "capacitaciones" && filter !== "para-mi" && !trainingCatalog.complete && !trainingCatalog.error || personalized.loading && filter === "para-mi"} savedMap={savedMap} reminderMap={reminderMap} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} emptyContext={view === "capacitaciones" ? trainingSource === "platform:fdci" ? "FDCI" : trainingSource === "platform:infod" ? "INFoD" : trainingSource === "platform:cenet" ? "CeNET / INET" : "las plataformas seleccionadas" : "esta búsqueda"} onClearFilters={() => { setTrainingSource("todas"); setTrainingDate(""); setTrainingCircuit("todos"); setTrainingCompatibility("todas"); setJuntaFilter("todas"); setCharacter("todos"); setFilter("todas"); setDesignationQuery(""); setQuery(""); }} />}
+            {filter === "para-mi" && (view === "vacantes" || view === "capacitaciones") && <div role="status" className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-4 text-sm text-[var(--text-secondary)]">
+              {personalized.loading ? "Buscando coincidencias en el catálogo…" : personalized.error || (!profile || personalized.profileRequired ? "Completá tu perfil para buscar coincidencias." : personalized.nextCursor ? `Revisados ${personalized.scanned} registros; ${personalized.totalMatches} coincidencias encontradas. Todavía quedan páginas por examinar.` : `Búsqueda completa: ${personalized.scanned} registros examinados; ${personalized.totalMatches} coincidencias encontradas.`)}
+              {personalized.error ? <Button type="button" variant="outline" onClick={personalized.retry} className="mt-3 min-h-11 rounded-xl">Reintentar</Button> : personalized.nextCursor && <Button type="button" variant="outline" disabled={personalized.loading} onClick={() => void personalized.loadMore()} className="mt-3 min-h-11 rounded-xl">Buscar más coincidencias</Button>}
+              {personalized.page > 1 && <Button type="button" variant="ghost" onClick={personalized.retry} className="mt-3 min-h-11 rounded-xl">Volver al inicio</Button>}
+            </div>}
+            {(view === "vacantes" || view === "capacitaciones") && <div className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-4 text-sm text-[var(--text-secondary)]">
+              {filter === "para-mi" ? "Estas coincidencias se consultan por páginas sobre el catálogo completo. El orden visible se aplica a la página actual." : view === "capacitaciones" && trainingCatalog.complete ? "Esta vista incluye todas las capacitaciones almacenadas. También podés recorrer el catálogo por páginas." : "Esta vista muestra una selección reciente. El catálogo completo, incluidos registros anteriores y resultados fuera de esta selección, se puede recorrer por páginas."}
+              <Button type="button" variant="outline" onClick={() => navigateToView("busqueda", "", view === "vacantes" ? "vacante" : "capacitacion")} className="mt-3 min-h-11 rounded-xl">Ver catálogo completo</Button>
+            </div>}
           </>}
         </div>
 
@@ -532,11 +625,11 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         </AppBackground>
       </SidebarInset>
 
-      <PublicationSheet publication={selected} saved={selected ? savedMap.get(selected.id) : undefined} tracking={selected ? designationMap.get(selected.id) : undefined} match={selected ? matchResult(selected) : null} onClose={closePublication} onAskAI={(item) => openAI({ type: item.kind === "vacante" ? "designaciones" : item.kind, id: item.id, title: item.title })} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAgenda={(item, enabled) => void mutateSaved("agenda", item, enabled)} onSchedule={(item) => { const stored = savedMap.get(item.id); setAgendaPublication(item); setAgendaAt(stored?.agenda_at ? new Date(stored.agenda_at).toISOString().slice(0, 16) : ""); setAgendaNotes(stored?.agenda_notes || ""); }} onFollow={(item, enabled) => void mutateSaved("follow", item, enabled)} onExternal={openDesignationOfficial} onEditDesignation={setTrackingPublication} />
+      <PublicationSheet publication={selected} sync={data?.sync || []} saved={selected ? savedMap.get(selected.id) : undefined} tracking={selected ? designationMap.get(selected.id) : undefined} match={selected ? matchResult(selected) : null} onClose={closePublication} onAskAI={(item) => openAI({ type: item.kind === "vacante" ? "designaciones" : item.kind, id: item.id, title: item.title })} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAgenda={(item, enabled) => void mutateSaved("agenda", item, enabled)} onSchedule={(item) => { const stored = savedMap.get(item.id); setAgendaPublication(item); setAgendaAt(stored?.agenda_at ? new Date(stored.agenda_at).toISOString().slice(0, 16) : ""); setAgendaNotes(stored?.agenda_notes || ""); }} onFollow={(item, enabled) => void mutateSaved("follow", item, enabled)} onExternal={openDesignationOfficial} onEditDesignation={setTrackingPublication} />
       <InformationAgendaAction publication={selected?.kind === "informacion" ? selected : null} saved={selected ? savedMap.get(selected.id) : undefined} onSchedule={(item) => { const stored = savedMap.get(item.id); setAgendaPublication(item); setAgendaAt(stored?.agenda_at ? new Date(stored.agenda_at).toISOString().slice(0, 16) : ""); setAgendaNotes(stored?.agenda_notes || ""); }} onRemove={(item) => void mutateSaved("agenda", item, false)} />
       <ReminderDialog publication={reminderPublication} advances={reminderAdvances} onAdvances={setReminderAdvances} onClose={() => setReminderPublication(null)} onSave={() => void saveReminder()} />
       <AgendaDialog publication={agendaPublication} at={agendaAt} notes={agendaNotes} reminder={agendaReminder} onAt={setAgendaAt} onNotes={setAgendaNotes} onReminder={setAgendaReminder} onClose={() => setAgendaPublication(null)} onSave={() => { if (!agendaPublication || !agendaAt) return; const minutes = agendaReminder === "one_day" ? 1440 : agendaReminder === "one_hour" ? 60 : 0, reminderAt = agendaReminder === "none" ? undefined : new Date(new Date(agendaAt).getTime() - minutes * 60_000).toISOString(); void mutateSaved("agenda", agendaPublication, true, { at: agendaAt, notes: agendaNotes, reminderAt }).then(() => setAgendaPublication(null)); }} />
-      {manualEvent && <ManualEventDialog key={manualEvent === "new" ? `new:${manualEventDate}` : manualEvent.id} event={manualEvent === "new" ? null : manualEvent} initialDate={manualEventDate} onClose={() => setManualEvent(null)} onSaved={async () => { setManualEvent(null); await load(false); }} />}
+      {manualEvent && <ManualEventDialog key={manualEvent === "new" ? `new:${manualEventDate}` : manualEvent.id} event={manualEvent === "new" ? null : manualEvent} initialDate={manualEventDate} headers={() => apiHeaders(true)} onClose={() => setManualEvent(null)} onSaved={async (startsAt) => { if (startsAt) setAgendaFocusAt(startsAt); setManualEvent(null); await load(false); }} />}
       <DesignationReturnDialog publication={returnPublication} onNo={() => { localStorage.removeItem("docentetuc-pending-designation"); setReturnPublication(null); }} onYes={() => { if (returnPublication) setTrackingPublication(returnPublication); localStorage.removeItem("docentetuc-pending-designation"); setReturnPublication(null); }} />
       <DesignationForm publication={trackingPublication} existing={trackingPublication ? designationMap.get(trackingPublication.id) : undefined} onClose={() => setTrackingPublication(null)} onSaved={async () => { setTrackingPublication(null); await load(false); }} />
       <DocenteTucAIChatPanel mode={aiMode} onClose={() => setAIMode("closed")} onMinimize={() => setAIMode("minimized")} onExpand={() => setAIMode("expanded")} context={aiContext} profileAvailable={Boolean(profile)} identityReady={accountPhoto.authenticated || (installationBootstrapComplete && installationSecurity === "protected")} identityMessage={!installationBootstrapComplete ? "Preparando la identidad de esta instalación…" : installationSecurity === "linked" ? "Esta instalación requiere la cuenta que la vinculó para acceder a sus datos." : installationSecurity === "recovery_required" ? "Iniciá sesión con la cuenta vinculada o contactá a soporte si tenés datos legacy sin vincular." : "No se pudo comprobar la identidad de esta instalación. Recargá e intentá nuevamente."} headers={() => apiHeaders(true)} onAction={runAIAction} />
@@ -556,7 +649,7 @@ function RecoveryRequiredNotice({ onOpenAccount }: { onOpenAccount: () => void }
   </section>;
 }
 
-function InformationHub({ items, query, onQuery, savedMap, onOpen, onSave, onAskAI }: { items: Publication[]; query: string; onQuery: (value: string) => void; savedMap: Map<string, Saved>; onOpen: (item: Publication) => void; onSave: (item: Publication, enabled: boolean) => void; onAskAI: () => void }) {
+function InformationHub({ items, query, onQuery, onBrowse, savedMap, onOpen, onSave, onAskAI }: { items: Publication[]; query: string; onQuery: (value: string) => void; onBrowse: () => void; savedMap: Map<string, Saved>; onOpen: (item: Publication) => void; onSave: (item: Publication, enabled: boolean) => void; onAskAI: () => void }) {
   const allCategories = [...new Set(items.map((item) => item.category))], [category, setCategory] = useState<string | null>(null);
   const visible = (category ? items.filter((item) => item.category === category) : query ? items : []).filter((item) => !query || normalize(publicationSearchText(item)).includes(normalize(query)));
   const favorites = items.filter((item) => savedMap.has(item.id));
@@ -566,11 +659,13 @@ function InformationHub({ items, query, onQuery, savedMap, onOpen, onSave, onAsk
   return <section className="space-y-4 pb-16 md:pb-0">
     <VisualSectionBanner kind="informacion" title={category || "Información útil"} description="Organismos, trámites y servicios docentes en un solo lugar." />
     <header className="info-search-header">{category && <button aria-label="Volver a Información útil" onClick={() => { setCategory(null); history.back(); }} className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent-text)]"><ChevronRight className="size-5 rotate-180" /></button>}<div className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[var(--text-muted)]" /><Input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Buscar: recibo, junta, certificado..." className="h-11 rounded-xl bg-[var(--input-background)] pl-11" /></div></header>
+    <Button type="button" variant="outline" onClick={onBrowse} className="min-h-11 rounded-xl">Ver toda la información útil</Button>
     <a href="/privacidad" className="flex min-h-11 items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface-primary)] px-4 text-sm font-bold text-[var(--accent-text)]">Política de Privacidad de DocenteTuc <ChevronRight className="size-4" aria-hidden="true" /></a>
     {!category && !query && <div className="space-y-1.5">{allCategories.map((name) => <button key={name} onClick={() => openCategory(name)} className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-primary)] px-3 text-left text-sm font-black text-[var(--text-primary)]"><span className="text-lg">{usefulCategoryIcons[name] || "ℹ️"}</span><span className="flex-1">{name}</span><ChevronRight className="size-4 text-[var(--text-muted)]" /></button>)}</div>}
     {!category && !query && favorites.length > 0 && <div><h2 className="mb-1.5 text-xs font-black uppercase tracking-wide text-[var(--accent-text)]">Mis contactos</h2><div className="grid gap-1.5">{favorites.map((item) => <button key={item.id} onClick={() => onOpen(item)} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-primary)] px-3 text-left"><Star className="size-4 fill-[#f4b942] text-[#9a6810]" /><span className="truncate font-bold text-[var(--text-primary)]">{item.title}</span><ChevronRight className="ml-auto size-4" /></button>)}</div></div>}
     {(category || query) && <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wide text-[var(--accent-text)]">{query ? "Resultados" : category}</p><p className="text-sm text-[var(--text-muted)]">{visible.length} fichas oficiales</p></div><Button variant="outline" onClick={onAskAI} className="rounded-xl bg-[var(--surface-primary)]"><Sparkles className="size-4" />Preguntar</Button></div>}
     {(category || query) && <div className="grid gap-2 md:grid-cols-2">{visible.map(usefulCard)}</div>}
+    {(category === "Licencias y salud laboral" || (!category && /licencia/i.test(query))) && <div className="space-y-2"><h2 className="text-base font-black text-[var(--text-primary)]">Formularios de licencias</h2><div className="grid gap-2 md:grid-cols-2">{licenseForms.map((form) => <article key={form.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-4"><span className="text-xs font-black text-[var(--accent-text)]">{form.format}</span><h3 className="mt-1 font-bold text-[var(--text-primary)]">{form.title}</h3><p className="mt-1 text-sm text-[var(--text-secondary)]">{form.description}</p><div className="mt-3 flex flex-wrap gap-2">{form.format === "PDF" && <a href={form.href} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--border)] px-3 py-2 text-sm font-bold text-[var(--accent-text)]">Ver PDF <ExternalLink className="size-4" /></a>}<a href={form.href} download className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--accent-soft)] px-3 py-2 text-sm font-bold text-[var(--accent-text)]">Descargar {form.format} <Download className="size-4" /></a></div></article>)}</div></div>}
     {(category || query) && !visible.length && <Empty title="No encontramos información" text="Probá con sueldo, legajo, jubilación, certificado, título, licencia o expediente." />}
   </section>;
 }
@@ -594,17 +689,20 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
     const controller = new AbortController();
     const load = async () => {
       setLoading(true); setError("");
+      const found: Publication[] = [], seen = new Set<string>();
       try {
-        const found: Publication[] = [];
         let cursor = "";
         // ponytail: 20k-document safety cap; add server-side year cursors if the corpus outgrows it.
         for (let page = 0; page < 100; page++) {
-          const response = await fetch(`/api/boards/padrones?cursor=${encodeURIComponent(cursor)}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
+          // Junta is filtered locally: download the list once instead of refetching it per filter.
+          const response = await fetch(`/api/boards/padrones?cursor=${encodeURIComponent(cursor)}&junta=todas`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
           if (!response.ok) throw new Error("No pudimos consultar los padrones.");
           const result = await response.json() as { items: Publication[]; nextCursor: string | null };
           if (!Array.isArray(result.items) || result.nextCursor && result.nextCursor === cursor) throw new Error("La consulta de padrones devolvió una página inválida.");
-          found.push(...result.items);
-          if (!result.nextCursor) { if (!controller.signal.aborted) setRows(found); return; }
+          for (const item of result.items) if (!seen.has(item.id)) { seen.add(item.id); found.push(item); }
+          if (controller.signal.aborted) return;
+          setRows([...found]);
+          if (!result.nextCursor) return;
           cursor = result.nextCursor;
         }
         throw new Error("La consulta de padrones requiere más páginas de las previstas.");
@@ -617,11 +715,13 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
     void load();
     return () => controller.abort();
   }, [retry]);
-  const selection = padronSelection(padronDocuments(rows));
+  const documents = useMemo(() => padronDocuments(rows), [rows]);
+  const selection = useMemo(() => padronSelection(documents), [documents]);
   const chosen = tab === "history" ? selection.history : tab === "undetermined" ? selection.undetermined : selection.current;
-  const visible = chosen.filter(item => (junta === "todas" || matchesJunta(item, junta)) &&
-    (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query))));
-  const groups = groupPadrones(visible);
+  const visible = useMemo(() => chosen.filter(item => (junta === "todas" || matchesJunta(item, junta)) &&
+    (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query)))), [chosen, junta, query]);
+  const groups = useMemo(() => groupPadrones(visible), [visible]);
+  const retryPanel = <Button variant="outline" onClick={() => setRetry(value => value + 1)} className="mt-3 min-h-10 rounded-xl">Reintentar</Button>;
   return <section className="space-y-4 pb-16 md:pb-0">
     <VisualSectionBanner kind="padrones" title={`Padrones ${selection.year}`} description={selection.year < selection.currentYear ? `Último padrón disponible: ${selection.year}` : "Listados y puntajes oficiales por Junta"} />
     <div className="flex flex-wrap gap-2" role="group" aria-label="Período de padrones">
@@ -630,8 +730,12 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
     </div>
     <div className="max-w-lg"><Label htmlFor="padron-junta">Junta</Label><Select value={junta} onValueChange={(value) => setJunta((value || "todas") as typeof junta)}><SelectTrigger id="padron-junta" className="mt-1 h-11 rounded-xl border-[#c8e1f1] bg-white"><SelectValue placeholder="Todas las juntas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map(item => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
     <p className="rounded-xl border border-[#c8e1f1] bg-white p-3 text-sm text-[#315d7a]">Solo se asigna un año cuando el título oficial identifica el padrón o su vigencia. La fecha de descarga no determina el año.</p>
-    {loading ? <p role="status" className="rounded-xl bg-white p-4">Consultando padrones publicados…</p> : error ? <div role="alert" className="rounded-xl border border-amber-200 bg-white p-4"><p>{error}</p><Button variant="outline" onClick={() => setRetry(value => value + 1)} className="mt-3 min-h-10 rounded-xl">Reintentar</Button></div>
-      : groups.length ? <div className="grid gap-3 md:grid-cols-2">{groups.map(group => {
+    {!rows.length && loading && <p role="status" className="rounded-xl bg-white p-4">Consultando padrones publicados…</p>}
+    {!rows.length && !loading && error && <div role="alert" className="rounded-xl border border-amber-200 bg-white p-4"><p>{error}</p>{retryPanel}</div>}
+    {(rows.length > 0 || !loading && !error) && <>
+      {error && <div role="alert" className="rounded-xl border border-amber-200 bg-white p-4"><p>Mostramos los padrones ya recibidos. {error}</p>{retryPanel}</div>}
+      {loading && <p role="status" className="text-xs font-semibold text-[var(--text-muted)]">Cargando el resto de los padrones…</p>}
+      {groups.length ? <div className="grid gap-3 md:grid-cols-2">{groups.map(group => {
         const item = group[0], facts = padronTitleFacts(item.title);
         return <Card as="article" key={item.id} className="rounded-2xl p-4">
           <p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"} · {facts.type} · {padronYear(item) ?? "Año no determinado"}</p>
@@ -643,22 +747,66 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
           </div>
         </Card>;
       })}</div> : <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-white p-5">No hay padrones verificados para esta selección. Consultá el historial o el portal oficial.</div>}
+    </>}
     <a href="https://padrones.educaciontuc.gov.ar/" target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-[#075f9b] underline">Consultar portal oficial de Juntas <ExternalLink className="size-4" /></a>
   </section>;
 }
 
 function OfficialBoardSection({ view, publications, query, junta, setJunta, onOpen }: { view: BoardView; publications: Publication[]; query: string; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; onOpen: (item: Publication) => void }) {
   const [title, description] = viewTitles[view];
+  const [rows, setRows] = useState<Publication[]>([]);
+  const [cursor, setCursor] = useState<string | null>("");
+  const [loading, setLoading] = useState(true);
+  const [boardError, setBoardError] = useState("");
+  const [references, setReferences] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const generation = useRef(0);
+  const remote = view === "comunicados" || view === "llamados";
+  useEffect(() => {
+    if (!remote) return;
+    const current = ++generation.current;
+    const controller = new AbortController();
+    const params = new URLSearchParams({ view, junta, mode: references && view === "llamados" ? "references" : "current", cursor: "", q: query.trim() });
+    fetch(`/api/boards?${params}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => { if (!response.ok) throw new Error("BOARD_LOAD_FAILED"); return response.json() as Promise<{ items: Publication[]; nextCursor: string | null }>; })
+      .then((result) => { if (!controller.signal.aborted && generation.current === current) { setRows(result.items); setCursor(result.nextCursor); } })
+      .catch(() => { if (!controller.signal.aborted && generation.current === current) setBoardError("No pudimos consultar los documentos de Juntas."); })
+      .finally(() => { if (!controller.signal.aborted && generation.current === current) setLoading(false); });
+    return () => controller.abort();
+  }, [remote, view, junta, query, references, retry]);
+  const loadMore = async () => {
+    if (!cursor || loading) return;
+    const current = generation.current;
+    setLoading(true); setBoardError("");
+    const params = new URLSearchParams({ view, junta, mode: references && view === "llamados" ? "references" : "current", cursor, q: query.trim() });
+    try {
+      const response = await fetch(`/api/boards?${params}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("BOARD_LOAD_FAILED");
+      const result = await response.json() as { items: Publication[]; nextCursor: string | null };
+      if (generation.current === current) { setRows((previous) => [...previous, ...result.items]); setCursor(result.nextCursor); }
+    } catch { if (generation.current === current) setBoardError("No pudimos consultar los documentos de Juntas."); }
+    finally { if (generation.current === current) setLoading(false); }
+  };
+  const restart = (nextReferences = references) => {
+    generation.current++;
+    setRows([]); setCursor(""); setBoardError(""); setLoading(true);
+    setReferences(nextReferences); setRetry((value) => value + 1);
+  };
   const matchesBoard = (item: Publication) => junta === "todas" || matchesJunta(item, junta) || (readMetadata(item.metadata).portalPlacements as { junta: string }[] | undefined)?.some(p => matchesJunta({ junta: p.junta, level: "" }, junta));
-  const entries = boardItems(publications, view).filter((item) => matchesBoard(item) && (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query))));
+  const entries = remote ? rows : boardItems(publications, view).filter((item) => matchesBoard(item) && (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query))));
   const sources = publications.filter((item) => item.id.startsWith("padrones:") && (view === "actos" || view === "comunicados" ? item.category === "Comunicados" : view === "llamados" ? item.category === "Llamados abiertos" : false) && matchesBoard(item));
   return <section className="space-y-4 pb-16 md:pb-0">
     <VisualSectionBanner kind={view === "padrones" || view === "llamados" ? "padrones" : "novedades"} title={title} description={description} />
-    <div className="max-w-lg"><Label htmlFor="board-junta">Junta</Label><Select value={junta} onValueChange={(value) => setJunta((value || "todas") as typeof junta)}><SelectTrigger id="board-junta" className="mt-1 h-11 rounded-xl border-[#c8e1f1] bg-white"><SelectValue placeholder="Todas las juntas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
+    <div className="max-w-lg"><Label htmlFor="board-junta">Junta</Label><Select value={junta} onValueChange={(value) => { restart(); setJunta((value || "todas") as typeof junta); }}><SelectTrigger id="board-junta" className="mt-1 h-11 rounded-xl border-[#c8e1f1] bg-white"><SelectValue placeholder="Todas las juntas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
+    {view === "llamados" && <div className="flex flex-wrap gap-2"><Button variant={!references ? "default" : "outline"} onClick={() => { if (references) restart(false); }}>Vigentes verificados</Button><Button variant={references ? "default" : "outline"} onClick={() => { if (!references) restart(true); }}>Documentos para consultar</Button></div>}
+    {view === "llamados" && references && <p className="rounded-xl border border-amber-200 bg-[var(--surface-primary)] p-3 text-sm text-[var(--text-secondary)]">Estos documentos están en carpetas de Llamados. Su ubicación no confirma una inscripción abierta ni su vigencia. Revisá fecha y requisitos en la fuente oficial.</p>}
     {(view === "comunicados" || view === "padrones") && <p className="rounded-xl border border-[#c8e1f1] bg-white p-3 text-sm text-[#315d7a]">Estos son documentos oficiales. Una carpeta o un documento completo no equivale a un llamado vigente; comprobá siempre la fecha y los requisitos en la fuente.</p>}
-    {entries.length ? <div className="grid gap-3 md:grid-cols-2">{entries.map((item) => <Card as="article" key={item.id} className="rounded-2xl p-4"><p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"}</p><h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2><OfficialPublicationSummary item={item} />{!officialMetadata(item) && (view === "actos" || view === "llamados") && <p className="mt-1 text-sm text-[var(--text-secondary)]">{dateLabel(item.starts_at, true)}{item.location ? ` · ${item.location}` : ""}</p>}<div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button><a href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial <ExternalLink className="size-4" /></a></div></Card>)}</div>
-      : <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-primary)] p-5"><h2 className="font-bold text-[var(--text-primary)]">{view === "actos" || view === "llamados" ? "No hay registros individuales con fecha y vigencia verificadas en esta copia" : "No hay documentos indexados en esta vista"}</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">Esto no significa que la Junta no haya publicado novedades. Consultá las fuentes originales mientras se completa la clasificación.</p></div>}
+    {entries.length ? <div className="grid gap-3 md:grid-cols-2">{entries.map((item) => <Card as="article" key={item.id} className="rounded-2xl p-4"><p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"}</p><h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2><OfficialPublicationSummary item={item} />{!officialMetadata(item) && (view === "actos" || view === "llamados") && !references && <p className="mt-1 text-sm text-[var(--text-secondary)]">{dateLabel(item.starts_at, true)}{item.location ? ` · ${item.location}` : ""}</p>}<div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button><a href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial <ExternalLink className="size-4" /></a></div></Card>)}</div>
+      : (!remote || !loading && !boardError) && <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-primary)] p-5"><h2 className="font-bold text-[var(--text-primary)]">{references ? "No hay documentos de Llamados en esta selección" : view === "actos" || view === "llamados" ? "No hay registros individuales con fecha y vigencia verificadas en esta copia" : "No hay documentos indexados en esta vista"}</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">Esto no significa que la Junta no haya publicado novedades. Consultá las fuentes originales mientras se completa la clasificación.</p></div>}
     {sources.length > 0 && <div><h2 className="mb-2 font-bold text-[var(--text-primary)]">Documentos originales para verificar</h2><div className="flex flex-wrap gap-2">{sources.filter((item) => junta === "todas" || matchesJunta(item, junta)).map((item) => <a key={item.id} href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-[#c8e1f1] bg-white px-3 text-sm font-semibold text-[#075f9b]">{item.junta} <ExternalLink className="size-4" /></a>)}</div></div>}
+    {remote && loading && <p role="status" className="text-sm text-[var(--text-secondary)]">Consultando documentos…</p>}
+    {remote && boardError && <div role="alert"><p>{boardError}</p><Button variant="outline" onClick={() => cursor && rows.length ? void loadMore() : restart()}>Reintentar</Button></div>}
+    {remote && cursor && !loading && !boardError && <Button variant="outline" onClick={() => void loadMore()}>Cargar más documentos</Button>}
     {!entries.length && !sources.length && <a href="https://padrones.educaciontuc.gov.ar/" target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-[#075f9b] underline">Consultar portal oficial de Juntas <ExternalLink className="size-4" /></a>}
   </section>;
 }
@@ -667,6 +815,8 @@ type DashboardProps = { data: AppData | null; profile?: Profile; savedMap: Map<s
 
 const homeShortcuts: { label: string; caption: string; icon: typeof Home; view: View; image: string; query?: string }[] = [
   { label: "Inscripciones SIME", caption: "Vacantes para anotarse online", icon: BriefcaseBusiness, view: "vacantes", image: "designaciones" },
+  { label: "Actos de designación", caption: "Vigentes y próximos verificados", icon: CalendarDays, view: "actos", image: "designaciones" },
+  { label: "Llamados abiertos", caption: "Vigentes y próximos verificados", icon: BriefcaseBusiness, view: "llamados", image: "designaciones" },
   { label: "Capacitaciones", caption: "Cursos y aperturas", icon: GraduationCap, view: "capacitaciones", image: "capacitaciones" },
   { label: "Padrones", caption: "Listados y puntajes", icon: BookOpen, view: "padrones", image: "padrones" },
   { label: "Agenda", caption: "Tus fechas", icon: CalendarDays, view: "agenda", image: "agenda" },
@@ -678,8 +828,13 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const now = new Date();
   const publications = data?.publications || [];
   const sync = data?.sync || [];
+  const visibleHomeShortcuts = homeShortcuts.filter(({ view }) =>
+    view !== "actos" && view !== "llamados" || boardItems(publications, view, now).some((item) => sourceHealth(healthForPublication(item, sync), now) === "current"));
   const publicationMap = new Map(publications.map((item) => [item.id, item]));
-  const currentForHome = (item: Publication) => canRecommendCurrentPublication({ lifecycle: publicationLifecycleForUI(item, now), health: healthForPublication(item, sync), now });
+  const currentForHome = (item: Publication) => canRecommendCurrentPublication({ lifecycle: publicationLifecycleForUI(item, now), health: healthForPublication(item, sync), now,
+    maxAgeMs: item.source === "Capacitación Docente" ? FDCI_FRESHNESS_MS : undefined }) &&
+    (item.kind !== "capacitacion" || parseTrainingMetadata(item.metadata)?.dateStatus === "confirmed" &&
+      ["ABRE_HOY", "PROXIMAMENTE", "ABIERTA"].includes(enrollmentForUI(item, now)));
   const eventDate = (item: Publication) => savedMap.get(item.id)?.agenda_at || officialEventDate(item) || parseTrainingMetadata(item.metadata)?.registrationOpensAt || item.ends_at || item.starts_at;
   const relevant = isEligible || matches;
   const agenda = publications.filter((item) => {
@@ -696,8 +851,8 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const profileReady = Boolean(profile && (profile.levels.length || profile.boards.length) && (profile.areas.length || profile.subjects.length || profile.roles.length || profile.circuits.length || profile.training_interests.length));
   const upcoming = publications.filter((item) => {
     const metadata = parseTrainingMetadata(item.metadata);
-    return item.kind === "capacitacion" && (["confirmed", "course_confirmed"].includes(String(metadata?.dateStatus || "").toLowerCase()) || (metadata?.dateStatus === "tentative" && item.status === "inscripción abierta"))
-      && currentForHome(item) && ["today", "tomorrow", "two-three", "four-seven", "eight-fourteen", "open"].includes(registrationState(metadata?.registrationOpensAt, metadata?.registrationClosesAt, now));
+    return item.kind === "capacitacion" && metadata?.dateStatus === "confirmed"
+      && currentForHome(item) && enrollmentForUI(item, now) !== "SIN_CUPO" && ["today", "tomorrow", "two-three", "four-seven", "eight-fourteen", "open"].includes(registrationState(metadata?.registrationOpensAt, metadata?.registrationClosesAt, now));
   }).sort((a, b) => {
     const aDates = parseTrainingMetadata(a.metadata), bDates = parseTrainingMetadata(b.metadata);
     const aRank = homeTrainingEnrollmentRank(aDates?.registrationOpensAt, aDates?.registrationClosesAt, now);
@@ -710,7 +865,7 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   });
   const eligibleUpcoming = upcoming.filter((item) => relevant(item));
   const nextTraining = profileReady ? eligibleUpcoming[0] : undefined, nextMetadata = nextTraining ? parseTrainingMetadata(nextTraining.metadata) : null, nextMatch = nextTraining ? matchResult(nextTraining) : null;
-  const forYou = publications.filter((item) => currentForHome(item) && (item.kind !== "vacante" || publicationLifecycleForUI(item, now) === "ACTIVE") && relevant(item) && !isGeneralNotice(item) && item.id !== nextTraining?.id && item.id !== vacancies[0]?.id).sort(compare).slice(0, 2);
+  const forYou = publications.filter((item) => currentForHome(item) && (item.kind !== "capacitacion" || enrollmentForUI(item, now) !== "SIN_CUPO") && (item.kind !== "vacante" || publicationLifecycleForUI(item, now) === "ACTIVE") && relevant(item) && !isGeneralNotice(item) && item.id !== nextTraining?.id && item.id !== vacancies[0]?.id).sort(compare).slice(0, 2);
   const unreadByPublication = new Map<string, Notice>();
   for (const notice of data?.notifications || []) {
     if (Boolean(notice.read) || unreadByPublication.has(notice.publication_id)) continue;
@@ -721,9 +876,14 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   const alreadySurfaced = new Set([nextTraining?.id, ...forYou.map((item) => item.id), vacancies[0]?.id].filter(Boolean));
   const importantNotice = unread.map((notice) => ({ notice, publication: publicationMap.get(notice.publication_id) })).find(({ publication }) => publication && (isGeneralNotice(publication) || (relevant(publication) && !alreadySurfaced.has(publication.id))));
   const primaryHomeIds = new Set([nextTraining?.id, ...forYou.map((item) => item.id), vacancies[0]?.id, importantNotice?.publication?.id].filter(Boolean));
-  const latest = [...publications].filter((item) => currentForHome(item) && !primaryHomeIds.has(item.id) && (relevant(item) || isGeneralNotice(item))).sort((a, b) => new Date(b.last_changed_at || b.updated_at).getTime() - new Date(a.last_changed_at || a.updated_at).getTime()).slice(0, 3);
+  const latest = [...publications].filter((item) => currentForHome(item) && (item.kind !== "capacitacion" || enrollmentForUI(item, now) !== "SIN_CUPO") && !primaryHomeIds.has(item.id) && (relevant(item) || isGeneralNotice(item))).sort((a, b) => new Date(b.last_changed_at || b.updated_at).getTime() - new Date(a.last_changed_at || a.updated_at).getTime()).slice(0, 3);
   const profileNeedsDetail = !profileReady || !publications.some((item) => matchResult(item).confidence >= 70);
   const priorityLabel = (item: Publication) => {
+    if (item.kind === "capacitacion") {
+      const state = enrollmentForUI(item, now);
+      if (state === "ABRE_HOY") return "🔥 ABRE HOY";
+      if (state === "ABIERTA") return isClosingSoon(parseTrainingMetadata(item.metadata)) ? "🟢 INSCRIPCIÓN ABIERTA ⏰" : "🟢 INSCRIPCIÓN ABIERTA";
+    }
     const itemCandidate = candidate(item), rank = homePriority(itemCandidate, now), days = calendarDayDistance(itemCandidate.registrationOpensAt, now);
     return rank === 0 ? "🔥 ABRE HOY" : rank === 1 ? "🔥 ABRE MAÑANA" : rank <= 4 ? `🔥 ABRE EN ${days} DÍAS` : rank === 5 ? "🟢 INSCRIPCIÓN ABIERTA" : rank === 6 ? "🎯 DESIGNACIÓN PARA VOS" : rank === 7 ? "📅 PRÓXIMO EN AGENDA" : "NOVEDAD PARA VOS";
   };
@@ -733,31 +893,55 @@ function Dashboard({ data, profile, savedMap, reminderMap, matches, matchResult,
   return <div className="daily-home">
     <header className="home-hero">
       <div className="home-hero-top"><h1 className="sr-only">DocenteTuc · Tu información educativa en un solo lugar</h1></div>
-      <div className="home-hero-copy"><HomeBannerContext name={profile?.name} /></div>
+      <HomeNewsCarousel name={profile?.name} excludedOriginIds={[...primaryHomeIds].filter((id): id is string => typeof id === "string")} />
     </header>
     <section className="home-section home-for-you"><div className="home-section-title"><div><p>IMPORTANTE PARA VOS</p><h2>Oportunidades a tu medida</h2></div><button onClick={() => onView("capacitaciones")}>Ver oportunidades <ChevronRight className="size-4" /></button></div>
       {loading ? <HomeSkeleton /> : <>
-        {nextTraining && nextMetadata && <div className="home-next-registration"><button className="home-next-main" onClick={() => onOpen(nextTraining)}><span className="home-next-eyebrow">{priorityLabel(nextTraining)}</span>{nextMetadata.dateStatus === "tentative" && <span className="home-next-tentative">PREINSCRIPCIÓN PREVISTA · FECHA TENTATIVA</span>}<strong>{nextTraining.title}</strong><small>{nextTraining.source}</small><span className="home-next-dates">📅 Abre: {dateLabel(nextMetadata.registrationOpensAt || null, Boolean(nextMetadata.registrationHasTime))}{nextMetadata.registrationClosesAt ? ` · Cierra: ${dateLabel(nextMetadata.registrationClosesAt, true)}` : ""}</span>{nextMatch?.status !== "unconfigured" && nextMatch?.score != null && <span className="home-match">{nextMatch.score}% compatible con tu perfil</span>}</button><div className="home-next-actions"><button onClick={() => onOpen(nextTraining)}>{registrationState(nextMetadata.registrationOpensAt, nextMetadata.registrationClosesAt, now) === "open" ? "Inscribirme" : "Ver curso"}</button><button onClick={() => onRemind(nextTraining)}><Bell className="size-4" />{reminderMap.has(trainingReminderKey(nextMetadata)) ? "Avisos activos" : "Avisarme"}</button></div>{upcoming.length > 1 && <button className="home-next-more" onClick={() => onView("capacitaciones")}>{upcoming.length - 1} {upcoming.length === 2 ? "inscripción más próxima" : "inscripciones más próximas"} <ChevronRight className="size-4" /></button>}</div>}
-        {forYou.length ? <div className="home-priority-list">{forYou.map((item) => { const result = matchResult(item), metadata = parseTrainingMetadata(item.metadata), reminded = metadata ? reminderMap.has(trainingReminderKey(metadata)) : false; return <article key={item.id}><button className="home-priority-main" onClick={() => onOpen(item)}><span className="home-priority-badge">{priorityLabel(item)}</span><strong>{item.title}</strong><small>{[item.level || item.junta || item.category, item.character].filter(Boolean).join(" · ")} · confianza {result.confidence}% · {item.source}</small>{result.status !== "unconfigured" && <span className="home-match">{result.score}% compatible</span>}</button><div className="home-priority-actions"><button onClick={() => onOpen(item)}>Ver</button>{item.kind === "capacitacion" && metadata?.registrationOpensAt && <button onClick={() => onRemind(item)}><Bell className="size-4" />{reminded ? "Aviso activo" : "Avisarme"}</button>}</div></article>; })}</div> : !nextTraining && <p className="home-empty-line">No hay oportunidades compatibles nuevas por ahora.</p>}
-        {profileNeedsDetail && <button className="home-profile-nudge" onClick={() => onView("perfil")}><span><strong>{profileReady ? "Sumá detalles a tu perfil" : "Completá tu perfil"}</strong><small>{profileReady ? "Necesitamos más coincidencias verificables para personalizar tus oportunidades." : "Recibí oportunidades más precisas."}</small></span><ChevronRight className="size-5" /></button>}
+        {nextTraining && nextMetadata && <div className="home-next-registration"><button className="home-next-main" onClick={() => onOpen(nextTraining)}><span className="home-next-eyebrow">{priorityLabel(nextTraining)}</span><strong>{nextTraining.title}</strong><small>{nextTraining.source}</small><span className="home-next-dates">📅 Abre: {dateLabel(nextMetadata.registrationOpensAt || null, Boolean(nextMetadata.registrationHasTime))}{nextMetadata.registrationClosesAt ? ` · Cierra: ${dateLabel(nextMetadata.registrationClosesAt, true)}` : ""}</span>{nextMatch?.status !== "unconfigured" && nextMatch?.score != null && <span className="home-match">{nextMatch.score}% compatible con tu perfil</span>}</button><div className="home-next-actions"><button onClick={() => onOpen(nextTraining)}>{enrollmentForUI(nextTraining, now) === "ABIERTA" ? "Inscribirme" : "Ver curso"}</button>{canScheduleTrainingReminder(nextMetadata, nextTraining.status, nextTraining.normalized_status, now) && <button onClick={() => onRemind(nextTraining)}><Bell className="size-4" />{reminderMap.has(trainingReminderKey(nextMetadata)) ? "Avisos activos" : "Avisarme"}</button>}</div>{upcoming.length > 1 && <button className="home-next-more" onClick={() => onView("capacitaciones")}>{upcoming.length - 1} {upcoming.length === 2 ? "inscripción más próxima en Inicio" : "inscripciones más próximas en Inicio"} <ChevronRight className="size-4" /></button>}</div>}
+        {forYou.length ? <div className="home-priority-list">{forYou.map((item) => { const result = matchResult(item), metadata = parseTrainingMetadata(item.metadata), reminded = metadata ? reminderMap.has(trainingReminderKey(metadata)) : false; return <article key={item.id}><button className="home-priority-main" onClick={() => onOpen(item)}><span className="home-priority-badge">{priorityLabel(item)}</span><strong>{item.title}</strong><small>{[item.level || item.junta || item.category, item.character].filter(Boolean).join(" · ")} · confianza {result.confidence}% · {item.source}</small>{result.status !== "unconfigured" && <span className="home-match">{result.score}% compatible</span>}</button><div className="home-priority-actions"><button onClick={() => onOpen(item)}>Ver</button>{item.kind === "capacitacion" && canScheduleTrainingReminder(metadata, item.status, item.normalized_status, now) && <button onClick={() => onRemind(item)}><Bell className="size-4" />{reminded ? "Aviso activo" : "Avisarme"}</button>}</div></article>; })}</div> : !nextTraining && <p className="home-empty-line">No encontramos coincidencias en la selección de Inicio. Abrí «Para mí» para revisar todo el catálogo.</p>}
+        {profileNeedsDetail && <button className="home-profile-nudge" onClick={() => onView("perfil")}><span><strong>{profileReady ? "Sumá detalles a tu perfil" : "Completá tu perfil"}</strong><small>{profileReady ? "Podés completar tus preferencias para afinar las recomendaciones de Inicio." : "Recibí oportunidades más precisas."}</small></span><ChevronRight className="size-5" /></button>}
       </>}
     </section>
 
-    <section className="home-shortcuts" aria-labelledby="home-shortcuts-title"><div className="home-section-title"><div><p>ACCESOS RÁPIDOS</p><h2 id="home-shortcuts-title">Todo lo que necesitás</h2></div></div><div className="home-shortcut-grid">{homeShortcuts.map(({ label, caption, icon: Icon, view, image, query }) => <button key={label} type="button" className={`home-shortcut home-shortcut-${image}`} onClick={() => onView(view, query)}><span className="home-shortcut-icon"><Icon className="size-6" aria-hidden="true" /></span><span className="home-shortcut-copy"><strong>{label}</strong><small>{caption}</small></span><ChevronRight className="home-shortcut-arrow size-4" aria-hidden="true" /></button>)}</div></section>
+    <section className="home-shortcuts" aria-labelledby="home-shortcuts-title"><div className="home-section-title"><div><p>ACCESOS RÁPIDOS</p><h2 id="home-shortcuts-title">Todo lo que necesitás</h2></div></div><div className="home-shortcut-grid">{visibleHomeShortcuts.map(({ label, caption, icon: Icon, view, image, query }) => <button key={label} type="button" className={`home-shortcut home-shortcut-${image}`} onClick={() => onView(view, query)}><span className="home-shortcut-icon"><Icon className="size-6" aria-hidden="true" /></span><span className="home-shortcut-copy"><strong>{label}</strong><small>{caption}</small></span><ChevronRight className="home-shortcut-arrow size-4" aria-hidden="true" /></button>)}</div></section>
 
     <button type="button" onClick={() => onView("comunidad")} className="home-section flex w-full items-center gap-4 rounded-2xl p-4 text-left transition hover:border-sky-200 hover:shadow-sm sm:p-5">
       <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-sky-100 text-sky-700"><MessagesSquare className="size-6" aria-hidden="true" /></span>
       <span className="min-w-0 flex-1"><span className="block text-xs font-black uppercase tracking-[.14em] text-sky-700">Comunidad Docente</span><span className="mt-1 block font-extrabold text-[var(--text-primary)]">Preguntá, compartí y ayudá a otros docentes</span><span className="mt-1 block text-sm text-[var(--text-muted)]">Conversaciones y respuestas sobre docencia.</span></span><ChevronRight className="size-5 shrink-0 text-sky-700" aria-hidden="true" />
     </button>
 
-    <section className="home-section home-today"><div className="home-section-title"><div><p>RESUMEN DEL DÍA</p><h2>Hoy en tu actividad docente</h2></div></div><div className="home-summary"><button onClick={() => onView("agenda")}><CalendarDays className="size-5" /><span><strong>{todayEvents}</strong> {todayEvents === 1 ? "evento" : "eventos"}</span><ChevronRight className="size-4" /></button><button onClick={() => onView("vacantes")}><BriefcaseBusiness className="size-5" /><span><strong>{vacancies.length}</strong> oportunidades compatibles</span><ChevronRight className="size-4" /></button><button onClick={() => onView("alertas")}><Bell className="size-5" /><span><strong>{unread.length}</strong> {unread.length === 1 ? "alerta relevante" : "alertas relevantes"}</span><ChevronRight className="size-4" /></button></div></section>
+    <section className="home-section home-today"><div className="home-section-title"><div><p>RESUMEN DEL DÍA</p><h2>Hoy en tu actividad docente</h2></div></div><div className="home-summary"><button onClick={() => onView("agenda")}><CalendarDays className="size-5" /><span><strong>{todayEvents}</strong> {todayEvents === 1 ? "evento" : "eventos"}</span><ChevronRight className="size-4" /></button><button onClick={() => onView("vacantes")}><BriefcaseBusiness className="size-5" /><span><strong>{vacancies.length}</strong> oportunidades compatibles en Inicio</span><ChevronRight className="size-4" /></button><button onClick={() => onView("alertas")}><Bell className="size-5" /><span><strong>{unread.length}</strong> {unread.length === 1 ? "alerta relevante" : "alertas relevantes"}</span><ChevronRight className="size-4" /></button></div></section>
 
-    <section className="home-split"><button onClick={() => onView("agenda")}><span className="home-kicker">PRÓXIMO · AGENDA</span>{nextAgendaEntry ? <><strong>{nextAgendaEntry.title}</strong><small>{dateLabel(nextAgendaEntry.startsAt, true)}</small></> : <><strong>Agenda al día</strong><small>Creá un evento personal cuando lo necesites.</small></>}<span>Ver agenda <ChevronRight className="size-4" /></span></button><button onClick={() => onView("vacantes")}><span className="home-kicker">DESIGNACIONES PARA VOS</span>{vacancies[0] ? <><strong>{vacancies[0].title}</strong><small>{vacancies.length} coincidencias · mejor {matchResult(vacancies[0]).score}%</small></> : <><strong>Sin coincidencias nuevas</strong><small>Te avisaremos cuando aparezcan.</small></>}<span>Ver designaciones <ChevronRight className="size-4" /></span></button></section>
+    <section className="home-split"><button onClick={() => onView("agenda")}><span className="home-kicker">PRÓXIMO · AGENDA</span>{nextAgendaEntry ? <><strong>{nextAgendaEntry.title}</strong><small>{dateLabel(nextAgendaEntry.startsAt, true)}</small></> : <><strong>Agenda al día</strong><small>Creá un evento personal cuando lo necesites.</small></>}<span>Ver agenda <ChevronRight className="size-4" /></span></button><button onClick={() => onView("vacantes")}><span className="home-kicker">DESIGNACIONES PARA VOS</span>{vacancies[0] ? <><strong>{vacancies[0].title}</strong><small>{vacancies.length} coincidencias en Inicio · mejor {matchResult(vacancies[0]).score}%</small></> : <><strong>Sin coincidencias en Inicio</strong><small>Abrí «Para mí» para consultar todo el catálogo.</small></>}<span>Ver designaciones <ChevronRight className="size-4" /></span></button></section>
 
     <section className="home-section"><div className="home-section-title"><div><p>TRÁMITES</p><h2>Información para resolver gestiones</h2></div><button onClick={() => onView("informacion")}>Ver trámites <ChevronRight className="size-4" /></button></div><button className="home-profile-nudge" onClick={() => onView("informacion")}><span><strong>Sueldo, legajo, licencias y certificados</strong><small>Consultá organismos, requisitos publicados y accesos oficiales.</small></span><ChevronRight className="size-5" /></button></section>
 
-    <section className="home-section home-latest"><div className="home-section-title"><div><p>NOVEDADES RELEVANTES</p><h2>Información para tu actividad</h2></div><button onClick={() => onView("comunicados")}>Ver comunicados <ChevronRight className="size-4" /></button></div>{importantNotice && <button className="home-alert" onClick={() => onOpen(importantNotice.publication!)}><span>📣</span><span><strong>{isGeneralNotice(importantNotice.publication!) ? "INFORMACIÓN GENERAL" : "NOVEDAD PARA VOS"}</strong><small>{importantNotice.notice.title}</small></span><ChevronRight className="size-5" /></button>}{latest.length ? <div>{latest.map((item) => <CompactItem key={item.id} item={item} saved={savedMap.has(item.id)} onOpen={() => onOpen(item)} />)}</div> : !importantNotice && <p className="home-empty-line">No hay novedades relevantes nuevas.</p>}</section>
+    <section className="home-section home-latest"><div className="home-section-title"><div><p>NOVEDADES RELEVANTES</p><h2>Información para tu actividad</h2></div><button onClick={() => onView("comunicados")}>Ver comunicados <ChevronRight className="size-4" /></button></div><HomeAdminNotices />{importantNotice && <button className="home-alert" onClick={() => onOpen(importantNotice.publication!)}><span>📣</span><span><strong>{isGeneralNotice(importantNotice.publication!) ? "INFORMACIÓN GENERAL" : "NOVEDAD PARA VOS"}</strong><small>{importantNotice.notice.title}</small></span><ChevronRight className="size-5" /></button>}{latest.length ? <div>{latest.map((item) => <CompactItem key={item.id} item={item} saved={savedMap.has(item.id)} onOpen={() => onOpen(item)} />)}</div> : !importantNotice && <p className="home-empty-line">No hay novedades relevantes nuevas.</p>}</section>
+    <HomeLatestNews />
   </div>;
+}
+
+function HomeAdminNotices() {
+  const [notices, setNotices] = useState<AdminNotice[]>([]);
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/notices", { cache: "no-store" });
+        if (!response.ok) return;
+        const rows = await response.json() as AdminNotice[];
+        if (active) setNotices(Array.isArray(rows) ? rows : []);
+      } catch { /* Official publications remain visible if notices are unavailable. */ }
+    };
+    void refresh();
+    const timer = window.setInterval(() => { void refresh(); }, 60_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
+  return <div className="space-y-2">{notices.map((notice) => <article key={notice.id} className="rounded-xl border border-[var(--warning-border)] bg-[var(--warning-bg)] p-3 text-[var(--text-primary)]">
+    <strong className="block text-xs uppercase tracking-wide text-[var(--warning-text)]">{notice.priority === "urgente" ? "Aviso urgente" : notice.priority === "importante" ? "Aviso importante" : "Aviso de DocenteTuc"}</strong>
+    <h3 className="mt-1 font-black">{notice.title}</h3><p className="mt-1 whitespace-pre-wrap break-words text-sm">{notice.body}</p>
+    {notice.url && <a href={notice.url} target="_blank" rel="noreferrer" className="mt-2 inline-flex min-h-10 items-center text-sm font-bold underline">Más información ↗</a>}
+  </article>)}</div>;
 }
 
 function HomeSkeleton() { return <div className="home-skeleton" aria-label="Cargando oportunidades"><span /><span /><span /></div>; }
@@ -766,30 +950,6 @@ function ReminderDialog({ publication, advances, onAdvances, onClose, onSave }: 
   const metadata = publication ? parseTrainingMetadata(publication.metadata) : null;
   const options: [number, string][] = [[10080, "7 días antes"], [4320, "3 días antes"], [1440, "1 día antes"], [60, "1 hora antes"], [0, "Cuando abra"]];
   return <Dialog open={Boolean(publication)} onOpenChange={(open) => !open && onClose()}><DialogContent><DialogHeader><DialogTitle className="flex items-center gap-2 text-[#062b55]"><Bell className="size-5 text-[#0878be]" />Avisarme cuando abra</DialogTitle><DialogDescription>{publication?.title}</DialogDescription></DialogHeader>{metadata?.registrationOpensAt && <div className="rounded-2xl bg-[#edf6fc] p-4 text-sm text-[#335f7d]"><strong className="block">Apertura: {dateLabel(metadata.registrationOpensAt, Boolean(metadata.registrationHasTime))}</strong>{metadata.dateStatus === "tentative" ? <span>Fecha tentativa según {metadata.source}.</span> : !metadata.registrationHasTime && <span>La fuente oficial informa la fecha pero no el horario exacto.</span>}</div>}<fieldset className="space-y-2"><Label asChild><legend>Podés elegir más de un aviso</legend></Label>{options.map(([minutes, label]) => <button type="button" key={minutes} aria-pressed={advances.includes(minutes)} onClick={() => onAdvances(advances.includes(minutes) ? advances.filter((value) => value !== minutes) : [...advances, minutes])} className={`flex min-h-11 w-full items-center justify-between rounded-xl border px-4 text-left font-semibold ${advances.includes(minutes) ? "border-[#0878be] bg-[#edf6fc] text-[#075c91]" : "border-[var(--border)] bg-[var(--surface-primary)] text-[var(--text-secondary)]"}`}><span>{label}</span><span>{advances.includes(minutes) ? "✓" : ""}</span></button>)}</fieldset><DialogFooter><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={onSave} disabled={!advances.length} className="bg-[#0878be] text-white"><Bell className="size-4" />Activar {advances.length || ""} {advances.length === 1 ? "aviso" : "avisos"}</Button></DialogFooter></DialogContent></Dialog>;
-}
-
-function ManualEventDialog({ event, initialDate, onClose, onSaved }: { event: ManualEvent | null; initialDate: string; onClose: () => void; onSaved: () => Promise<void> }) {
-  const starts = event?.starts_at ? new Date(event.starts_at) : new Date();
-  const existingMinutes = event?.reminder_minutes ?? (event?.reminder_at ? Math.round((starts.getTime() - new Date(event.reminder_at).getTime()) / 60_000) : null);
-  const [title, setTitle] = useState(event?.title || ""), [date, setDate] = useState(!event?.id && initialDate ? initialDate : event?.starts_at ? dateTimeInput(event.starts_at) : dateTimeInput(starts.toISOString())), [notes, setNotes] = useState(event?.notes || ""), [category, setCategory] = useState(event?.category || "Personal"), [allDay, setAllDay] = useState(Boolean(event?.all_day)), [recurrence, setRecurrence] = useState<"none" | "daily" | "weekly" | "monthly">(event?.recurrence || "none"), [reminder, setReminder] = useState(existingMinutes == null ? "none" : [0, 10, 30, 60, 1440].includes(existingMinutes) ? String(existingMinutes) : "custom"), [customMinutes, setCustomMinutes] = useState(existingMinutes != null && ![0, 10, 30, 60, 1440].includes(existingMinutes) ? String(existingMinutes) : "15"), [busy, setBusy] = useState(false);
-  const open = true;
-  const save = async () => {
-    if (!title.trim() || !date) return;
-    const starts = allDay ? new Date(`${date.slice(0, 10)}T00:00:00`) : new Date(date);
-    const reminderMinutes = reminder === "none" ? null : reminder === "custom" ? Math.max(1, Number(customMinutes) || 1) : Number(reminder);
-    const reminderAt = reminderMinutes == null ? undefined : new Date(starts.getTime() - reminderMinutes * 60_000).toISOString();
-    setBusy(true);
-    const response = await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "save_event", id: event?.id, title, notes, category, startsAt: starts.toISOString(), allDay, recurrence, reminderMinutes, reminderAt }) });
-    setBusy(false); if (!response.ok) { toast.error("No se pudo guardar el evento"); return; }
-    toast.success("Evento guardado en Agenda"); await onSaved();
-  };
-  const remove = async () => {
-    if (!event?.id || !confirm("¿Eliminar este evento de la Agenda?")) return;
-    const response = await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "delete_event", id: event.id }) });
-    if (!response.ok) { toast.error("No se pudo eliminar el evento"); return; }
-    toast.success("Evento eliminado"); await onSaved();
-  };
-  return <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent className="max-h-[90dvh] overflow-y-auto"><DialogHeader><DialogTitle className="text-[var(--text-primary)]">{event ? "Editar evento" : "+ Evento"}</DialogTitle><DialogDescription>Tu calendario personal: el recordatorio usa las preferencias push que ya autorizaste en este dispositivo.</DialogDescription></DialogHeader><div className="space-y-3"><label className="space-y-1 text-sm font-semibold">Título<Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ej. Reunión de padres" className="mt-1 h-11 rounded-xl" /></label><label className="flex items-center justify-between rounded-xl border border-[var(--border)] p-3 text-sm font-semibold">Todo el día <Switch checked={allDay} onCheckedChange={setAllDay} /></label><label className="space-y-1 text-sm font-semibold">{allDay ? "Fecha" : "Fecha y hora"}<Input type={allDay ? "date" : "datetime-local"} value={allDay ? date.slice(0, 10) : date} onChange={(event) => setDate(event.target.value)} className="mt-1 h-11 rounded-xl" /></label><label className="space-y-1 text-sm font-semibold">Categoría<Select value={category} onValueChange={(value) => setCategory(value || "Personal")}><SelectTrigger className="mt-1 h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Personal">Personal</SelectItem><SelectItem value="Escuela">Escuela</SelectItem><SelectItem value="Designación">Designación</SelectItem><SelectItem value="Capacitación">Capacitación</SelectItem><SelectItem value="Trámite">Trámite</SelectItem><SelectItem value="Recordatorio">Recordatorio</SelectItem></SelectContent></Select></label><label className="space-y-1 text-sm font-semibold">Repetir<Select value={recurrence} onValueChange={(value) => setRecurrence((value || "none") as typeof recurrence)}><SelectTrigger className="mt-1 h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">No se repite</SelectItem><SelectItem value="daily">Todos los días</SelectItem><SelectItem value="weekly">Todas las semanas</SelectItem><SelectItem value="monthly">Todos los meses</SelectItem></SelectContent></Select></label><label className="space-y-1 text-sm font-semibold">Recordarme<Select value={reminder} onValueChange={(value) => setReminder(value || "none")}><SelectTrigger className="mt-1 h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Sin recordatorio</SelectItem><SelectItem value="0">A la hora del evento</SelectItem><SelectItem value="10">10 minutos antes</SelectItem><SelectItem value="30">30 minutos antes</SelectItem><SelectItem value="60">1 hora antes</SelectItem><SelectItem value="1440">1 día antes</SelectItem><SelectItem value="custom">Personalizado</SelectItem></SelectContent></Select>{reminder === "custom" && <Input type="number" min="1" max="43200" value={customMinutes} onChange={(event) => setCustomMinutes(event.target.value)} aria-label="Minutos antes" className="mt-2 h-11 rounded-xl" />}</label><label className="space-y-1 text-sm font-semibold">Descripción / notas<Textarea value={notes} onChange={(event) => setNotes(event.target.value)} className="mt-1 min-h-20 rounded-xl" /></label></div><DialogFooter className="flex-wrap">{event && <Button type="button" variant="outline" onClick={() => void remove()}>Eliminar</Button>}<Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={() => void save()} disabled={busy || !title.trim() || !date} className="bg-[#0878be] text-white">Guardar</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function AgendaDialog({ publication, at, notes, reminder, onAt, onNotes, onReminder, onClose, onSave }: { publication: Publication | null; at: string; notes: string; reminder: string; onAt: (value: string) => void; onNotes: (value: string) => void; onReminder: (value: string) => void; onClose: () => void; onSave: () => void }) {
@@ -814,7 +974,7 @@ function DesignationForm({ publication, existing, onClose, onSaved }: { publicat
 
 function DesignationFormContent({ publication, existing, onClose, onSaved }: { publication: Publication; existing?: DesignationTracking; onClose: () => void; onSaved: () => void }) {
   const facts = designationFacts(publication), [busy, setBusy] = useState(false), [reminderMode, setReminderMode] = useState(existing?.reminder_at ? "custom" : "none");
-  const [form, setForm] = useState({ status: existing?.status || "INSCRIPTO", role: existing?.role || facts.role, subject: existing?.subject || publication.area, school: existing?.school || facts.school, address: existing?.address || "", locality: existing?.locality || facts.locality, appliedAt: dateTimeInput(existing?.applied_at || new Date().toISOString()), appointmentAt: dateTimeInput(existing?.appointment_at), shift: existing?.shift || facts.shift, board: existing?.board || facts.board, documentation: existing?.documentation || "", orderNumber: existing?.order_number || "", notes: existing?.notes || "", reminderAt: dateTimeInput(existing?.reminder_at) });
+  const [form, setForm] = useState({ status: existing?.status || "GUARDADO", role: existing?.role || facts.role, subject: existing?.subject || publication.area, school: existing?.school || facts.school, address: existing?.address || "", locality: existing?.locality || facts.locality, appliedAt: dateTimeInput(existing?.applied_at), appointmentAt: dateTimeInput(existing?.appointment_at), shift: existing?.shift || facts.shift, board: existing?.board || facts.board, documentation: existing?.documentation || "", orderNumber: existing?.order_number || "", notes: existing?.notes || "", reminderAt: dateTimeInput(existing?.reminder_at) });
   const field = (key: keyof typeof form, label: string, type = "text") => <label className="space-y-1 text-sm font-semibold text-[var(--text-secondary)]">{label}<Input type={type} value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} className="h-11 bg-white" /></label>;
   const save = async () => {
     setBusy(true);
@@ -826,7 +986,7 @@ function DesignationFormContent({ publication, existing, onClose, onSaved }: { p
       toast.success("Seguimiento de designación guardado"); onSaved();
     } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo guardar"); } finally { setBusy(false); }
   };
-  return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>Registrar designación</DialogTitle><DialogDescription>Completá solamente los datos que te sirvan. Podés modificarlos después.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><label className="space-y-1 text-sm font-semibold text-[var(--text-secondary)]">Estado<Select value={form.status} onValueChange={(status) => setForm({ ...form, status: status || "INSCRIPTO" })}><SelectTrigger className="h-11 bg-white"><SelectValue /></SelectTrigger><SelectContent>{DESIGNATION_STATUSES.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select></label>{field("role", "Cargo")}{field("subject", "Materia / área")}{field("school", "Establecimiento")}{field("address", "Dirección")}{field("locality", "Localidad")}{field("appliedAt", "Inscripción realizada", "datetime-local")}{field("appointmentAt", "Fecha de designación", "datetime-local")}{field("shift", "Turno")}{field("board", "Junta")}{field("documentation", "Documentación requerida")}{field("orderNumber", "Número / orden / posición")}<label className="space-y-1 text-sm font-semibold text-[var(--text-secondary)] sm:col-span-2">Observaciones<Textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} className="min-h-24 bg-white" /></label><label className="space-y-1 text-sm font-semibold text-[var(--text-secondary)] sm:col-span-2">Recordarme<Select value={reminderMode} onValueChange={(value) => setReminderMode(value || "none")}><SelectTrigger className="h-11 bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Sin recordatorio</SelectItem>{form.appointmentAt && <><SelectItem value="one_day">1 día antes</SelectItem><SelectItem value="two_hours">2 horas antes</SelectItem></>}<SelectItem value="custom">Hora personalizada</SelectItem></SelectContent></Select>{reminderMode === "custom" && <Input type="datetime-local" value={form.reminderAt} onChange={(event) => setForm({ ...form, reminderAt: event.target.value })} className="mt-2 h-11 bg-white" />}</label></div><DialogFooter><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={() => void save()} disabled={busy || (reminderMode === "custom" && !form.reminderAt)} className="bg-[#0878be] text-white">Guardar seguimiento</Button></DialogFooter></DialogContent></Dialog>;
+  return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>Registrar designación</DialogTitle><DialogDescription>Completá solamente los datos que te sirvan. Podés modificarlos después.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><label className="space-y-1 text-sm font-semibold text-[var(--text-secondary)]">Estado<Select value={form.status} onValueChange={(status) => setForm({ ...form, status: status || "GUARDADO" })}><SelectTrigger className="h-11 bg-white"><SelectValue /></SelectTrigger><SelectContent>{DESIGNATION_STATUSES.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select></label>{field("role", "Cargo")}{field("subject", "Materia / área")}{field("school", "Establecimiento")}{field("address", "Dirección")}{field("locality", "Localidad")}{field("appliedAt", "Inscripción realizada", "datetime-local")}{field("appointmentAt", "Fecha de designación", "datetime-local")}{field("shift", "Turno")}{field("board", "Junta")}{field("documentation", "Documentación requerida")}{field("orderNumber", "Número / orden / posición")}<label className="space-y-1 text-sm font-semibold text-[var(--text-secondary)] sm:col-span-2">Observaciones<Textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} className="min-h-24 bg-white" /></label><label className="space-y-1 text-sm font-semibold text-[var(--text-secondary)] sm:col-span-2">Recordarme<Select value={reminderMode} onValueChange={(value) => setReminderMode(value || "none")}><SelectTrigger className="h-11 bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Sin recordatorio</SelectItem>{form.appointmentAt && <><SelectItem value="one_day">1 día antes</SelectItem><SelectItem value="two_hours">2 horas antes</SelectItem></>}<SelectItem value="custom">Hora personalizada</SelectItem></SelectContent></Select>{reminderMode === "custom" && <Input type="datetime-local" value={form.reminderAt} onChange={(event) => setForm({ ...form, reminderAt: event.target.value })} className="mt-2 h-11 bg-white" />}</label></div><DialogFooter><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={() => void save()} disabled={busy || (reminderMode === "custom" && !form.reminderAt)} className="bg-[#0878be] text-white">Guardar seguimiento</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function VisualSectionBanner({ kind, title, description, action }: { kind: "vacantes" | "capacitaciones" | "agenda" | "informacion" | "padrones" | "novedades"; title: string; description: string; action?: ReactNode }) {
@@ -842,22 +1002,22 @@ function PageHeader({ view, count, filter = "todas", query = "", syncing = false
   const isComunicados = filter === "comunicados" || (filter !== "nuevas" && /comunicad/.test(normalize(query)));
   const isNewsTab = view === "junta" && (isNovedades || isComunicados);
   const title = isNewsTab ? (isNovedades ? "Novedades" : "Comunicados") : defaultTitle;
-  const action = view === "vacantes" || view === "capacitaciones" ? undefined : <div className="flex flex-wrap gap-2">{onAskAI && <Button onClick={onAskAI} className="rounded-xl bg-[#0878be] text-[var(--text-on-accent)]"><Sparkles className="size-4" />Preguntar a IA</Button>}{onSync && <Button onClick={onSync} disabled={syncing} variant="outline" className="dt-refresh-button rounded-xl"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />Actualizar</Button>}</div>;
+  const action = view === "vacantes" || view === "capacitaciones" ? undefined : <div className="flex flex-wrap gap-2">{onAskAI && <Button onClick={onAskAI} className="rounded-xl bg-[#0878be] text-[var(--text-on-accent)]"><Sparkles className="size-4" />Preguntar a IA</Button>}{onSync && <Button onClick={onSync} disabled={syncing} variant="outline" className="dt-refresh-button rounded-xl"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />Recargar</Button>}</div>;
   const kind = view === "vacantes" || view === "capacitaciones" ? view : view === "junta" ? (isNewsTab ? "novedades" : "padrones") : "informacion";
-  return <VisualSectionBanner kind={kind} title={title} description={view === "perfil" ? subtitle : `${subtitle} · ${count} resultados`} action={action} />;
+  return <VisualSectionBanner kind={kind} title={title} description={view === "perfil" ? subtitle : `${subtitle} · ${count} ${view === "vacantes" || view === "capacitaciones" ? filter === "para-mi" ? "en esta página" : "en esta selección" : "resultados"}`} action={action} />;
 }
 
 function Filters({ filter, setFilter: onFilterChange, junta, setJunta, character, setCharacter, query, setQuery, kind, date, setDate, source, setSource: onSourceChange, compatibility, setCompatibility, sort, setSort, hasTrainingTerritoryData, circuit, setCircuit }: { filter: string; setFilter: (value: string) => void; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; character: string; setCharacter: (value: string) => void; query: string; setQuery: (value: string) => void; kind: View; date: string; setDate: (value: string) => void; source: string; setSource: (value: string) => void; compatibility: string; setCompatibility: (value: string) => void; sort: string; setSort: (value: string) => void; hasTrainingTerritoryData: boolean; circuit: string; setCircuit: (value: string) => void }) {
   const setFilter = (value: string) => onFilterChange(value);
   const setSource = (value: string) => { onSourceChange(value); if (kind === "capacitaciones") setFilter("todas"); };
-  const activeFilterCount = kind === "capacitaciones" ? Number(source !== "todas") + Number(filter !== "todas") + Number(character !== "todos") + Number(date !== "") + Number(compatibility !== "todas") + Number(circuit !== "todos") : Number(junta !== "todas") + Number(character !== "todos") + Number(kind === "vacantes" && circuit !== "todos") + Number(query.trim() !== "");
+  const activeFilterCount = kind === "capacitaciones" ? Number(source !== "todas") + Number(filter !== "todas") + Number(character !== "todos") + Number(date !== "") + Number(compatibility !== "todas") + Number(circuit !== "todos") : Number(junta !== "todas") + Number(character !== "todos") + Number(query.trim() !== "");
   const clearTrainingFilters = () => { setSource("todas"); setCharacter("todos"); setDate(""); setCompatibility("todas"); setCircuit("todos"); setFilter("todas"); };
-  const clearDesignationFilters = () => { setJunta("todas"); setCharacter("todos"); setCircuit("todos"); setQuery(""); setFilter("para-mi"); };
+  const clearDesignationFilters = () => { setJunta("todas"); setCharacter("todos"); setQuery(""); setFilter("para-mi"); };
   const tabs = kind === "capacitaciones" ? [["todas", "Todas"], ["para-mi", "⭐ Para mí"], ["proximamente", "Próximas"], ["abiertas", "Abiertas"]] as const : kind === "junta" ? [["para-mi", "Para mí"], ["todas", "Todo"], ["llamados", "Llamados abiertos"], ["padrones", "Padrones"], ["comunicados", "Comunicados"], ["nuevas", "Novedades"]] as const : kind === "vacantes" ? [["para-mi", "⭐ Para mí"], ["todas", "Todas"], ["finalizadas", "Finalizadas"]] as const : [["para-mi", "Para mí"], ["todas", "Todas"]] as const;
   return <section className="mb-6 rounded-2xl border border-[#c8e1f1] bg-white p-3 shadow-sm">
     {kind === "capacitaciones" && <><p className="mb-1 text-xs font-black uppercase tracking-wide text-[#52708c]">Plataformas</p><div className="flex flex-wrap gap-2 pb-1">{[["platform:fdci", "FDCI"], ["platform:infod", "INFoD"], ["platform:cenet", "CeNET"], ["todas", "Ver todas"]].map(([id, label]) => <FilterChip key={id} onClick={() => setSource(id)} selected={source === id} className="min-h-10 px-4 text-sm font-bold">{label}</FilterChip>)}</div>{source !== "todas" && <p className="mt-1 text-xs font-semibold text-[#315d7a]">{source === "platform:fdci" ? "FDCI" : source === "platform:infod" ? "INFoD / AulaS-TIC" : "CeNET / INET"} <button onClick={() => setSource("todas")} className="ml-1 underline">× Quitar filtro</button></p>}</>}
     <div className="mt-2 flex gap-2 overflow-x-auto border-t border-[#e3eff7] pt-2">{tabs.map(([id, label]) => <FilterChip key={id} onClick={() => setFilter(id)} selected={filter === id} className="min-h-9 shrink-0 px-3 text-xs font-bold">{label}</FilterChip>)}</div>
-    {kind === "vacantes" && <div className="mt-2 grid grid-cols-1 gap-2 border-t border-[#e3eff7] pt-2 min-[460px]:grid-cols-2"><Select value={junta} onValueChange={(value) => setJunta((value || "todas") as typeof junta)}><SelectTrigger className="h-10 min-w-0 rounded-xl border-[#c8e1f1]"><SelectValue placeholder="Junta" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select><Select value={character} onValueChange={(value) => setCharacter(value || "todos")}><SelectTrigger className="h-10 min-w-0 rounded-xl border-[#c8e1f1]"><SelectValue placeholder="Carácter" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos los caracteres</SelectItem>{OFFICIAL_CHARACTERS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select><Select value={circuit} onValueChange={(value) => setCircuit(value || "todos")}><SelectTrigger className="h-10 min-w-0 rounded-xl border-[#c8e1f1] min-[460px]:col-span-2"><SelectValue placeholder="Circuito territorial" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos los circuitos</SelectItem>{TUCUMAN_CIRCUITS.map((item) => <SelectItem key={item.id} value={item.id}>Circuito {item.id}</SelectItem>)}</SelectContent></Select><div className="relative min-w-0 min-[460px]:col-span-2"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#52708c]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Buscar cargo, materia o establecimiento" placeholder="Buscar cargo, materia o establecimiento..." className="h-10 rounded-xl border-[#c8e1f1] bg-white pl-10" />{query && <button aria-label="Limpiar búsqueda de designaciones" onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div>{activeFilterCount > 0 && <Button type="button" variant="outline" onClick={clearDesignationFilters} className="min-h-9 rounded-xl min-[460px]:col-span-2">Quitar filtros</Button>}</div>}
+    {kind === "vacantes" && <div className="mt-2 grid grid-cols-1 gap-2 border-t border-[#e3eff7] pt-2 min-[460px]:grid-cols-2"><Select value={junta} onValueChange={(value) => setJunta((value || "todas") as typeof junta)}><SelectTrigger className="h-10 min-w-0 rounded-xl border-[#c8e1f1]"><SelectValue placeholder="Junta" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select><Select value={character} onValueChange={(value) => setCharacter(value || "todos")}><SelectTrigger className="h-10 min-w-0 rounded-xl border-[#c8e1f1]"><SelectValue placeholder="Carácter" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos los caracteres</SelectItem>{OFFICIAL_CHARACTERS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select><div className="relative min-w-0 min-[460px]:col-span-2"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#52708c]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Buscar cargo, materia o establecimiento" placeholder="Buscar cargo, materia o establecimiento..." className="h-10 rounded-xl border-[#c8e1f1] bg-white pl-10" />{query && <button aria-label="Limpiar búsqueda de designaciones" onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div>{activeFilterCount > 0 && <Button type="button" variant="outline" onClick={clearDesignationFilters} className="min-h-9 rounded-xl min-[460px]:col-span-2">Quitar filtros</Button>}</div>}
     {kind === "junta" && <details className="mt-2 border-t border-[#e3eff7] pt-2"><summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 font-bold text-[#17466b]"><SlidersHorizontal className="size-4 text-[#0878be]" />Filtrar por Junta<span className="ml-auto text-xs font-medium text-[#52708c]">{junta === "todas" ? "Opcional" : "1 activo"}</span></summary><Select value={junta} onValueChange={(value) => setJunta((value || "todas") as typeof junta)}><SelectTrigger className="mt-2 h-10 rounded-xl border-[#c8e1f1]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></details>}
     {kind === "capacitaciones" && <details className="mt-2 border-t border-[#e3eff7] pt-2"><summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 font-bold text-[#17466b]"><SlidersHorizontal className="size-4 text-[#0878be]" />Filtros<span className="ml-auto text-xs font-medium text-[#52708c]">{activeFilterCount ? `${activeFilterCount} activos` : "Opcional"}</span></summary><div className="flex flex-wrap gap-2 pt-2">{activeFilterCount > 0 && <Button type="button" variant="outline" onClick={clearTrainingFilters} className="min-h-9 rounded-xl">Quitar filtros</Button>}
 
@@ -881,26 +1041,32 @@ function DesignationEmptyState({ profileRequired, sourceUnavailable, sourceVerif
   </div>;
 }
 
-function PublicationList({ items, loading, savedMap, reminderMap, matchResult, onOpen, onSave, onRemind, emptyContext, onClearFilters }: { items: Publication[]; loading: boolean; savedMap: Map<string, Saved>; reminderMap: Map<string, TrainingReminder>; matchResult: (item: Publication) => MatchResult; onOpen: (item: Publication) => void; onSave: (item: Publication, enabled: boolean) => void; onRemind: (item: Publication) => void; emptyContext: string; onClearFilters: () => void }) {
+function PublicationList({ items, sync, loading, savedMap, reminderMap, matchResult, onOpen, onSave, onRemind, emptyContext, onClearFilters }: { items: Publication[]; sync: SyncStatus[]; loading: boolean; savedMap: Map<string, Saved>; reminderMap: Map<string, TrainingReminder>; matchResult: (item: Publication) => MatchResult; onOpen: (item: Publication) => void; onSave: (item: Publication, enabled: boolean) => void; onRemind: (item: Publication) => void; emptyContext: string; onClearFilters: () => void }) {
   if (loading) return <LoadingCards />; if (!items.length) return <div className="grid min-h-52 place-items-center rounded-3xl border border-dashed border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><h2 className="font-bold text-[var(--text-primary)]">{emptyContext === "las plataformas seleccionadas" ? "No encontramos resultados" : `No encontramos resultados de ${emptyContext}`}</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">Puede que los filtros actuales estén limitando la búsqueda. La información menos compatible sigue disponible en Ver todas.</p><Button variant="outline" onClick={onClearFilters} className="mt-4 min-h-10 rounded-xl">Quitar filtros</Button></div></div>;
   return <div className="grid gap-4 xl:grid-cols-2">{items.map((item) => {
     const saved = savedMap.has(item.id), compatibility = matchResult(item), training = item.kind === "capacitacion", metadata = training ? parseTrainingMetadata(item.metadata) : null, reminded = metadata ? reminderMap.has(trainingReminderKey(metadata)) : false;
-    const lifecycle = publicationLifecycleForUI(item), trainingState = training ? enrollmentForUI(item) : null, statusText = training ? enrollmentLabel(item) : item.kind === "vacante" ? lifecycleLabel(lifecycle) : item.status, simeCode = item.kind === "vacante" ? simeCodeForPublication(item) : "";
-    const statusTone = training
+    const lifecycle = publicationLifecycleForUI(item), trainingState = training ? enrollmentForUI(item) : null, sourceCurrent = sourceHealth(healthForPublication(item, sync)) === "current";
+    const currentClaim = training ? trainingState === "ABIERTA" || trainingState === "ABRE_HOY" || trainingState === "PROXIMAMENTE" : lifecycle === "ACTIVE" || lifecycle === "UPCOMING";
+    const unverified = !sourceCurrent && currentClaim;
+    const statusText = unverified ? "Vigencia por verificar" : training ? enrollmentLabel(item) : item.kind === "vacante" ? lifecycleLabel(lifecycle) : item.status, simeCode = item.kind === "vacante" ? simeCodeForPublication(item) : "";
+    const urgentOpening = training && !unverified && isUrgentOpening(metadata);
+    const closingSoon = training && !unverified && isClosingSoon(metadata);
+    const statusTone = unverified ? "neutral" : training
       ? trainingState === "ABIERTA" ? "success" : trainingState === "ABRE_HOY" || trainingState === "PROXIMAMENTE" ? "warning" : "neutral"
       : lifecycle === "ACTIVE" ? "success" : lifecycle === "UPCOMING" ? "info" : "warning";
     return <Card as="article" key={item.id} className={`dt-publication-card flex flex-col rounded-3xl p-4 shadow-[0_8px_30px_rgba(20,64,52,.04)] ${item.kind === "vacante" ? "min-h-[190px]" : "min-h-[230px]"}`}>
-      <div className="mb-3 flex items-start justify-between gap-3"><div className="flex flex-wrap gap-2"><StatusBadge>{publicationLabel(item)}</StatusBadge>{training && <StatusBadge tone="info">{item.source}</StatusBadge>}<StatusBadge tone={statusTone}>{trainingState === "ABIERTA" ? "🟢 " : ""}{statusText}</StatusBadge><MatchBadge result={compatibility} /></div>{!training && <button onClick={() => onSave(item, !saved)} aria-label={saved ? "Quitar de guardados" : "Guardar publicación"} className={`grid size-10 shrink-0 place-items-center rounded-xl ${saved ? "bg-[#fff3dd] text-[#a46c20]" : "bg-[#f1f5f2] text-[#6d837a]"}`}><Star className={`size-5 ${saved ? "fill-current" : ""}`} /></button>}</div>
-      {metadata?.registrationOpensAt && (trainingState === "PROXIMAMENTE" || trainingState === "ABRE_HOY") && <div className="mb-4 rounded-2xl bg-[#fff4d6] p-4 text-[#6f4c00]"><strong className="block text-lg">{metadata.dateStatus === "tentative" ? "Fecha prevista · confirmar en fuente" : openingCountdown(metadata.registrationOpensAt, new Date(), metadata.registrationHasTime)}</strong><span className="text-sm">Abre: {dateLabel(metadata.registrationOpensAt, Boolean(metadata.registrationHasTime))}{metadata.registrationHasTime ? " hs" : ""}</span></div>}
-      <button onClick={() => onOpen(item)} className="text-left"><h2 className="line-clamp-2 text-lg font-bold leading-snug hover:underline">{item.title}</h2><p className="mt-2 line-clamp-2 text-sm leading-relaxed text-[#657b73]">{item.summary || `Información publicada por ${item.source}.`}</p></button>
+      <div className="mb-3 flex items-start justify-between gap-3"><div className="flex flex-wrap gap-2"><StatusBadge>{publicationLabel(item)}</StatusBadge>{training && <StatusBadge tone="info">{item.source}</StatusBadge>}<StatusBadge tone={statusTone}>{!unverified && urgentOpening ? "🔥 " : !unverified && trainingState === "ABIERTA" ? "🟢 " : ""}{statusText}{!unverified && closingSoon && trainingState === "ABIERTA" ? " ⏰" : ""}</StatusBadge><MatchBadge result={compatibility} /></div>{!training && <button onClick={() => onSave(item, !saved)} aria-label={saved ? "Quitar de guardados" : "Guardar publicación"} className={`grid size-10 shrink-0 place-items-center rounded-xl ${saved ? "bg-[#fff3dd] text-[#a46c20]" : "bg-[#f1f5f2] text-[#6d837a]"}`}><Star className={`size-5 ${saved ? "fill-current" : ""}`} /></button>}</div>
+      {metadata?.registrationOpensAt && (trainingState === "PROXIMAMENTE" || trainingState === "ABRE_HOY") && <div className="mb-4 rounded-2xl bg-[#fff4d6] p-4 text-[#6f4c00]"><strong className="block text-lg">{unverified || metadata.dateStatus === "tentative" ? "Fecha prevista · confirmar en fuente" : openingCountdown(metadata.registrationOpensAt, new Date(), metadata.registrationHasTime)}</strong><span className="text-sm">Abre: {dateLabel(metadata.registrationOpensAt, Boolean(metadata.registrationHasTime))}{metadata.registrationHasTime ? " hs" : ""}</span></div>}
+      <button onClick={() => onOpen(item)} className="text-left"><h2 className="line-clamp-2 text-lg font-bold leading-snug hover:underline">{item.title}</h2><p className="mt-2 line-clamp-2 text-sm leading-relaxed text-[#657b73]">{summaryText(item.summary) || `Información publicada por ${item.source}.`}</p></button>
       {simeCode && <p className="mt-2 text-xs font-bold text-[#315d7a]">ID de trámite: {simeCode}</p>}
       <OfficialPublicationSummary item={item} />
-      {training ? <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-[#61766f]">{item.character && <span><strong>Modalidad:</strong> {item.character}</span>}{item.starts_at && <span><strong>Inicio:</strong> {dateLabel(item.starts_at)}</span>}{metadata?.registrationClosesAt && <span><strong>Inscripción hasta:</strong> {dateLabel(metadata.registrationClosesAt, true)}</span>}{item.location && <span className="col-span-2"><strong>Lugar:</strong> {item.location}</span>}</div> : <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#61766f]">{item.character && <span>{item.character}</span>}{item.junta && <span>{item.junta}</span>}{item.shift && <span>Turno {item.shift}</span>}{item.ends_at && <span className="ml-auto flex items-center gap-1 font-semibold text-[#9a641f]"><Clock3 className="size-4" />{fromNow(item.ends_at)}</span>}</div>}
+      {training ? <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-[#61766f]">{item.character && <span><strong>Modalidad:</strong> {item.character}</span>}{item.starts_at && <span><strong>Inicio:</strong> {dateLabel(item.starts_at)}</span>}{metadata?.registrationClosesAt && <span><strong>Inscripción hasta:</strong> {dateLabel(metadata.registrationClosesAt, true)}</span>}{item.location && <span className="col-span-2"><strong>Lugar:</strong> {item.location}</span>}</div> : <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#61766f]">{item.character && <span>{item.character}</span>}{item.junta && <span>{item.junta}</span>}{item.shift && <span>Turno {item.shift}</span>}{item.ends_at && <span className="ml-auto flex items-center gap-1 font-semibold text-[#9a641f]"><Clock3 className="size-4" />{unverified ? `Cierre informado: ${dateLabel(item.ends_at, true)}` : fromNow(item.ends_at)}</span>}</div>}
+      {isFdciCatalogOnly(item) && <p className="mt-2 text-sm font-bold text-amber-800 dark:text-amber-200">FICTICIA — solo consulta, sin acciones privadas</p>}
       <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-[#e7eee9] pt-3">
-        {training && metadata?.registrationOpensAt && (trainingState === "PROXIMAMENTE" || (trainingState === "ABRE_HOY" && metadata.registrationHasTime)) && <button onClick={() => onRemind(item)} className="flex min-h-10 items-center gap-2 rounded-xl bg-[#fff4d6] px-3 text-sm font-bold text-[#7b5500]"><Bell className="size-4" />{reminded ? "Aviso activo" : "Recordarme"}</button>}
-        {training && <button onClick={() => onSave(item, !saved)} className={`flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold ${saved ? "bg-[#fff3dd] text-[#8b5b00]" : "bg-[#edf6fc] text-[#0878be]"}`}><Star className={`size-4 ${saved ? "fill-current" : ""}`} />{saved ? "Guardada" : "Guardar"}</button>}
+        {training && !isFdciCatalogOnly(item) && sourceCurrent && canScheduleTrainingReminder(metadata, item.status, item.normalized_status) && <button onClick={() => onRemind(item)} className="flex min-h-10 items-center gap-2 rounded-xl bg-[#fff4d6] px-3 text-sm font-bold text-[#7b5500]"><Bell className="size-4" />{reminded ? "Aviso activo" : "Recordarme"}</button>}
+        {training && !isFdciCatalogOnly(item) && <button onClick={() => onSave(item, !saved)} className={`flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold ${saved ? "bg-[#fff3dd] text-[#8b5b00]" : "bg-[#edf6fc] text-[#0878be]"}`}><Star className={`size-4 ${saved ? "fill-current" : ""}`} />{saved ? "Guardada" : "Guardar"}</button>}
         <button onClick={() => onOpen(item)} className="flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold text-[#1f5f4e] hover:bg-[#edf4ef]">Ver <ChevronRight className="size-4" /></button>
-        {training && trainingState === "ABIERTA" && metadata?.commissionId && <a href={item.official_url} target="_blank" rel="noreferrer" className="flex min-h-10 items-center gap-2 rounded-xl bg-[#0878be] px-4 text-sm font-black text-white">INSCRIBIRME <ExternalLink className="size-4" /></a>}
+        {training && !isFdciCatalogOnly(item) && trainingState === "ABIERTA" && metadata?.commissionId && <a href={item.official_url} target="_blank" rel="noreferrer" className="flex min-h-10 items-center gap-2 rounded-xl bg-[#0878be] px-4 text-sm font-black text-white">{unverified ? "Verificar en fuente" : "INSCRIBIRME"} <ExternalLink className="size-4" /></a>}
       </div>
     </Card>;
   })}</div>;
@@ -910,39 +1076,10 @@ function MatchBadge({ result }: { result: MatchResult }) { return <Compatibility
 
 function CompactItem({ item, saved, onOpen }: { item: Publication; saved: boolean; onOpen: () => void }) { return <button onClick={onOpen} className="flex w-full items-center gap-4 py-4 text-left"><span className={`grid size-11 shrink-0 place-items-center rounded-2xl ${item.kind === "vacante" ? "bg-[#e2f4ff] text-[#0878be]" : item.kind === "capacitacion" ? "bg-[#dff7ff] text-[#0878be]" : "bg-[#e8efff] text-[#1b4e96]"}`}>{item.kind === "vacante" ? <BriefcaseBusiness className="size-5" /> : item.kind === "capacitacion" ? <GraduationCap className="size-5" /> : <BookOpen className="size-5" />}</span><span className="min-w-0 flex-1"><span className="line-clamp-1 font-bold text-[#062b55]">{item.title}</span><span className="mt-1 block text-sm text-[#52708c]">{item.ends_at ? fromNow(item.ends_at) : item.category} · {item.source}</span></span>{saved && <Star className="size-4 fill-[#f4b942] text-[#c88608]" />}<ChevronRight className="size-5 text-[#8aa9bf]" /></button>; }
 
-function Agenda({ publications, savedMap, manualEvents, onOpen, onNewEvent, onEditEvent }: { publications: Publication[]; savedMap: Map<string, Saved>; manualEvents: ManualEvent[]; onOpen: (item: Publication) => void; onNewEvent: (date?: string) => void; onEditEvent: (event: ManualEvent) => void }) {
-  const [mode, setMode] = useState<"month" | "week" | "agenda">("month"), [month, setMonth] = useState(() => { const date = new Date(); return new Date(date.getFullYear(), date.getMonth(), 1); }), [category, setCategory] = useState("todas"), [weekOffset, setWeekOffset] = useState(0);
-  const now = new Date();
-  const agendaDate = (item: Publication) => savedMap.get(item.id)?.agenda_at || officialEventDate(item) || parseTrainingMetadata(item.metadata)?.registrationOpensAt || item.ends_at || item.starts_at;
-  const publicationEvents = publications.filter((item) => !officialMetadata(item)?.canonicalId && Boolean(savedMap.get(item.id)?.in_agenda) && safeDate(agendaDate(item))).map((item) => ({ id: `publication:${item.id}`, title: item.title, category: item.kind === "vacante" ? "Designación" : item.category, starts_at: agendaDate(item)!, manual: false as const, item }));
-  const events = [...manualEvents.map((item) => ({ ...item, manual: true as const })), ...publicationEvents].filter((item) => category === "todas" || item.category === category).sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
-  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate(), firstDay = (new Date(month.getFullYear(), month.getMonth(), 1).getDay() + 6) % 7, calendarCells = Array.from({ length: Math.ceil((firstDay + daysInMonth) / 7) * 7 }, (_, index) => { const day = index - firstDay + 1; return day > 0 && day <= daysInMonth ? new Date(month.getFullYear(), month.getMonth(), day) : null; });
-  const weekStart = new Date(now); weekStart.setDate(now.getDate() - (now.getDay() + 6) % 7 + weekOffset * 7); weekStart.setHours(0, 0, 0, 0);
-  const weekDays = Array.from({ length: 7 }, (_, index) => { const date = new Date(weekStart); date.setDate(weekStart.getDate() + index); return date; });
-  const dateInput = (date: Date) => { const local = new Date(date); local.setHours(9, 0, 0, 0); return dateTimeInput(local.toISOString()); };
-  const eventForDay = (date: Date) => events.filter((event) => {
-    const start = new Date(event.starts_at), day = tucumanDay(date), first = /^\d{4}-\d{2}-\d{2}$/.test(event.starts_at) ? event.starts_at : tucumanDay(start);
-    if (event.manual && "recurrence" in event && event.recurrence && event.recurrence !== "none") {
-      if (day < first) return false;
-      if (event.recurrence === "daily") return true;
-      if (event.recurrence === "weekly") return date.getDay() === start.getDay();
-      if (event.recurrence === "monthly") { const last = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate(); return date.getDate() === Math.min(start.getDate(), last); }
-    }
-    return first === day;
-  });
-  const agendaRow = (event: typeof events[number]) => <article key={event.id} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-primary)] p-3"><span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] text-center text-xs font-black text-[var(--accent-text)]">{new Date(event.starts_at).getDate()}<small>{new Intl.DateTimeFormat("es-AR", { month: "short" }).format(new Date(event.starts_at))}</small></span><button className="min-w-0 flex-1 text-left" onClick={() => event.manual ? onEditEvent(event) : event.item && onOpen(event.item)}><strong className="block truncate text-[var(--text-primary)]">{event.title}</strong><small className="text-[var(--text-muted)]">{event.category} · {dateLabel(event.starts_at, true)}</small></button>{event.manual && <span className="text-xs font-bold text-[var(--accent-text)]">Personal</span>}</article>;
-  return <section className="space-y-3">
-    <VisualSectionBanner kind="agenda" title="Agenda docente" description="Organizá tus eventos personales y fechas importantes." action={<Button onClick={() => onNewEvent()} className="min-h-11 rounded-xl border border-white/35 bg-white px-4 font-black text-[#064477] hover:bg-[#e9f7ff]"><span className="text-lg">+</span> Evento</Button>} />
-    <div className="agenda-tabs grid grid-cols-3 gap-1 rounded-xl bg-[var(--surface-secondary)] p-1">{([['month','Mes'],['week','Semana'],['agenda','Agenda']] as const).map(([id, label]) => <button key={id} onClick={() => setMode(id)} className={`min-h-11 rounded-lg text-sm font-black ${mode === id ? "bg-[#0878be] text-white" : "text-[var(--text-secondary)]"}`}>{label}</button>)}</div>
-    {mode === "month" && <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-3"><div className="mb-3 flex items-center justify-between"><Button variant="outline" size="icon" aria-label="Mes anterior" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>‹</Button><h2 className="text-lg font-black capitalize text-[var(--text-primary)]">{new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric" }).format(month)}</h2><Button variant="outline" size="icon" aria-label="Mes siguiente" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>›</Button></div><div className="agenda-calendar-grid grid grid-cols-7 text-center text-xs font-black text-[var(--text-muted)]">{["L", "M", "M", "J", "V", "S", "D"].map((day, index) => <span key={`${day}-${index}`} className="py-1">{day}</span>)}{calendarCells.map((date, index) => <button key={index} disabled={!date} onClick={() => date && onNewEvent(dateInput(date))} className={`min-h-12 rounded-lg p-1 text-sm ${date && tucumanDay(date) === tucumanDay(now) ? "bg-[#dff4ff] font-black text-[#063967]" : "text-[var(--text-primary)]"}`}>{date && <><span>{date.getDate()}</span>{eventForDay(date).length > 0 && <span className="mx-auto mt-1 block size-1.5 rounded-full bg-[#f4b942]" />}</>}</button>)}</div></section>}
-    {mode === "week" && <section className="space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-3"><div className="flex items-center justify-between"><Button variant="outline" size="icon" aria-label="Semana anterior" onClick={() => setWeekOffset((value) => value - 1)}>‹</Button><h2 className="text-base font-black text-[var(--text-primary)]">{new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "short" }).format(weekDays[0])} – {new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "short", year: "numeric" }).format(weekDays[6])}</h2><Button variant="outline" size="icon" aria-label="Semana siguiente" onClick={() => setWeekOffset((value) => value + 1)}>›</Button></div><div className="grid grid-cols-7 gap-1">{weekDays.map((date) => <button key={date.toISOString()} onClick={() => onNewEvent(dateInput(date))} className={`min-h-16 rounded-xl border p-1 text-center ${tucumanDay(date) === tucumanDay(now) ? "border-[#0878be] bg-[#e5f6ff] text-[#063967]" : "border-[var(--border)] text-[var(--text-primary)]"}`}><span className="block text-xs font-bold">{new Intl.DateTimeFormat("es-AR", { weekday: "short" }).format(date)}</span><strong className="text-sm">{date.getDate()}</strong>{eventForDay(date).length > 0 && <span className="mx-auto mt-1 block size-1.5 rounded-full bg-[#e5aa2e]" />}</button>)}</div><div className="space-y-2">{weekDays.flatMap((date) => eventForDay(date).map((event) => ({ date, event }))).length ? weekDays.flatMap((date) => eventForDay(date).map((event) => ({ date, event }))).map(({ date, event }) => <div key={`${tucumanDay(date)}:${event.id}`}><p className="px-1 pb-1 text-xs font-black uppercase text-[var(--text-muted)]">{new Intl.DateTimeFormat("es-AR", { weekday: "long", day: "numeric", month: "short" }).format(date)}</p>{agendaRow(event)}</div>) : <Empty title="Semana sin eventos" text="Tocá un día o + Evento para organizarte." />}</div></section>}
-    {mode === "agenda" && <section className="space-y-2"><div className="flex gap-2 overflow-x-auto pb-1">{[["todas", "Todos"], ["Designación", "Designaciones"], ["Personal", "Personal"], ["Escuela", "Escuela"], ["Capacitación", "Capacitación"], ["Trámite", "Trámites"]].map(([id, label]) => <button key={id} onClick={() => setCategory(id)} aria-pressed={category === id} className={`shrink-0 rounded-full px-3 py-2 text-xs font-black ${category === id ? "bg-[#0878be] text-white" : "bg-[var(--surface-secondary)] text-[var(--text-secondary)]"}`}>{label}</button>)}</div>{events.length ? events.map(agendaRow) : <Empty title="Tu agenda está vacía" text="Creá un evento personal con + Evento." />}</section>}
-  </section>;
-}
-
-function Alerts({ data, onOpen, onRead }: { data: AppData | null; onOpen: (item: Publication) => void; onRead: (id: number) => void }) {
+function Alerts({ data, onOpen, onOpenManual, onRead }: { data: AppData | null; onOpen: (item: Publication) => void; onOpenManual: (event: ManualEvent) => void; onRead: (id: number) => void }) {
   const [tab, setTab] = useState<"para-mi" | "siguiendo" | "generales" | "todas">("para-mi");
   const publicationMap = new Map((data?.publications || []).map((item) => [item.id, item]));
+  const manualMap = new Map((data?.manualEvents || []).map(event => [event.id, event]));
   const followed = new Set([...(data?.saved || []).map((item) => item.publication_id), ...(data?.reminders || []).map((item) => item.publication_id), ...(data?.designations || []).map((item) => item.publication_id)]);
   const profile = data?.profile;
   const matchProfile = profile ? { levels: profile.levels, areas: profile.areas, subjects: profile.subjects, boards: profile.boards, roles: profile.roles, department: profile.department, locality: profile.locality, shifts: profile.shifts, characters: profile.characters, circuits: profile.circuits, personalMatchThreshold: profile.personal_match_threshold, wantsInterim: Boolean(profile.wants_interim), wantsSubstitute: Boolean(profile.wants_substitute), trainingInterests: profile.training_interests } : null;
@@ -958,8 +1095,9 @@ function Alerts({ data, onOpen, onRead }: { data: AppData | null; onOpen: (item:
   const personalized = (item: Publication) => Boolean(matchProfile && !isGeneralNotice(item) && isEligibleMatchResult(matchResult(item), profile?.personal_match_threshold || 85));
   const latestByPublication = new Map<string, Notice>();
   for (const notice of data?.notifications || []) if (!latestByPublication.has(notice.publication_id)) latestByPublication.set(notice.publication_id, notice);
-  const all = [...latestByPublication.values()].filter((notice) => publicationMap.has(notice.publication_id));
+  const all = [...latestByPublication.values()].filter((notice) => notice.manual_event_id ? manualMap.has(notice.manual_event_id) : publicationMap.has(notice.publication_id));
   const visible = all.filter((notice) => {
+    if (notice.manual_event_id) return tab !== "generales";
     const item = publicationMap.get(notice.publication_id)!;
     if (tab === "para-mi") return personalized(item);
     if (tab === "siguiendo") return followed.has(item.id);
@@ -969,7 +1107,11 @@ function Alerts({ data, onOpen, onRead }: { data: AppData | null; onOpen: (item:
   return <><PageHeader view="alertas" count={visible.length} syncing={false} />
     <div className="mb-3 flex gap-2 overflow-x-auto">{([["para-mi", "Para mí"], ["siguiendo", "Siguiendo"], ["generales", "Generales"], ["todas", "Todas"]] as const).map(([id, label]) => <button key={id} onClick={() => setTab(id)} aria-pressed={tab === id} className={`min-h-10 shrink-0 rounded-full px-4 text-sm font-bold ${tab === id ? "bg-[#0878be] text-white" : "bg-[var(--surface-secondary)] text-[var(--text-secondary)]"}`}>{label}</button>)}</div>
     {!profile?.levels.length && tab === "para-mi" && <div className="mb-3 rounded-2xl border border-[var(--info-border)] bg-[var(--info-bg)] p-4 text-sm text-[var(--info-text)]">Completá tu perfil para recibir recomendaciones más precisas. <button className="ml-1 font-black underline" onClick={() => window.dispatchEvent(new CustomEvent("docentetuc:open-profile"))}>Completar perfil</button></div>}
-    {visible.length ? <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] px-4"><div className="divide-y divide-[var(--border)]">{visible.map((notice) => { const item = publicationMap.get(notice.publication_id)!; const match = personalized(item) ? matchResult(item) : null; return <button key={notice.id} onClick={() => { if (!Boolean(notice.read)) void onRead(notice.id); onOpen(item); }} className="flex w-full items-center gap-3 py-4 text-left"><span className={`size-2 shrink-0 rounded-full ${Boolean(notice.read) ? "bg-[#c7d2cd]" : "bg-[#ee6a4b]"}`} /><span className="min-w-0 flex-1"><span className="block line-clamp-2 font-bold text-[var(--text-primary)]">{item.title}</span><span className="mt-1 block text-sm text-[var(--text-secondary)]">{publicationLabel(item)} · {item.source} · {dateLabel(`${notice.created_at}Z`, true)}</span>{match && <span className="mt-1 block text-xs font-bold text-[var(--accent-text)]">⭐ {match.score}% compatible · confianza {match.confidence}%</span>}</span><ChevronRight className="size-5 shrink-0 text-[var(--text-muted)]" /></button>; })}</div></div> : <Empty title={tab === "para-mi" ? "Todavía no hay alertas compatibles" : "No hay alertas en esta vista"} text={tab === "para-mi" ? "Las oportunidades por debajo del umbral siguen disponibles para consultarlas, pero no se presentan como recomendaciones." : tab === "siguiendo" ? "Guardá, recordá o seguí publicaciones para ver aquí sus novedades." : "Los comunicados generales aparecen aquí cuando hay novedades transversales."} />}
+    {visible.length ? <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] px-4"><div className="divide-y divide-[var(--border)]">{visible.map((notice) => {
+      if (notice.manual_event_id) return <button key={notice.id} onClick={() => { if (!Boolean(notice.read)) void onRead(notice.id); onOpenManual(manualMap.get(notice.manual_event_id!)!); }} className="flex w-full items-center gap-3 py-4 text-left">
+        <span className={`size-2 shrink-0 rounded-full ${Boolean(notice.read) ? "bg-[#c7d2cd]" : "bg-[#ee6a4b]"}`} /><span className="min-w-0 flex-1"><span className="block line-clamp-2 font-bold text-[var(--text-primary)]">{notice.title}</span><span className="mt-1 block text-sm text-[var(--text-secondary)]">Recordatorio de Agenda · Evento personal{notice.occurrence_at ? ` · ${dateLabel(notice.occurrence_at, true)}` : ""}</span></span><ChevronRight className="size-5 shrink-0 text-[var(--text-muted)]" />
+      </button>;
+      const item = publicationMap.get(notice.publication_id)!; const match = personalized(item) ? matchResult(item) : null; return <button key={notice.id} onClick={() => { if (!Boolean(notice.read)) void onRead(notice.id); onOpen(item); }} className="flex w-full items-center gap-3 py-4 text-left"><span className={`size-2 shrink-0 rounded-full ${Boolean(notice.read) ? "bg-[#c7d2cd]" : "bg-[#ee6a4b]"}`} /><span className="min-w-0 flex-1"><span className="block line-clamp-2 font-bold text-[var(--text-primary)]">{item.title}</span><span className="mt-1 block text-sm text-[var(--text-secondary)]">{publicationLabel(item)} · {item.source} · {dateLabel(`${notice.created_at}Z`, true)}</span>{match && <span className="mt-1 block text-xs font-bold text-[var(--accent-text)]">⭐ {match.score}% compatible · confianza {match.confidence}%</span>}</span><ChevronRight className="size-5 shrink-0 text-[var(--text-muted)]" /></button>; })}</div></div> : <Empty title={tab === "para-mi" ? "Todavía no hay alertas compatibles" : "No hay alertas en esta vista"} text={tab === "para-mi" ? "Las oportunidades por debajo del umbral siguen disponibles para consultarlas, pero no se presentan como recomendaciones." : tab === "siguiendo" ? "Guardá, recordá o seguí publicaciones para ver aquí sus novedades." : "Los comunicados generales aparecen aquí cuando hay novedades transversales."} />}
   </>;
 }
 
@@ -1272,12 +1414,13 @@ function PushSettings({ profile }: { profile: Profile | null }) {
   </section>;
 }
 
-function PublicationSheet({ publication, saved, tracking, match, onClose, onAskAI, onSave, onAgenda, onSchedule, onFollow, onExternal, onEditDesignation }: { publication: Publication | null; saved?: Saved; tracking?: DesignationTracking; match: MatchResult | null; onClose: () => void; onAskAI: (item: Publication) => void; onSave: (item: Publication, enabled: boolean) => void; onAgenda: (item: Publication, enabled: boolean) => void; onSchedule: (item: Publication) => void; onFollow: (item: Publication, enabled: boolean) => void; onExternal: (item: Publication) => void; onEditDesignation: (item: Publication) => void }) {
+function PublicationSheet({ publication, sync, saved, tracking, match, onClose, onAskAI, onSave, onAgenda, onSchedule, onFollow, onExternal, onEditDesignation }: { publication: Publication | null; sync: SyncStatus[]; saved?: Saved; tracking?: DesignationTracking; match: MatchResult | null; onClose: () => void; onAskAI: (item: Publication) => void; onSave: (item: Publication, enabled: boolean) => void; onAgenda: (item: Publication, enabled: boolean) => void; onSchedule: (item: Publication) => void; onFollow: (item: Publication, enabled: boolean) => void; onExternal: (item: Publication) => void; onEditDesignation: (item: Publication) => void }) {
   void onSchedule;
   const training = publication?.kind === "capacitacion" ? parseTrainingMetadata(publication.metadata) : null;
   const trainingState = publication?.kind === "capacitacion" ? enrollmentForUI(publication) : null;
   const info = publication?.kind === "informacion" ? usefulMetadata(publication.metadata) : null;
   const lifecycle = publication ? publicationLifecycleForUI(publication) : "UNKNOWN";
+  const unverified = Boolean(publication && publication.kind !== "informacion" && sourceHealth(healthForPublication(publication, sync)) !== "current" && (lifecycle === "ACTIVE" || lifecycle === "UPCOMING" || trainingState === "ABIERTA" || trainingState === "ABRE_HOY" || trainingState === "PROXIMAMENTE"));
   const documentMetadata = publication?.kind === "junta" ? (() => { try { return JSON.parse(publication.metadata) as { contentAvailable?: boolean; format?: string; itemCount?: number }; } catch { return {}; } })() : null;
   const facts: [string, string | number | undefined | null][] = publication ? publication.kind === "informacion" ? [
     ["Tipo", info?.recordType === "procedure" ? "Trámite" : info?.recordType === "system" ? "Sistema" : "Organismo"], ["Dirección", info?.address], ["Horario", info?.openingHours], ["Organismo", info?.parentOrganization]
@@ -1285,14 +1428,14 @@ function PublicationSheet({ publication, saved, tracking, match, onClose, onAskA
     ["Código de trámite SIME", simeCodeForPublication(publication) || "No informado"], ["Junta", publication.junta || publication.level || "No informada por SIME"], ["Carácter", publication.character || "No informado por SIME"],
     ["Fecha de publicación", publication.starts_at ? dateLabel(publication.starts_at, true) : "No informada por SIME"], ["Fecha de cierre", publication.ends_at ? dateLabel(publication.ends_at, true) : "No informada por SIME"],
     ["Circuito", publication.circuit && publication.circuit !== "UNKNOWN" ? `${publication.circuit}${publication.circuit_confidence != null ? ` · confianza ${publication.circuit_confidence}%` : ""}` : "No recuperado del listado sincronizado; verificar en ficha oficial SIME"],
-    ["Turno", publication.shift || "No informado por SIME"], ["Localidad", publication.location || "No informada por SIME"], ["Estado en DocenteTuc", lifecycleLabel(lifecycle)]
+    ["Turno", publication.shift || "No informado por SIME"], ["Localidad", publication.location || "No informada por SIME"], ["Estado en DocenteTuc", unverified ? "Vigencia por verificar" : lifecycleLabel(lifecycle)]
   ] : publication.kind === "capacitacion" ? [
-    ["Estado de inscripción", enrollmentLabel(publication)], ["Fuente", training?.source || publication.source], ["Propuesta / categoría", training?.category], ["Cohorte", training?.cohort], ["Duración", training?.duration], ["Fecha publicada por la fuente", publication.source_published_at || null], ["Estado de fechas", training?.dateStatus === "tentative" ? "Tentativas según la fuente" : training?.generalWindowOpensAt && training.registrationOpensAt === training.generalWindowOpensAt && training.registrationClosesAt === training.generalWindowClosesAt ? "Inscripción común de la convocatoria" : training?.dateStatus === "general_window" ? "Ventana general, no específica del curso" : training?.dateStatus === "course_confirmed" ? "Confirmadas para este curso" : training?.dateStatus === "confirmed" ? "Confirmadas por la fuente" : "Fecha no confirmada"], ["Comisión", training?.commissionId], ["Nivel", publication.level], ["Área", publication.area], ["Modalidad", publication.character],
+    ["Estado de inscripción", unverified ? "Vigencia por verificar" : enrollmentLabel(publication)], ["Fuente", training?.source || publication.source], ["Propuesta / categoría", training?.category], ["Cohorte", training?.cohort], ["Duración", training?.duration], ["Fecha publicada por la fuente", publication.source_published_at || null], ["Estado de fechas", unverified ? "Fechas publicadas · vigencia por verificar" : training?.dateStatus === "tentative" ? "Tentativas según la fuente" : training?.generalWindowOpensAt && training.registrationOpensAt === training.generalWindowOpensAt && training.registrationClosesAt === training.generalWindowClosesAt ? "Inscripción común de la convocatoria" : training?.dateStatus === "general_window" ? "Ventana general, no específica del curso" : training?.dateStatus === "course_confirmed" ? "Confirmadas para este curso" : training?.dateStatus === "confirmed" ? "Confirmadas por la fuente" : "Fecha no confirmada"], ["Comisión", training?.commissionId], ["Nivel", publication.level], ["Área", publication.area], ["Modalidad", publication.character],
     ["Inicio", publication.starts_at ? dateLabel(publication.starts_at) : null], ["Finalización", training?.courseEndsAt ? dateLabel(training.courseEndsAt) : null],
     ["Apertura de inscripción", training?.registrationOpensAt ? dateLabel(training.registrationOpensAt, true) : null], ["Cierre de inscripción", training?.registrationClosesAt ? dateLabel(training.registrationClosesAt, true) : null],
-    ["Lugar", publication.location], ["Dirección", training?.address], ["Cupo", training?.capacity], ["Cupo de preinscripción", training?.preCapacity],
+    ["Lugar", publication.location], ["Dirección", training?.address], ["Cupo", training?.capacity], ["Cupo de preinscripción", training?.preCapacity], ["Cupos disponibles según la fuente", training?.availablePreCapacity],
     ["Carga horaria", training?.certifiedHours || (training?.hours != null ? `${training.hours} horas cátedra` : null)], ["Encuentros", training?.meetings], ["Institución", training?.organization],
-  ] : [["Estado en DocenteTuc", lifecycleLabel(lifecycle)], ["Estado informado por la fuente", publication.status], ["Publicada / actualizada por origen", publication.source_published_at || null], ["Circuito inferido", publication.circuit && publication.circuit !== "UNKNOWN" ? `${publication.circuit}${publication.circuit_confidence != null ? ` · confianza ${publication.circuit_confidence}%` : ""}` : "Desconocido"], ["Nivel / Junta", publication.level || publication.junta], ["Carácter / modalidad", publication.character], ["Turno", publication.shift], ["Lugar", publication.location], ["Cierre", publication.ends_at ? dateLabel(publication.ends_at, true) : null]] : [];
+  ] : [["Estado en DocenteTuc", unverified ? "Vigencia por verificar" : lifecycleLabel(lifecycle)], ["Estado informado por la fuente", publication.status], ["Publicada / actualizada por origen", publication.source_published_at || null], ["Circuito inferido", publication.circuit && publication.circuit !== "UNKNOWN" ? `${publication.circuit}${publication.circuit_confidence != null ? ` · confianza ${publication.circuit_confidence}%` : ""}` : "Desconocido"], ["Nivel / Junta", publication.level || publication.junta], ["Carácter / modalidad", publication.character], ["Turno", publication.shift], ["Lugar", publication.location], ["Cierre", publication.ends_at ? dateLabel(publication.ends_at, true) : null]] : [];
   const insufficient = Boolean(match && (match.confidence < 70 || (match.criteria.length > 0 && match.criteria.every((criterion) => !criterion.available))));
   const criteriaView = match?.criteria.map((criterion) => <div key={criterion.key} className="flex gap-3 text-sm">
     <span className={criterion.outcome === "MATCH" ? "text-[#277044]" : criterion.outcome === "NO_MATCH" ? "text-[#b44b3f]" : "text-[#71879a]"}>{criterion.outcome === "MATCH" ? "✓" : criterion.outcome === "NO_MATCH" ? "✕" : "—"}</span>
@@ -1304,7 +1447,7 @@ function PublicationSheet({ publication, saved, tracking, match, onClose, onAskA
         <SheetHeader className="border-b border-[#dce8e1] bg-white p-6 pr-12">
           <div className="mb-2 flex flex-wrap gap-2">
             <Badge className="bg-[#edf4ef] text-[#356053]">{publication ? publicationLabel(publication) : "Publicación"}</Badge>
-            {publication && <Badge className={lifecycle === "ACTIVE" ? "badge-success" : lifecycle === "UPCOMING" ? "badge-info" : "badge-warning"}>{lifecycleLabel(lifecycle)}</Badge>}
+            {publication && <Badge className={unverified ? "badge-warning" : lifecycle === "ACTIVE" ? "badge-success" : lifecycle === "UPCOMING" ? "badge-info" : "badge-warning"}>{unverified ? "Vigencia por verificar" : publication.kind === "capacitacion" ? `${isUrgentOpening(parseTrainingMetadata(publication.metadata)) ? "🔥 " : ""}${enrollmentLabel(publication)}${isClosingSoon(parseTrainingMetadata(publication.metadata)) && enrollmentForUI(publication) === "ABIERTA" ? " ⏰" : ""}` : lifecycleLabel(lifecycle)}</Badge>}
             {documentMetadata?.contentAvailable && <Badge className="badge-info">Contenido disponible</Badge>}
             {tracking && <Badge className="badge-info">{tracking.status}</Badge>}
             {match && publication?.kind !== "informacion" && <MatchBadge result={match} />}
@@ -1313,12 +1456,12 @@ function PublicationSheet({ publication, saved, tracking, match, onClose, onAskA
           <SheetDescription className="text-left">Fuente oficial: {publication?.source || ""}</SheetDescription>
         </SheetHeader>
         {publication && <div className="space-y-5 p-5 pb-24 md:p-6 md:pb-24">
-          <Button onClick={() => onAskAI(publication)} className="h-11 w-full rounded-xl bg-[#0878be] text-white"><Sparkles className="size-4" />Preguntar a IA sobre esta información</Button>
+          {!isFdciCatalogOnly(publication) && <Button onClick={() => onAskAI(publication)} className="h-11 w-full rounded-xl bg-[#0878be] text-white"><Sparkles className="size-4" />Preguntar a IA sobre esta información</Button>}
           <div className="grid grid-cols-2 gap-3">{facts.filter(([, value]) => value !== undefined && value !== null && value !== "").map(([label, value]) => <div key={label} className="rounded-2xl border border-[#dce8e1] bg-white p-4"><p className="text-xs font-bold uppercase tracking-wide text-[#80938c]">{label}</p><p className="mt-1 font-semibold">{value}</p></div>)}</div>
           <OfficialPublicationDetails item={publication} />
           <div className="rounded-2xl border border-[#dce8e1] bg-white p-5">
             <h3 className="font-bold">{publication.kind === "junta" ? "Contenido disponible en DocenteTuc" : publication.kind === "vacante" ? "Datos publicados por SIME" : "Descripción"}</h3>
-            <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-[#5f756d]">{publication.summary || "No fue informada por la fuente oficial."}</p>
+            <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-[#5f756d]">{summaryText(publication.summary) || "No fue informada por la fuente oficial."}</p>
           </div>
           {info && <>
             <InfoList title="Servicios y trámites" values={info.services} />
@@ -1341,16 +1484,16 @@ function PublicationSheet({ publication, saved, tracking, match, onClose, onAskA
               : <><div className="flex items-center justify-between gap-3"><div><h3 className="font-black">¿Por qué coincide?</h3><p className="mt-1 text-sm text-[#52708c]">Compatibilidad: {match.score}% · confianza: {match.confidence}% · {match.matched} de {match.total} criterios coinciden.</p></div></div></>}
             <div className="mt-4 space-y-2">{criteriaView}</div>
           </div>}
-          <div className="grid gap-2 sm:grid-cols-2">
+          {isFdciCatalogOnly(publication) ? <p className="rounded-xl bg-amber-50 p-3 font-bold text-amber-950">FICTICIA — Guardados, Agenda y recordatorios no disponibles en esta prueba.</p> : <div className="grid gap-2 sm:grid-cols-2">
             <Button variant={saved ? "default" : "outline"} onClick={() => onSave(publication, !saved)} className="h-11 rounded-xl"><Star className={`size-4 ${saved ? "fill-current" : ""}`} />{saved ? (publication.kind === "informacion" ? "Contacto guardado" : "Guardada") : (publication.kind === "informacion" ? "Guardar contacto" : "Guardar")}</Button>
             {publication.kind !== "informacion" && <Button variant={Boolean(saved?.in_agenda) ? "default" : "outline"} onClick={() => onAgenda(publication, !Boolean(saved?.in_agenda))} className="h-11 rounded-xl"><CalendarDays className="size-4" />{Boolean(saved?.in_agenda) ? "Quitar de mi agenda" : "Agregar a mi agenda"}</Button>}
             {(publication.kind === "junta" || publication.kind === "vacante") && <Button variant={Boolean(saved?.followed) ? "default" : "outline"} onClick={() => onFollow(publication, !Boolean(saved?.followed))} className="h-11 rounded-xl"><Bell className="size-4" />{Boolean(saved?.followed) ? "Dejar de seguir" : "Seguir"}</Button>}
             {publication.kind === "vacante" && tracking && <Button variant="outline" onClick={() => onEditDesignation(publication)} className="h-11 rounded-xl">Editar seguimiento</Button>}
-          </div>
+          </div>}
           {publication.kind === "vacante"
-            ? <Button type="button" onClick={() => onExternal(publication)} className="min-h-12 w-full rounded-xl bg-[#17362d] px-5 text-white">{hasOfficialTopic(publication, "INSCRIPCION_SIME") ? "Inscribirme en sitio oficial" : "Ver procedimiento en fuente oficial"} <ExternalLink className="size-4" /></Button>
-            : <a href={publication.official_url} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#17362d] px-5 text-center font-bold text-white">{publication.kind === "capacitacion" ? trainingState === "ABIERTA" && training?.commissionId ? "CONTINUAR INSCRIPCIÓN EN SITIO OFICIAL" : "Ver detalle en sitio oficial" : publication.kind === "informacion" && info?.access === "private" ? "Abrir sistema oficial" : "Abrir fuente oficial"} <ExternalLink className="size-4" /></a>}
-          {training?.registrationUrl && training.registrationUrl !== publication.official_url && <a href={training.registrationUrl} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#0878be] bg-white px-5 text-center font-bold text-[#0878be]">{trainingState === "ABIERTA" ? "Ingresar a inscripción oficial" : "Consultar inscripción en sitio oficial"} <ExternalLink className="size-4" /></a>}
+            ? <Button type="button" onClick={() => onExternal(publication)} className="min-h-12 w-full rounded-xl bg-[#17362d] px-5 text-white">{!unverified && lifecycle === "ACTIVE" && hasOfficialTopic(publication, "INSCRIPCION_SIME") ? "Inscribirme en sitio oficial" : "Ver procedimiento en fuente oficial"} <ExternalLink className="size-4" /></Button>
+            : <a href={publication.official_url} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#17362d] px-5 text-center font-bold text-white">{publication.kind === "capacitacion" ? !unverified && trainingState === "ABIERTA" && training?.commissionId ? "CONTINUAR INSCRIPCIÓN EN SITIO OFICIAL" : "Ver detalle en sitio oficial" : publication.kind === "informacion" && info?.access === "private" ? "Abrir sistema oficial" : "Abrir fuente oficial"} <ExternalLink className="size-4" /></a>}
+          {training?.registrationUrl && training.registrationUrl !== publication.official_url && <a href={training.registrationUrl} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#0878be] bg-white px-5 text-center font-bold text-[#0878be]">{!unverified && trainingState === "ABIERTA" ? "Ingresar a inscripción oficial" : "Consultar inscripción en sitio oficial"} <ExternalLink className="size-4" /></a>}
           <p className="rounded-xl bg-[#fff3dd] p-4 text-sm leading-relaxed text-[#7d541b]">{publication.kind === "vacante" ? "DocenteTuc organiza información pública. Abrir el sitio oficial no marca una inscripción; el estado sólo cambia cuando vos lo confirmás." : publication.kind === "junta" ? "DocenteTuc muestra el contenido público recuperable. Para archivos PDF o carpetas sin texto exportable, la fuente oficial conserva el documento completo." : publication.kind === "informacion" ? `Información oficial verificada el ${info?.lastVerified || "día no informado"}. DocenteTuc nunca solicita credenciales de sistemas gubernamentales.` : "La inscripción y cualquier gestión se completan siempre en el sitio oficial."}</p>
         </div>}
       </SheetContent>

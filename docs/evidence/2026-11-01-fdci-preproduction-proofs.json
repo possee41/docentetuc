@@ -1,0 +1,38 @@
+{
+  "readOnly": true,
+  "networkRequests": 0,
+  "sqlMutations": 0,
+  "proofs": [
+    {
+      "code": "UNAUTHENTICATED_PROTOTYPE_SOURCE",
+      "observed": "TypeError",
+      "d1Reads": 0
+    },
+    {
+      "code": "IMPORT_NOT_FENCED_BY_OWNER",
+      "observedHttp": 400,
+      "note": "The receiver rejects the deliberately empty batch; the gateway admitted the non-owner. No mutation occurs."
+    },
+    {
+      "code": "WORKFLOW_PRODUCTION_FIELDS_ABSENT",
+      "targetError": "GATEWAY_TARGET_FORBIDDEN",
+      "gateConfigAcceptedBeforeImportTargetCheck": true
+    },
+    {
+      "code": "PROTECTED_RECORD_NOT_FILTERED",
+      "sent": [
+        {
+          "id": "fdci:commission:6375",
+          "normalizedStatus": "UNKNOWN"
+        }
+      ]
+    },
+    {
+      "code": "WORKFLOW_INSPECTION",
+      "scheduleDisabled": true,
+      "productionTargetExplicit": false,
+      "productionEnableExplicit": false,
+      "approvedShaExplicit": false
+    }
+  ]
+}

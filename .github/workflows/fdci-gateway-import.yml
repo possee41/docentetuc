@@ -1,7 +1,7 @@
-name: FDCI gateway import 1.2 (manual, disabled)
+name: FDCI gateway import 1.2 (prepared, disabled)
 on:
-  # Proposed schedule, DISABLED; requires new approval and a fixed authorized SHA.
-  # schedule: [{ cron: '17 */2 * * *' }]
+  # Daily 05:17 Tucumán; DISABLED until a separately authorized activation.
+  # schedule: [{ cron: '17 8 * * *' }]
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,10 +13,12 @@ jobs:
     if: >-
       github.repository == 'possee41/docentetuc' &&
       vars.FDCI_WORKFLOW_ENABLED == 'true' &&
-      ((github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) ||
+      ((github.event_name == 'workflow_dispatch' &&
+        github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) ||
        (github.event_name == 'schedule' &&
         github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
-        vars.FDCI_AUTOMATION_ENABLED == 'true'))
+        vars.FDCI_AUTOMATION_ENABLED == 'true' &&
+        vars.FDCI_CPU_APPROVED_SHA == vars.FDCI_IMPORT_APPROVED_SHA))
     runs-on: ubuntu-latest
     environment: fdci-pilot
     timeout-minutes: 12
@@ -35,7 +37,8 @@ jobs:
       FDCI_MAX_REQUESTS: '6'
       # The runner caps examined commissions too; retain the production pilot bound.
       FDCI_MAX_PUBLICATIONS: '2'
-      FDCI_PAUSE_MS: '400'
+      FDCI_MAX_SLICES: '12'
+      FDCI_PAUSE_MS: '3500'
     steps:
       - name: Verify separately approved revision
         env:
@@ -61,23 +64,23 @@ jobs:
         id: preflight
         env:
           FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
-        run: node scripts/fdci-release/import-gate.mjs preflight
+        run: node --experimental-strip-types scripts/import-gate.mjs preflight
       - name: Open, import and close with one owner
         id: dispatch
-        timeout-minutes: 5
+        timeout-minutes: 9
         env:
           FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
         # Reuses scripts/import-via-gateway.mjs; no direct D1 credentials.
         run: |
           set -o pipefail
-          node scripts/fdci-release/import-gate.mjs run | tee fdci-import.json
+          node --experimental-strip-types scripts/fdci-daily.mjs | tee fdci-import.json
       - name: Close FDCI gate after interruption or failure
         id: cleanup
         if: always() && steps.preflight.outcome == 'success' && steps.dispatch.outcome != 'skipped'
         timeout-minutes: 2
         env:
           FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
-        run: node scripts/fdci-release/import-gate.mjs close
+        run: node --experimental-strip-types scripts/import-gate.mjs close
       - name: Record FDCI result
         if: always()
         env:
@@ -89,7 +92,7 @@ jobs:
           try { r = JSON.parse(readFileSync('fdci-import.json', 'utf8')); } catch {}
           console.log('### FDCI import');
           console.log('- status: ' + (['OK','PARTIAL','ERROR'].includes(r.status) ? r.status : 'NO_RESULT'));
-          for (const key of ['discovered','created','updated','unchanged','rejected','skipped','deferred','uncertain','sourceRequests','elapsedMs'])
+          for (const key of ['discovered','created','updated','unchanged','rejected','skipped','sourceRequests','slices'])
             console.log('- ' + key + ': ' + (Number.isSafeInteger(r[key]) && r[key] >= 0 ? r[key] : 'unavailable'));
           for (const key of ['code','closeCode']) if (/^[A-Z_0-9]+$/.test(r[key] || '')) console.log('- ' + key + ': ' + r[key]);
           if (r.cursor && Number.isSafeInteger(r.cursor.cycle) && Number.isSafeInteger(r.cursor.revision)) console.log('- cycle/revision: ' + r.cursor.cycle + '/' + r.cursor.revision);

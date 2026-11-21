@@ -1,0 +1,13 @@
+{
+  "name": "docentetuc-fdci-canary-1-1",
+  "main": "workers/fdci-receiver.mjs",
+  "compatibility_date": "2026-05-15",
+  "vars": {
+    "FDCI_EXTERNAL_ENABLED": "true"
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "docentetuc-fdci-canary-1-1",
+    "database_id": "713a8c37-d123-43ce-9f9e-7789e60e3d21"
+  }]
+}

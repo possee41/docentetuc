@@ -1,0 +1,26 @@
+name: DocenteTuc 1.2 Linux lint (isolated branch)
+on:
+  push:
+    branches: [feat/1.2-sync-integration]
+    paths:
+      - scripts/import-fdci.mjs
+      - scripts/verify-full-source-local.mjs
+      - scripts/probe-juntas-folders-local.mjs
+      - .github/workflows/lint-1.2-linux.yml
+permissions:
+  contents: read
+jobs:
+  lint:
+    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/feat/1.2-sync-integration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --global pnpm@11.19.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec eslint scripts/import-fdci.mjs scripts/verify-full-source-local.mjs scripts/probe-juntas-folders-local.mjs

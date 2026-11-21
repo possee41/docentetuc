@@ -1,0 +1,1654 @@
+{
+  "runId": "close-3d9d026e-5f72-4c4d-8761-842846bcf20c",
+  "sha": "03511c9f97f709edca71035284172bdd4bbdce2f",
+  "started": "2026-11-01T07:45:49.644Z",
+  "worker": "docentetuc-import-canary-1-2",
+  "database": {
+    "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756",
+    "name": "docentetuc-web-canary-1-2"
+  },
+  "http": [
+    {
+      "step": "close-auth-reject",
+      "at": "2026-11-01T07:46:04.660Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 401,
+      "body": {
+        "error": "UNAUTHORIZED"
+      },
+      "d1": {
+        "rpc": 0,
+        "queries": 0,
+        "rowsRead": 0,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "clientWallMs": 121.10460000000057
+    },
+    {
+      "step": "cursor-s6-01",
+      "at": "2026-11-01T07:46:04.913Z",
+      "path": "/api/internal/import-identity",
+      "status": 200,
+      "body": {
+        "name": "docentetuc-web-canary-1-2",
+        "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+      },
+      "d1": {
+        "rpc": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a539489ccf0a1b1c-GRU",
+      "clientWallMs": 593.328
+    },
+    {
+      "step": "cursor-s6-02",
+      "at": "2026-11-01T07:46:05.508Z",
+      "path": "/api/internal/import-gate",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "close-3d9d026e-5f72-4c4d-8761-842846bcf20c-interrupted",
+        "openedAt": "2026-11-01T07:46:05.383Z",
+        "expiresAt": "2026-11-01T07:56:05.383Z"
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a539489e1f581b1c-GRU",
+      "clientWallMs": 453.9770000000001
+    },
+    {
+      "step": "cursor-s6-03",
+      "at": "2026-11-01T07:46:05.962Z",
+      "path": "/api/internal/import-identity",
+      "status": 200,
+      "body": {
+        "name": "docentetuc-web-canary-1-2",
+        "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+      },
+      "d1": {
+        "rpc": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53948a0f82e1b1c-GRU",
+      "clientWallMs": 205.83140000000003
+    },
+    {
+      "step": "cursor-s6-04",
+      "at": "2026-11-01T07:46:06.169Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 12,
+          "cycle": 3,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:55.843Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53948a2489c1b1c-GRU",
+      "clientWallMs": 474.5316
+    },
+    {
+      "step": "cursor-s6-05",
+      "at": "2026-11-01T07:46:07.059Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 13,
+          "cycle": 3,
+          "after_key": "",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:55.843Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53948a7da051b1c-GRU",
+      "clientWallMs": 472.27649999999994
+    },
+    {
+      "step": "cursor-s6-06",
+      "at": "2026-11-01T07:46:07.946Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53948ad5c1e1b1c-GRU",
+      "clientWallMs": 444.0227
+    },
+    {
+      "step": "cursor-s6-07",
+      "at": "2026-11-01T07:46:08.390Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 14,
+          "cycle": 3,
+          "after_key": "000000089001:000980000001",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:55.843Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53948b01cde1b1c-GRU",
+      "clientWallMs": 480.76590000000033
+    },
+    {
+      "step": "close-expired-checkpoint",
+      "at": "2026-11-01T07:56:06.887Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 503,
+      "body": {
+        "error": "IMPORT_DISABLED"
+      },
+      "d1": {
+        "rpc": 2,
+        "queries": 2,
+        "rowsRead": 2,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "clientWallMs": 494.3497000000207
+    },
+    {
+      "step": "close-expired-import",
+      "at": "2026-11-01T07:56:07.382Z",
+      "path": "/api/internal/fdci-import",
+      "status": 503,
+      "body": {
+        "error": "IMPORT_DISABLED"
+      },
+      "d1": {
+        "rpc": 2,
+        "queries": 2,
+        "rowsRead": 2,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "clientWallMs": 411.641900000046
+    },
+    {
+      "step": "close-successor-open",
+      "at": "2026-11-01T07:56:09.455Z",
+      "path": "/api/internal/import-gate",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "close-3d9d026e-5f72-4c4d-8761-842846bcf20c-recovery",
+        "openedAt": "2026-11-01T07:56:09.406Z",
+        "expiresAt": "2026-11-01T08:06:09.406Z"
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "clientWallMs": 649.9968000000808
+    },
+    {
+      "step": "close-expired-steal",
+      "at": "2026-11-01T07:56:10.105Z",
+      "path": "/api/internal/import-gate",
+      "status": 409,
+      "body": {
+        "error": "GATE_BUSY"
+      },
+      "d1": {
+        "rpc": 2,
+        "queries": 2,
+        "rowsRead": 2,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "clientWallMs": 348.84169999998994
+    },
+    {
+      "step": "close-expired-close",
+      "at": "2026-11-01T07:56:10.455Z",
+      "path": "/api/internal/import-gate",
+      "status": 409,
+      "body": {
+        "error": "GATE_BUSY"
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 4,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "clientWallMs": 679.9799999999814
+    },
+    {
+      "step": "close-old-owner-cursor",
+      "at": "2026-11-01T07:56:11.135Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 409,
+      "body": {
+        "error": "GATE_OWNER_MISMATCH"
+      },
+      "d1": {
+        "rpc": 2,
+        "queries": 2,
+        "rowsRead": 2,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "clientWallMs": 354.1280000000261
+    },
+    {
+      "step": "cursor-s7-01",
+      "at": "2026-11-01T07:56:12.460Z",
+      "path": "/api/internal/import-identity",
+      "status": 200,
+      "body": {
+        "name": "docentetuc-web-canary-1-2",
+        "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+      },
+      "d1": {
+        "rpc": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957701d1549a5-EZE",
+      "clientWallMs": 306.2662
+    },
+    {
+      "step": "cursor-s7-02",
+      "at": "2026-11-01T07:56:12.767Z",
+      "path": "/api/internal/import-gate",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "close-3d9d026e-5f72-4c4d-8761-842846bcf20c-recovery",
+        "openedAt": "2026-11-01T07:56:09.406Z",
+        "expiresAt": "2026-11-01T08:06:09.406Z"
+      },
+      "d1": {
+        "rpc": 2,
+        "queries": 2,
+        "rowsRead": 2,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957716e4449a5-EZE",
+      "clientWallMs": 361.48740000000004
+    },
+    {
+      "step": "cursor-s7-03",
+      "at": "2026-11-01T07:56:13.129Z",
+      "path": "/api/internal/import-identity",
+      "status": 200,
+      "body": {
+        "name": "docentetuc-web-canary-1-2",
+        "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+      },
+      "d1": {
+        "rpc": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a5395773cfd549a5-EZE",
+      "clientWallMs": 203.01369999999997
+    },
+    {
+      "step": "cursor-s7-04",
+      "at": "2026-11-01T07:56:13.333Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 14,
+          "cycle": 3,
+          "after_key": "000000089001:000980000001",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:55.843Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a5395774f8b849a5-EZE",
+      "clientWallMs": 514.4839
+    },
+    {
+      "step": "cursor-s7-05",
+      "at": "2026-11-01T07:56:14.673Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a539577d6e0549a5-EZE",
+      "clientWallMs": 513.4363000000003
+    },
+    {
+      "step": "cursor-s7-06",
+      "at": "2026-11-01T07:56:15.186Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 15,
+          "cycle": 3,
+          "after_key": "000000089001:000980000002",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:55.843Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957808feb49a5-EZE",
+      "clientWallMs": 521.3800000000001
+    },
+    {
+      "step": "cursor-s7-07",
+      "at": "2026-11-01T07:56:15.709Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a5395783da6449a5-EZE",
+      "clientWallMs": 517.9443999999999
+    },
+    {
+      "step": "cursor-s7-08",
+      "at": "2026-11-01T07:56:16.227Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 16,
+          "cycle": 3,
+          "after_key": "000000089001:000980000003",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:55.843Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957871c4349a5-EZE",
+      "clientWallMs": 543.1050000000005
+    },
+    {
+      "step": "cursor-s7-09",
+      "at": "2026-11-01T07:56:16.770Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a539578a7e6e49a5-EZE",
+      "clientWallMs": 506.33390000000054
+    },
+    {
+      "step": "cursor-s7-10",
+      "at": "2026-11-01T07:56:17.277Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 17,
+          "cycle": 3,
+          "after_key": "000000089001:000980000004",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:55.843Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a539578da8a249a5-EZE",
+      "clientWallMs": 532.4585999999999
+    },
+    {
+      "step": "cursor-s7-11",
+      "at": "2026-11-01T07:56:17.810Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a5395790fb1449a5-EZE",
+      "clientWallMs": 504.34879999999976
+    },
+    {
+      "step": "cursor-s7-12",
+      "at": "2026-11-01T07:56:18.314Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 18,
+          "cycle": 3,
+          "after_key": "000000089001:000980000005",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:33:55.843Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957942d1a49a5-EZE",
+      "clientWallMs": 527.2801
+    },
+    {
+      "step": "cursor-s7-13",
+      "at": "2026-11-01T07:56:18.842Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 19,
+          "cycle": 4,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:56:18.856Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957976f3d49a5-EZE",
+      "clientWallMs": 521.6288000000004
+    },
+    {
+      "step": "cursor-s7-14",
+      "at": "2026-11-01T07:56:19.364Z",
+      "path": "/api/internal/import-gate",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "close-3d9d026e-5f72-4c4d-8761-842846bcf20c-recovery",
+        "closed": true
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 4,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a539579aa93749a5-EZE",
+      "clientWallMs": 719.2946000000002
+    },
+    {
+      "step": "cursor-s8-01",
+      "at": "2026-11-01T07:56:20.576Z",
+      "path": "/api/internal/import-identity",
+      "status": 200,
+      "body": {
+        "name": "docentetuc-web-canary-1-2",
+        "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+      },
+      "d1": {
+        "rpc": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957a2ddb3200e-EZE",
+      "clientWallMs": 306.9283
+    },
+    {
+      "step": "cursor-s8-02",
+      "at": "2026-11-01T07:56:20.884Z",
+      "path": "/api/internal/import-gate",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "close-3d9d026e-5f72-4c4d-8761-842846bcf20c-unchanged",
+        "openedAt": "2026-11-01T07:56:20.850Z",
+        "expiresAt": "2026-11-01T08:06:20.850Z"
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957a43e20200e-EZE",
+      "clientWallMs": 552.9582
+    },
+    {
+      "step": "cursor-s8-03",
+      "at": "2026-11-01T07:56:21.437Z",
+      "path": "/api/internal/import-identity",
+      "status": 200,
+      "body": {
+        "name": "docentetuc-web-canary-1-2",
+        "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+      },
+      "d1": {
+        "rpc": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957a79f2c200e-EZE",
+      "clientWallMs": 208.39969999999994
+    },
+    {
+      "step": "cursor-s8-04",
+      "at": "2026-11-01T07:56:21.646Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 19,
+          "cycle": 4,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:56:18.856Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957a9087a200e-EZE",
+      "clientWallMs": 548.4292
+    },
+    {
+      "step": "cursor-s8-05",
+      "at": "2026-11-01T07:56:22.600Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 20,
+          "cycle": 4,
+          "after_key": "",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:56:18.856Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957aefabf200e-EZE",
+      "clientWallMs": 537.1007000000004
+    },
+    {
+      "step": "cursor-s8-06",
+      "at": "2026-11-01T07:56:23.542Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957b4ddfe200e-EZE",
+      "clientWallMs": 511.26449999999977
+    },
+    {
+      "step": "cursor-s8-07",
+      "at": "2026-11-01T07:56:24.053Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 21,
+          "cycle": 4,
+          "after_key": "000000089001:000980000001",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:56:18.856Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957b7feff200e-EZE",
+      "clientWallMs": 528.6310999999996
+    },
+    {
+      "step": "cursor-s8-08",
+      "at": "2026-11-01T07:56:24.583Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957bb5ffb200e-EZE",
+      "clientWallMs": 527.7433000000001
+    },
+    {
+      "step": "cursor-s8-09",
+      "at": "2026-11-01T07:56:25.111Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 22,
+          "cycle": 4,
+          "after_key": "000000089001:000980000002",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:56:18.856Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957bea91c200e-EZE",
+      "clientWallMs": 532.3218000000006
+    },
+    {
+      "step": "cursor-s8-10",
+      "at": "2026-11-01T07:56:25.644Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957c1ea20200e-EZE",
+      "clientWallMs": 522.5002999999997
+    },
+    {
+      "step": "cursor-s8-11",
+      "at": "2026-11-01T07:56:26.166Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 23,
+          "cycle": 4,
+          "after_key": "000000089001:000980000003",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:56:18.856Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957c53b6d200e-EZE",
+      "clientWallMs": 528.9125999999997
+    },
+    {
+      "step": "cursor-s8-12",
+      "at": "2026-11-01T07:56:26.696Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957c88c50200e-EZE",
+      "clientWallMs": 516.0478000000003
+    },
+    {
+      "step": "cursor-s8-13",
+      "at": "2026-11-01T07:56:27.212Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 24,
+          "cycle": 4,
+          "after_key": "000000089001:000980000004",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:56:18.856Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957cbbd29200e-EZE",
+      "clientWallMs": 516.8825999999999
+    },
+    {
+      "step": "cursor-s8-14",
+      "at": "2026-11-01T07:56:27.730Z",
+      "path": "/api/internal/fdci-import",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957cefe2f200e-EZE",
+      "clientWallMs": 507.8118999999997
+    },
+    {
+      "step": "cursor-s8-15",
+      "at": "2026-11-01T07:56:28.238Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 25,
+          "cycle": 4,
+          "after_key": "000000089001:000980000005",
+          "upper_key": "000000089001:000980000005",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:56:18.856Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957d22f36200e-EZE",
+      "clientWallMs": 532.9300999999996
+    },
+    {
+      "step": "cursor-s8-16",
+      "at": "2026-11-01T07:56:28.771Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 26,
+          "cycle": 5,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:56:28.785Z"
+        }
+      },
+      "d1": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957d5682c200e-EZE",
+      "clientWallMs": 520.2999999999993
+    },
+    {
+      "step": "cursor-s8-17",
+      "at": "2026-11-01T07:56:29.291Z",
+      "path": "/api/internal/import-gate",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "source": "fdci",
+        "owner": "close-3d9d026e-5f72-4c4d-8761-842846bcf20c-unchanged",
+        "closed": true
+      },
+      "d1": {
+        "rpc": 4,
+        "queries": 4,
+        "rowsRead": 4,
+        "rowsWritten": 1
+      },
+      "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+      "ray": "a53957d8b934200e-EZE",
+      "clientWallMs": 1304.2216000000008
+    },
+    {
+      "step": "close-final-disabled",
+      "at": "2026-11-01T07:56:45.416Z",
+      "path": "/api/internal/fdci-import",
+      "status": 503,
+      "body": {
+        "error": "IMPORT_DISABLED"
+      },
+      "d1": {
+        "rpc": 0,
+        "queries": 0,
+        "rowsRead": 0,
+        "rowsWritten": 0
+      },
+      "version": "df5a04c0-c2ef-426d-8c78-c36b0cb61d7e",
+      "clientWallMs": 106.70839999988675
+    },
+    {
+      "step": "close-final-no-secret-0",
+      "at": "2026-11-01T07:56:50.002Z",
+      "path": "/api/internal/fdci-checkpoint",
+      "status": 503,
+      "body": {
+        "error": "IMPORT_DISABLED"
+      },
+      "d1": {
+        "rpc": 0,
+        "queries": 0,
+        "rowsRead": 0,
+        "rowsWritten": 0
+      },
+      "version": "7fe9b9db-3223-462e-8adb-93f260059fa6",
+      "clientWallMs": 451.3225000000093
+    }
+  ],
+  "stages": [
+    {
+      "stage": 6,
+      "pid": 29296,
+      "interrupted": true,
+      "afterConfirmedAdvance": {
+        "id": 1,
+        "revision": 14,
+        "cycle": 3,
+        "after_key": "000000089001:000980000001",
+        "upper_key": "000000089001:000980000005",
+        "failures": 0,
+        "last_error_code": null,
+        "last_cycle_status": "OK",
+        "last_completed_at": "2026-11-01T07:33:55.843Z"
+      },
+      "source": [
+        {
+          "at": "2026-11-01T07:46:06.643Z",
+          "path": "/api/gestionCapas/getCapaActivas",
+          "simulated": true
+        },
+        {
+          "at": "2026-11-01T07:46:07.059Z",
+          "path": "/api/gestionCapas/getRestoCapas",
+          "simulated": true
+        },
+        {
+          "at": "2026-11-01T07:46:07.942Z",
+          "path": "/api/capa/getCupo",
+          "simulated": true
+        }
+      ],
+      "physicalOfficialRequests": 0
+    },
+    {
+      "stage": 7,
+      "pid": 30800,
+      "started": "2026-11-01T07:56:12.459Z",
+      "finished": "2026-11-01T07:56:20.083Z",
+      "ack": {
+        "status": "OK",
+        "discovered": 5,
+        "examined": 4,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 4,
+        "rejected": 0,
+        "skipped": 0,
+        "batches": 4,
+        "coursesFetched": 1,
+        "coursesAvailable": 1,
+        "commissionsExamined": 4,
+        "completed": false,
+        "cycleComplete": true,
+        "cursor": {
+          "id": 1,
+          "revision": 19,
+          "cycle": 4,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:56:18.856Z"
+        },
+        "sourceErrors": {},
+        "errors": [],
+        "failed": false,
+        "progressPending": false,
+        "deferred": 0,
+        "sourceRequests": 3,
+        "elapsedMs": 6032,
+        "closed": true
+      },
+      "source": [
+        {
+          "at": "2026-11-01T07:56:13.848Z",
+          "path": "/api/gestionCapas/getCapaActivas",
+          "simulated": true
+        },
+        {
+          "at": "2026-11-01T07:56:14.258Z",
+          "path": "/api/gestionCapas/getRestoCapas",
+          "simulated": true
+        },
+        {
+          "at": "2026-11-01T07:56:14.670Z",
+          "path": "/api/capa/getCupo",
+          "simulated": true
+        }
+      ],
+      "physicalOfficialRequests": 0,
+      "sourceMode": "synthetic"
+    },
+    {
+      "stage": 8,
+      "pid": 4348,
+      "started": "2026-11-01T07:56:20.574Z",
+      "finished": "2026-11-01T07:56:30.596Z",
+      "ack": {
+        "status": "OK",
+        "discovered": 5,
+        "examined": 5,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 5,
+        "rejected": 0,
+        "skipped": 0,
+        "batches": 5,
+        "coursesFetched": 1,
+        "coursesAvailable": 1,
+        "commissionsExamined": 5,
+        "completed": false,
+        "cycleComplete": true,
+        "cursor": {
+          "id": 1,
+          "revision": 26,
+          "cycle": 5,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T07:56:28.785Z"
+        },
+        "sourceErrors": {},
+        "errors": [],
+        "failed": false,
+        "progressPending": false,
+        "deferred": 0,
+        "sourceRequests": 3,
+        "elapsedMs": 7646,
+        "closed": true
+      },
+      "source": [
+        {
+          "at": "2026-11-01T07:56:22.195Z",
+          "path": "/api/gestionCapas/getCapaActivas",
+          "simulated": true
+        },
+        {
+          "at": "2026-11-01T07:56:22.600Z",
+          "path": "/api/gestionCapas/getRestoCapas",
+          "simulated": true
+        },
+        {
+          "at": "2026-11-01T07:56:23.538Z",
+          "path": "/api/capa/getCupo",
+          "simulated": true
+        }
+      ],
+      "physicalOfficialRequests": 0,
+      "sourceMode": "synthetic"
+    }
+  ],
+  "sqlFence": [
+    {
+      "label": "expired-owner-no-successor",
+      "status": 409,
+      "before": {
+        "id": 1,
+        "revision": 14,
+        "cycle": 3,
+        "after_key": "000000089001:000980000001",
+        "upper_key": "000000089001:000980000005",
+        "failures": 0,
+        "last_error_code": null,
+        "last_cycle_status": "OK",
+        "last_completed_at": "2026-11-01T07:33:55.843Z"
+      },
+      "after": {
+        "id": 1,
+        "revision": 14,
+        "cycle": 3,
+        "after_key": "000000089001:000980000001",
+        "upper_key": "000000089001:000980000005",
+        "failures": 0,
+        "last_error_code": null,
+        "last_cycle_status": "OK",
+        "last_completed_at": "2026-11-01T07:33:55.843Z"
+      },
+      "calls": [
+        {
+          "sql": "UPDATE fdci_import_checkpoint SET revision=revision+1,after_key=?,failures=failures+?,\n        last_error_code=CASE WHEN ? THEN ? ELSE last_error_code END\n        WHERE id=1 AND revision=? AND upper_key<>'' AND after_key<? AND upper_key>=? AND EXISTS (SELECT 1 FROM import_gate_lease WHERE id=1 AND source='fdci'\n  AND opened_by=? AND julianday(expires_at)>julianday('now')) RETURNING *",
+          "params": [
+            "000000089001:000980000002",
+            0,
+            0,
+            null,
+            14,
+            "000000089001:000980000002",
+            "000000089001:000980000002",
+            "close-3d9d026e-5f72-4c4d-8761-842846bcf20c-interrupted"
+          ],
+          "meta": {
+            "served_by": "v3-prod",
+            "served_by_region": "ENAM",
+            "served_by_colo": "EWR",
+            "served_by_primary": true,
+            "timings": {
+              "sql_duration_ms": 0.4091
+            },
+            "duration": 0.4091,
+            "changes": 0,
+            "last_row_id": 0,
+            "changed_db": false,
+            "size_after": 724992,
+            "rows_read": 3,
+            "rows_written": 0,
+            "total_attempts": 1
+          },
+          "resultCount": 0
+        }
+      ]
+    },
+    {
+      "label": "old-owner-with-successor",
+      "status": 409,
+      "before": {
+        "id": 1,
+        "revision": 14,
+        "cycle": 3,
+        "after_key": "000000089001:000980000001",
+        "upper_key": "000000089001:000980000005",
+        "failures": 0,
+        "last_error_code": null,
+        "last_cycle_status": "OK",
+        "last_completed_at": "2026-11-01T07:33:55.843Z"
+      },
+      "after": {
+        "id": 1,
+        "revision": 14,
+        "cycle": 3,
+        "after_key": "000000089001:000980000001",
+        "upper_key": "000000089001:000980000005",
+        "failures": 0,
+        "last_error_code": null,
+        "last_cycle_status": "OK",
+        "last_completed_at": "2026-11-01T07:33:55.843Z"
+      },
+      "calls": [
+        {
+          "sql": "UPDATE fdci_import_checkpoint SET revision=revision+1,after_key=?,failures=failures+?,\n        last_error_code=CASE WHEN ? THEN ? ELSE last_error_code END\n        WHERE id=1 AND revision=? AND upper_key<>'' AND after_key<? AND upper_key>=? AND EXISTS (SELECT 1 FROM import_gate_lease WHERE id=1 AND source='fdci'\n  AND opened_by=? AND julianday(expires_at)>julianday('now')) RETURNING *",
+          "params": [
+            "000000089001:000980000002",
+            0,
+            0,
+            null,
+            14,
+            "000000089001:000980000002",
+            "000000089001:000980000002",
+            "close-3d9d026e-5f72-4c4d-8761-842846bcf20c-interrupted"
+          ],
+          "meta": {
+            "served_by": "v3-prod",
+            "served_by_region": "ENAM",
+            "served_by_colo": "EWR",
+            "served_by_primary": true,
+            "timings": {
+              "sql_duration_ms": 0.231
+            },
+            "duration": 0.231,
+            "changes": 0,
+            "last_row_id": 0,
+            "changed_db": false,
+            "size_after": 724992,
+            "rows_read": 3,
+            "rows_written": 0,
+            "total_attempts": 1
+          },
+          "resultCount": 0
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "label": "interrupted",
+      "at": "2026-11-01T07:46:55.858Z",
+      "start": "2026-11-01T07:45:49.644Z",
+      "end": "2026-11-01T07:46:54.519Z",
+      "http": 200,
+      "available": true,
+      "errorCodes": [],
+      "rows": [
+        {
+          "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+          "status": "success",
+          "requests": 8,
+          "errors": 0,
+          "cpuP50Ms": 2.057,
+          "cpuP90Ms": 4.581,
+          "cpuP99Ms": 4.581
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "at": "2026-11-01T07:57:33.809Z",
+      "start": "2026-11-01T07:45:49.644Z",
+      "end": "2026-11-01T07:56:51.780Z",
+      "http": 200,
+      "available": true,
+      "errorCodes": [],
+      "rows": [
+        {
+          "version": "df5a04c0-c2ef-426d-8c78-c36b0cb61d7e",
+          "status": "success",
+          "requests": 1,
+          "errors": 0,
+          "cpuP50Ms": 0.641,
+          "cpuP90Ms": 0.641,
+          "cpuP99Ms": 0.641
+        },
+        {
+          "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+          "status": "success",
+          "requests": 45,
+          "errors": 0,
+          "cpuP50Ms": 2.326,
+          "cpuP90Ms": 3.414,
+          "cpuP99Ms": 4.581
+        },
+        {
+          "version": "7fe9b9db-3223-462e-8adb-93f260059fa6",
+          "status": "success",
+          "requests": 1,
+          "errors": 0,
+          "cpuP50Ms": 0.604,
+          "cpuP90Ms": 0.604,
+          "cpuP99Ms": 0.604
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "closed": true,
+  "secretRemoved": true,
+  "physicalOfficialRequests": 0,
+  "armed": {
+    "version": "0c3e9336-31c6-41f4-94ac-8b412975c713",
+    "deployment": "e59f91f3-279f-4ec6-b956-a2725dc7a340",
+    "secretNames": [
+      "FDCI_IMPORT_SECRET",
+      "JUNTAS_IMPORT_SECRET",
+      "SIME_IMPORT_SECRET"
+    ],
+    "limits": null,
+    "usageModel": "standard"
+  },
+  "interruption": {
+    "after": {
+      "id": 1,
+      "revision": 14,
+      "cycle": 3,
+      "after_key": "000000089001:000980000001",
+      "upper_key": "000000089001:000980000005",
+      "failures": 0,
+      "last_error_code": null,
+      "last_cycle_status": "OK",
+      "last_completed_at": "2026-11-01T07:33:55.843Z"
+    },
+    "at": "2026-11-01T07:46:09.228Z",
+    "pid": 29296
+  },
+  "lease": {
+    "source": "fdci",
+    "opened_by": "close-3d9d026e-5f72-4c4d-8761-842846bcf20c-interrupted",
+    "opened_at": "2026-11-01T07:46:05.383Z",
+    "expires_at": "2026-11-01T07:56:05.383Z"
+  },
+  "recoveredCheckpoint": {
+    "id": 1,
+    "revision": 19,
+    "cycle": 4,
+    "after_key": "",
+    "upper_key": "",
+    "failures": 0,
+    "last_error_code": null,
+    "last_cycle_status": "OK",
+    "last_completed_at": "2026-11-01T07:56:18.856Z"
+  },
+  "repeatedCheckpoint": {
+    "id": 1,
+    "revision": 26,
+    "cycle": 5,
+    "after_key": "",
+    "upper_key": "",
+    "failures": 0,
+    "last_error_code": null,
+    "last_cycle_status": "OK",
+    "last_completed_at": "2026-11-01T07:56:28.785Z"
+  },
+  "closedSettings": {
+    "version": "df5a04c0-c2ef-426d-8c78-c36b0cb61d7e",
+    "deployment": "47ae734f-d753-4e5c-8e28-531f3fe60ee7",
+    "secretNames": [
+      "FDCI_IMPORT_SECRET",
+      "JUNTAS_IMPORT_SECRET",
+      "SIME_IMPORT_SECRET"
+    ],
+    "limits": null,
+    "usageModel": "standard"
+  },
+  "final": {
+    "version": "7fe9b9db-3223-462e-8adb-93f260059fa6",
+    "deployment": "acfb5fac-ebaa-4aa9-84a8-3b9eb5396c33",
+    "secretNames": [
+      "JUNTAS_IMPORT_SECRET",
+      "SIME_IMPORT_SECRET"
+    ],
+    "limits": null,
+    "usageModel": "standard"
+  },
+  "finalHttpMatched": true,
+  "comparison": {
+    "before": 14,
+    "after": 14,
+    "distinct": 14,
+    "allPublicationsUnchanged": true,
+    "syncUnchanged": true,
+    "protectedUnchanged": true,
+    "leaseRows": 0
+  },
+  "checkpoint": {
+    "id": 1,
+    "revision": 26,
+    "cycle": 5,
+    "after_key": "",
+    "upper_key": "",
+    "failures": 0,
+    "last_error_code": null,
+    "last_cycle_status": "OK",
+    "last_completed_at": "2026-11-01T07:56:28.785Z"
+  },
+  "finished": "2026-11-01T07:56:51.780Z",
+  "receiptCompleted": "2026-11-01T07:57:33.810Z",
+  "httpD1": {
+    "rpc": 118,
+    "queries": 118,
+    "rowsRead": 146,
+    "rowsWritten": 19
+  },
+  "publicationD1": {
+    "rpc": 32,
+    "queries": 32,
+    "rowsRead": 32,
+    "rowsWritten": 0
+  },
+  "controlD1": {
+    "rpc": 86,
+    "queries": 86,
+    "rowsRead": 114,
+    "rowsWritten": 19
+  },
+  "stageMetrics": [
+    {
+      "stage": 6,
+      "pid": 29296,
+      "http": 7,
+      "d1": {
+        "rpc": 17,
+        "queries": 17,
+        "rowsRead": 21,
+        "rowsWritten": 3
+      },
+      "publications": {
+        "rpc": 3,
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      }
+    },
+    {
+      "stage": 7,
+      "pid": 30800,
+      "http": 14,
+      "d1": {
+        "rpc": 38,
+        "queries": 38,
+        "rowsRead": 48,
+        "rowsWritten": 6
+      },
+      "publications": {
+        "rpc": 12,
+        "queries": 12,
+        "rowsRead": 12,
+        "rowsWritten": 0
+      }
+    },
+    {
+      "stage": 8,
+      "pid": 4348,
+      "http": 17,
+      "d1": {
+        "rpc": 48,
+        "queries": 48,
+        "rowsRead": 62,
+        "rowsWritten": 9
+      },
+      "publications": {
+        "rpc": 15,
+        "queries": 15,
+        "rowsRead": 15,
+        "rowsWritten": 0
+      }
+    }
+  ],
+  "sqlFenceD1": {
+    "queries": 2,
+    "rowsRead": 6,
+    "rowsWritten": 0
+  },
+  "verdict": "APTO CON CONDICIONES",
+  "remainingUncertainty": [
+    "No individual CPU data for the 45 armed-version requests; aggregates are available.",
+    "Remote settings limits=null and usage_model=standard do not independently establish the account CPU entitlement.",
+    "Synthetic source only; no official FDCI requests in this closure."
+  ]
+}

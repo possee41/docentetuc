@@ -6,10 +6,13 @@ const app = readFileSync(new URL("../app/docente-app.tsx", import.meta.url), "ut
 const account = readFileSync(new URL("../components/account-sign-in-section.tsx", import.meta.url), "utf8");
 const serviceWorker = readFileSync(new URL("../public/sw.js", import.meta.url), "utf8");
 
-test("Actualizar termina aunque /api/sync no responda y resume fuentes parciales", () => {
-  assert.match(app, /fetch\("\/api\/sync"[^\n]+AbortSignal\.timeout\(60_000\)/);
+test("Recargar no dispara el sincronizador legacy desde el navegador", () => {
+  assert.doesNotMatch(app, /fetch\("\/api\/sync"/);
+  assert.doesNotMatch(app, /syncIfPublicEmpty|autoSyncStarted/);
+  assert.match(app, /const refreshed = await loadPublic\(\)/);
+  assert.match(app, /await loadRef\.current\(false\)/);
+  assert.match(app, /if \(refreshed\) toast\.success\("Información pública recargada"\)/);
   assert.match(app, /finally \{ setSyncing\(false\); \}/);
-  assert.match(app, /fuentes verificadas; \$\{result\.failures\} pendientes o no disponibles/);
 });
 
 test("Cuenta y la carga inicial tienen límites y ofrecen reintento", () => {

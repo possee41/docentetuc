@@ -1,6 +1,8 @@
-param([switch]$Release)
+param([switch]$Release, [switch]$Preview)
 
 $ErrorActionPreference = "Stop"
+if ($Release -and $Preview) { throw "Elegí Release o Preview, no ambos." }
+if ($Preview -and -not $env:DOCENTETUC_PREVIEW_URL) { throw "Definí DOCENTETUC_PREVIEW_URL con el origen HTTPS aislado antes de compilar Preview." }
 
 $project = $PSScriptRoot
 $root = Split-Path $project -Parent
@@ -76,6 +78,8 @@ try {
         $env:DOCENTETUC_STORE_PASSWORD = $password
         $env:DOCENTETUC_KEY_PASSWORD = $password
         & (Join-Path $gradle "bin\gradle.bat") --no-daemon assembleRelease bundleRelease
+    } elseif ($Preview) {
+        & (Join-Path $gradle "bin\gradle.bat") --no-daemon assemblePreview
     } else {
         & (Join-Path $gradle "bin\gradle.bat") --no-daemon assembleDebug
     }
@@ -99,6 +103,12 @@ if ($Release) {
     Copy-Item -LiteralPath $apk -Destination $apkOutput -Force
     Copy-Item -LiteralPath $aab -Destination $aabOutput -Force
     Write-Output $apkOutput, $aabOutput
+} elseif ($Preview) {
+    $apk = Join-Path $project "app\build\outputs\apk\preview\app-preview.apk"
+    if (-not (Test-Path -LiteralPath $apk)) { throw "Falta el APK Preview." }
+    $output = Join-Path $dist "DocenteTuc-1.2-Pruebas.apk"
+    Copy-Item -LiteralPath $apk -Destination $output -Force
+    Write-Output $output
 } else {
     $apk = Join-Path $project "app\build\outputs\apk\debug\app-debug.apk"
     if (-not (Test-Path -LiteralPath $apk)) { throw "Falta el APK de prueba." }

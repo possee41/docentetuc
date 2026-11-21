@@ -1,0 +1,91 @@
+{
+  "sourceCommit": "89f617e",
+  "recordedAt": "2026-10-29T20:18:40.788Z",
+  "plan": {
+    "name": "Workers Free",
+    "confirmation": "User confirmed Free in response to plan question",
+    "httpCpuLimitMs": 10,
+    "officialLimits": "https://developers.cloudflare.com/workers/platform/limits/",
+    "subscriptionApiHttp": 403,
+    "subscriptionApiErrorCodes": [
+      10000
+    ],
+    "usageModel": "standard",
+    "optimizedRemoteCpuAvailable": false,
+    "lastUnoptimizedCanaryCpuMs": 18.385
+  },
+  "database": {
+    "name": "docentetuc-db",
+    "id": "baaf5886-0123-4948-96da-aa7106424549",
+    "requiredColumnsVerified": true,
+    "identity": {
+      "id": 1,
+      "database_name": "docentetuc-db",
+      "database_id": "baaf5886-0123-4948-96da-aa7106424549"
+    },
+    "notificationDedupeIndex": {
+      "name": "idx_notifications_dedupe",
+      "sql": "CREATE UNIQUE INDEX idx_notifications_dedupe ON notifications(user_id, dedupe_key) WHERE dedupe_key<>''"
+    },
+    "queueUnique": true,
+    "migrations": [
+      "0002_designations.sql",
+      "0003_information_agenda.sql",
+      "0004_agenda_reminders.sql",
+      "0005_training_match_threshold.sql",
+      "0006_manual_events.sql",
+      "0007_manual_event_recurrence.sql",
+      "0008_personal_matching_circuits.sql",
+      "0009_reliability_lifecycle.sql",
+      "0010_data_freshness.sql",
+      "0011_board_crawl.sql",
+      "0012_public_profiles.sql",
+      "0013_auth_identity.sql",
+      "0014_account_data_identity.sql",
+      "0015_community.sql",
+      "0016_community_saved_posts.sql",
+      "0017_installation_credentials.sql",
+      "0018_community_admin.sql",
+      "0019_admin_notices.sql",
+      "0020_community_pre_moderation.sql",
+      "0021_news_editorial.sql",
+      "0022_news_media_content.sql",
+      "0025_external_publication_events.sql",
+      "0026_juntas_incremental.sql",
+      "0027_personal_catalog_index.sql",
+      "0028_external_notice_cycle.sql",
+      "0029_import_gateway_identity.sql"
+    ],
+    "eligibilityAt": "2026-10-29T20:15:42.282Z",
+    "eligible": {
+      "training": 0,
+      "designation": 0,
+      "agenda": 0,
+      "manual": 0
+    },
+    "totalEligible": 0
+  },
+  "production": {
+    "id": "1fcae53a-95a8-4e14-87a1-e2b1174411d0",
+    "versions": [
+      {
+        "version_id": "3ac6a189-ad4a-463e-b97c-814766c25fb8",
+        "percentage": 0
+      },
+      {
+        "version_id": "be5c16fc-6690-4fb4-ba3b-b3cb8bb83330",
+        "percentage": 100
+      }
+    ]
+  },
+  "operations": {
+    "remoteWrites": 0,
+    "personalRowsRetrieved": 0,
+    "deployments": 0,
+    "secretChanges": 0,
+    "materializationCalls": 0
+  },
+  "noticesWorkerExists": false,
+  "decision": "STOPPED_BEFORE_PRODUCTION_DEPLOY_OR_WRITE_CPU_MARGIN_UNPROVEN",
+  "nextAuthorization": "One optimized isolated canary measurement with limit=2; no production operation."
+}

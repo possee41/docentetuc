@@ -1,0 +1,141 @@
+{
+  "sourceCommit": "eb0887d",
+  "optimizedCodeCommit": "89f617e",
+  "worker": "docentetuc-notices-1-2-canary",
+  "databaseId": "bee24175-2591-4fe3-a4ed-deb7f680f615",
+  "runId": "notices-88db250f-cfea-452a-bee5-23259bb218f3",
+  "bundleSha256": "eeb76b3304e3bd6bffeea865c2bf83bf887b4723a8ca05879f0764ec0bdf6a1f",
+  "optimizedClosedVersion": "f2f3b9bb-9555-4308-8f7d-568bb6c43044",
+  "measuredVersion": "4d54191a-1667-4389-9970-fcb31a3d95c9",
+  "enabledDeployment": "31632cd1-118a-4a5c-be01-18ac67a0eec2",
+  "materialization": {
+    "limit": 2,
+    "authenticatedRequests": 1,
+    "startedAt": "2026-10-29T20:54:07.424Z",
+    "completedAt": "2026-10-29T20:54:08.657Z",
+    "http": 200,
+    "ack": {
+      "ok": true,
+      "considered": 2,
+      "inserted": 2,
+      "processed": 2
+    },
+    "unauthorizedHttp": 401,
+    "mandatoryChecksPassed": true,
+    "effectiveVersionVerified": false
+  },
+  "counts": {
+    "before": {
+      "notifications": 6,
+      "queue": 2,
+      "training": 1,
+      "designation": 0,
+      "saved": 0,
+      "manual": 1
+    },
+    "after": {
+      "notifications": 7,
+      "queue": 3,
+      "new_notifications": 1,
+      "new_queue": 1,
+      "new_training_flag": 1,
+      "new_manual_flag": 1,
+      "pending": 0,
+      "subscriptions": 0,
+      "notification_duplicates": 0,
+      "queue_duplicates": 0
+    },
+    "oldRowsPreserved": true,
+    "noDuplicateRecords": true
+  },
+  "metrics": {
+    "http": 200,
+    "from": "2026-10-29T20:54:07.000Z",
+    "to": "2026-10-29T20:54:09.000Z",
+    "errorCodes": [],
+    "workers": [
+      {
+        "dimensions": {
+          "datetime": "2026-10-29T20:54:08Z",
+          "scriptVersion": "4d54191a-1667-4389-9970-fcb31a3d95c9",
+          "status": "success"
+        },
+        "quantiles": {
+          "cpuTimeP50": 7545,
+          "cpuTimeP99": 7545
+        },
+        "sum": {
+          "errors": 0,
+          "requests": 1,
+          "subrequests": 0
+        }
+      }
+    ],
+    "d1": [],
+    "d1Observed": null,
+    "individualTraceCpuTimeMs": null,
+    "localResponseElapsedMs": 1233,
+    "d1Analytics": [
+      {
+        "count": 2,
+        "dimensions": {
+          "datetime": "2026-10-29T20:54:08Z"
+        },
+        "sum": {
+          "readQueries": 2,
+          "rowsRead": 7,
+          "rowsWritten": 0,
+          "writeQueries": 0
+        }
+      },
+      {
+        "count": 4,
+        "dimensions": {
+          "datetime": "2026-10-29T20:54:09Z"
+        },
+        "sum": {
+          "readQueries": 3,
+          "rowsRead": 23,
+          "rowsWritten": 13,
+          "writeQueries": 4
+        }
+      }
+    ],
+    "d1MetricQueryErrors": [],
+    "d1AnalyticsObserved": {
+      "readQueries": 5,
+      "writeQueries": 4,
+      "rowsRead": 30,
+      "rowsWritten": 13
+    },
+    "lastReadAt": "2026-10-29T20:57:32.110Z"
+  },
+  "comparison": {
+    "previousCpuP50Ms": 18.385,
+    "previousRequests": 1,
+    "previousLimit": 4,
+    "previousOptimized": false,
+    "currentCpuP50Ms": 7.545,
+    "currentRequests": 1,
+    "currentLimit": 2,
+    "currentOptimized": true,
+    "isolatedOptimizationEffect": false
+  },
+  "closure": {
+    "http": 503,
+    "enabled": "false",
+    "secrets": 0,
+    "secretRemoved": true,
+    "versionTraceVerified": false,
+    "versions": [
+      {
+        "version_id": "0eca554f-2f59-4b4f-8d65-e44b8c698697",
+        "percentage": 100
+      }
+    ],
+    "deployment": "91cea536-6b28-425f-89b1-01f740a82ba4"
+  },
+  "productionUnchanged": true,
+  "simeGatewayUnchanged": true,
+  "conclusion": "FUNCTIONAL_PASS_SINGLE_SAMPLE_SUPPORTS_MANUAL_PRODUCTION_PILOT_LIMIT2"
+}

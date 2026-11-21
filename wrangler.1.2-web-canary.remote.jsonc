@@ -1,0 +1,22 @@
+{
+  "name": "docentetuc-web-canary-1-2",
+  "main": "dist/server/worker-entry.mjs",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "no_bundle": true,
+  "rules": [{ "type": "ESModule", "globs": ["**/*.js", "**/*.mjs"] }],
+  "assets": { "directory": "dist/client" },
+  "workers_dev": true,
+  "vars": {
+    "AI_PROVIDER": "gemini",
+    "AI_WEB_SEARCH_ENABLED": "0",
+    "PUSH_DISPATCH_MODE": "disabled",
+    "LEGACY_SYNC_PAUSED": "true"
+  },
+  "triggers": { "crons": [] },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "docentetuc-web-canary-1-2",
+    "database_id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+  }]
+}

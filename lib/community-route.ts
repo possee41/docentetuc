@@ -1,5 +1,5 @@
 import { getD1 } from "@/db";
-import { hasCommunitySavedPostsSchema, hasCommunitySchema } from "@/lib/auth-schema";
+import { hasCommunityPreModerationSchema, hasCommunitySavedPostsSchema, hasCommunitySchema } from "@/lib/auth-schema";
 import { CommunityError, type CommunityDatabase } from "@/lib/community";
 
 export async function communityDatabase() {
@@ -17,6 +17,13 @@ export async function communitySavedPostsDatabase() {
   const database = await communityDatabase();
   if (!await hasCommunitySavedPostsSchema(database)) throw new CommunityError("SCHEMA_UNAVAILABLE", 503);
   return database as unknown as CommunityDatabase;
+}
+
+/** Creation and edits fail closed until the additive preventive-moderation schema is present. */
+export async function communityWriteDatabase() {
+  const database = await communityDatabase();
+  if (!await hasCommunityPreModerationSchema(database)) throw new CommunityError("SCHEMA_UNAVAILABLE", 503);
+  return database;
 }
 
 export async function jsonObject(request: Request): Promise<Record<string, unknown>> {

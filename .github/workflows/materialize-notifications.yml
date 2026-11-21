@@ -1,0 +1,40 @@
+name: Materialize notifications outside Workers
+on:
+  workflow_dispatch:
+  # Schedule stays disabled until the D1 target, legacy cut and quotas are approved.
+  # schedule: [{ cron: '4 * * * *' }]
+permissions:
+  contents: read
+concurrency:
+  group: external-notification-materialization
+  cancel-in-progress: false
+jobs:
+  materialize:
+    if: github.repository == 'possee41/docentetuc' && github.ref == 'refs/heads/feat/1.2-sync-integration'
+    runs-on: ubuntu-latest
+    environment: fdci-pilot
+    timeout-minutes: 10
+    steps:
+      - name: Verify approved revision
+        env:
+          IMPORT_REF: ${{ vars.FDCI_IMPORT_REF }}
+        run: |
+          [[ "$IMPORT_REF" =~ ^[a-f0-9]{40}$ ]] || exit 1
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.FDCI_IMPORT_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify checked-out revision
+        env:
+          IMPORT_REF: ${{ vars.FDCI_IMPORT_REF }}
+        run: test "$(git rev-parse HEAD)" = "$IMPORT_REF"
+      - name: Materialize in isolated D1
+        env:
+          DIRECT_D1_WRITE_ENABLED: 'true'
+          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          D1_IMPORT_TOKEN: ${{ secrets.D1_IMPORT_TOKEN }}
+        run: node --experimental-strip-types scripts/materialize-external.mjs

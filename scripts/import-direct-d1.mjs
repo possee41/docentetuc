@@ -1,0 +1,132 @@
+// Opt-in runner. Canary remains the default; production needs an approved SHA,
+// a separately protected account ID, and a verified database identity.
+import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
+import { createD1Rest } from "./d1-rest.mjs";
+import { CANARY_DATABASE_ID, CANARY_DATABASE_NAME } from "./probe-d1-rest-canary.mjs";
+import { createDirectD1ReceiverFetch, sourceHashCache, withSourceHashCache } from "./direct-d1-receiver.mjs";
+import { runFdciImport } from "./import-fdci.mjs";
+import { runSimeImport } from "./import-sime.mjs";
+import { runPublicSourceImport } from "./import-public-sources.mjs";
+import { runJuntasCheckpoint } from "./import-juntas-checkpoint.mjs";
+import { JUNTA_EXTERNAL_SOURCES } from "../lib/junta-external-sources.ts";
+
+const PRODUCTION_DATABASE_ID = "baaf5886-0123-4948-96da-aa7106424549";
+const PRODUCTION_DATABASE_NAME = "docentetuc-db";
+const SAFE_IMPORT_ERRORS = new Set([
+  "D1_DATABASE_OVERRIDE_FORBIDDEN", "PRODUCTION_D1_NOT_APPROVED", "DIRECT_D1_WRITE_DISABLED",
+  "D1_CONFIGURATION_INVALID", "D1_QUERY_INVALID", "D1_QUERY_FAILED", "D1_NETWORK_ERROR", "D1_RESPONSE_INVALID",
+  "D1_IDENTITY_NETWORK_ERROR", "D1_IDENTITY_RESPONSE_INVALID", "D1_IDENTITY_MISMATCH",
+  "SOURCE_INVALID", "SOURCE_HTTP_429", "RECEIVER_ACK_INVALID", "IMPORT_ACK_INVALID", "IMPORT_CONFIGURATION_INVALID",
+  "FDCI_PARTIAL_SOURCE", "FDCI_SELECTION_REQUIRED", "FDCI_SELECTION_INVALID", "FDCI_SELECTION_INCOMPLETE",
+  "FDCI_EMPTY_RESPONSE", "FDCI_SCHEMA_CHANGED", "FDCI_DETAIL_SCHEMA_CHANGED", "FDCI_COURSE_NOT_FOUND", "FDCI_COMMISSION_NOT_FOUND",
+  "SIME_PARTIAL_SOURCE", "SIME_RECEIVER_ACK_INVALID", "SIME_IMPORT_CONFIGURATION_INVALID", "SIME_PREVIOUS_PAGE_INVALID", "SIME_PREVIOUS_ROW_INVALID",
+  "CENET_FORMAT_CHANGED", "CENET_EMPTY_SUSPECT", "INFD_FORMAT_CHANGED", "INFD_PARTIAL_SOURCE", "INFD_EMPTY_SUSPECT",
+  "JUNTAS_CHECKPOINT_REQUIRED", "JUNTAS_CHECKPOINT_INVALID", "JUNTAS_CHECKPOINT_LEASE_LOST", "JUNTAS_ROOT_INVALID",
+  "JUNTAS_SOURCE_TIMEOUT", "JUNTAS_SOURCE_NETWORK", "JUNTAS_DOCUMENT_FORMAT_INVALID", "JUNTAS_NOTICE_FORMAT_UNRECOGNIZED",
+  "JUNTAS_ITEM_TOO_LARGE", "JUNTAS_RECEIVER_ACK_INVALID", "JUNTAS_DRIVE_KEY_REQUIRED", "JUNTAS_DRIVE_PAGE_INVALID",
+  "JUNTAS_BUDGET_INVALID", "JUNTAS_FOCUS_PAGE_IN_PROGRESS", "JUNTAS_FOCUS_NOT_PENDING",
+]);
+export const safeImportErrorCode = (error) => error instanceof Error &&
+  (SAFE_IMPORT_ERRORS.has(error.message) || /^(?:D1(?:_IDENTITY)?|SOURCE|RECEIVER|SIME_RECEIVER|JUNTAS(?:_RECEIVER)?|HTTP)_HTTP_[1-5][0-9]{2}$/.test(error.message))
+  ? error.message : "UNEXPECTED_IMPORT_ERROR";
+
+export function resolveDirectD1Target(config, revision) {
+  if (config.D1_DATABASE_ID) throw new Error("D1_DATABASE_OVERRIDE_FORBIDDEN");
+  const target = config.DIRECT_D1_TARGET || "canary";
+  if (target === "canary") return { id: CANARY_DATABASE_ID, name: CANARY_DATABASE_NAME };
+  if (target !== "production" || config.DIRECT_D1_PRODUCTION_ENABLED !== "true" ||
+      !/^[a-f0-9]{32}$/i.test(config.CF_ACCOUNT_ID || "") ||
+      config.CF_ACCOUNT_ID?.toLowerCase() !== config.D1_PRODUCTION_ACCOUNT_ID?.toLowerCase() ||
+      !/^[a-f0-9]{40}$/i.test(config.DIRECT_D1_APPROVED_SHA || "") ||
+      config.DIRECT_D1_APPROVED_SHA?.toLowerCase() !== revision?.toLowerCase())
+    throw new Error("PRODUCTION_D1_NOT_APPROVED");
+  return { id: PRODUCTION_DATABASE_ID, name: PRODUCTION_DATABASE_NAME };
+}
+
+export async function verifyDirectD1Identity({ accountId, token, target, fetcher = fetch }) {
+  let response;
+  try {
+    response = await fetcher(`https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${target.id}`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
+  } catch { throw new Error("D1_IDENTITY_NETWORK_ERROR"); }
+  if (!response.ok) throw new Error(`D1_IDENTITY_HTTP_${response.status}`);
+  let body;
+  try { body = await response.json(); } catch { throw new Error("D1_IDENTITY_RESPONSE_INVALID"); }
+  if (body?.success !== true || body.result?.uuid !== target.id || body.result?.name !== target.name)
+    throw new Error("D1_IDENTITY_MISMATCH");
+}
+
+/** @param {{source: string, db: any, sourceFetch?: typeof fetch, driveKey?: string, selection?: {token: string, slug: string, commissionId: string}, scope?: string}} options */
+export async function runDirectD1Import({ source, db, sourceFetch = fetch, driveKey, selection, scope = "single",
+  juntaRootId, juntaMaxRequests, juntaMaxPublicationWrites }) {
+  if (source === "juntas" && scope !== "checkpoint") throw new Error("JUNTAS_CHECKPOINT_REQUIRED");
+  if (source === "juntas" && scope === "checkpoint") {
+    const roots = juntaRootId ? JUNTA_EXTERNAL_SOURCES.filter(([id]) => id === juntaRootId) : JUNTA_EXTERNAL_SOURCES;
+    if (!roots.length) throw new Error("JUNTAS_ROOT_INVALID");
+    return { source, ...await runJuntasCheckpoint({ db, driveKey, sourceFetch, sources: roots,
+      maxRequests: juntaMaxRequests ?? 25, maxPublicationWrites: juntaMaxPublicationWrites ?? 20 }) };
+  }
+  const storageSource = { sime: "SIME", cenet: "CeNET / INET", infd: "INFoD / AulaS-TIC" }[source];
+  // A paginated, public-only hash snapshot avoids one D1 read per unchanged row.
+  // FDCI's single-commission pilot is cheaper with its normal one-row lookup.
+  const receiverDb = storageSource ? withSourceHashCache(db, await sourceHashCache(db, storageSource)) : db;
+  const receiver = createDirectD1ReceiverFetch(receiverDb);
+  const path = source === "fdci" ? "/api/internal/fdci-import" : source === "sime" ? "/api/internal/sime-import" :
+    `/api/internal/public-source-import/${source}`;
+  const endpoint = receiver.endpoint(path);
+  let result;
+  if (source === "fdci") {
+    if (scope === "single" && !selection) throw new Error("FDCI_SELECTION_REQUIRED");
+    const fetcher = (input, init) => String(input).startsWith("https://direct-d1.invalid/") ?
+      receiver.receiverFetch(input, init) : sourceFetch(input, init);
+    if (scope === "full") await db.prepare("INSERT INTO sync_state(source,synced_at,item_count,last_attempt_at,sync_status) VALUES('Capacitación Docente','',0,?,'PARTIAL') ON CONFLICT(source) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,sync_status='PARTIAL'").bind(new Date().toISOString()).run();
+    try {
+      result = await runFdciImport({ endpoint, token: receiver.token, fetcher, scope, selection });
+      if (scope === "full") {
+        const finishedAt = new Date().toISOString();
+        await db.prepare("UPDATE sync_state SET synced_at=?,last_successful_sync_at=?,sync_status='OK',error=NULL,error_code=NULL,error_message=NULL,item_count=? WHERE source='Capacitación Docente'").bind(finishedAt, finishedAt, result.discovered).run();
+      }
+    } catch (error) {
+      if (scope === "full") {
+        try { await db.prepare("UPDATE sync_state SET sync_status=?,error_code=?,error_message='Importación externa incompleta' WHERE source='Capacitación Docente'")
+          .bind(error instanceof Error && error.message === "FDCI_PARTIAL_SOURCE" ? "PARTIAL" : "ERROR",
+            error instanceof Error && error.message === "FDCI_PARTIAL_SOURCE" ? "FDCI_PARTIAL_SOURCE" : "EXTERNAL_IMPORT_FAILED").run(); } catch { /* Preserve the import failure. */ }
+      }
+      throw error;
+    }
+  } else if (source === "sime") {
+    result = await runSimeImport({ endpoint, token: receiver.token, sourceFetch, receiverFetch: receiver.receiverFetch });
+  } else if (["cenet", "infd"].includes(source)) {
+    result = await runPublicSourceImport({ source, endpoint, token: receiver.token, sourceFetch,
+      receiverFetch: receiver.receiverFetch, driveKey });
+  } else throw new Error("SOURCE_INVALID");
+  return { source, ...result, d1: db.metrics?.() };
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    if (process.env.DIRECT_D1_WRITE_ENABLED !== "true") throw new Error("DIRECT_D1_WRITE_DISABLED");
+    const accountId = process.env.CF_ACCOUNT_ID, token = process.env.D1_IMPORT_TOKEN;
+    const revision = process.env.DIRECT_D1_TARGET === "production"
+      ? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim() : "";
+    const target = resolveDirectD1Target(process.env, revision);
+    const source = process.env.SYNC_SOURCE || "";
+    const scope = source === "juntas" ? process.env.JUNTAS_SCOPE || "checkpoint" : process.env.FDCI_SCOPE || "single";
+    // The D1 REST endpoint shares Cloudflare's account API rate limit.
+    const db = createD1Rest({ accountId, databaseId: target.id, token,
+      minRequestIntervalMs: source === "juntas" && scope === "checkpoint" ? 350 : 0 });
+    await verifyDirectD1Identity({ accountId, token, target });
+    const selection = source === "fdci" && scope === "single" ? { token: process.env.FDCI_COURSE_TOKEN || "",
+      slug: process.env.FDCI_COURSE_SLUG || "", commissionId: process.env.FDCI_COMMISSION_ID || "" } : undefined;
+    const result = await runDirectD1Import({ source, db, driveKey: process.env.GOOGLE_DRIVE_API_KEY, selection, scope,
+      juntaRootId: process.env.JUNTAS_ROOT_ID,
+      juntaMaxRequests: process.env.JUNTAS_MAX_REQUESTS ? Number(process.env.JUNTAS_MAX_REQUESTS) : undefined,
+      juntaMaxPublicationWrites: process.env.JUNTAS_MAX_PUBLICATION_WRITES ? Number(process.env.JUNTAS_MAX_PUBLICATION_WRITES) : undefined });
+    console.log(JSON.stringify(result));
+  } catch (error) {
+    // Never include remote response bodies, URLs with tokens, or credentials.
+    console.error("DIRECT_D1_IMPORT_FAILED", safeImportErrorCode(error));
+    process.exitCode = 1;
+  }
+}

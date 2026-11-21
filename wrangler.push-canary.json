@@ -1,0 +1,18 @@
+{
+  "name": "docentetuc-push-canary-1-2",
+  "main": "workers/push-canary.mjs",
+  "compatibility_date": "2026-10-26",
+  "workers_dev": true,
+  "vars": { "CANARY_BUILD_ID": "initial" },
+  "routes": [],
+  "triggers": { "crons": [] },
+  "observability": {
+    "enabled": true,
+    "logs": { "invocation_logs": true, "head_sampling_rate": 1 }
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "docentetuc-push-canary-1-2",
+    "database_id": "00000000-0000-0000-0000-000000000000"
+  }]
+}

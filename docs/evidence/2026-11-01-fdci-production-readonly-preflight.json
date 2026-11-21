@@ -1,0 +1,1563 @@
+{
+  "baseCommit": "03f253534a726e5cb4801382c55f997d06dc1d2e",
+  "readOnly": true,
+  "cloudflare": {
+    "started": "2026-11-01T08:05:32.998Z",
+    "account": "6bbc3dae7e111660f0c835677ceffb69",
+    "readOnly": true,
+    "resources": [
+      {
+        "worker": "docentetuc-import-1-2",
+        "database": {
+          "id": "baaf5886-0123-4948-96da-aa7106424549",
+          "name": "docentetuc-db"
+        },
+        "identity": [
+          {
+            "database_name": "docentetuc-db",
+            "database_id": "baaf5886-0123-4948-96da-aa7106424549"
+          }
+        ],
+        "settings": {
+          "d1": [
+            {
+              "binding": "DB",
+              "id": "baaf5886-0123-4948-96da-aa7106424549"
+            }
+          ],
+          "vars": {
+            "FDCI_EXTERNAL_ENABLED": "false",
+            "IMPORT_DATABASE_ID": "baaf5886-0123-4948-96da-aa7106424549",
+            "IMPORT_DATABASE_NAME": "docentetuc-db",
+            "IMPORT_GATE_ALLOWED_SOURCE": "sime",
+            "IMPORT_GATE_ENABLED": "false"
+          },
+          "secretNames": [
+            "SIME_IMPORT_SECRET"
+          ],
+          "limits": null,
+          "usageModel": "standard"
+        },
+        "active": {
+          "deployment": "97f59a96-a67d-4ce3-869b-444e0a868a62",
+          "versions": [
+            {
+              "version_id": "cbeeb117-0fe7-4631-a8b7-ee85809481c9",
+              "percentage": 100
+            }
+          ],
+          "createdAt": "2026-11-01T02:27:02.999784Z"
+        },
+        "version": {
+          "id": "cbeeb117-0fe7-4631-a8b7-ee85809481c9",
+          "createdOn": "2026-11-01T02:27:02.999784Z",
+          "bindings": {
+            "d1": [
+              {
+                "binding": "DB",
+                "id": "baaf5886-0123-4948-96da-aa7106424549"
+              }
+            ],
+            "vars": {
+              "FDCI_EXTERNAL_ENABLED": "false",
+              "IMPORT_DATABASE_ID": "baaf5886-0123-4948-96da-aa7106424549",
+              "IMPORT_DATABASE_NAME": "docentetuc-db",
+              "IMPORT_GATE_ALLOWED_SOURCE": "sime",
+              "IMPORT_GATE_ENABLED": "false"
+            },
+            "secretNames": [
+              "SIME_IMPORT_SECRET"
+            ]
+          },
+          "limits": null
+        },
+        "crons": [],
+        "closedHttp": 503,
+        "schema": [
+          {
+            "name": "idx_publications_kind_ends",
+            "type": "index",
+            "sql": "CREATE INDEX `idx_publications_kind_ends` ON `publications` (`kind`,`ends_at`)"
+          },
+          {
+            "name": "idx_publications_kind_id",
+            "type": "index",
+            "sql": "CREATE INDEX idx_publications_kind_id ON publications(kind, id)"
+          },
+          {
+            "name": "idx_publications_lifecycle",
+            "type": "index",
+            "sql": "CREATE INDEX idx_publications_lifecycle ON publications(normalized_status, kind, source)"
+          },
+          {
+            "name": "idx_publications_source_external",
+            "type": "index",
+            "sql": "CREATE INDEX `idx_publications_source_external` ON `publications` (`source`,`external_id`)"
+          },
+          {
+            "name": "sqlite_autoindex_publications_1",
+            "type": "index",
+            "sql": null
+          },
+          {
+            "name": "d1_migrations",
+            "type": "table",
+            "sql": "CREATE TABLE d1_migrations(\n\t\tid         INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\tname       TEXT UNIQUE,\n\t\tapplied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL\n)"
+          },
+          {
+            "name": "import_gateway_identity",
+            "type": "table",
+            "sql": "CREATE TABLE import_gateway_identity (\n  id INTEGER PRIMARY KEY CHECK (id = 1),\n  database_name TEXT NOT NULL,\n  database_id TEXT NOT NULL\n)"
+          },
+          {
+            "name": "publications",
+            "type": "table",
+            "sql": "CREATE TABLE `publications` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`source` text NOT NULL,\n\t`external_id` text NOT NULL,\n\t`kind` text NOT NULL,\n\t`category` text NOT NULL,\n\t`title` text NOT NULL,\n\t`summary` text DEFAULT '' NOT NULL,\n\t`level` text DEFAULT '' NOT NULL,\n\t`area` text DEFAULT '' NOT NULL,\n\t`junta` text DEFAULT '' NOT NULL,\n\t`location` text DEFAULT '' NOT NULL,\n\t`shift` text DEFAULT '' NOT NULL,\n\t`character` text DEFAULT '' NOT NULL,\n\t`starts_at` text,\n\t`ends_at` text,\n\t`status` text DEFAULT 'vigente' NOT NULL,\n\t`official_url` text NOT NULL,\n\t`content_hash` text NOT NULL,\n\t`source_updated_at` text,\n\t`first_seen_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,\n\t`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL\n, `metadata` text DEFAULT '{}' NOT NULL, circuit TEXT NOT NULL DEFAULT 'UNKNOWN', source_circuit_raw TEXT NOT NULL DEFAULT '', circuit_inference_source TEXT NOT NULL DEFAULT 'unknown', last_seen_at TEXT NOT NULL DEFAULT '', last_changed_at TEXT NOT NULL DEFAULT '', source_published_at TEXT, registration_open_at TEXT, registration_close_at TEXT, expires_at TEXT, source_status TEXT NOT NULL DEFAULT 'UNKNOWN', normalized_status TEXT NOT NULL DEFAULT 'UNKNOWN', removed_at TEXT, circuit_confidence INTEGER NOT NULL DEFAULT 0)"
+          },
+          {
+            "name": "sync_state",
+            "type": "table",
+            "sql": "CREATE TABLE `sync_state` (\n\t`source` text PRIMARY KEY NOT NULL,\n\t`synced_at` text NOT NULL,\n\t`item_count` integer DEFAULT 0 NOT NULL,\n\t`error` text\n, last_attempt_at TEXT, last_successful_sync_at TEXT, last_content_change_at TEXT, records_created INTEGER NOT NULL DEFAULT 0, records_updated INTEGER NOT NULL DEFAULT 0, records_removed INTEGER NOT NULL DEFAULT 0, sync_status TEXT NOT NULL DEFAULT 'UNKNOWN', error_code TEXT, error_message TEXT, parser_version TEXT NOT NULL DEFAULT '1', records_expired INTEGER NOT NULL DEFAULT 0)"
+          }
+        ],
+        "migrationLedger": [
+          {
+            "name": "0002_designations.sql"
+          },
+          {
+            "name": "0003_information_agenda.sql"
+          },
+          {
+            "name": "0004_agenda_reminders.sql"
+          },
+          {
+            "name": "0005_training_match_threshold.sql"
+          },
+          {
+            "name": "0006_manual_events.sql"
+          },
+          {
+            "name": "0007_manual_event_recurrence.sql"
+          },
+          {
+            "name": "0008_personal_matching_circuits.sql"
+          },
+          {
+            "name": "0009_reliability_lifecycle.sql"
+          },
+          {
+            "name": "0010_data_freshness.sql"
+          },
+          {
+            "name": "0011_board_crawl.sql"
+          },
+          {
+            "name": "0012_public_profiles.sql"
+          },
+          {
+            "name": "0013_auth_identity.sql"
+          },
+          {
+            "name": "0014_account_data_identity.sql"
+          },
+          {
+            "name": "0015_community.sql"
+          },
+          {
+            "name": "0016_community_saved_posts.sql"
+          },
+          {
+            "name": "0017_installation_credentials.sql"
+          },
+          {
+            "name": "0018_community_admin.sql"
+          },
+          {
+            "name": "0019_admin_notices.sql"
+          },
+          {
+            "name": "0020_community_pre_moderation.sql"
+          },
+          {
+            "name": "0021_news_editorial.sql"
+          },
+          {
+            "name": "0022_news_media_content.sql"
+          },
+          {
+            "name": "0025_external_publication_events.sql"
+          },
+          {
+            "name": "0026_juntas_incremental.sql"
+          },
+          {
+            "name": "0027_personal_catalog_index.sql"
+          },
+          {
+            "name": "0028_external_notice_cycle.sql"
+          },
+          {
+            "name": "0029_import_gateway_identity.sql"
+          }
+        ],
+        "gateColumns": [],
+        "checkpointColumns": [],
+        "publicationColumns": [
+          {
+            "cid": 0,
+            "name": "id",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 1
+          },
+          {
+            "cid": 1,
+            "name": "source",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 2,
+            "name": "external_id",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 3,
+            "name": "kind",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 4,
+            "name": "category",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 5,
+            "name": "title",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 6,
+            "name": "summary",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 7,
+            "name": "level",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 8,
+            "name": "area",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 9,
+            "name": "junta",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 10,
+            "name": "location",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 11,
+            "name": "shift",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 12,
+            "name": "character",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 13,
+            "name": "starts_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 14,
+            "name": "ends_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 15,
+            "name": "status",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "'vigente'",
+            "pk": 0
+          },
+          {
+            "cid": 16,
+            "name": "official_url",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 17,
+            "name": "content_hash",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 18,
+            "name": "source_updated_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 19,
+            "name": "first_seen_at",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "CURRENT_TIMESTAMP",
+            "pk": 0
+          },
+          {
+            "cid": 20,
+            "name": "updated_at",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "CURRENT_TIMESTAMP",
+            "pk": 0
+          },
+          {
+            "cid": 21,
+            "name": "metadata",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "'{}'",
+            "pk": 0
+          },
+          {
+            "cid": 22,
+            "name": "circuit",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "'UNKNOWN'",
+            "pk": 0
+          },
+          {
+            "cid": 23,
+            "name": "source_circuit_raw",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 24,
+            "name": "circuit_inference_source",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "'unknown'",
+            "pk": 0
+          },
+          {
+            "cid": 25,
+            "name": "last_seen_at",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 26,
+            "name": "last_changed_at",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 27,
+            "name": "source_published_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 28,
+            "name": "registration_open_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 29,
+            "name": "registration_close_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 30,
+            "name": "expires_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 31,
+            "name": "source_status",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "'UNKNOWN'",
+            "pk": 0
+          },
+          {
+            "cid": 32,
+            "name": "normalized_status",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "'UNKNOWN'",
+            "pk": 0
+          },
+          {
+            "cid": 33,
+            "name": "removed_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 34,
+            "name": "circuit_confidence",
+            "type": "INTEGER",
+            "notnull": 1,
+            "dflt_value": "0",
+            "pk": 0
+          }
+        ],
+        "publicationCounts": [
+          {
+            "total": 6831,
+            "fdci": 270,
+            "fdciUnknown": 243,
+            "protected6375": 1
+          }
+        ],
+        "recoveryBookmark": {
+          "bookmark": "00002254-00000000-00005116-174afafa079e03e4044566e883babe40"
+        },
+        "bookmarkAt": "2026-11-01T08:05:38.570Z"
+      },
+      {
+        "worker": "docentetuc-import-canary-1-2",
+        "database": {
+          "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756",
+          "name": "docentetuc-web-canary-1-2"
+        },
+        "identity": [
+          {
+            "database_name": "docentetuc-web-canary-1-2",
+            "database_id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+          }
+        ],
+        "settings": {
+          "d1": [
+            {
+              "binding": "DB",
+              "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+            }
+          ],
+          "vars": {
+            "FDCI_EXTERNAL_ENABLED": "true",
+            "IMPORT_DATABASE_ID": "853e2f5d-89b1-46a3-9c1c-5cbd46784756",
+            "IMPORT_DATABASE_NAME": "docentetuc-web-canary-1-2",
+            "IMPORT_GATE_ALLOWED_SOURCE": "fdci",
+            "IMPORT_GATE_ENABLED": "false",
+            "IMPORT_GATE_LEASE_REQUIRED": "false"
+          },
+          "secretNames": [
+            "JUNTAS_IMPORT_SECRET",
+            "SIME_IMPORT_SECRET"
+          ],
+          "limits": null,
+          "usageModel": "standard"
+        },
+        "active": {
+          "deployment": "acfb5fac-ebaa-4aa9-84a8-3b9eb5396c33",
+          "versions": [
+            {
+              "version_id": "7fe9b9db-3223-462e-8adb-93f260059fa6",
+              "percentage": 100
+            }
+          ],
+          "createdAt": "2026-11-01T07:56:45.496807Z"
+        },
+        "version": {
+          "id": "7fe9b9db-3223-462e-8adb-93f260059fa6",
+          "createdOn": "2026-11-01T07:56:45.496807Z",
+          "bindings": {
+            "d1": [
+              {
+                "binding": "DB",
+                "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+              }
+            ],
+            "vars": {
+              "FDCI_EXTERNAL_ENABLED": "true",
+              "IMPORT_DATABASE_ID": "853e2f5d-89b1-46a3-9c1c-5cbd46784756",
+              "IMPORT_DATABASE_NAME": "docentetuc-web-canary-1-2",
+              "IMPORT_GATE_ALLOWED_SOURCE": "fdci",
+              "IMPORT_GATE_ENABLED": "false",
+              "IMPORT_GATE_LEASE_REQUIRED": "false"
+            },
+            "secretNames": [
+              "JUNTAS_IMPORT_SECRET",
+              "SIME_IMPORT_SECRET"
+            ]
+          },
+          "limits": null
+        },
+        "crons": [],
+        "closedHttp": 503,
+        "schema": [
+          {
+            "name": "idx_publications_kind_ends",
+            "type": "index",
+            "sql": "CREATE INDEX `idx_publications_kind_ends` ON `publications` (`kind`,`ends_at`)"
+          },
+          {
+            "name": "idx_publications_kind_id",
+            "type": "index",
+            "sql": "CREATE INDEX idx_publications_kind_id ON publications(kind, id)"
+          },
+          {
+            "name": "idx_publications_lifecycle",
+            "type": "index",
+            "sql": "CREATE INDEX idx_publications_lifecycle ON publications(normalized_status, kind, source)"
+          },
+          {
+            "name": "idx_publications_source_external",
+            "type": "index",
+            "sql": "CREATE INDEX `idx_publications_source_external` ON `publications` (`source`,`external_id`)"
+          },
+          {
+            "name": "sqlite_autoindex_publications_1",
+            "type": "index",
+            "sql": null
+          },
+          {
+            "name": "fdci_import_checkpoint",
+            "type": "table",
+            "sql": "CREATE TABLE fdci_import_checkpoint (\n  id INTEGER PRIMARY KEY CHECK (id = 1),\n  revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),\n  cycle INTEGER NOT NULL DEFAULT 1 CHECK (cycle >= 1),\n  after_key TEXT NOT NULL DEFAULT '',\n  upper_key TEXT NOT NULL DEFAULT '',\n  failures INTEGER NOT NULL DEFAULT 0 CHECK (failures >= 0),\n  last_error_code TEXT,\n  last_cycle_status TEXT CHECK (last_cycle_status IN ('OK','PARTIAL')),\n  last_completed_at TEXT\n)"
+          },
+          {
+            "name": "import_gate_lease",
+            "type": "table",
+            "sql": "CREATE TABLE import_gate_lease (\n  id INTEGER PRIMARY KEY CHECK (id = 1),\n  source TEXT NOT NULL,\n  expires_at TEXT NOT NULL,\n  opened_at TEXT NOT NULL,\n  opened_by TEXT NOT NULL\n)"
+          },
+          {
+            "name": "import_gateway_identity",
+            "type": "table",
+            "sql": "CREATE TABLE import_gateway_identity (\n  id INTEGER PRIMARY KEY CHECK (id = 1),\n  database_name TEXT NOT NULL,\n  database_id TEXT NOT NULL\n)"
+          },
+          {
+            "name": "publications",
+            "type": "table",
+            "sql": "CREATE TABLE `publications` (\r\n\t`id` text PRIMARY KEY NOT NULL,\r\n\t`source` text NOT NULL,\r\n\t`external_id` text NOT NULL,\r\n\t`kind` text NOT NULL,\r\n\t`category` text NOT NULL,\r\n\t`title` text NOT NULL,\r\n\t`summary` text DEFAULT '' NOT NULL,\r\n\t`level` text DEFAULT '' NOT NULL,\r\n\t`area` text DEFAULT '' NOT NULL,\r\n\t`junta` text DEFAULT '' NOT NULL,\r\n\t`location` text DEFAULT '' NOT NULL,\r\n\t`shift` text DEFAULT '' NOT NULL,\r\n\t`character` text DEFAULT '' NOT NULL,\r\n\t`starts_at` text,\r\n\t`ends_at` text,\r\n\t`status` text DEFAULT 'vigente' NOT NULL,\r\n\t`official_url` text NOT NULL,\r\n\t`content_hash` text NOT NULL,\r\n\t`source_updated_at` text,\r\n\t`first_seen_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,\r\n\t`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL\r\n, `metadata` text DEFAULT '{}' NOT NULL, circuit TEXT NOT NULL DEFAULT 'UNKNOWN', source_circuit_raw TEXT NOT NULL DEFAULT '', circuit_inference_source TEXT NOT NULL DEFAULT 'unknown', last_seen_at TEXT NOT NULL DEFAULT '', last_changed_at TEXT NOT NULL DEFAULT '', source_published_at TEXT, registration_open_at TEXT, registration_close_at TEXT, expires_at TEXT, source_status TEXT NOT NULL DEFAULT 'UNKNOWN', normalized_status TEXT NOT NULL DEFAULT 'UNKNOWN', removed_at TEXT, circuit_confidence INTEGER NOT NULL DEFAULT 0)"
+          },
+          {
+            "name": "sync_state",
+            "type": "table",
+            "sql": "CREATE TABLE `sync_state` (\r\n\t`source` text PRIMARY KEY NOT NULL,\r\n\t`synced_at` text NOT NULL,\r\n\t`item_count` integer DEFAULT 0 NOT NULL,\r\n\t`error` text\r\n, last_attempt_at TEXT, last_successful_sync_at TEXT, last_content_change_at TEXT, records_created INTEGER NOT NULL DEFAULT 0, records_updated INTEGER NOT NULL DEFAULT 0, records_removed INTEGER NOT NULL DEFAULT 0, sync_status TEXT NOT NULL DEFAULT 'UNKNOWN', error_code TEXT, error_message TEXT, parser_version TEXT NOT NULL DEFAULT '1', records_expired INTEGER NOT NULL DEFAULT 0)"
+          }
+        ],
+        "migrationLedger": null,
+        "gateColumns": [
+          {
+            "cid": 0,
+            "name": "id",
+            "type": "INTEGER",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 1
+          },
+          {
+            "cid": 1,
+            "name": "source",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 2,
+            "name": "expires_at",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 3,
+            "name": "opened_at",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 4,
+            "name": "opened_by",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          }
+        ],
+        "checkpointColumns": [
+          {
+            "cid": 0,
+            "name": "id",
+            "type": "INTEGER",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 1
+          },
+          {
+            "cid": 1,
+            "name": "revision",
+            "type": "INTEGER",
+            "notnull": 1,
+            "dflt_value": "0",
+            "pk": 0
+          },
+          {
+            "cid": 2,
+            "name": "cycle",
+            "type": "INTEGER",
+            "notnull": 1,
+            "dflt_value": "1",
+            "pk": 0
+          },
+          {
+            "cid": 3,
+            "name": "after_key",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 4,
+            "name": "upper_key",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 5,
+            "name": "failures",
+            "type": "INTEGER",
+            "notnull": 1,
+            "dflt_value": "0",
+            "pk": 0
+          },
+          {
+            "cid": 6,
+            "name": "last_error_code",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 7,
+            "name": "last_cycle_status",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 8,
+            "name": "last_completed_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          }
+        ],
+        "leaseCounts": [
+          {
+            "rows": 0,
+            "active": 0
+          }
+        ],
+        "checkpoint": [
+          {
+            "id": 1,
+            "revision": 26,
+            "cycle": 5,
+            "after_key": "",
+            "upper_key": "",
+            "failures": 0,
+            "last_cycle_status": "OK",
+            "last_completed_at": "2026-11-01T07:56:28.785Z"
+          }
+        ],
+        "publicationColumns": [
+          {
+            "cid": 0,
+            "name": "id",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 1
+          },
+          {
+            "cid": 1,
+            "name": "source",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 2,
+            "name": "external_id",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 3,
+            "name": "kind",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 4,
+            "name": "category",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 5,
+            "name": "title",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 6,
+            "name": "summary",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 7,
+            "name": "level",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 8,
+            "name": "area",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 9,
+            "name": "junta",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 10,
+            "name": "location",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 11,
+            "name": "shift",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 12,
+            "name": "character",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 13,
+            "name": "starts_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 14,
+            "name": "ends_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 15,
+            "name": "status",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "'vigente'",
+            "pk": 0
+          },
+          {
+            "cid": 16,
+            "name": "official_url",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 17,
+            "name": "content_hash",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 18,
+            "name": "source_updated_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 19,
+            "name": "first_seen_at",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "CURRENT_TIMESTAMP",
+            "pk": 0
+          },
+          {
+            "cid": 20,
+            "name": "updated_at",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "CURRENT_TIMESTAMP",
+            "pk": 0
+          },
+          {
+            "cid": 21,
+            "name": "metadata",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "'{}'",
+            "pk": 0
+          },
+          {
+            "cid": 22,
+            "name": "circuit",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "'UNKNOWN'",
+            "pk": 0
+          },
+          {
+            "cid": 23,
+            "name": "source_circuit_raw",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 24,
+            "name": "circuit_inference_source",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "'unknown'",
+            "pk": 0
+          },
+          {
+            "cid": 25,
+            "name": "last_seen_at",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 26,
+            "name": "last_changed_at",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "''",
+            "pk": 0
+          },
+          {
+            "cid": 27,
+            "name": "source_published_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 28,
+            "name": "registration_open_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 29,
+            "name": "registration_close_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 30,
+            "name": "expires_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 31,
+            "name": "source_status",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "'UNKNOWN'",
+            "pk": 0
+          },
+          {
+            "cid": 32,
+            "name": "normalized_status",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": "'UNKNOWN'",
+            "pk": 0
+          },
+          {
+            "cid": 33,
+            "name": "removed_at",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 34,
+            "name": "circuit_confidence",
+            "type": "INTEGER",
+            "notnull": 1,
+            "dflt_value": "0",
+            "pk": 0
+          }
+        ]
+      }
+    ],
+    "reads": [
+      {
+        "at": "2026-11-01T08:05:33.673Z",
+        "method": "GET",
+        "path": "",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:34.128Z",
+        "method": "GET",
+        "path": "/workers/subdomain",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:34.600Z",
+        "method": "GET",
+        "path": "/d1/database/baaf5886-0123-4948-96da-aa7106424549",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:35.143Z",
+        "method": "POST",
+        "path": "/d1/database/baaf5886-0123-4948-96da-aa7106424549/query",
+        "status": 200,
+        "codes": [],
+        "d1": {
+          "rowsRead": 1,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "at": "2026-11-01T08:05:35.511Z",
+        "method": "GET",
+        "path": "/workers/scripts/docentetuc-import-1-2/settings",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:35.825Z",
+        "method": "GET",
+        "path": "/workers/scripts/docentetuc-import-1-2/deployments",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:36.182Z",
+        "method": "GET",
+        "path": "/workers/scripts/docentetuc-import-1-2/versions/cbeeb117-0fe7-4631-a8b7-ee85809481c9",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:36.483Z",
+        "method": "GET",
+        "path": "/workers/scripts/docentetuc-import-1-2/schedules",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:36.900Z",
+        "method": "POST",
+        "path": "/d1/database/baaf5886-0123-4948-96da-aa7106424549/query",
+        "status": 200,
+        "codes": [],
+        "d1": {
+          "rowsRead": 162,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "at": "2026-11-01T08:05:37.153Z",
+        "method": "POST",
+        "path": "/d1/database/baaf5886-0123-4948-96da-aa7106424549/query",
+        "status": 200,
+        "codes": [],
+        "d1": {
+          "rowsRead": 26,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "at": "2026-11-01T08:05:37.405Z",
+        "method": "POST",
+        "path": "/d1/database/baaf5886-0123-4948-96da-aa7106424549/query",
+        "status": 200,
+        "codes": [],
+        "d1": {
+          "rowsRead": 0,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "at": "2026-11-01T08:05:37.660Z",
+        "method": "POST",
+        "path": "/d1/database/baaf5886-0123-4948-96da-aa7106424549/query",
+        "status": 200,
+        "codes": [],
+        "d1": {
+          "rowsRead": 0,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "at": "2026-11-01T08:05:37.924Z",
+        "method": "POST",
+        "path": "/d1/database/baaf5886-0123-4948-96da-aa7106424549/query",
+        "status": 200,
+        "codes": [],
+        "d1": {
+          "rowsRead": 0,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "at": "2026-11-01T08:05:38.195Z",
+        "method": "POST",
+        "path": "/d1/database/baaf5886-0123-4948-96da-aa7106424549/query",
+        "status": 200,
+        "codes": [],
+        "d1": {
+          "rowsRead": 6831,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "at": "2026-11-01T08:05:38.569Z",
+        "method": "GET",
+        "path": "/d1/database/baaf5886-0123-4948-96da-aa7106424549/time_travel/bookmark",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:38.985Z",
+        "method": "GET",
+        "path": "/d1/database/853e2f5d-89b1-46a3-9c1c-5cbd46784756",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:39.431Z",
+        "method": "POST",
+        "path": "/d1/database/853e2f5d-89b1-46a3-9c1c-5cbd46784756/query",
+        "status": 200,
+        "codes": [],
+        "d1": {
+          "rowsRead": 1,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "at": "2026-11-01T08:05:39.809Z",
+        "method": "GET",
+        "path": "/workers/scripts/docentetuc-import-canary-1-2/settings",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:40.112Z",
+        "method": "GET",
+        "path": "/workers/scripts/docentetuc-import-canary-1-2/deployments",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:40.573Z",
+        "method": "GET",
+        "path": "/workers/scripts/docentetuc-import-canary-1-2/versions/7fe9b9db-3223-462e-8adb-93f260059fa6",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:40.878Z",
+        "method": "GET",
+        "path": "/workers/scripts/docentetuc-import-canary-1-2/schedules",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:41.303Z",
+        "method": "POST",
+        "path": "/d1/database/853e2f5d-89b1-46a3-9c1c-5cbd46784756/query",
+        "status": 200,
+        "codes": [],
+        "d1": {
+          "rowsRead": 163,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "at": "2026-11-01T08:05:41.606Z",
+        "method": "POST",
+        "path": "/d1/database/853e2f5d-89b1-46a3-9c1c-5cbd46784756/query",
+        "status": 200,
+        "codes": [],
+        "d1": {
+          "rowsRead": 0,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "at": "2026-11-01T08:05:41.863Z",
+        "method": "POST",
+        "path": "/d1/database/853e2f5d-89b1-46a3-9c1c-5cbd46784756/query",
+        "status": 200,
+        "codes": [],
+        "d1": {
+          "rowsRead": 0,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "at": "2026-11-01T08:05:42.163Z",
+        "method": "POST",
+        "path": "/d1/database/853e2f5d-89b1-46a3-9c1c-5cbd46784756/query",
+        "status": 200,
+        "codes": [],
+        "d1": {
+          "rowsRead": 1,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "at": "2026-11-01T08:05:42.419Z",
+        "method": "POST",
+        "path": "/d1/database/853e2f5d-89b1-46a3-9c1c-5cbd46784756/query",
+        "status": 200,
+        "codes": [],
+        "d1": {
+          "rowsRead": 1,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "at": "2026-11-01T08:05:42.694Z",
+        "method": "POST",
+        "path": "/d1/database/853e2f5d-89b1-46a3-9c1c-5cbd46784756/query",
+        "status": 200,
+        "codes": [],
+        "d1": {
+          "rowsRead": 0,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "at": "2026-11-01T08:05:43.095Z",
+        "method": "GET",
+        "path": "/workers/scripts/docentetuc/deployments",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:43.388Z",
+        "method": "GET",
+        "path": "/workers/account-settings",
+        "status": 200,
+        "codes": []
+      },
+      {
+        "at": "2026-11-01T08:05:43.643Z",
+        "method": "GET",
+        "path": "/subscriptions",
+        "status": 403,
+        "codes": [
+          10000
+        ]
+      }
+    ],
+    "errors": [],
+    "uncertainties": [
+      {
+        "operation": "workers-plan",
+        "code": "CF_HTTP_403_10000"
+      }
+    ],
+    "accountVerified": true,
+    "webActive": {
+      "id": "bf85331f-5c6f-4c41-8138-a0853a3cde55",
+      "source": "wrangler",
+      "strategy": "percentage",
+      "author_email": "possee41@gmail.com",
+      "annotations": {
+        "workers/message": "",
+        "workers/triggered_by": "deployment"
+      },
+      "versions": [
+        {
+          "version_id": "1386d989-739f-4447-a374-ffb5612bd37b",
+          "percentage": 100
+        }
+      ],
+      "created_on": "2026-10-30T04:09:58.475751Z"
+    },
+    "workersAccountSettings": {
+      "defaultUsageModel": "standard"
+    },
+    "finished": "2026-11-01T08:05:43.644Z"
+  },
+  "extra": {
+    "at": "2026-11-01T08:07:27.791Z",
+    "readOnly": true,
+    "web": {
+      "d1": [
+        {
+          "name": "DB",
+          "id": "baaf5886-0123-4948-96da-aa7106424549"
+        }
+      ],
+      "flags": {
+        "LEGACY_SYNC_PAUSED": "true",
+        "PUSH_DISPATCH_MODE": "disabled"
+      }
+    },
+    "triggers": [
+      {
+        "name": "external_event_sources",
+        "type": "table",
+        "sql": "CREATE TABLE external_event_sources (\n  source TEXT PRIMARY KEY CHECK(source IN ('Capacitación Docente', 'SIME', 'Padrones y Comunicados', 'CeNET / INET', 'INFoD / AulaS-TIC')),\n  enabled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\n)"
+      },
+      {
+        "name": "external_publication_events",
+        "type": "table",
+        "sql": "CREATE TABLE external_publication_events (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  publication_id TEXT NOT NULL REFERENCES publications(id) ON DELETE CASCADE,\n  content_hash TEXT NOT NULL,\n  change TEXT NOT NULL CHECK(change IN ('created', 'updated')),\n  profile_cursor TEXT NOT NULL DEFAULT '',\n  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'done', 'superseded')),\n  lease_owner TEXT,\n  lease_until TEXT,\n  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\n)"
+      },
+      {
+        "name": "trg_external_publication_created",
+        "type": "trigger",
+        "sql": "CREATE TRIGGER trg_external_publication_created\nAFTER INSERT ON publications\nWHEN EXISTS(SELECT 1 FROM external_event_sources WHERE source=NEW.source)\nBEGIN\n  INSERT INTO external_publication_events(publication_id, content_hash, change)\n  VALUES(NEW.id, NEW.content_hash, 'created');\nEND"
+      },
+      {
+        "name": "trg_external_publication_updated",
+        "type": "trigger",
+        "sql": "CREATE TRIGGER trg_external_publication_updated\nAFTER UPDATE OF content_hash, removed_at ON publications\nWHEN EXISTS(SELECT 1 FROM external_event_sources WHERE source=NEW.source)\n  AND (OLD.content_hash <> NEW.content_hash OR (OLD.removed_at IS NOT NULL AND NEW.removed_at IS NULL))\nBEGIN\n  INSERT INTO external_publication_events(publication_id, content_hash, change)\n  VALUES(NEW.id, NEW.content_hash, 'updated');\nEND"
+      }
+    ],
+    "sources": [
+      {
+        "fdciEventSourceEnabled": 0
+      }
+    ],
+    "conflicts": [
+      {
+        "conflictingFdciIds": 0
+      }
+    ],
+    "calls": [
+      {
+        "sql": "SELECT name,type,sql FROM sqlite_schema WHERE (type='trigger' AND tbl_name='publications') OR (type='table' AND name IN ('external_event_sources','external_publication_events')) ORDER BY type,name",
+        "rowsRead": 157,
+        "rowsWritten": 0
+      },
+      {
+        "sql": "SELECT COUNT(*) AS fdciEventSourceEnabled FROM external_event_sources WHERE source='Capacitación Docente'",
+        "rowsRead": 0,
+        "rowsWritten": 0
+      },
+      {
+        "sql": "SELECT COUNT(*) AS conflictingFdciIds FROM publications WHERE id LIKE 'fdci:commission:%' AND source<>'Capacitación Docente'",
+        "rowsRead": 6831,
+        "rowsWritten": 0
+      }
+    ]
+  },
+  "runtime": {
+    "at": "2026-11-01T08:08:01.171Z",
+    "field": "resources.script_runtime.limits",
+    "readOnly": true,
+    "versions": [
+      {
+        "worker": "docentetuc-import-1-2",
+        "version": "cbeeb117-0fe7-4631-a8b7-ee85809481c9",
+        "runtimePresent": true,
+        "runtimeKeys": [
+          "compatibility_date",
+          "usage_model"
+        ],
+        "limits": null,
+        "usageModel": "standard"
+      },
+      {
+        "worker": "docentetuc-import-canary-1-2",
+        "version": "7fe9b9db-3223-462e-8adb-93f260059fa6",
+        "runtimePresent": true,
+        "runtimeKeys": [
+          "compatibility_date",
+          "usage_model"
+        ],
+        "limits": null,
+        "usageModel": "standard"
+      }
+    ]
+  },
+  "github": {
+    "repository": "possee41/docentetuc",
+    "defaultBranch": "fix/navigation-community-1.1",
+    "workflows": {
+      "at": "2026-11-01T08:06:12.291Z",
+      "url": "https://api.github.com/repos/possee41/docentetuc/actions/workflows?per_page=100",
+      "http": 200,
+      "total": 5,
+      "returned": 5,
+      "workflows": [
+        {
+          "id": 393347326,
+          "name": "DocenteTuc 1.2 Linux build (isolated branch)",
+          "path": ".github/workflows/build-1.2-linux.yml",
+          "state": "active",
+          "updatedAt": "2026-10-22T20:41:29.000Z"
+        },
+        {
+          "id": 390697556,
+          "name": "FDCI external import",
+          "path": ".github/workflows/fdci-import.yml",
+          "state": "active",
+          "updatedAt": "2026-10-20T15:17:16.000Z"
+        },
+        {
+          "id": 395540435,
+          "name": "DocenteTuc 1.2 Linux lint (isolated branch)",
+          "path": ".github/workflows/lint-1.2-linux.yml",
+          "state": "active",
+          "updatedAt": "2026-10-25T00:43:25.000Z"
+        },
+        {
+          "id": 394631035,
+          "name": "DocenteTuc 1.2 official source check (isolated)",
+          "path": ".github/workflows/official-source-check-1.2.yml",
+          "state": "active",
+          "updatedAt": "2026-10-23T22:25:04.000Z"
+        },
+        {
+          "id": 400248058,
+          "name": "SIME external import pilot",
+          "path": ".github/workflows/sime-import.yml",
+          "state": "active",
+          "updatedAt": "2026-10-29T06:03:38.000Z"
+        }
+      ]
+    },
+    "runs": {
+      "at": "2026-11-01T08:04:37.622Z",
+      "total": 44,
+      "returned": 44,
+      "active": [],
+      "fdci": [],
+      "source": "https://api.github.com/repos/possee41/docentetuc/actions/runs?per_page=50"
+    },
+    "workflowFiles": [
+      {
+        "branch": "feat/1.2-sync-integration",
+        "path": ".github/workflows/fdci-import.yml",
+        "blob": "b460ca5a2fe36f2b9f2b572e52582c6a17510497",
+        "transport": "legacy direct REST",
+        "scheduleEnabled": false
+      },
+      {
+        "branch": "fix/navigation-community-1.1",
+        "path": ".github/workflows/fdci-import.yml",
+        "blob": "1bc02d8eb29c3bacfd1553bf9c87bc70864951a4",
+        "transport": "legacy dedicated FDCI receiver",
+        "scheduleEnabled": false
+      }
+    ],
+    "environmentVariablesAndReviewersVerified": false
+  },
+  "localHashes": {
+    "migrations/0031_import_gate_lease.sql": "3be9ef3892c827595a6a4ecb0d5fd8cf09563642cabac4b0bded3d53ae17d6fc",
+    "migrations/0032_fdci_import_checkpoint.sql": "77c64860e29d2a09db2fb2407e41d50e4715dbb09146ef757b39a506d19643d6",
+    ".github/workflows/fdci-import.yml": "f8d5d06e0b1c396f4c7f46345e47ad29f5caef5341aa7c8d3277922b7ab99b49"
+  },
+  "schemaCompatibility": {
+    "requiredPublicationColumns": [
+      "id",
+      "source",
+      "external_id",
+      "kind",
+      "category",
+      "title",
+      "summary",
+      "level",
+      "area",
+      "location",
+      "character",
+      "circuit",
+      "source_circuit_raw",
+      "circuit_inference_source",
+      "circuit_confidence",
+      "starts_at",
+      "ends_at",
+      "status",
+      "official_url",
+      "metadata",
+      "content_hash",
+      "source_updated_at",
+      "registration_open_at",
+      "registration_close_at",
+      "expires_at",
+      "source_status",
+      "normalized_status",
+      "last_seen_at",
+      "last_changed_at",
+      "removed_at",
+      "updated_at"
+    ],
+    "missing": [],
+    "productionTables0031And0032Absent": true
+  },
+  "cpu": {
+    "documentedFreeHttpMs": 10,
+    "userPreviouslyReportedPlan": "Free",
+    "effectiveCpuLimit": "NO CONFIRMADO",
+    "canaryMeasuredAggregateMs": {
+      "p50": 2.326,
+      "p90": 3.414,
+      "p99": 4.581
+    },
+    "individualMaximumKnown": false
+  },
+  "verdict": "NO APTO para ejecutar el piloto en el estado productivo actual; viable después de preparación autorizada"
+}

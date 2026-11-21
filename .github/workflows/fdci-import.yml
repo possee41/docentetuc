@@ -1,19 +1,8 @@
-name: FDCI external import
+name: FDCI legacy import (disabled)
 on:
+  # Daily 05:17 Tucumán; DISABLED until a separately authorized activation.
+  # schedule: [{ cron: '17 8 * * *' }]
   workflow_dispatch:
-    inputs:
-      course_token:
-        description: 'Token público del curso FDCI'
-        required: true
-        type: string
-      course_slug:
-        description: 'Slug público del curso FDCI'
-        required: true
-        type: string
-      commission_id:
-        description: 'ID público de una comisión a importar'
-        required: true
-        type: string
 permissions:
   contents: read
 concurrency:
@@ -21,16 +10,43 @@ concurrency:
   cancel-in-progress: false
 jobs:
   import:
-    if: github.repository == 'possee41/docentetuc'
+    if: >-
+      github.repository == 'possee41/docentetuc' &&
+      vars.FDCI_LEGACY_ENABLED == 'true' &&
+      ((github.event_name == 'workflow_dispatch' &&
+        github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) ||
+       (github.event_name == 'schedule' &&
+        github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+        vars.FDCI_AUTOMATION_ENABLED == 'true'))
     runs-on: ubuntu-latest
-    environment: fdci-import
-    timeout-minutes: 10
+    environment: fdci-pilot
+    timeout-minutes: 12
+    env:
+      IMPORT_GATEWAY_ENABLED: 'true'
+      SYNC_SOURCE: fdci
+      IMPORT_GATEWAY_TARGET: ${{ vars.IMPORT_GATEWAY_TARGET }}
+      IMPORT_GATEWAY_PRODUCTION_ENABLED: ${{ vars.IMPORT_GATEWAY_PRODUCTION_ENABLED }}
+      IMPORT_GATEWAY_APPROVED_SHA: ${{ vars.FDCI_IMPORT_APPROVED_SHA }}
+      IMPORT_GATEWAY_ORIGIN: ${{ vars.IMPORT_GATEWAY_ORIGIN }}
+      IMPORT_GATEWAY_DATABASE_ID: ${{ vars.IMPORT_GATEWAY_DATABASE_ID }}
+      IMPORT_GATEWAY_DATABASE_NAME: ${{ vars.IMPORT_GATEWAY_DATABASE_NAME }}
+      IMPORT_GATE_TTL_SECONDS: '600'
+      IMPORT_GATE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      FDCI_SCOPE: active
+      FDCI_MAX_REQUESTS: '6'
+      # The runner caps examined commissions too; retain the production pilot bound.
+      FDCI_MAX_PUBLICATIONS: '2'
+      FDCI_MAX_SLICES: '12'
+      FDCI_PAUSE_MS: '400'
     steps:
-      - name: Verify approved import revision
+      - name: Verify separately approved revision
         env:
           IMPORT_REF: ${{ vars.FDCI_IMPORT_REF }}
+          APPROVED_SHA: ${{ vars.FDCI_IMPORT_APPROVED_SHA }}
         run: |
-          [[ "$IMPORT_REF" =~ ^[a-f0-9]{40}$ ]] || { echo 'FDCI_IMPORT_REF must be an approved commit SHA'; exit 1; }
+          [[ "$IMPORT_REF" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          test "$IMPORT_REF" = "$APPROVED_SHA"
+          [[ "$IMPORT_GATEWAY_TARGET" == canary || "$IMPORT_GATEWAY_TARGET" == production ]] || exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ vars.FDCI_IMPORT_REF }}
@@ -39,22 +55,47 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify production ancestry
+      - name: Verify checked out revision
         env:
           IMPORT_REF: ${{ vars.FDCI_IMPORT_REF }}
-        run: |
-          test "$(git rev-parse HEAD)" = "$IMPORT_REF"
-          git merge-base --is-ancestor a1cdd56bdc59a487aa026ee49ec1cff62c675edb HEAD
-      - name: Verify dedicated receiver URL
+        run: test "$(git rev-parse HEAD)" = "$IMPORT_REF"
+      - name: Validate destination and identity before opening
+        id: preflight
         env:
-          IMPORT_URL: ${{ vars.FDCI_IMPORT_URL }}
-        run: |
-          [[ "$IMPORT_URL" =~ ^https://docentetuc-fdci-receiver-1-1\.[a-z0-9-]+\.workers\.dev/api/internal/fdci-import$ ]] || { echo 'FDCI_IMPORT_URL must point to the dedicated receiver'; exit 1; }
-      - name: Import public FDCI data
-        env:
-          FDCI_IMPORT_URL: ${{ vars.FDCI_IMPORT_URL }}
           FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
-          FDCI_COURSE_TOKEN: ${{ inputs.course_token }}
-          FDCI_COURSE_SLUG: ${{ inputs.course_slug }}
-          FDCI_COMMISSION_ID: ${{ inputs.commission_id }}
-        run: node --experimental-strip-types scripts/import-fdci.mjs
+        run: node --experimental-strip-types scripts/import-gate.mjs preflight
+      - name: Open, import and close with one owner
+        id: dispatch
+        timeout-minutes: 9
+        env:
+          FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
+        # Reuses scripts/import-via-gateway.mjs; no direct D1 credentials.
+        run: |
+          set -o pipefail
+          node --experimental-strip-types scripts/fdci-daily.mjs | tee fdci-import.json
+      - name: Close FDCI gate after interruption or failure
+        id: cleanup
+        if: always() && steps.preflight.outcome == 'success' && steps.dispatch.outcome != 'skipped'
+        timeout-minutes: 2
+        env:
+          FDCI_IMPORT_SECRET: ${{ secrets.FDCI_IMPORT_SECRET }}
+        run: node --experimental-strip-types scripts/import-gate.mjs close
+      - name: Record FDCI result
+        if: always()
+        env:
+          CLEANUP_OUTCOME: ${{ steps.cleanup.outcome }}
+        run: |
+          node --input-type=module <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          import { readFileSync } from 'node:fs';
+          let r = {};
+          try { r = JSON.parse(readFileSync('fdci-import.json', 'utf8')); } catch {}
+          console.log('### FDCI import');
+          console.log('- status: ' + (['OK','PARTIAL','ERROR'].includes(r.status) ? r.status : 'NO_RESULT'));
+          for (const key of ['discovered','created','updated','unchanged','rejected','skipped','sourceRequests','slices'])
+            console.log('- ' + key + ': ' + (Number.isSafeInteger(r[key]) && r[key] >= 0 ? r[key] : 'unavailable'));
+          for (const key of ['code','closeCode']) if (/^[A-Z_0-9]+$/.test(r[key] || '')) console.log('- ' + key + ': ' + r[key]);
+          if (r.cursor && Number.isSafeInteger(r.cursor.cycle) && Number.isSafeInteger(r.cursor.revision)) console.log('- cycle/revision: ' + r.cursor.cycle + '/' + r.cursor.revision);
+          console.log('- cycleComplete: ' + (r.cycleComplete === true));
+          console.log('- cleanup: ' + process.env.CLEANUP_OUTCOME);
+          console.log('- complete sweep claimed: no');
+          NODE

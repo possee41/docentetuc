@@ -37,6 +37,13 @@ test("INFoD keeps the general catalogue window separate from per-course dates", 
   assert.equal(courses[0].metadata.dateStatus, "course_confirmed");
 });
 
+test("INFoD muestra en el título la puntuación codificada por su página oficial", () => {
+  const catalog = { pages: [], registrationOpensAt: undefined, registrationClosesAt: undefined, courseStartsAt: undefined };
+  const [course] = parseInfdTrainings('<h1>Cursos nacionales 2026</h1><p style="font-size:30px"><strong>Diversidad cultural &#8211; DAIA</strong></p><p>Destinatarios: Docentes.</p>',
+    "https://red.infd.edu.ar/convivencia-3/", catalog);
+  assert.equal(course.title, "Diversidad cultural – DAIA");
+});
+
   test("INFoD marks a course-specific start without borrowing the general enrollment window", () => {
   const catalog = parseInfdCatalog('<p>Fecha de inscripción: <strong>14 de agosto al 26 de agosto</strong></p><a href="https://red.infd.edu.ar/curso-docente/">Curso</a>', new Date("2026-09-01T12:00:00-03:00"));
   const [course] = parseInfdTrainings('<p style="font-size:30px"><strong>Curso con inicio publicado</strong></p><p>Comienza el curso: 20/10/2026</p>', catalog.pages[0], catalog, new Date("2026-09-01T12:00:00-03:00"));

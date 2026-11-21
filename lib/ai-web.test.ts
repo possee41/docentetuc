@@ -5,7 +5,7 @@ import { buildAIContext, detectIntent, GeminiProvider } from "./ai.ts";
 import type { AISource } from "./ai.ts";
 
 const now = new Date("2026-10-11T02:30:00Z"); // 10 de octubre, 23:30 en Tucumán.
-const official: AISource = { id: "test", title: "Curso vigente", source: "CeNET / INET", sourceType: "official", url: "https://cenet.inet.edu.ar/curso", updatedAt: "2026-10-10", status: "ABIERTA" };
+const official: AISource = { id: "test", title: "Curso vigente", source: "CeNET / INET", sourceType: "official", url: "https://cenet.inet.edu.ar/curso", publishedAt: null, relevantAt: null, registrationOpenAt: null, registrationCloseAt: null, validity: "ACTIVE", updatedAt: "2026-10-10", status: "ABIERTA" };
 
 test("fechas relativas se resuelven en Tucumán y no en UTC", () => {
   assert.match(relativeDateContext("¿Hay clases hoy?", now), /2026-10-10.*2026-10-10/);

@@ -1,0 +1,676 @@
+{
+  "date": "2026-11-01",
+  "baseCommit": "f498ed8",
+  "scope": "FDCI canary only; no production operations",
+  "migration": {
+    "at": "2026-11-01T02:43:02.597Z",
+    "database": {
+      "name": "docentetuc-web-canary-1-2",
+      "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+    },
+    "migration": "0031_import_gate_lease.sql",
+    "sha256": "3be9ef3892c827595a6a4ecb0d5fd8cf09563642cabac4b0bded3d53ae17d6fc",
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "ENAM",
+      "served_by_colo": "EWR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.4874
+      },
+      "duration": 0.4874,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": true,
+      "size_after": 688128,
+      "rows_read": 1,
+      "rows_written": 2,
+      "total_attempts": 1
+    },
+    "schema": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "source",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "expires_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "opened_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "opened_by",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ]
+  },
+  "run": {
+    "runId": "fdci-9fa8a9e7-204c-4252-a419-8e189d06f5d9",
+    "started": "2026-11-01T02:48:53.085Z",
+    "worker": "docentetuc-import-canary-1-2",
+    "database": {
+      "name": "docentetuc-web-canary-1-2",
+      "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+    },
+    "sourceRequests": 4,
+    "http": [
+      {
+        "step": "auth-reject",
+        "at": "2026-11-01T02:49:07.517Z",
+        "status": 401,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a53795997edf1e7e-EZE",
+        "wallMs": 165.35980000000018,
+        "body": {
+          "error": "UNAUTHORIZED"
+        },
+        "d1": {
+          "rpc": 0,
+          "queries": 0,
+          "rowsRead": 0,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "step": "no-lease",
+        "at": "2026-11-01T02:49:07.964Z",
+        "status": 503,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a537959a39c91eab-EZE",
+        "wallMs": 445.90459999999985,
+        "body": {
+          "error": "IMPORT_DISABLED"
+        },
+        "d1": {
+          "rpc": 2,
+          "queries": 2,
+          "rowsRead": 2,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "step": "concurrent-0",
+        "at": "2026-11-01T02:49:08.562Z",
+        "status": 200,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a537959ca9571e7e-EZE",
+        "wallMs": 597.1283999999996,
+        "body": {
+          "ok": true,
+          "source": "fdci",
+          "owner": "fdci-9fa8a9e7-204c-4252-a419-8e189d06f5d9-a",
+          "openedAt": "2026-11-01T02:49:07.683Z",
+          "expiresAt": "2026-11-01T02:59:07.683Z"
+        },
+        "d1": {
+          "rpc": 3,
+          "queries": 3,
+          "rowsRead": 3,
+          "rowsWritten": 1
+        }
+      },
+      {
+        "step": "concurrent-1",
+        "at": "2026-11-01T02:49:08.645Z",
+        "status": 409,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a537959efc5b88b4-GRU",
+        "wallMs": 679.8358000000026,
+        "body": {
+          "error": "GATE_BUSY"
+        },
+        "d1": {
+          "rpc": 2,
+          "queries": 2,
+          "rowsRead": 2,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "step": "wrong-owner-close",
+        "at": "2026-11-01T02:49:09.382Z",
+        "status": 409,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a53795a0fcb01e7e-EZE",
+        "wallMs": 736.4761999999973,
+        "body": {
+          "error": "GATE_BUSY"
+        },
+        "d1": {
+          "rpc": 4,
+          "queries": 4,
+          "rowsRead": 4,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "step": "wrong-source-close",
+        "at": "2026-11-01T02:49:09.438Z",
+        "status": 503,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a53795a589ef1eab-EZE",
+        "wallMs": 55.695599999999104,
+        "body": {
+          "error": "IMPORT_DISABLED"
+        },
+        "d1": {
+          "rpc": 0,
+          "queries": 0,
+          "rowsRead": 0,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "step": "import-1",
+        "at": "2026-11-01T02:49:09.672Z",
+        "status": 200,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a53795a5e8d51e7e-EZE",
+        "wallMs": 233.35339999999997,
+        "body": {
+          "name": "docentetuc-web-canary-1-2",
+          "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+        },
+        "d1": {
+          "rpc": 1,
+          "queries": 1,
+          "rowsRead": 1,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "step": "import-2",
+        "at": "2026-11-01T02:49:10.402Z",
+        "status": 200,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a53795a769f91e7e-EZE",
+        "wallMs": 719.3876000000018,
+        "body": {
+          "ok": true,
+          "received": 1,
+          "created": 0,
+          "updated": 1,
+          "unchanged": 0,
+          "queries": 2,
+          "rowsRead": 3,
+          "rowsWritten": 3
+        },
+        "d1": {
+          "rpc": 4,
+          "queries": 4,
+          "rowsRead": 5,
+          "rowsWritten": 3
+        }
+      },
+      {
+        "step": "import-3",
+        "at": "2026-11-01T02:49:10.939Z",
+        "status": 200,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a53795abfd7c1e7e-EZE",
+        "wallMs": 536.7253999999994,
+        "body": {
+          "ok": true,
+          "received": 1,
+          "created": 0,
+          "updated": 0,
+          "unchanged": 1,
+          "queries": 1,
+          "rowsRead": 1,
+          "rowsWritten": 0
+        },
+        "d1": {
+          "rpc": 3,
+          "queries": 3,
+          "rowsRead": 3,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "step": "unchanged-repeat",
+        "at": "2026-11-01T02:49:11.475Z",
+        "status": 200,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a53795af4ff61e7e-EZE",
+        "wallMs": 534.9987999999976,
+        "body": {
+          "ok": true,
+          "received": 1,
+          "created": 0,
+          "updated": 0,
+          "unchanged": 1,
+          "queries": 1,
+          "rowsRead": 1,
+          "rowsWritten": 0
+        },
+        "d1": {
+          "rpc": 3,
+          "queries": 3,
+          "rowsRead": 3,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "step": "injected-import-error",
+        "at": "2026-11-01T02:49:11.839Z",
+        "status": 400,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a53795b2aaa91e7e-EZE",
+        "wallMs": 363.2243000000017,
+        "body": {
+          "error": "Lote inválido."
+        },
+        "d1": {
+          "rpc": 2,
+          "queries": 2,
+          "rowsRead": 2,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "step": "close-after-error",
+        "at": "2026-11-01T02:49:12.568Z",
+        "status": 200,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a53795b4e9a81eab-EZE",
+        "wallMs": 728.7285999999986,
+        "body": {
+          "ok": true,
+          "source": "fdci",
+          "owner": "fdci-9fa8a9e7-204c-4252-a419-8e189d06f5d9-a",
+          "closed": true
+        },
+        "d1": {
+          "rpc": 4,
+          "queries": 4,
+          "rowsRead": 4,
+          "rowsWritten": 1
+        }
+      },
+      {
+        "step": "closed-after-error",
+        "at": "2026-11-01T02:49:12.918Z",
+        "status": 503,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a53795b96faf1e7e-EZE",
+        "wallMs": 349.4005999999972,
+        "body": {
+          "error": "IMPORT_DISABLED"
+        },
+        "d1": {
+          "rpc": 2,
+          "queries": 2,
+          "rowsRead": 2,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "step": "expiry-open",
+        "at": "2026-11-01T02:49:13.499Z",
+        "status": 200,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a53795bbbaf41eab-EZE",
+        "wallMs": 580.7609000000011,
+        "body": {
+          "ok": true,
+          "source": "fdci",
+          "owner": "fdci-9fa8a9e7-204c-4252-a419-8e189d06f5d9-expiry",
+          "openedAt": "2026-11-01T02:49:12.622Z",
+          "expiresAt": "2026-11-01T02:59:12.622Z"
+        },
+        "d1": {
+          "rpc": 3,
+          "queries": 3,
+          "rowsRead": 3,
+          "rowsWritten": 1
+        }
+      },
+      {
+        "step": "expired-reject",
+        "at": "2026-11-01T02:59:14.846Z",
+        "status": 503,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a537a469e99ac084-EZE",
+        "wallMs": 712.9572000000626,
+        "body": {
+          "error": "IMPORT_DISABLED"
+        },
+        "d1": {
+          "rpc": 2,
+          "queries": 2,
+          "rowsRead": 2,
+          "rowsWritten": 0
+        }
+      },
+      {
+        "step": "expiry-close",
+        "at": "2026-11-01T02:59:15.940Z",
+        "status": 200,
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "ray": "a537a4702844f195-GRU",
+        "wallMs": 1094.029499999946,
+        "body": {
+          "ok": true,
+          "source": "fdci",
+          "owner": "fdci-9fa8a9e7-204c-4252-a419-8e189d06f5d9-expiry",
+          "closed": true
+        },
+        "d1": {
+          "rpc": 4,
+          "queries": 4,
+          "rowsRead": 4,
+          "rowsWritten": 1
+        }
+      },
+      {
+        "step": "final-closed",
+        "at": "2026-11-01T02:59:24.767Z",
+        "status": 503,
+        "version": "a8ad9f24-5551-4161-8953-8c5fb8099204",
+        "ray": "a537a4ab5ad01b1c-GRU",
+        "wallMs": 441.66010000009555,
+        "body": {
+          "error": "IMPORT_DISABLED"
+        },
+        "d1": {
+          "rpc": 0,
+          "queries": 0,
+          "rowsRead": 0,
+          "rowsWritten": 0
+        }
+      }
+    ],
+    "import": {
+      "coursesFetched": 2,
+      "coursesAvailable": 2,
+      "commissionsExamined": 2,
+      "activeCommissions": 2,
+      "discovered": 2,
+      "created": 0,
+      "updated": 1,
+      "unchanged": 1,
+      "batches": 2,
+      "completed": false
+    },
+    "closed": true,
+    "secretRemoved": true,
+    "errors": [],
+    "official": {
+      "items": [
+        {
+          "id": "fdci:commission:6434",
+          "hash": "fe3621cf873660e79baa1ceb8af51af625876f3b9550634c8b15b15aec79c810",
+          "status": "ACTIVE"
+        },
+        {
+          "id": "fdci:commission:6432",
+          "hash": "c6d6416ad1769cecb8e7ebd24163ffedac960e997ec3a74ffac030ed3f77af51",
+          "status": "CLOSED"
+        }
+      ],
+      "coursesFetched": 2,
+      "failures": 0
+    },
+    "openVersion": {
+      "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+      "deployment": "7ca2c3ab-01e4-4239-af3c-f3cf375ace28",
+      "secretNames": [
+        "FDCI_IMPORT_SECRET",
+        "JUNTAS_IMPORT_SECRET",
+        "SIME_IMPORT_SECRET"
+      ]
+    },
+    "expiry": {
+      "openedAt": "2026-11-01T02:49:12.622Z",
+      "expiresAt": "2026-11-01T02:59:12.622Z",
+      "confirmed": true
+    },
+    "closedVersion": {
+      "version": "a8ad9f24-5551-4161-8953-8c5fb8099204",
+      "deployment": "a1dabdf8-298c-4b58-8e94-6cda4f61da49",
+      "secretNames": [
+        "FDCI_IMPORT_SECRET",
+        "JUNTAS_IMPORT_SECRET",
+        "SIME_IMPORT_SECRET"
+      ]
+    },
+    "finalVersion": {
+      "version": "9f8b3d16-573a-41a6-907e-f53dbdff12b7",
+      "deployment": "3a306ba0-189d-4266-ada1-11222036726e",
+      "secretNames": [
+        "JUNTAS_IMPORT_SECRET",
+        "SIME_IMPORT_SECRET"
+      ]
+    },
+    "comparison": {
+      "beforeCount": 9,
+      "afterCount": 9,
+      "removed": 0,
+      "created": [],
+      "updated": [
+        "fdci:commission:6434"
+      ],
+      "otherSourcesUnchanged": true,
+      "syncUnchanged": true,
+      "leaseRows": 0
+    },
+    "finished": "2026-11-01T02:59:27.427Z"
+  },
+  "final": {
+    "at": "2026-11-01T03:00:42.086Z",
+    "database": {
+      "name": "docentetuc-web-canary-1-2",
+      "id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+    },
+    "identity": {
+      "database_name": "docentetuc-web-canary-1-2",
+      "database_id": "853e2f5d-89b1-46a3-9c1c-5cbd46784756"
+    },
+    "version": "9f8b3d16-573a-41a6-907e-f53dbdff12b7",
+    "deployment": "3a306ba0-189d-4266-ada1-11222036726e",
+    "traffic": 100,
+    "http": 503,
+    "d1": {
+      "rpc": 0,
+      "queries": 0,
+      "rowsRead": 0,
+      "rowsWritten": 0
+    },
+    "secretNames": [
+      "JUNTAS_IMPORT_SECRET",
+      "SIME_IMPORT_SECRET"
+    ],
+    "preservedSecretNames": true,
+    "schedules": [],
+    "counts": {
+      "total": 9,
+      "distinctIds": 9
+    },
+    "syncUnchanged": true,
+    "leaseRows": 0
+  },
+  "officialReconciliation": {
+    "at": "2026-11-01T03:01:51.585Z",
+    "matchesOfficialSnapshot": true,
+    "rows": [
+      {
+        "id": "fdci:commission:6432",
+        "content_hash": "c6d6416ad1769cecb8e7ebd24163ffedac960e997ec3a74ffac030ed3f77af51",
+        "normalized_status": "CLOSED"
+      },
+      {
+        "id": "fdci:commission:6434",
+        "content_hash": "fe3621cf873660e79baa1ceb8af51af625876f3b9550634c8b15b15aec79c810",
+        "normalized_status": "ACTIVE"
+      }
+    ]
+  },
+  "cloudflareAnalytics": {
+    "at": "2026-11-01T03:01:52.546Z",
+    "start": "2026-11-01T02:48:53.085Z",
+    "http": 200,
+    "available": true,
+    "errorCodes": [],
+    "rows": [
+      {
+        "at": "2026-11-01T02:49:08Z",
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "status": "success",
+        "requests": 3,
+        "errors": 0,
+        "subrequests": 0,
+        "cpuP50Ms": 2.49,
+        "cpuP99Ms": 4.294
+      },
+      {
+        "at": "2026-11-01T02:59:14Z",
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "status": "success",
+        "requests": 1,
+        "errors": 0,
+        "subrequests": 0,
+        "cpuP50Ms": 4.243,
+        "cpuP99Ms": 4.243
+      },
+      {
+        "at": "2026-11-01T02:49:12Z",
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "status": "success",
+        "requests": 1,
+        "errors": 0,
+        "subrequests": 0,
+        "cpuP50Ms": 2.794,
+        "cpuP99Ms": 2.794
+      },
+      {
+        "at": "2026-11-01T02:49:10Z",
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "status": "success",
+        "requests": 2,
+        "errors": 0,
+        "subrequests": 0,
+        "cpuP50Ms": 2.007,
+        "cpuP99Ms": 3.561
+      },
+      {
+        "at": "2026-11-01T03:00:38Z",
+        "version": "9f8b3d16-573a-41a6-907e-f53dbdff12b7",
+        "status": "success",
+        "requests": 1,
+        "errors": 0,
+        "subrequests": 0,
+        "cpuP50Ms": 1.625,
+        "cpuP99Ms": 1.625
+      },
+      {
+        "at": "2026-11-01T02:59:13Z",
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "status": "success",
+        "requests": 1,
+        "errors": 0,
+        "subrequests": 0,
+        "cpuP50Ms": 3.328,
+        "cpuP99Ms": 3.328
+      },
+      {
+        "at": "2026-11-01T02:49:07Z",
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "status": "success",
+        "requests": 2,
+        "errors": 0,
+        "subrequests": 0,
+        "cpuP50Ms": 3.553,
+        "cpuP99Ms": 3.871
+      },
+      {
+        "at": "2026-11-01T02:49:11Z",
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "status": "success",
+        "requests": 2,
+        "errors": 0,
+        "subrequests": 0,
+        "cpuP50Ms": 1.595,
+        "cpuP99Ms": 3.543
+      },
+      {
+        "at": "2026-11-01T02:49:06Z",
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "status": "success",
+        "requests": 2,
+        "errors": 0,
+        "subrequests": 0,
+        "cpuP50Ms": 2.186,
+        "cpuP99Ms": 5.029
+      },
+      {
+        "at": "2026-11-01T02:49:09Z",
+        "version": "7f668760-4b60-4fb3-90ff-4cac0ae704ea",
+        "status": "success",
+        "requests": 2,
+        "errors": 0,
+        "subrequests": 0,
+        "cpuP50Ms": 3.876,
+        "cpuP99Ms": 6.951
+      },
+      {
+        "at": "2026-11-01T02:59:24Z",
+        "version": "a8ad9f24-5551-4161-8953-8c5fb8099204",
+        "status": "success",
+        "requests": 1,
+        "errors": 0,
+        "subrequests": 0,
+        "cpuP50Ms": 0.994,
+        "cpuP99Ms": 0.994
+      }
+    ]
+  },
+  "summary": {
+    "sourceRequests": 4,
+    "gatewayRequests": 18,
+    "d1": {
+      "rpc": 39,
+      "queries": 39,
+      "rowsRead": 40,
+      "rowsWritten": 7
+    },
+    "cpuRequests": 18,
+    "cpuErrors": 0,
+    "highestObservedGroupCpuP99Ms": 6.951,
+    "cpuIsGroupedQuantilesNotIndividualMaximum": true
+  },
+  "localChecks": {
+    "testsPassed": 19,
+    "typescript": "passed",
+    "targetedLint": "passed"
+  },
+  "codeHashes": {
+    "workers/source-import-gateway.mjs": "a2e87b61642ab7072e8189f7ed36dc5e379f9815e79910ec93cc867886df8554",
+    "workers/source-import-canary.mjs": "1f70875734e79443fb499440fd31c5dcbf2dde05074271cd4c91f5356dd14148"
+  }
+}

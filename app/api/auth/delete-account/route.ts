@@ -1,5 +1,5 @@
 import { getD1 } from "@/db";
-import { accountDataDeletionStatements } from "@/lib/account-deletion";
+import { accountDataDeletionStatements, LAST_ADMIN_MESSAGE, protectLastAdminDeletion } from "@/lib/account-deletion";
 import { isSameOriginMutation } from "@/lib/auth-identity";
 import { hasAccountIdentitySchema, hasCommunitySavedPostsSchema, hasCommunitySchema, hasInstallationCredentialsSchema } from "@/lib/auth-schema";
 import { getDocenteTucAuth } from "@/lib/auth";
@@ -34,8 +34,9 @@ export async function POST(request: Request) {
     const statements = accountDataDeletionStatements(account.accountId);
     const installationStatements = currentInstallationProven ? installationDataDeletionStatements(deviceId) : [];
     if (installationStatements.length) statements.unshift(...installationStatements);
-    if (currentInstallationLinkedToAccount && validInstallationId(deviceId) && hasCredentialSchema) statements.push({ sql: "DELETE FROM installation_credentials WHERE device_id=?", values: [deviceId] });
-    const batchResults = await db.batch(statements.map(({ sql, values }) => db.prepare(sql).bind(...values)));
+    if (currentInstallationLinkedToAccount && validInstallationId(deviceId) && hasCredentialSchema) statements.splice(statements.length - 1, 0, { sql: "DELETE FROM installation_credentials WHERE device_id=?", values: [deviceId] });
+    const batchResults = await db.batch(protectLastAdminDeletion(account.accountId, statements).map(({ sql, values }) => db.prepare(sql).bind(...values)));
+    if (changedRows(batchResults.at(-1)) !== 1) return Response.json({ error: LAST_ADMIN_MESSAGE, code: "LAST_ADMIN_REQUIRED" }, { status: 409, headers: { "Cache-Control": "no-store, private" } });
     if (installationStatements.length) installationDataDeleted = changedRows(batchResults[installationStatements.length - 1]) > 0;
 
     // Deleting the D1 identity revokes the session; Better Auth clears its HttpOnly cookie.

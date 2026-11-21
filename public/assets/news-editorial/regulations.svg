@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-label="Ilustración de normas y resoluciones">
+  <defs><linearGradient id="g"><stop stop-color="#1a273d"/><stop offset="1" stop-color="#756c81"/></linearGradient></defs>
+  <rect width="1200" height="675" fill="url(#g)"/><circle cx="935" cy="330" r="265" fill="#fff" opacity=".05"/>
+  <g fill="none" stroke="#f4d99f" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M744 125h230l112 112v318H744zM974 125v112h112M799 307h223M799 370h223M799 433h159"/>
+    <circle cx="1005" cy="482" r="47"/><path d="m984 483 15 16 31-38"/>
+  </g><path d="M0 589c250-95 440-79 655 54H0" fill="#0e182b" opacity=".23"/>
+</svg>

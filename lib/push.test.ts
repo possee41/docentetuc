@@ -1,11 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { categoryForNotification, isPushNotificationDue, isQuietTime, publicationFitsProfileCircuit, PUSH_DELIVERY_BATCH_SIZE, scheduledNotificationTypes, UPSERT_PUSH_SUBSCRIPTION_SQL, validPushEndpoint } from "./push.ts";
+import { categoryForNotification, isPushNotificationDue, isQuietTime, materializeScheduledNotifications, publicationFitsProfileCircuit, PUSH_DELIVERY_BATCH_SIZE, scheduledNotificationTypes, UPSERT_PUSH_SUBSCRIPTION_SQL, validPushEndpoint, WebPushProvider } from "./push.ts";
 
 test("quiet hours work across midnight in Tucumán", () => {
   assert.equal(isQuietTime(new Date("2026-09-27T02:30:00Z"), "22:00", "07:00", "America/Argentina/Buenos_Aires"), true);
   assert.equal(isQuietTime(new Date("2026-09-27T15:00:00Z"), "22:00", "07:00", "America/Argentina/Buenos_Aires"), false);
+});
+
+test("el despacho reutiliza la hora local sin mezclar zonas ni preferencias", () => {
+  const now = new Date("2026-09-27T02:30:00Z");
+  const currentMinute = new Map<string, number>();
+  assert.equal(isQuietTime(now, "23:00", "01:00", "America/Argentina/Buenos_Aires", currentMinute), true);
+  assert.equal(isQuietTime(now, "00:00", "07:00", "America/Argentina/Buenos_Aires", currentMinute), false);
+  assert.equal(isQuietTime(now, "23:00", "01:00", "UTC", currentMinute), false);
+  assert.equal(currentMinute.size, 2);
+  assert.equal(isQuietTime(now, "22:00", "22:00", "America/Argentina/Buenos_Aires", currentMinute), false);
 });
 
 test("notification types map to user-facing categories", () => {
@@ -25,6 +35,13 @@ test("push endpoints reject arbitrary hosts", () => {
   assert.equal(validPushEndpoint("http://fcm.googleapis.com/example"), false);
 });
 
+test("el proveedor real rechaza un endpoint almacenado inválido antes de usar red", async () => {
+  const provider = new WebPushProvider({ publicKey: "synthetic", privateKey: "synthetic", subject: "mailto:test@example.invalid" });
+  await assert.rejects(provider.send({ endpoint: "https://example.invalid/device", expirationTime: null,
+    keys: { p256dh: "synthetic", auth: "synthetic" } }, { title: "Prueba", body: "Local", tag: "local", url: "/" }),
+  /PUSH_ENDPOINT_INVALID/);
+});
+
 test("una suscripción push no puede reasignarse a otra cuenta o instalación", () => {
   const db = new DatabaseSync(":memory:");
   try {
@@ -42,7 +59,7 @@ test("una suscripción push no puede reasignarse a otra cuenta o instalación", 
 });
 
 test("el despacho programa lotes acotados para respetar el presupuesto de CPU del cron", () => {
-  assert.equal(PUSH_DELIVERY_BATCH_SIZE, 10);
+  assert.equal(PUSH_DELIVERY_BATCH_SIZE, 2);
 });
 
 test("el push no reenvía notificaciones históricas sin programación y respeta las futuras", () => {
@@ -75,6 +92,46 @@ test("automatic relevant-training alerts include recipient metadata in matching"
   const profile = { user_id: "u1", level: "Secundario", notify_new_trainings: 1, training_notify_scope: "relevant", training_interests: "Matemática" };
   const now = new Date("2026-09-28T12:00:00Z");
   assert.ok(scheduledNotificationTypes(publication, profile, false, now).includes("CAPACITACION_ABRE_MANANA"));
+});
+
+test("sin capacitaciones en ventana se conservan recordatorios y se omite el recorrido de perfiles", async () => {
+  const raw = new DatabaseSync(":memory:");
+  try {
+    raw.exec(`CREATE TABLE notifications(id INTEGER PRIMARY KEY,user_id TEXT,publication_id TEXT,type TEXT,dedupe_key TEXT,scheduled_at TEXT,UNIQUE(user_id,dedupe_key));
+      CREATE TABLE training_reminders(id TEXT,user_id TEXT,publication_id TEXT,opens_at TEXT,advance_minutes INTEGER,notified INTEGER,remind_at TEXT,updated_at TEXT);
+      CREATE TABLE designation_tracking(id TEXT,user_id TEXT,publication_id TEXT,reminder_notified INTEGER,reminder_at TEXT,updated_at TEXT);
+      CREATE TABLE saved_publications(user_id TEXT,publication_id TEXT,in_agenda INTEGER,agenda_reminder_notified INTEGER,agenda_reminder_at TEXT);
+      CREATE TABLE manual_events(id TEXT,user_id TEXT,title TEXT,starts_at TEXT,recurrence TEXT,reminder_minutes INTEGER,reminder_at TEXT,reminder_notified INTEGER,updated_at TEXT);
+      CREATE TABLE manual_event_push_queue(id INTEGER PRIMARY KEY,user_id TEXT,event_id TEXT,title TEXT,occurrence_at TEXT,UNIQUE(event_id,occurrence_at));
+      CREATE TABLE profiles(user_id TEXT,notify_new_trainings INTEGER);
+      CREATE TABLE publications(id TEXT,kind TEXT,title TEXT,summary TEXT,level TEXT,area TEXT,junta TEXT,location TEXT,shift TEXT,character TEXT,circuit TEXT,source_circuit_raw TEXT,starts_at TEXT,ends_at TEXT,status TEXT,normalized_status TEXT,metadata TEXT,source TEXT,last_seen_at TEXT);
+      CREATE TABLE fdci_import_checkpoint(id INTEGER PRIMARY KEY,upper_key TEXT,last_cycle_status TEXT,last_completed_at TEXT);
+      INSERT INTO fdci_import_checkpoint VALUES(1,'','OK','2026-10-26T12:00:00Z');
+      INSERT INTO training_reminders VALUES('t','u','training','2026-10-27T12:00:00Z',60,0,'2026-10-26T11:00:00Z',NULL);
+      INSERT INTO designation_tracking VALUES('d','u','vacancy',0,'2026-10-26T11:00:00Z',NULL);
+      INSERT INTO saved_publications VALUES('u','agenda',1,0,'2026-10-26T11:00:00Z');
+      INSERT INTO manual_events VALUES('m','u','Reunión','2026-10-27T12:00:00Z','none',NULL,'2026-10-26T11:00:00Z',0,NULL);
+      INSERT INTO profiles VALUES('u',1);`);
+    let profileQueries = 0;
+    const db = { prepare: (sql: string) => {
+      if (sql.includes("SELECT * FROM profiles")) profileQueries++;
+      const bound = (...values: unknown[]) => {
+        const statement = raw.prepare(sql);
+        const runSync = () => ({ meta: { rows_written: Number(statement.run(...values as []).changes) } });
+        return { runSync, run: async () => runSync(),
+          all: async () => ({ results: statement.all(...values as []) }),
+          first: async () => statement.get(...values as []) || null };
+      };
+      return { ...bound(), bind: bound };
+    }, batch: async (statements: unknown[]) => (statements as { runSync(): unknown }[]).map((statement) => statement.runSync()) };
+    const now = new Date("2026-10-26T12:00:00Z");
+    await materializeScheduledNotifications(db as never, now);
+    await materializeScheduledNotifications(db as never, now);
+    assert.equal(profileQueries, 0);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM notifications").get()?.n, 2);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM manual_event_push_queue").get()?.n, 1);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM training_reminders WHERE notified=1").get()?.n, 0);
+  } finally { raw.close(); }
 });
 
 test("las alertas territoriales excluyen incompatibilidades y conservan UNKNOWN", () => {

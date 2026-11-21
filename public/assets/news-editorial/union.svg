@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-label="Ilustración de actualidad gremial">
+  <defs><linearGradient id="g"><stop stop-color="#16283b"/><stop offset="1" stop-color="#867455"/></linearGradient></defs>
+  <rect width="1200" height="675" fill="url(#g)"/><circle cx="928" cy="335" r="265" fill="#fff" opacity=".05"/>
+  <g fill="none" stroke="#f5dca9" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M728 186h312a61 61 0 0 1 61 61v177a61 61 0 0 1-61 61H889l-92 71v-71h-69a61 61 0 0 1-61-61V247a61 61 0 0 1 61-61z"/>
+    <path d="M742 285h282M742 360h229"/>
+  </g><path d="M0 589c260-99 439-78 664 52H0" fill="#071a29" opacity=".25"/>
+</svg>

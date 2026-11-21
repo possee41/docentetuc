@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-label="Ilustración de cursos y capacitación">
+  <defs><linearGradient id="g"><stop stop-color="#122a3d"/><stop offset="1" stop-color="#2f7b82"/></linearGradient></defs>
+  <rect width="1200" height="675" fill="url(#g)"/><circle cx="932" cy="338" r="263" fill="#fff" opacity=".05"/>
+  <g fill="none" stroke="#f1d8a2" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="724" y="168" width="370" height="344" rx="24"/><path d="M805 168v-46h208v46M778 273h260M778 341h260M778 409h174"/>
+    <path d="m983 438 35 32 57-64"/>
+  </g><path d="M0 588c255-98 450-83 666 54H0" fill="#061929" opacity=".23"/>
+</svg>

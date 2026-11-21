@@ -1,0 +1,1365 @@
+{
+  "baseline": "61345db",
+  "rows": [
+    {
+      "variant": "baseline",
+      "round": 0,
+      "phase": "firstImport",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 1,
+        "updated": 0,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 1,
+        "rowsWritten": 5
+      },
+      "d1": {
+        "queries": 4,
+        "rowsRead": 3,
+        "rowsWritten": 5
+      },
+      "workerWallMs": 11,
+      "sampledCpu": {
+        "activeSampledMs": 10.358,
+        "idleSampledMs": 12.12,
+        "profileWindowMs": 22.577,
+        "samples": 5,
+        "activeSamples": 3,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "fetch",
+            "sampledMs": 7.767
+          },
+          {
+            "functionName": "all",
+            "sampledMs": 2.591
+          }
+        ]
+      }
+    },
+    {
+      "variant": "baseline",
+      "round": 0,
+      "phase": "warmUnchanged",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "workerWallMs": 4,
+      "sampledCpu": {
+        "activeSampledMs": 1.691,
+        "idleSampledMs": 7.193,
+        "profileWindowMs": 8.961,
+        "samples": 3,
+        "activeSamples": 1,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "_send",
+            "sampledMs": 1.691
+          }
+        ]
+      }
+    },
+    {
+      "variant": "baseline",
+      "round": 0,
+      "phase": "warmChanged",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 1,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 3,
+        "rowsWritten": 3
+      },
+      "d1": {
+        "queries": 4,
+        "rowsRead": 5,
+        "rowsWritten": 3
+      },
+      "workerWallMs": 6,
+      "sampledCpu": {
+        "activeSampledMs": 1.656,
+        "idleSampledMs": 8.774,
+        "profileWindowMs": 10.508,
+        "samples": 3,
+        "activeSamples": 1,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "fetch",
+            "sampledMs": 1.656
+          }
+        ]
+      }
+    },
+    {
+      "variant": "current",
+      "round": 0,
+      "phase": "firstImport",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 1,
+        "updated": 0,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 1,
+        "rowsWritten": 5
+      },
+      "d1": {
+        "queries": 4,
+        "rowsRead": 3,
+        "rowsWritten": 5
+      },
+      "workerWallMs": 10,
+      "sampledCpu": {
+        "activeSampledMs": 9.689,
+        "idleSampledMs": 6.408,
+        "profileWindowMs": 16.18,
+        "samples": 4,
+        "activeSamples": 2,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "",
+            "sampledMs": 6.559
+          },
+          {
+            "functionName": "store",
+            "sampledMs": 3.13
+          }
+        ]
+      }
+    },
+    {
+      "variant": "current",
+      "round": 0,
+      "phase": "warmUnchanged",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "workerWallMs": 5,
+      "sampledCpu": {
+        "activeSampledMs": 0,
+        "idleSampledMs": 8.29,
+        "profileWindowMs": 8.356,
+        "samples": 2,
+        "activeSamples": 0,
+        "lowResolution": true,
+        "topSampledFrames": []
+      }
+    },
+    {
+      "variant": "current",
+      "round": 0,
+      "phase": "warmChanged",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 1,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 3,
+        "rowsWritten": 3
+      },
+      "d1": {
+        "queries": 4,
+        "rowsRead": 5,
+        "rowsWritten": 3
+      },
+      "workerWallMs": 6,
+      "sampledCpu": {
+        "activeSampledMs": 2.753,
+        "idleSampledMs": 7.228,
+        "profileWindowMs": 10.096,
+        "samples": 3,
+        "activeSamples": 1,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "fetch",
+            "sampledMs": 2.753
+          }
+        ]
+      }
+    },
+    {
+      "variant": "current",
+      "round": 0,
+      "phase": "checkpointGet",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 0,
+          "cycle": 1,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "workerWallMs": 6,
+      "sampledCpu": {
+        "activeSampledMs": 0,
+        "idleSampledMs": 8.507,
+        "profileWindowMs": 8.572,
+        "samples": 2,
+        "activeSamples": 0,
+        "lowResolution": true,
+        "topSampledFrames": []
+      }
+    },
+    {
+      "variant": "current",
+      "round": 0,
+      "phase": "checkpointStart",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 1,
+          "cycle": 1,
+          "after_key": "",
+          "upper_key": "000000000100:000000009001",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "workerWallMs": 5,
+      "sampledCpu": {
+        "activeSampledMs": 4.795,
+        "idleSampledMs": 4.223,
+        "profileWindowMs": 9.09,
+        "samples": 3,
+        "activeSamples": 1,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "leaseBody",
+            "sampledMs": 4.795
+          }
+        ]
+      }
+    },
+    {
+      "variant": "current",
+      "round": 0,
+      "phase": "checkpointAdvance",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 2,
+          "cycle": 1,
+          "after_key": "000000000100:000000009001",
+          "upper_key": "000000000100:000000009001",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "workerWallMs": 4,
+      "sampledCpu": {
+        "activeSampledMs": 0,
+        "idleSampledMs": 8.753,
+        "profileWindowMs": 8.818,
+        "samples": 2,
+        "activeSamples": 0,
+        "lowResolution": true,
+        "topSampledFrames": []
+      }
+    },
+    {
+      "variant": "current",
+      "round": 0,
+      "phase": "checkpointFinish",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 3,
+          "cycle": 2,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T04:06:42.087Z"
+        }
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "workerWallMs": 5,
+      "sampledCpu": {
+        "activeSampledMs": 0,
+        "idleSampledMs": 7.694,
+        "profileWindowMs": 7.759,
+        "samples": 2,
+        "activeSamples": 0,
+        "lowResolution": true,
+        "topSampledFrames": []
+      }
+    },
+    {
+      "variant": "current",
+      "round": 1,
+      "phase": "firstImport",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 1,
+        "updated": 0,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 1,
+        "rowsWritten": 5
+      },
+      "d1": {
+        "queries": 4,
+        "rowsRead": 3,
+        "rowsWritten": 5
+      },
+      "workerWallMs": 11,
+      "sampledCpu": {
+        "activeSampledMs": 2.862,
+        "idleSampledMs": 14.223,
+        "profileWindowMs": 17.166,
+        "samples": 3,
+        "activeSamples": 1,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "verifyIdentity",
+            "sampledMs": 2.862
+          }
+        ]
+      }
+    },
+    {
+      "variant": "current",
+      "round": 1,
+      "phase": "warmUnchanged",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "workerWallMs": 5,
+      "sampledCpu": {
+        "activeSampledMs": 3.332,
+        "idleSampledMs": 5.738,
+        "profileWindowMs": 9.146,
+        "samples": 4,
+        "activeSamples": 2,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "set",
+            "sampledMs": 1.698
+          },
+          {
+            "functionName": "fetch",
+            "sampledMs": 1.634
+          }
+        ]
+      }
+    },
+    {
+      "variant": "current",
+      "round": 1,
+      "phase": "warmChanged",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 1,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 3,
+        "rowsWritten": 3
+      },
+      "d1": {
+        "queries": 4,
+        "rowsRead": 5,
+        "rowsWritten": 3
+      },
+      "workerWallMs": 6,
+      "sampledCpu": {
+        "activeSampledMs": 0,
+        "idleSampledMs": 8.914,
+        "profileWindowMs": 9.014,
+        "samples": 2,
+        "activeSamples": 0,
+        "lowResolution": true,
+        "topSampledFrames": []
+      }
+    },
+    {
+      "variant": "current",
+      "round": 1,
+      "phase": "checkpointGet",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 0,
+          "cycle": 1,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "workerWallMs": 5,
+      "sampledCpu": {
+        "activeSampledMs": 5.904,
+        "idleSampledMs": 2.946,
+        "profileWindowMs": 8.917,
+        "samples": 4,
+        "activeSamples": 2,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "fetch",
+            "sampledMs": 4.304
+          },
+          {
+            "functionName": "toJson",
+            "sampledMs": 1.6
+          }
+        ]
+      }
+    },
+    {
+      "variant": "current",
+      "round": 1,
+      "phase": "checkpointStart",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 1,
+          "cycle": 1,
+          "after_key": "",
+          "upper_key": "000000000100:000000009001",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "workerWallMs": 5,
+      "sampledCpu": {
+        "activeSampledMs": 5.792,
+        "idleSampledMs": 2.76,
+        "profileWindowMs": 8.612,
+        "samples": 3,
+        "activeSamples": 1,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "(program)",
+            "sampledMs": 5.792
+          }
+        ]
+      }
+    },
+    {
+      "variant": "current",
+      "round": 1,
+      "phase": "checkpointAdvance",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 2,
+          "cycle": 1,
+          "after_key": "000000000100:000000009001",
+          "upper_key": "000000000100:000000009001",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "workerWallMs": 5,
+      "sampledCpu": {
+        "activeSampledMs": 0,
+        "idleSampledMs": 7.615,
+        "profileWindowMs": 7.695,
+        "samples": 2,
+        "activeSamples": 0,
+        "lowResolution": true,
+        "topSampledFrames": []
+      }
+    },
+    {
+      "variant": "current",
+      "round": 1,
+      "phase": "checkpointFinish",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 3,
+          "cycle": 2,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T04:06:42.952Z"
+        }
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "workerWallMs": 4,
+      "sampledCpu": {
+        "activeSampledMs": 0,
+        "idleSampledMs": 7.112,
+        "profileWindowMs": 7.177,
+        "samples": 3,
+        "activeSamples": 0,
+        "lowResolution": true,
+        "topSampledFrames": []
+      }
+    },
+    {
+      "variant": "baseline",
+      "round": 1,
+      "phase": "firstImport",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 1,
+        "updated": 0,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 1,
+        "rowsWritten": 5
+      },
+      "d1": {
+        "queries": 4,
+        "rowsRead": 3,
+        "rowsWritten": 5
+      },
+      "workerWallMs": 11,
+      "sampledCpu": {
+        "activeSampledMs": 8.971,
+        "idleSampledMs": 8.076,
+        "profileWindowMs": 17.154,
+        "samples": 4,
+        "activeSamples": 2,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "(garbage collector)",
+            "sampledMs": 5.852
+          },
+          {
+            "functionName": "store",
+            "sampledMs": 3.119
+          }
+        ]
+      }
+    },
+    {
+      "variant": "baseline",
+      "round": 1,
+      "phase": "warmUnchanged",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "workerWallMs": 4,
+      "sampledCpu": {
+        "activeSampledMs": 5.858,
+        "idleSampledMs": 2.538,
+        "profileWindowMs": 8.453,
+        "samples": 5,
+        "activeSamples": 3,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "enterSpan",
+            "sampledMs": 2.735
+          },
+          {
+            "functionName": "json",
+            "sampledMs": 1.568
+          },
+          {
+            "functionName": "fetch",
+            "sampledMs": 1.555
+          }
+        ]
+      }
+    },
+    {
+      "variant": "baseline",
+      "round": 1,
+      "phase": "warmChanged",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 1,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 3,
+        "rowsWritten": 3
+      },
+      "d1": {
+        "queries": 4,
+        "rowsRead": 5,
+        "rowsWritten": 3
+      },
+      "workerWallMs": 6,
+      "sampledCpu": {
+        "activeSampledMs": 0,
+        "idleSampledMs": 10.456,
+        "profileWindowMs": 10.564,
+        "samples": 2,
+        "activeSamples": 0,
+        "lowResolution": true,
+        "topSampledFrames": []
+      }
+    },
+    {
+      "variant": "baseline",
+      "round": 2,
+      "phase": "firstImport",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 1,
+        "updated": 0,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 1,
+        "rowsWritten": 5
+      },
+      "d1": {
+        "queries": 4,
+        "rowsRead": 3,
+        "rowsWritten": 5
+      },
+      "workerWallMs": 11,
+      "sampledCpu": {
+        "activeSampledMs": 9.04,
+        "idleSampledMs": 7.929,
+        "profileWindowMs": 17.055,
+        "samples": 5,
+        "activeSamples": 3,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "",
+            "sampledMs": 4.392
+          },
+          {
+            "functionName": "store",
+            "sampledMs": 3.092
+          },
+          {
+            "functionName": "fetch",
+            "sampledMs": 1.556
+          }
+        ]
+      }
+    },
+    {
+      "variant": "baseline",
+      "round": 2,
+      "phase": "warmUnchanged",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "workerWallMs": 5,
+      "sampledCpu": {
+        "activeSampledMs": 0,
+        "idleSampledMs": 8.833,
+        "profileWindowMs": 8.904,
+        "samples": 2,
+        "activeSamples": 0,
+        "lowResolution": true,
+        "topSampledFrames": []
+      }
+    },
+    {
+      "variant": "baseline",
+      "round": 2,
+      "phase": "warmChanged",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 1,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 3,
+        "rowsWritten": 3
+      },
+      "d1": {
+        "queries": 4,
+        "rowsRead": 5,
+        "rowsWritten": 3
+      },
+      "workerWallMs": 6,
+      "sampledCpu": {
+        "activeSampledMs": 0,
+        "idleSampledMs": 8.887,
+        "profileWindowMs": 8.955,
+        "samples": 2,
+        "activeSamples": 0,
+        "lowResolution": true,
+        "topSampledFrames": []
+      }
+    },
+    {
+      "variant": "current",
+      "round": 2,
+      "phase": "firstImport",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 1,
+        "updated": 0,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 1,
+        "rowsWritten": 5
+      },
+      "d1": {
+        "queries": 4,
+        "rowsRead": 3,
+        "rowsWritten": 5
+      },
+      "workerWallMs": 11,
+      "sampledCpu": {
+        "activeSampledMs": 4.607,
+        "idleSampledMs": 12.675,
+        "profileWindowMs": 17.369,
+        "samples": 3,
+        "activeSamples": 1,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "toJson",
+            "sampledMs": 4.607
+          }
+        ]
+      }
+    },
+    {
+      "variant": "current",
+      "round": 2,
+      "phase": "warmUnchanged",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "queries": 1,
+        "rowsRead": 1,
+        "rowsWritten": 0
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "workerWallMs": 4,
+      "sampledCpu": {
+        "activeSampledMs": 4.309,
+        "idleSampledMs": 4.011,
+        "profileWindowMs": 8.381,
+        "samples": 3,
+        "activeSamples": 1,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "readBody",
+            "sampledMs": 4.309
+          }
+        ]
+      }
+    },
+    {
+      "variant": "current",
+      "round": 2,
+      "phase": "warmChanged",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "received": 1,
+        "created": 0,
+        "updated": 1,
+        "unchanged": 0,
+        "queries": 2,
+        "rowsRead": 3,
+        "rowsWritten": 3
+      },
+      "d1": {
+        "queries": 4,
+        "rowsRead": 5,
+        "rowsWritten": 3
+      },
+      "workerWallMs": 6,
+      "sampledCpu": {
+        "activeSampledMs": 7.237,
+        "idleSampledMs": 2.553,
+        "profileWindowMs": 9.868,
+        "samples": 5,
+        "activeSamples": 3,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "(program)",
+            "sampledMs": 4.159
+          },
+          {
+            "functionName": "",
+            "sampledMs": 1.56
+          },
+          {
+            "functionName": "toArrayOfObjects",
+            "sampledMs": 1.518
+          }
+        ]
+      }
+    },
+    {
+      "variant": "current",
+      "round": 2,
+      "phase": "checkpointGet",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 0,
+          "cycle": 1,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      "workerWallMs": 4,
+      "sampledCpu": {
+        "activeSampledMs": 0,
+        "idleSampledMs": 8.962,
+        "profileWindowMs": 9.026,
+        "samples": 2,
+        "activeSamples": 0,
+        "lowResolution": true,
+        "topSampledFrames": []
+      }
+    },
+    {
+      "variant": "current",
+      "round": 2,
+      "phase": "checkpointStart",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 1,
+          "cycle": 1,
+          "after_key": "",
+          "upper_key": "000000000100:000000009001",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "workerWallMs": 5,
+      "sampledCpu": {
+        "activeSampledMs": 0,
+        "idleSampledMs": 8.557,
+        "profileWindowMs": 8.618,
+        "samples": 2,
+        "activeSamples": 0,
+        "lowResolution": true,
+        "topSampledFrames": []
+      }
+    },
+    {
+      "variant": "current",
+      "round": 2,
+      "phase": "checkpointAdvance",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 2,
+          "cycle": 1,
+          "after_key": "000000000100:000000009001",
+          "upper_key": "000000000100:000000009001",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": null,
+          "last_completed_at": null
+        }
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "workerWallMs": 4,
+      "sampledCpu": {
+        "activeSampledMs": 0,
+        "idleSampledMs": 7.626,
+        "profileWindowMs": 7.7,
+        "samples": 2,
+        "activeSamples": 0,
+        "lowResolution": true,
+        "topSampledFrames": []
+      }
+    },
+    {
+      "variant": "current",
+      "round": 2,
+      "phase": "checkpointFinish",
+      "http": 200,
+      "ack": {
+        "ok": true,
+        "state": {
+          "id": 1,
+          "revision": 3,
+          "cycle": 2,
+          "after_key": "",
+          "upper_key": "",
+          "failures": 0,
+          "last_error_code": null,
+          "last_cycle_status": "OK",
+          "last_completed_at": "2026-11-01T04:06:45.450Z"
+        }
+      },
+      "d1": {
+        "queries": 3,
+        "rowsRead": 5,
+        "rowsWritten": 1
+      },
+      "workerWallMs": 4,
+      "sampledCpu": {
+        "activeSampledMs": 1.701,
+        "idleSampledMs": 7.521,
+        "profileWindowMs": 9.29,
+        "samples": 3,
+        "activeSamples": 1,
+        "lowResolution": true,
+        "topSampledFrames": [
+          {
+            "functionName": "_send",
+            "sampledMs": 1.701
+          }
+        ]
+      }
+    }
+  ],
+  "summary": [
+    {
+      "variant": "baseline",
+      "phase": "firstImport",
+      "samples": 3,
+      "medianActiveSampledMs": 9.04,
+      "lowResolution": 3,
+      "medianWorkerWallMs": 11,
+      "d1": [
+        {
+          "queries": 4,
+          "rowsRead": 3,
+          "rowsWritten": 5
+        },
+        {
+          "queries": 4,
+          "rowsRead": 3,
+          "rowsWritten": 5
+        },
+        {
+          "queries": 4,
+          "rowsRead": 3,
+          "rowsWritten": 5
+        }
+      ]
+    },
+    {
+      "variant": "current",
+      "phase": "firstImport",
+      "samples": 3,
+      "medianActiveSampledMs": 4.607,
+      "lowResolution": 3,
+      "medianWorkerWallMs": 11,
+      "d1": [
+        {
+          "queries": 4,
+          "rowsRead": 3,
+          "rowsWritten": 5
+        },
+        {
+          "queries": 4,
+          "rowsRead": 3,
+          "rowsWritten": 5
+        },
+        {
+          "queries": 4,
+          "rowsRead": 3,
+          "rowsWritten": 5
+        }
+      ]
+    },
+    {
+      "variant": "baseline",
+      "phase": "warmUnchanged",
+      "samples": 3,
+      "medianActiveSampledMs": 1.691,
+      "lowResolution": 3,
+      "medianWorkerWallMs": 4,
+      "d1": [
+        {
+          "queries": 3,
+          "rowsRead": 3,
+          "rowsWritten": 0
+        },
+        {
+          "queries": 3,
+          "rowsRead": 3,
+          "rowsWritten": 0
+        },
+        {
+          "queries": 3,
+          "rowsRead": 3,
+          "rowsWritten": 0
+        }
+      ]
+    },
+    {
+      "variant": "current",
+      "phase": "warmUnchanged",
+      "samples": 3,
+      "medianActiveSampledMs": 3.332,
+      "lowResolution": 3,
+      "medianWorkerWallMs": 5,
+      "d1": [
+        {
+          "queries": 3,
+          "rowsRead": 3,
+          "rowsWritten": 0
+        },
+        {
+          "queries": 3,
+          "rowsRead": 3,
+          "rowsWritten": 0
+        },
+        {
+          "queries": 3,
+          "rowsRead": 3,
+          "rowsWritten": 0
+        }
+      ]
+    },
+    {
+      "variant": "baseline",
+      "phase": "warmChanged",
+      "samples": 3,
+      "medianActiveSampledMs": 0,
+      "lowResolution": 3,
+      "medianWorkerWallMs": 6,
+      "d1": [
+        {
+          "queries": 4,
+          "rowsRead": 5,
+          "rowsWritten": 3
+        },
+        {
+          "queries": 4,
+          "rowsRead": 5,
+          "rowsWritten": 3
+        },
+        {
+          "queries": 4,
+          "rowsRead": 5,
+          "rowsWritten": 3
+        }
+      ]
+    },
+    {
+      "variant": "current",
+      "phase": "warmChanged",
+      "samples": 3,
+      "medianActiveSampledMs": 2.753,
+      "lowResolution": 3,
+      "medianWorkerWallMs": 6,
+      "d1": [
+        {
+          "queries": 4,
+          "rowsRead": 5,
+          "rowsWritten": 3
+        },
+        {
+          "queries": 4,
+          "rowsRead": 5,
+          "rowsWritten": 3
+        },
+        {
+          "queries": 4,
+          "rowsRead": 5,
+          "rowsWritten": 3
+        }
+      ]
+    },
+    {
+      "variant": "current",
+      "phase": "checkpointGet",
+      "samples": 3,
+      "medianActiveSampledMs": 0,
+      "lowResolution": 3,
+      "medianWorkerWallMs": 5,
+      "d1": [
+        {
+          "queries": 3,
+          "rowsRead": 3,
+          "rowsWritten": 0
+        },
+        {
+          "queries": 3,
+          "rowsRead": 3,
+          "rowsWritten": 0
+        },
+        {
+          "queries": 3,
+          "rowsRead": 3,
+          "rowsWritten": 0
+        }
+      ]
+    },
+    {
+      "variant": "current",
+      "phase": "checkpointStart",
+      "samples": 3,
+      "medianActiveSampledMs": 4.795,
+      "lowResolution": 3,
+      "medianWorkerWallMs": 5,
+      "d1": [
+        {
+          "queries": 3,
+          "rowsRead": 5,
+          "rowsWritten": 1
+        },
+        {
+          "queries": 3,
+          "rowsRead": 5,
+          "rowsWritten": 1
+        },
+        {
+          "queries": 3,
+          "rowsRead": 5,
+          "rowsWritten": 1
+        }
+      ]
+    },
+    {
+      "variant": "current",
+      "phase": "checkpointAdvance",
+      "samples": 3,
+      "medianActiveSampledMs": 0,
+      "lowResolution": 3,
+      "medianWorkerWallMs": 4,
+      "d1": [
+        {
+          "queries": 3,
+          "rowsRead": 5,
+          "rowsWritten": 1
+        },
+        {
+          "queries": 3,
+          "rowsRead": 5,
+          "rowsWritten": 1
+        },
+        {
+          "queries": 3,
+          "rowsRead": 5,
+          "rowsWritten": 1
+        }
+      ]
+    },
+    {
+      "variant": "current",
+      "phase": "checkpointFinish",
+      "samples": 3,
+      "medianActiveSampledMs": 0,
+      "lowResolution": 3,
+      "medianWorkerWallMs": 4,
+      "d1": [
+        {
+          "queries": 3,
+          "rowsRead": 5,
+          "rowsWritten": 1
+        },
+        {
+          "queries": 3,
+          "rowsRead": 5,
+          "rowsWritten": 1
+        },
+        {
+          "queries": 3,
+          "rowsRead": 5,
+          "rowsWritten": 1
+        }
+      ]
+    }
+  ],
+  "note": "Local V8 sampling with instrumentation; not Cloudflare billed CPU. First import excludes deployment startup. Never infer CPU from wall time."
+}

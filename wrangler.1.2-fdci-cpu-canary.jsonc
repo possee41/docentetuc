@@ -1,0 +1,26 @@
+{
+  "name": "docentetuc-fdci-cpu-canary-1-2",
+  "main": "workers/source-import-gateway.mjs",
+  "compatibility_date": "2026-05-15",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [],
+  "triggers": { "crons": [] },
+  "vars": {
+    "IMPORT_GATE_ENABLED": "false",
+    "IMPORT_GATE_LEASE_REQUIRED": "false",
+    "IMPORT_GATE_ALLOWED_SOURCE": "fdci",
+    "FDCI_EXTERNAL_ENABLED": "false",
+    "FDCI_AUTOMATION_ENABLED": "false"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+      "head_sampling_rate": 1,
+      "persist": true
+    }
+  }
+}

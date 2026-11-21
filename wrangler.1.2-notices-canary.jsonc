@@ -1,0 +1,23 @@
+{
+  "name": "docentetuc-notices-1-2-canary",
+  "main": "workers/notices-receiver.mjs",
+  "compatibility_date": "2026-05-15",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [],
+  "vars": {
+    "NOTICES_ENABLED": "false",
+    "NOTICES_DATABASE_NAME": "docentetuc-notices-canary-1-2",
+    "NOTICES_DATABASE_ID": "bee24175-2591-4fe3-a4ed-deb7f680f615"
+  },
+  "triggers": { "crons": [] },
+  "observability": {
+    "enabled": true,
+    "logs": { "invocation_logs": true, "head_sampling_rate": 1 }
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "docentetuc-notices-canary-1-2",
+    "database_id": "bee24175-2591-4fe3-a4ed-deb7f680f615"
+  }]
+}

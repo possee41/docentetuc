@@ -5,12 +5,14 @@
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "AI_PROVIDER": "gemini",
-    "AI_MODEL": "gemini-3.5-flash-lite"
+    "AI_MODEL": "gemini-3.5-flash-lite",
+    "AI_WEB_SEARCH_ENABLED": "0",
+    "PUSH_DISPATCH_MODE": "disabled"
   },
   "no_bundle": true,
   "rules": [{ "type": "ESModule", "globs": ["**/*.js", "**/*.mjs"] }],
   "assets": { "directory": "dist/client" },
-  "triggers": { "crons": ["*/5 * * * *"] },
+  "triggers": { "crons": ["1 * * * *", "2-57/5 * * * *"] },
   "d1_databases": [{
     "binding": "DB",
     "database_name": "docentetuc-db",

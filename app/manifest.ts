@@ -1,10 +1,11 @@
 import type { MetadataRoute } from "next";
+import { SITE_DESCRIPTION, SITE_NAME } from "@/lib/site-identity";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "DocenteTuc",
-    short_name: "DocenteTuc",
-    description: "Información pública docente de Tucumán, organizada en un solo lugar.",
+    name: SITE_NAME,
+    short_name: SITE_NAME,
+    description: SITE_DESCRIPTION,
     start_url: "/",
     display: "standalone",
     orientation: "portrait-primary",

@@ -11,7 +11,8 @@ test("una instalación que requiere recuperación no muestra datos privados como
   assert.equal(needsRecoveryNotice("recovery_required", false, false, false), false);
   assert.equal(needsRecoveryNotice("recovery_required", true, true, false), false);
   assert.equal(needsRecoveryNotice("recovery_required", true, false, true), false);
-  assert.match(app, /privateView && !privateReady \? recoveryRequired \? <RecoveryRequiredNotice/);
+  assert.match(app, /privateView && !privateReady \? accessState === "checking"/);
+  assert.match(app, /accessState === "recovery_required" \? <RecoveryRequiredNotice/);
   assert.ok(app.indexOf("privateView && !privateReady") < app.indexOf('view === "agenda" ? <Agenda'));
   assert.match(app, /Tu información anterior permanece conservada/);
   assert.match(app, /necesitamos verificar que te pertenece/);
@@ -21,7 +22,7 @@ test("una instalación que requiere recuperación no muestra datos privados como
 test("la recuperación legacy no bloquea los módulos públicos ni reutiliza un caché privado", () => {
   const publicRoute = readFileSync(new URL("../app/api/public-app/route.ts", import.meta.url), "utf8");
   assert.match(app, /fetch\("\/api\/public-app"/);
-  assert.match(app, /if \(response\.status === 401\) \{ privateDataVerified\.current = false; setPrivateReady\(false\); setData\(publicData\.current\)/);
+  assert.match(app, /if \(response\.status === 401\).*privateData\.current = null.*setPrivateAccess\("unauthorized"\).*setData\(publicData\.current\)/);
   assert.doesNotMatch(app, /getItem\("docentetuc-data-v1"\)/);
   assert.match(publicRoute, /APP_PUBLICATIONS_QUERY/);
   assert.doesNotMatch(publicRoute, /currentUser|getAuthenticatedAccount|SELECT \* FROM profiles|saved_publications|manual_events/);

@@ -39,6 +39,7 @@ const NOW = Date.UTC(2026, 9, 5, 15, 0);
 const MIGRATION = readFileSync(new URL("../migrations/0015_community.sql", import.meta.url), "utf8");
 const SAVED_MIGRATION = readFileSync(new URL("../migrations/0016_community_saved_posts.sql", import.meta.url), "utf8");
 const ADMIN_MIGRATION = readFileSync(new URL("../migrations/0018_community_admin.sql", import.meta.url), "utf8");
+const PRE_MODERATION_MIGRATION = readFileSync(new URL("../migrations/0020_community_pre_moderation.sql", import.meta.url), "utf8");
 const SAVED_ROUTE = readFileSync(new URL("../app/api/community/posts/[postId]/saved/route.ts", import.meta.url), "utf8");
 
 type Bound = {
@@ -92,7 +93,7 @@ function setup() {
     );
     CREATE TABLE profiles (user_id TEXT PRIMARY KEY, private_data TEXT);
   `);
-  raw.exec(`${MIGRATION}\n${SAVED_MIGRATION}\n${ADMIN_MIGRATION}`);
+  raw.exec(`${MIGRATION}\n${SAVED_MIGRATION}\n${ADMIN_MIGRATION}\n${PRE_MODERATION_MIGRATION}`);
   for (const [id, email, name, publicName] of [
     [ACCOUNT_A, EMAIL_A, "Private Name A", "Docente A"],
     [ACCOUNT_B, EMAIL_B, "Private Name B", "Docente B"],
@@ -271,6 +272,45 @@ test("la retención purga contenido moderado al cumplir 90 días y conserva audi
     assert.ok(detachedAudit.every((event) => event.action === "hide" && typeof event.reason === "string" && typeof event.created_at === "string"));
     const again = await purgeExpiredCommunityContent(database, NOW);
     assert.equal(again.postsPurged, 0);
+  } finally { raw.close(); }
+});
+
+test("retención acotada reanuda un post con muchos comentarios sin borrado en cascada", async () => {
+  const { raw, database } = setup();
+  try {
+    const old = new Date(NOW - 91 * 86_400_000).toISOString();
+    raw.prepare("INSERT INTO community_posts(id,author_user_id,body,moderation_status,moderated_at) VALUES('post-bounded',?,'Texto','hidden',?)")
+      .run(ACCOUNT_A, old);
+    const insert = raw.prepare("INSERT INTO community_comments(id,post_id,author_user_id,body) VALUES(?,'post-bounded',?,'Comentario')");
+    for (let index = 0; index < 55; index++) insert.run(`comment-${index}`, ACCOUNT_B);
+    const first = await purgeExpiredCommunityContent(database, NOW);
+    assert.equal(first.commentsPurged, 25);
+    assert.equal(first.postsPurged, 0);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM community_comments WHERE post_id='post-bounded'").get()?.n, 30);
+    await Promise.all([purgeExpiredCommunityContent(database, NOW), purgeExpiredCommunityContent(database, NOW)]);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM community_comments WHERE post_id='post-bounded'").get()?.n, 0);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM community_posts WHERE id='post-bounded'").get()?.n, 0);
+    assert.deepEqual((await purgeExpiredCommunityContent(database, NOW)).postsPurged, 0);
+  } finally { raw.close(); }
+});
+
+test("fallo D1 en retención revierte el lote y el siguiente intento lo completa", async () => {
+  const { raw, database } = setup();
+  try {
+    const old = new Date(NOW - 91 * 86_400_000).toISOString();
+    raw.prepare("INSERT INTO community_posts(id,author_user_id,body,moderation_status,moderated_at) VALUES('post-retry',?,'Texto','hidden',?)")
+      .run(ACCOUNT_A, old);
+    raw.prepare("INSERT INTO community_comments(id,post_id,author_user_id,body) VALUES('comment-retry','post-retry',?,'Comentario')")
+      .run(ACCOUNT_B);
+    const failed = { prepare: (sql: string) => database.prepare(sql), batch: async (statements: unknown[]) => {
+      raw.exec("BEGIN");
+      try { (statements[0] as Bound).runSync(); throw new Error("D1_INTERRUPTED"); }
+      finally { raw.exec("ROLLBACK"); }
+    } };
+    await assert.rejects(purgeExpiredCommunityContent(failed, NOW), /D1_INTERRUPTED/);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM community_comments").get()?.n, 1);
+    assert.deepEqual((await purgeExpiredCommunityContent(database, NOW)).postsPurged, 1);
+    assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM community_posts WHERE id='post-retry'").get()?.n, 0);
   } finally { raw.close(); }
 });
 
