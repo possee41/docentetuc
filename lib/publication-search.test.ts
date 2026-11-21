@@ -9,14 +9,14 @@ function fixture() {
   db.exec(`CREATE TABLE publications (
     id TEXT PRIMARY KEY, kind TEXT, source TEXT, category TEXT, title TEXT, summary TEXT,
     level TEXT, area TEXT, junta TEXT, location TEXT, character TEXT, source_circuit_raw TEXT,
-    metadata TEXT, starts_at TEXT, ends_at TEXT, updated_at TEXT
+    metadata TEXT, starts_at TEXT, ends_at TEXT, updated_at TEXT, normalized_status TEXT
   )`);
-  const insert = db.prepare("INSERT INTO publications VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)");
+  const insert = db.prepare("INSERT INTO publications VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)");
   const add = (id: string, title: string, kind = "junta", fields: Record<string, string> = {}) =>
     insert.run(id, kind, fields.source || "Junta Secundaria", fields.category || "Comunicados", title,
       fields.summary || "", fields.level || "", fields.area || "", fields.junta || "",
       fields.location || "", fields.character || "", fields.source_circuit_raw || "",
-      fields.metadata || "{}", fields.updated_at || "2026-10-14");
+      fields.metadata || "{}", fields.updated_at || "2026-10-14", fields.normalized_status || "UNKNOWN");
   const search = (term: string, cursor?: string) => {
     const { sql, params } = publicationSearchQuery(term, cursor);
     return db.prepare(sql).all(...params) as { id: string; updated_at: string }[];
@@ -101,14 +101,16 @@ test("permite recorrer una sección completa sin texto de búsqueda", () => {
   db.close();
 });
 
-test("el catálogo paginado conserva FDCI, INFoD y CeNET fuera del lote inicial de 400", () => {
+test("Inicio reserva FDCI y el catálogo paginado conserva FDCI, INFoD y CeNET", () => {
   const { db, add } = fixture();
   for (let index = 0; index < 420; index++) add(`vacancy:${index}`, "Vacante reciente", "vacante", { updated_at: "2026-11-21" });
   const trainingIds = ["fdci:commission:6450", "infod:course:1", "cenet:cohort:1"];
-  add(trainingIds[0], "Coloquio docente", "capacitacion", { source: "Capacitación Docente", updated_at: "2026-11-20" });
+  add(trainingIds[0], "Coloquio docente", "capacitacion", { source: "Capacitación Docente", normalized_status: "ACTIVE", updated_at: "2026-11-20" });
   add(trainingIds[1], "Curso INFoD", "capacitacion", { source: "INFoD / AulaS-TIC", updated_at: "2026-11-19" });
   add(trainingIds[2], "Curso CeNET", "capacitacion", { source: "CeNET / INET", updated_at: "2026-11-18" });
-  assert.ok(!(db.prepare(APP_PUBLICATIONS_QUERY).all() as { id: string }[]).some(row => row.id === trainingIds[0]));
+  const initial = db.prepare(APP_PUBLICATIONS_QUERY).all() as { id: string }[];
+  assert.equal(initial.length, 400);
+  assert.ok(initial.some(row => row.id === trainingIds[0]));
   const found: string[] = [];
   let cursor = "";
   do {
