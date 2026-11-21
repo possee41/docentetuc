@@ -5,6 +5,7 @@ import type { Publication } from "@/lib/types";
 
 type State = { items: Publication[]; loading: boolean; complete: boolean; error: string };
 const empty: State = { items: [], loading: false, complete: false, error: "" };
+export const trainingCatalogFailure = (previous: State): State => ({ ...previous, loading: false, error: "No pudimos cargar el catálogo completo de capacitaciones. Reintentá la lectura." });
 
 export async function fetchTrainingCatalog(fetcher: typeof fetch, signal?: AbortSignal) {
   const items: Publication[] = [], seen = new Set<string>();
@@ -30,10 +31,10 @@ export function useTrainingCatalog(active: boolean, refreshKey: unknown) {
   useEffect(() => {
     if (!active) return;
     const controller = new AbortController();
-    queueMicrotask(() => { if (!controller.signal.aborted) setState({ ...empty, loading: true }); });
+    queueMicrotask(() => { if (!controller.signal.aborted) setState(previous => ({ ...previous, loading: true, error: "" })); });
     void fetchTrainingCatalog(fetch, controller.signal)
       .then(items => { if (!controller.signal.aborted) setState({ items, loading: false, complete: true, error: "" }); })
-      .catch(() => { if (!controller.signal.aborted) setState({ ...empty, error: "No pudimos cargar el catálogo completo de capacitaciones. Reintentá la lectura." }); });
+      .catch(() => { if (!controller.signal.aborted) setState(trainingCatalogFailure); });
     return () => controller.abort();
   }, [active, refreshKey]);
   return state;

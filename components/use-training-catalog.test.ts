@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fetchTrainingCatalog } from "./use-training-catalog.ts";
+import { fetchTrainingCatalog, trainingCatalogFailure } from "./use-training-catalog.ts";
 
 test("Todas recibe FDCI, INFoD y CeNET más allá de las 400 filas iniciales", async () => {
   const sources = ["Capacitación Docente", "INFoD / AulaS-TIC", "CeNET / INET"];
@@ -24,4 +24,12 @@ test("Todas recibe FDCI, INFoD y CeNET más allá de las 400 filas iniciales", a
 test("un cursor repetido detiene la carga y no presenta una lista incompleta como completa", async () => {
   const fetcher = async () => Response.json({ items: [{ id: "training:1" }], nextCursor: "repeat" });
   await assert.rejects(fetchTrainingCatalog(fetcher as typeof fetch), /PAGE_INVALID/);
+});
+
+test("un fallo de recarga conserva la última lista completa y avisa que no se verificó", () => {
+  const previous = { items: [{ id: "fdci:commission:6450" }] as never[], loading: true, complete: true, error: "" };
+  const failed = trainingCatalogFailure(previous);
+  assert.equal(failed.complete, true);
+  assert.deepEqual(failed.items, previous.items);
+  assert.match(failed.error, /No pudimos cargar/);
 });
