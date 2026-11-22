@@ -17,7 +17,7 @@ test("toda ficha conserva fuente y fecha de verificación", () => {
 test("la selección inicial reserva espacio para Información útil", () => {
   const db = new DatabaseSync(":memory:");
   try {
-    db.exec("CREATE TABLE publications (id TEXT PRIMARY KEY, kind TEXT, starts_at TEXT, ends_at TEXT, updated_at TEXT, metadata TEXT DEFAULT '{}')");
+    db.exec("CREATE TABLE publications (id TEXT PRIMARY KEY, kind TEXT, starts_at TEXT, ends_at TEXT, updated_at TEXT, metadata TEXT DEFAULT '{}', source TEXT DEFAULT '', normalized_status TEXT DEFAULT 'UNKNOWN')");
     const insert = db.prepare("INSERT INTO publications (id, kind, starts_at, ends_at, updated_at) VALUES (?, ?, NULL, NULL, ?)");
     for (let index = 0; index < 1501; index++) insert.run(`other:${index}`, "vacante", "2026-09-30");
     for (const item of usefulInformation) insert.run(`info:${item.id}`, "informacion", "2026-09-27");

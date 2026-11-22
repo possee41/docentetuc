@@ -22,8 +22,8 @@ const previousQuery = `SELECT * FROM publications WHERE id IN (
 test("mismas filas completas y orden ante fechas, alias, JSON inválido, empates y cupo informativo", () => {
   const db = new DatabaseSync(":memory:");
   try {
-    db.exec("CREATE TABLE publications(id TEXT PRIMARY KEY NOT NULL,kind TEXT,metadata TEXT,ends_at TEXT,starts_at TEXT,updated_at TEXT,summary TEXT)");
-    const insert = db.prepare("INSERT INTO publications VALUES(?,?,?,?,?,?,?)");
+    db.exec("CREATE TABLE publications(id TEXT PRIMARY KEY NOT NULL,kind TEXT,metadata TEXT,ends_at TEXT,starts_at TEXT,updated_at TEXT,summary TEXT,source TEXT DEFAULT '',normalized_status TEXT DEFAULT 'UNKNOWN')");
+    const insert = db.prepare("INSERT INTO publications(id,kind,metadata,ends_at,starts_at,updated_at,summary) VALUES(?,?,?,?,?,?,?)");
     const now = "2026-10-30 12:00:00";
     const fixed = (sql: string) => sql.replaceAll("datetime('now')", `'${now}'`);
     const check = () => assert.deepEqual(db.prepare(fixed(APP_PUBLICATIONS_QUERY)).all(), db.prepare(fixed(previousQuery)).all());
@@ -48,8 +48,8 @@ test("mismas filas completas y orden ante fechas, alias, JSON inválido, empates
 
 test("la carga inicial queda acotada y el catálogo anterior sigue navegable por páginas", () => {
   const db = new DatabaseSync(":memory:");
-  db.exec("CREATE TABLE publications (id TEXT PRIMARY KEY, kind TEXT, metadata TEXT, ends_at TEXT, starts_at TEXT, updated_at TEXT)");
-  const insert = db.prepare("INSERT INTO publications VALUES (?, ?, '{}', NULL, NULL, ?)");
+  db.exec("CREATE TABLE publications (id TEXT PRIMARY KEY, kind TEXT, metadata TEXT, ends_at TEXT, starts_at TEXT, updated_at TEXT, source TEXT DEFAULT '', normalized_status TEXT DEFAULT 'UNKNOWN')");
+  const insert = db.prepare("INSERT INTO publications(id,kind,metadata,ends_at,starts_at,updated_at) VALUES (?, ?, '{}', NULL, NULL, ?)");
   db.exec("BEGIN");
   for (let index = 0; index < 1501; index++) insert.run(`junta:${index}`, "junta", "2026-10-11");
   insert.run("infd:curso-2026", "capacitacion", "2026-08-01");
