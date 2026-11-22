@@ -1,0 +1,335 @@
+{
+  "date": "2026-11-22",
+  "branch": "local/juntas-production-20261121",
+  "baseSource": "2d32f22e888e296948f70711efd86692691cabe9",
+  "canaryApprovedCode": "932f8445053cd25b1fd07856bfd8e16a4151ccc4",
+  "production": {
+    "deployment": "f5541fb6-48f3-4d92-ae5f-c80df755a099",
+    "createdOn": "2026-11-21T18:21:19.328234Z",
+    "versions": [
+      {
+        "version_id": "e7d07d08-fc47-41a2-b714-61263282961b",
+        "percentage": 100
+      }
+    ]
+  },
+  "database": {
+    "database_name": "docentetuc-db",
+    "database_id": "baaf5886-0123-4948-96da-aa7106424549"
+  },
+  "schemaObjects": [
+    {
+      "type": "table",
+      "name": "juntas_import_applied"
+    },
+    {
+      "type": "table",
+      "name": "juntas_import_checkpoint"
+    }
+  ],
+  "publicationColumns": 35,
+  "sourceCounts": [
+    {
+      "source": "Padrones y Comunicados",
+      "kind": "junta",
+      "category": "Comunicados",
+      "junta": "Inicial y Primaria",
+      "n": 1
+    },
+    {
+      "source": "Padrones y Comunicados",
+      "kind": "junta",
+      "category": "Comunicados",
+      "junta": "Secundaria",
+      "n": 1
+    },
+    {
+      "source": "Padrones y Comunicados",
+      "kind": "junta",
+      "category": "Comunicados",
+      "junta": "Superior, Especial y Artística",
+      "n": 1
+    },
+    {
+      "source": "Padrones y Comunicados",
+      "kind": "junta",
+      "category": "Comunicados",
+      "junta": "Técnica, Agrotécnica y No Formal",
+      "n": 1
+    },
+    {
+      "source": "Padrones y Comunicados",
+      "kind": "junta",
+      "category": "Llamados abiertos",
+      "junta": "Inicial y Primaria",
+      "n": 610
+    },
+    {
+      "source": "Padrones y Comunicados",
+      "kind": "junta",
+      "category": "Llamados abiertos",
+      "junta": "Superior, Especial y Artística",
+      "n": 676
+    },
+    {
+      "source": "Padrones y Comunicados",
+      "kind": "junta",
+      "category": "Padrones",
+      "junta": "Inicial y Primaria",
+      "n": 844
+    },
+    {
+      "source": "Padrones y Comunicados",
+      "kind": "junta",
+      "category": "Padrones",
+      "junta": "Secundaria",
+      "n": 695
+    },
+    {
+      "source": "Padrones y Comunicados",
+      "kind": "junta",
+      "category": "Padrones",
+      "junta": "Superior, Especial y Artística",
+      "n": 1100
+    },
+    {
+      "source": "Padrones y Comunicados",
+      "kind": "junta",
+      "category": "Padrones",
+      "junta": "Técnica, Agrotécnica y No Formal",
+      "n": 815
+    },
+    {
+      "source": "Padrones y Comunicados",
+      "kind": "junta",
+      "category": "Resoluciones",
+      "junta": "Todas",
+      "n": 2
+    }
+  ],
+  "checkpoints": 0,
+  "appliedSignatureGroups": 0,
+  "existingReported2026": [
+    {
+      "junta": "Inicial y Primaria",
+      "n": 844,
+      "reported_2026": 0
+    },
+    {
+      "junta": "Secundaria",
+      "n": 695,
+      "reported_2026": 0
+    },
+    {
+      "junta": "Superior, Especial y Artística",
+      "n": 1100,
+      "reported_2026": 0
+    },
+    {
+      "junta": "Técnica, Agrotécnica y No Formal",
+      "n": 815,
+      "reported_2026": 0
+    }
+  ],
+  "verified2026References": [
+    {
+      "id": "drive:pad-secundaria:1DYDvL-Rq7eJKv8nTMhUv0_EV3cvG_eSG",
+      "junta": "Secundaria",
+      "specificCompetition": false
+    },
+    {
+      "id": "drive:pad-secundaria:1OJnSOWltTljQGDBGtfOG5bPIFpRa-eZd",
+      "junta": "Secundaria",
+      "specificCompetition": false
+    },
+    {
+      "id": "drive:pad-secundaria:1RJueu9MRfHgRpzE0mq9senJ8WIfW1uOr",
+      "junta": "Secundaria",
+      "specificCompetition": false
+    },
+    {
+      "id": "drive:pad-secundaria:1UPTvqA53yvGaY7HbUGeRLuVSGihavNXe",
+      "junta": "Secundaria",
+      "specificCompetition": false
+    },
+    {
+      "id": "drive:pad-secundaria:1dFFJoeIMKjBmFgi0kCW2cJ-bX5WjjRcD",
+      "junta": "Secundaria",
+      "specificCompetition": false
+    },
+    {
+      "id": "drive:pad-secundaria:1u8kXSIzLM4RC-HB9dI0_hZxsVf2PlZN9",
+      "junta": "Secundaria",
+      "specificCompetition": false
+    },
+    {
+      "id": "drive:pad-tecnica:10acRd9DcGRx6S8jpt1ih269U30RbFb4y",
+      "junta": "Técnica, Agrotécnica y No Formal",
+      "specificCompetition": false
+    },
+    {
+      "id": "drive:pad-tecnica:1EEKyEPaQGBQWMchy2EX-HlBCVjNLYzqC",
+      "junta": "Técnica, Agrotécnica y No Formal",
+      "specificCompetition": false
+    },
+    {
+      "id": "drive:pad-tecnica:1F0chjihrmHkiN2X52Ut18xhj-3t5qHTQ",
+      "junta": "Técnica, Agrotécnica y No Formal",
+      "specificCompetition": false
+    },
+    {
+      "id": "drive:pad-tecnica:1LVwoXrIj1KgyWf1n7fm7eI1n-5qNSfmb",
+      "junta": "Técnica, Agrotécnica y No Formal",
+      "specificCompetition": true
+    },
+    {
+      "id": "drive:pad-tecnica:1SHZnZDD92HsDR60yQsCc11_iVY5j3ZTs",
+      "junta": "Técnica, Agrotécnica y No Formal",
+      "specificCompetition": false
+    },
+    {
+      "id": "drive:pad-tecnica:1TWFgAbZ8bV7SPLMrFinTJ8UdkplJhAJ6",
+      "junta": "Técnica, Agrotécnica y No Formal",
+      "specificCompetition": true
+    },
+    {
+      "id": "drive:pad-tecnica:1nSrVDg8FDtO4mb2FR7lOXnwe8r6yjFVb",
+      "junta": "Técnica, Agrotécnica y No Formal",
+      "specificCompetition": false
+    },
+    {
+      "id": "drive:pad-tecnica:1yVo1PGywHSHeQ2rZyTNP0lkb8px1VoxW",
+      "junta": "Técnica, Agrotécnica y No Formal",
+      "specificCompetition": true
+    }
+  ],
+  "matchedExactIdsOrUrls": 0,
+  "padronSizes": [
+    {
+      "junta": "Inicial y Primaria",
+      "n": 844,
+      "avg_metadata_chars": 82,
+      "max_metadata_chars": 96,
+      "avg_summary_chars": 95,
+      "max_summary_chars": 165
+    },
+    {
+      "junta": "Secundaria",
+      "n": 695,
+      "avg_metadata_chars": 80,
+      "max_metadata_chars": 105,
+      "avg_summary_chars": 252,
+      "max_summary_chars": 40000
+    },
+    {
+      "junta": "Superior, Especial y Artística",
+      "n": 1100,
+      "avg_metadata_chars": 79,
+      "max_metadata_chars": 116,
+      "avg_summary_chars": 245,
+      "max_summary_chars": 40000
+    },
+    {
+      "junta": "Técnica, Agrotécnica y No Formal",
+      "n": 815,
+      "avg_metadata_chars": 77,
+      "max_metadata_chars": 95,
+      "avg_summary_chars": 109,
+      "max_summary_chars": 142
+    }
+  ],
+  "tests": {
+    "focused": 10,
+    "failed": 0,
+    "typescript": "PASS",
+    "lint": "PASS, final warnings fixed",
+    "build": "PASS",
+    "webDryRun": "PASS",
+    "receiverDryRun": "PASS",
+    "canaryOrImportsRepeated": false
+  },
+  "migration": {
+    "file": "migrations/0100_juntas_document_revisions.sql",
+    "sha256": "5a18367e5d6cbd04f870e220fdd2a50a6806f57e0831983fd43e025e8d23f43b",
+    "needed": true,
+    "applied": false,
+    "preexistingCheckpointTables": true,
+    "newTables": [
+      "juntas_document_revisions"
+    ],
+    "triggers": 3,
+    "indexes": 2,
+    "backfill": false
+  },
+  "limits": {
+    "officialRequests": 25,
+    "publicationAttempts": 20,
+    "leaseSeconds": 600,
+    "cronActive": false,
+    "proposedCronUtc": "7 11 * * *",
+    "newD1": false,
+    "proposedReceiver": "docentetuc-juntas-1-2",
+    "receiverCreated": false
+  },
+  "sourceFiles": [
+    "app/api/boards/padrones/route.ts",
+    "app/api/boards/route.ts",
+    "app/docente-app.tsx",
+    "app/page.tsx",
+    "db/index.ts",
+    "lib/board-page.ts",
+    "lib/junta-external-sources.ts",
+    "lib/junta-external.ts",
+    "lib/junta-notices.ts",
+    "lib/official-publication.ts",
+    "lib/padron-documents.ts",
+    "scripts/import-juntas-checkpoint.mjs",
+    "scripts/juntas-gateway-db.mjs",
+    "scripts/prepare-worker.mjs",
+    "scripts/worker-entry.mjs",
+    "workers/juntas-checkpoint-gateway.mjs",
+    "workers/public-source-receiver.mjs",
+    "workers/source-import-gateway.mjs",
+    ".github/workflows/juntas-maintenance-production.yml",
+    "app/api/boards/revisions/route.ts",
+    "app/juntas-client.tsx",
+    "components/juntas-revisions.tsx",
+    "db/d1.ts",
+    "lib/fdci-canary-synthetic.ts",
+    "lib/fixtures/juntas-production-schema-20261121.sql",
+    "lib/juntas-public-api.ts",
+    "lib/publication-visibility.ts",
+    "migrations/0100_juntas_document_revisions.sql",
+    "scripts/juntas-document.mjs",
+    "scripts/juntas-maintenance.mjs",
+    "scripts/juntas-production-integration.test.mjs",
+    "scripts/juntas-production.mjs",
+    "scripts/juntas-source-fetch.mjs",
+    "scripts/prepare-juntas-production.mjs",
+    "scripts/prepare-juntas-shell.mjs",
+    "workers/juntas-production.mjs",
+    "wrangler.juntas-production.jsonc"
+  ],
+  "remote": {
+    "deployments": 0,
+    "imports": 0,
+    "migrations": 0,
+    "cronChanges": 0,
+    "secretsChanges": 0,
+    "d1RowsWritten": 0
+  },
+  "caveats": [
+    "Native CPU belongs to approved Juntas Canary; larger production corpus is tested locally for compatibility, not natively remeasured.",
+    "Existing artifacts/log link e7d07d08 to the clean 2d32f22 source checkout. Rebuilds change BUILD_ID/import aliases; not a bit-for-bit reproducible build claim.",
+    "GitHub Environment and effective GITHUB_TOKEN metadata permissions are not remotely validated; missing environment/protection/403 fails closed.",
+    "A separate Juntas Worker is proposed, not created. Name availability and Free quota must be verified before authorization is used.",
+    "No guarantee that all 14 known documents fit the first bounded crawl; PARTIAL and checkpoints must remain.",
+    "Per-request D1 row totals and future long-term history growth require operational observation; transport first() counters are not exact scanned-row totals."
+  ],
+  "verdict": "PREPARADO PARA AUTORIZAR INTEGRACIÓN CONTROLADA; SIN ACTIVACIÓN REMOTA",
+  "existingPublicationTriggers": [
+    "trg_external_publication_created",
+    "trg_external_publication_updated"
+  ],
+  "juntasEventSourceEnabled": 0
+}

@@ -78,11 +78,12 @@ async function readBody(request) {
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { throw new Error("INVALID_JSON"); }
 }
-const worker = { async fetch(request, env) {
+// Internal dispatch only: the gateway authenticates and checks identity/lease
+// before calling this handler. The public fetch entry below always authenticates.
+export async function receiveAuthenticatedPublicSources(request, env) {
   const url = new URL(request.url), key = url.pathname.match(/^\/api\/internal\/public-source-import\/(juntas|cenet|infd)$/)?.[1], source = sources[key];
   if (!source) return reply({ error: "No encontrado." }, 404);
   if (!env.DB || !env[source.secret]) return reply({ error: "No configurado." }, 503);
-  if (!await authorized(request.headers.get("authorization"), env[source.secret])) return reply({ error: "No autorizado." }, 401);
   if (request.method !== "POST") return reply({ error: "Método no permitido." }, 405);
   if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) return reply({ error: "Se requiere JSON." }, 415);
   try {
@@ -112,5 +113,12 @@ const worker = { async fetch(request, env) {
     }
     return reply({ error: "Operación inválida." }, 400);
   } catch (error) { return reply({ error: error?.message === "TOO_LARGE" ? "Lote demasiado grande." : "No se pudo procesar." }, error?.message === "TOO_LARGE" ? 413 : 503); }
+}
+const worker = { async fetch(request, env) {
+  const key = new URL(request.url).pathname.match(/^\/api\/internal\/public-source-import\/(juntas|cenet|infd)$/)?.[1], source = sources[key];
+  if (!source) return reply({ error: "No encontrado." }, 404);
+  if (!env.DB || !env[source.secret]) return reply({ error: "No configurado." }, 503);
+  if (!await authorized(request.headers.get("authorization"), env[source.secret])) return reply({ error: "No autorizado." }, 401);
+  return receiveAuthenticatedPublicSources(request, env);
 } };
 export default worker;

@@ -1,9 +1,17 @@
 import application from "./index.js";
 import { runScheduledTask } from "./scheduled-task.mjs";
+import documents from "./juntas-shell.mjs";
+import { juntasDocument } from "./juntas-document.mjs";
+import { juntasPublicApi } from "./juntas-public-api.mjs";
 
 const worker = {
   fetch(request, environment, context) {
-    return application.fetch(request, environment, context);
+    const document = juntasDocument(request, documents);
+    if (document) return document;
+    return juntasPublicApi(request, () => {
+        if (!environment.DB) throw new Error("La base de datos no está disponible.");
+        return environment.DB;
+      }) || application.fetch(request, environment, context);
   },
   async scheduled(controller, environment, context) {
     await runScheduledTask(controller.cron, environment.CRON_SECRET,
