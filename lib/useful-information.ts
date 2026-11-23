@@ -124,7 +124,7 @@ export const usefulInformation: UsefulRecord[] = [
   {
     id: "ddjj-cargos-actividades", title: "Declaracion Jurada de Cargos y Actividades (DDJJ)", category: "Tramites",
     summary: "Formulario en blanco para declarar cargos, funciones, horas catedra y horarios de trabajo docente. Documento PDF de dos paginas para completar manualmente.",
-    officialUrl: "https://docentetuc.com.ar/documents/Nueva_DDJS_2026_en_blanco.pdf",
+    officialUrl: "https://docentetuc.com.ar/documents/Nueva_DDJJ_2026_en_blanco.pdf",
     metadata: { recordType: "procedure", documents: ["Formulario DDJJ en blanco (PDF)"], aliases: ["declaracion jurada", "DDJJ", "cargos y actividades", "formulario DDJJ", "declarar cargos"], lastVerified: verified, notes: "Documento disponible para descarga. El docente debe completarlo y presentarlo segun las indicaciones del Ministerio de Educacion." }
   },
 ];
