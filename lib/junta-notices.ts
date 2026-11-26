@@ -1,24 +1,46 @@
 import { plainDocumentText } from "./public-documents.ts";
 import { padronTitleFacts } from "./padron-documents.ts";
-import { extractCodes, extractOfficialScope, newOfficial, normalizeOfficialText, noticeAnchor, parseOfficialDate, procedureFromText, opportunityTopics, withOfficial, type CollectedPublication, type OfficialFact, type OfficialMetadata, type OfficialSource } from "./official-publication.ts";
+import { extractCodes, extractOfficialScope, newOfficial, normalizeOfficialText, noticeAnchor, officialMetadata, parseOfficialDate, procedureFromText, opportunityTopics, withOfficial, type CollectedPublication, type OfficialFact, type OfficialMetadata, type OfficialSource } from "./official-publication.ts";
 
-export type NoticeBlock = { text: string; section: string };
+export type NoticeBlock = { text: string; section: string; publishedAt: string | null };
+const heading = /^(?:COMUNICADO(?: DE PRENSA)?|ACTO DE DESIGNACI[OÓ]N)\s*[:.]?\s*$/i;
+const standaloneDate = /^\s*(\d{1,2})\s*[/-]\s*(\d{1,2})\s*[/-]\s*(\d{2}|\d{4})\s*$/;
+function datedLine(line: string) {
+  const match = line.match(standaloneDate);
+  if (!match) return null;
+  const year = match[3].length === 2 ? `20${match[3]}` : match[3];
+  return parseOfficialDate(`${match[1]}/${match[2]}/${year}`)?.value || null;
+}
 export function splitNoticeBlocks(raw: string): NoticeBlock[] {
   const lines = plainDocumentText(raw, Number.MAX_SAFE_INTEGER).split("\n");
   const blocks: NoticeBlock[] = [];
-  let current: string[] = [], section = "";
-  const flush = () => { if (current.length) blocks.push({ text: current.join("\n").trim(), section }); current = []; };
-  for (const line of lines) {
+  let current: string[] = [], section = "", date: string | null = null, previous = "";
+  const flush = () => { if (current.some(line => !heading.test(line) && !datedLine(line))) blocks.push({ text: current.join("\n").trim(), section, publishedAt: date }); current = []; date = null; };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const before = previous;
+    previous = line;
     if (/^(NIVEL SUPERIOR|MODALIDAD (?:ART[IÍ]STICA|(?:EDUCACI[OÓ]N )?ESPECIAL)|AVISOS GENERALES)\s*$/i.test(line)) {
-      flush(); section = line; continue;
+      if (!current.length) section = line;
+      else current.push(line);
+      continue;
     }
-    if (/^(COMUNICADO(?: DE PRENSA)?|LLAMADO(?:S)? ABIERTO(?:S)?|ACTO DE DESIGNACI[OÓ]N)\s*[:.]?\s*$/i.test(line)) {
-      flush(); current.push(line); continue;
+    const published = datedLine(line);
+    const next = lines.slice(i + 1, i + 8).find(value => value.trim())?.trim() || "";
+    // A standalone date starts a new notice when it is a heading, not when it
+    // is an appointment date inside a table or paragraph.
+    if (published && (!current.length || heading.test(next) || /^[\-—–_]{3,}$/.test(before))) {
+      flush(); current.push(line); date = published; continue;
+    }
+    if (heading.test(line) || (/^LLAMADO ABIERTO$/i.test(line) && !!datedLine(next))) {
+      if (current.some(value => !datedLine(value) && !heading.test(value))) flush();
+      current.push(line); continue;
     }
     if (current.length) current.push(line);
   }
   flush();
-  return blocks.filter(b => b.text.split("\n").filter(Boolean).length >= 2);
+  return blocks;
 }
 const datePattern = String.raw`\d{1,2}[/-]\d{1,2}[/-]\d{4}`;
 const parseDateInText = (text: string) => {
@@ -36,7 +58,7 @@ export function classifyJuntaBlock(block: NoticeBlock, junta: string, source: Of
   const labeled = text.match(new RegExp(`(?:FECHA DE DESIGNACI[OÓ]N\\s*[:–-]?|DESIGNACI[OÓ]N PRESENCIAL\\s*[:–-]?|designaciones? (?:se realizar[aá]n|para|el))[^\\n]*?(${datePattern}(?:\\s+\\d{1,2}:\\d{2}\\s*(?:a\\.?\\s*m\\.?|p\\.?\\s*m\\.?)?)?)`, "i"));
   let appointment = labeled ? parseDateInText(labeled[1]) : null;
   if (m.correction) {
-    const previous = text.match(new RegExp(`(?:designadas?|designaciones?)[^\\n]*?(${datePattern})`, "i"))?.[1];
+    const previous = text.match(new RegExp(`\\b(?:designadas?|designaciones?|programadas?)[^\\n]*?(${datePattern})`, "i"))?.[1];
     const next = text.match(new RegExp(`(?:pasar[aá]n|pasan para|se posterga(?:n)? (?:para|al)|reprograma(?:das?|n)? (?:para|al))[\\s\\S]{0,100}?(${datePattern})`, "i"))?.[1];
     const a = parseDateInText(previous || ""), b = parseDateInText(next || "");
     if (a && b) {
@@ -87,27 +109,50 @@ export function classifyJuntaBlock(block: NoticeBlock, junta: string, source: Of
   if (block.section) m.issues.push(`Sección oficial: ${block.section}`);
   return m;
 }
-export function extractJuntaNotices(root: CollectedPublication, raw: string, previous: CollectedPublication[] = []) {
-  const seen = new Set<string>(), result: CollectedPublication[] = [];
-  for (const block of splitNoticeBlocks(raw)) {
+export function extractJuntaNotices(root: CollectedPublication, raw: string, previous: (CollectedPublication & { noticeKey?: string })[] = []) {
+  const seen = new Set<string>(), usedIds = new Set<string>(), result: CollectedPublication[] = [];
+  const blocks = splitNoticeBlocks(raw);
+  const withoutHeading = (text: string) => normalizeOfficialText(text.split("\n")
+    .filter(line => !heading.test(line.trim()) && !datedLine(line.trim())).join(" ")).slice(0, 240);
+  const contentPrefixes = blocks.map(block => withoutHeading(block.text));
+  for (const block of blocks) {
     const lines = block.text.split("\n").filter(Boolean);
-    const rawPublished = lines.slice(1, 4).find(x => /^\d{1,2}\/\d{1,2}\/(?:\d{4}|\d{2})$/.test(x.trim()));
-    const published = rawPublished ? parseOfficialDate(rawPublished.replace(/\/(\d{2})$/, "/20$1"))?.value || null : null;
-    const key = `${root.externalId}|${block.section}|${published || ""}|${extractCodes(block.text).join(",")}|${normalizeOfficialText(block.text).replace(/\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}:\d{2}/g, "@date")}`;
+    const published = block.publishedAt || lines.slice(0, 4).map(datedLine).find(Boolean) || null;
+    const meaningful = lines.filter(x => !heading.test(x) && !datedLine(x) && !/^(?:NIVEL SUPERIOR|MODALIDAD .+|LLAMADO ABIERTO|INFORMA\s*:?)$/i.test(x) && !/^JUNTA DE CLASIFICACI[OÓ]N.{0,130}(?:INFORMA\s*:?)?$/i.test(x));
+    const title = meaningful.slice(0, 2).join(" · ").slice(0, 220) || lines.find(x => !datedLine(x)) || "Comunicado";
+    // The official document has no per-notice URL or ID. The dated lead is
+    // stable across edits to the body while distinct notices stay separate.
+    const lead = normalizeOfficialText(meaningful.slice(0, 2).join(" ")).replace(/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/g, "@date").replace(/\b\d{1,2}:\d{2}\b/g, "@time");
+    const key = `${root.externalId}|${block.section}|${published || ""}|${lead.slice(0, 240)}`;
     const anchor = noticeAnchor(key);
     if (seen.has(anchor)) continue; seen.add(anchor);
-    const existing = previous.find(x => {
-      try { return JSON.parse(x.metadata || "{}").official?.noticeKey === anchor; } catch { return false; }
-    });
-    const id = existing?.id || `notice:${root.externalId}:${anchor}`;
+    const legacyKey = `${root.externalId}|${block.section}|${published || ""}|${extractCodes(block.text).join(",")}|${normalizeOfficialText(block.text).replace(/\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}:\d{2}/g, "@date")}`;
+    const legacyId = `notice:${root.externalId}:${noticeAnchor(legacyKey)}`;
+    const exact = previous.find(x => x.id === legacyId || x.noticeKey === anchor || officialMetadata(x)?.noticeKey === anchor);
+    const prefix = normalizeOfficialText(block.text).slice(0, 240);
+    const similar = previous.filter(x => x.sourcePublishedAt === published && normalizeOfficialText(x.summary || "").slice(0, 240) === prefix);
+    // The previous parser dropped a date written before COMUNICADO. Match its
+    // undated row only when the remaining notice text identifies one row.
+    const contentPrefix = withoutHeading(block.text);
+    const legacyUndated = published ? previous.filter(x => !x.sourcePublishedAt && (() => {
+      const oldPrefix = withoutHeading(x.summary || "");
+      const matches = (value: string) => oldPrefix.length >= 40 ? value.startsWith(oldPrefix) : value === oldPrefix;
+      if (!oldPrefix || !matches(contentPrefix)) return false;
+      if (contentPrefixes.filter(matches).length !== 1) throw new Error("JUNTAS_NOTICE_LEGACY_AMBIGUOUS");
+      return true;
+    })()) : [];
+    if (legacyUndated.length > 1) throw new Error("JUNTAS_NOTICE_LEGACY_AMBIGUOUS");
+    const existing = exact || (similar.length === 1 ? similar[0] : undefined) || (legacyUndated.length === 1 ? legacyUndated[0] : undefined);
+    const id = existing && !usedIds.has(existing.id) ? existing.id : `notice:${root.externalId}:${anchor}`;
+    usedIds.add(id);
     const source = { id, source: "Junta", url: root.officialUrl, publishedAt: published,
       excerpt: block.text.length > 500 ? `${block.text.slice(0, 499)}…` : block.text };
     const m = classifyJuntaBlock(block, root.junta, source); m.noticeKey = anchor; m.sourceRootId = root.id; m.sourceCategory = root.category; m.section = block.section;
+    m.bodyHash = noticeAnchor(block.text);
     if (block.text.length > 500) m.issues.push("Extracto de evidencia abreviado; el texto completo está en la síntesis y la fuente original.");
     const category = m.entity === "event" ? "Actos de designación" : m.entity === "opportunity" ? "Llamados abiertos" : m.topics.includes("CLASIFICACION_PENDIENTE") ? "Clasificación pendiente" : "Comunicados";
-    const title = lines.filter(x => !/^COMUNICADO|^\d{1,2}\/|^LLAMADO ABIERTO$/i.test(x)).slice(0, 2).join(" · ").slice(0, 220) || lines[0];
     const appointment = m.facts.designation;
-    result.push({ ...root, id, externalId: id, category, title, summary: block.text, metadata: withOfficial("{}", m),
+    result.push({ ...root, id, externalId: id, category, title, summary: block.text.slice(0, 8000), metadata: withOfficial("{}", m),
       startsAt: m.entity === "event" && appointment?.precision === "datetime" && appointment.status === "reported" ? appointment.value : null,
       endsAt: null, sourcePublishedAt: published, sourceUpdatedAt: null, status: m.entity === "event" ? "Fecha informada por Junta" : "Aviso oficial · verificar vigencia",
       location: m.facts.location?.value || "", contentHash: "" });
@@ -120,9 +165,12 @@ export function documentReference(item: CollectedPublication) {
   m.issues.push("Contenedor o archivo sin extracción fiable; no es prueba de convocatoria vigente.");
   return { ...item, metadata: withOfficial(item.metadata, m) };
 }
-export function classifyDriveReference(item: CollectedPublication, mime: string) {
+export function classifyDriveReference(item: CollectedPublication, mime: string, ancestors: { id: string; name: string; url: string }[] = []) {
   const ref = documentReference(item);
-  if (mime !== "application/vnd.google-apps.folder" && /\bpadr[oó]n(?:es)?\b/i.test(item.title)) {
+  const namedPadron = /\bpadr[oó]n(?:es)?\b/i.test(item.title);
+  const inheritedPadron = item.category === "Padrones" && ancestors.some(folder => /padron|definitiv|provisori|complementari/.test(normalizeOfficialText(folder.name))) &&
+    !/\b(resolucion|instructivo|convocatoria|comunicado)\b/.test(normalizeOfficialText(item.title));
+  if (mime !== "application/vnd.google-apps.folder" && (namedPadron || inheritedPadron)) {
     const evidence = { id: item.id, source: "Junta", url: item.officialUrl, excerpt: item.title };
     const m = newOfficial("padron", item.junta, [evidence], item.category);
     m.topics = ["PADRON"];
@@ -131,6 +179,14 @@ export function classifyDriveReference(item: CollectedPublication, mime: string)
     if (parsed.type !== "Otro") m.facts.padronType = sourceFact(parsed.type, evidence);
     if (parsed.subject) m.facts.padronSubject = sourceFact(parsed.subject, evidence);
     if (parsed.version) m.facts.padronVersion = sourceFact(parsed.version, evidence);
+    // An official folder is evidence of scope, not a date inferred from download time.
+    for (const folder of [...ancestors].reverse()) {
+      const inherited = padronTitleFacts(`Padrón ${folder.name}`);
+      const citation = { id: folder.id, source: "Junta", url: folder.url, excerpt: folder.name };
+      if (!parsed.yearAmbiguous && !m.facts.padronYear && inherited.year) m.facts.padronYear = sourceFact(String(inherited.year), citation);
+      if (!parsed.typeAmbiguous && !m.facts.padronType && inherited.type !== "Otro") m.facts.padronType = sourceFact(inherited.type, citation);
+    }
+    if (ancestors.length) m.facts.padronScope = sourceFact(ancestors.map(folder => folder.name).join(" / "), evidence);
     ref.metadata = withOfficial(ref.metadata, m);
   }
   return ref;

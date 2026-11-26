@@ -1,4 +1,5 @@
 import DocenteApp from "./docente-app";
+import JuntasClient from "./juntas-client";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { SITE_OPEN_GRAPH, SITE_URL, WEBSITE_JSON_LD } from "@/lib/site-identity";
@@ -15,6 +16,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   if (section === "comunidad") redirect("/comunidad");
   return <>
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(WEBSITE_JSON_LD).replace(/</g, "\\u003c") }} />
-    <DocenteApp key={section || "inicio"} initialSection={section} />
+    {section === "padrones" || section === "comunicados"
+      ? <JuntasClient section={section} />
+      : <DocenteApp key={section || "inicio"} initialSection={section} />}
   </>;
 }

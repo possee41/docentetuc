@@ -1,5 +1,10 @@
 "use client";
 
+import { JUNTA_EXTERNAL_SOURCES } from "@/lib/junta-external-sources";
+import { PADRON_MAX_PAGES } from "@/lib/board-page";
+import { isPublicPublication } from "@/lib/publication-visibility";
+import { JuntaRevisions } from "@/components/juntas-revisions";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import Image from "next/image";
@@ -60,7 +65,7 @@ import { boardItems } from "@/lib/board-view";
 import { useFdciCatalogPilot, FdciCatalogPilotBanner, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
 import { sourceHealth, sourceNotices } from "@/lib/source-health";
 import type { BoardView } from "@/lib/board-view";
-import { groupPadrones, padronDocuments, padronSelection, padronTitleFacts, padronYear } from "@/lib/padron-documents";
+import { groupPadrones, padronDocuments, padronReferences, padronRecordKind, padronSelection, padronFacts, padronYear } from "@/lib/padron-documents";
 import { eventDate as officialEventDate, hasOfficialTopic, officialDestination, officialMetadata, readMetadata } from "@/lib/official-publication";
 import { officialSavedLookup, resolveOfficialAlias } from "@/lib/official-reconciliation";
 import { OfficialPublicationDetails, OfficialPublicationSummary } from "@/components/official-publication-details";
@@ -668,26 +673,28 @@ function OfficialConsultations({ onView }: { onView: (view: View) => void }) {
 
 function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; onOpen: (item: Publication) => void }) {
   const [rows, setRows] = useState<Publication[]>([]);
+  const [coverage,setCoverage]=useState<{junta:string;state:string;lastCheckedAt:string|null}[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
-  const [tab, setTab] = useState<"current" | "history" | "undetermined">("current");
+  const [tab, setTab] = useState<"current" | "history" | "undetermined" | "references">("current");
   useEffect(() => {
     const controller = new AbortController();
     const load = async () => {
-      setLoading(true); setError("");
+      setLoading(true); setError(""); setRows([]);setCoverage([]);
       const found: Publication[] = [], seen = new Set<string>();
       try {
         let cursor = "";
         // ponytail: 20k-document safety cap; add server-side year cursors if the corpus outgrows it.
-        for (let page = 0; page < 100; page++) {
-          // Junta is filtered locally: download the list once instead of refetching it per filter.
-          const response = await fetch(`/api/boards/padrones?cursor=${encodeURIComponent(cursor)}&junta=todas`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
+        for (let page = 0; page < PADRON_MAX_PAGES; page++) {
+          // Fetch the selected Junta directly; a large earlier Junta must not delay its list.
+          const response = await fetch(`/api/boards/padrones?cursor=${encodeURIComponent(cursor)}&junta=${encodeURIComponent(junta)}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
           if (!response.ok) throw new Error("No pudimos consultar los padrones.");
-          const result = await response.json() as { items: Publication[]; nextCursor: string | null };
+          const result = await response.json() as { items: Publication[]; nextCursor: string | null; coverage?:typeof coverage };
           if (!Array.isArray(result.items) || result.nextCursor && result.nextCursor === cursor) throw new Error("La consulta de padrones devolvió una página inválida.");
           for (const item of result.items) if (!seen.has(item.id)) { seen.add(item.id); found.push(item); }
           if (controller.signal.aborted) return;
+          if(!cursor&&Array.isArray(result.coverage))setCoverage(result.coverage);
           setRows([...found]);
           if (!result.nextCursor) return;
           cursor = result.nextCursor;
@@ -701,41 +708,45 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
     };
     void load();
     return () => controller.abort();
-  }, [retry]);
+  }, [retry, junta]);
   const documents = useMemo(() => padronDocuments(rows), [rows]);
   const selection = useMemo(() => padronSelection(documents), [documents]);
-  const chosen = tab === "history" ? selection.history : tab === "undetermined" ? selection.undetermined : selection.current;
+  const chosen = tab === "references" ? padronReferences(rows) : tab === "history" ? selection.history : tab === "undetermined" ? selection.undetermined : selection.current;
   const visible = useMemo(() => chosen.filter(item => (junta === "todas" || matchesJunta(item, junta)) &&
     (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query)))), [chosen, junta, query]);
-  const groups = useMemo(() => groupPadrones(visible), [visible]);
+  const groups = useMemo(() => tab === "references" ? visible.map(item=>[item]) : groupPadrones(visible), [visible,tab]);
   const retryPanel = <Button variant="outline" onClick={() => setRetry(value => value + 1)} className="mt-3 min-h-10 rounded-xl">Reintentar</Button>;
   return <section className="space-y-4 pb-16 md:pb-0">
-    <VisualSectionBanner kind="padrones" title={`Padrones ${selection.year}`} description={selection.year < selection.currentYear ? `Último padrón disponible: ${selection.year}` : "Listados y puntajes oficiales por Junta"} />
+    <VisualSectionBanner kind="padrones" title="Padrones" description="Últimos listados disponibles por Junta; verificá el período de cada documento" />
     <div className="flex flex-wrap gap-2" role="group" aria-label="Período de padrones">
-      {([["current", `Padrones ${selection.year}`], ["history", "Historial"], ["undetermined", "Año no determinado"]] as const).map(([key, label]) =>
+      {([["current", "Últimos por Junta"], ["history", "Historial"], ["undetermined", "Año no determinado"], ["references", "Carpetas y avisos"]] as const).map(([key, label]) =>
         <Button key={key} variant={tab === key ? "default" : "outline"} onClick={() => setTab(key)} className="min-h-10 rounded-xl" aria-pressed={tab === key}>{label}</Button>)}
     </div>
     <div className="max-w-lg"><Label htmlFor="padron-junta">Junta</Label><Select value={junta} onValueChange={(value) => setJunta((value || "todas") as typeof junta)}><SelectTrigger id="padron-junta" className="mt-1 h-11 rounded-xl border-[#c8e1f1] bg-white"><SelectValue placeholder="Todas las juntas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map(item => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
-    <p className="rounded-xl border border-[#c8e1f1] bg-white p-3 text-sm text-[#315d7a]">Solo se asigna un año cuando el título oficial identifica el padrón o su vigencia. La fecha de descarga no determina el año.</p>
+    <p className="rounded-xl border border-[#c8e1f1] bg-white p-3 text-sm text-[#315d7a]">El año y el tipo deben constar en el documento o su carpeta oficial. La fecha de descarga no determina la vigencia.</p>
+    {!loading&&coverage.some(source=>source.state!=='complete')&&<p className="text-sm text-[var(--text-secondary)]">Faltan documentos por verificar en: {coverage.filter(source=>source.state!=='complete').map(source=>source.junta).join('; ')}. El listado puede estar incompleto.</p>}
     {!rows.length && loading && <p role="status" className="rounded-xl bg-white p-4">Consultando padrones publicados…</p>}
     {!rows.length && !loading && error && <div role="alert" className="rounded-xl border border-amber-200 bg-white p-4"><p>{error}</p>{retryPanel}</div>}
     {(rows.length > 0 || !loading && !error) && <>
       {error && <div role="alert" className="rounded-xl border border-amber-200 bg-white p-4"><p>Mostramos los padrones ya recibidos. {error}</p>{retryPanel}</div>}
       {loading && <p role="status" className="text-xs font-semibold text-[var(--text-muted)]">Cargando el resto de los padrones…</p>}
       {groups.length ? <div className="grid gap-3 md:grid-cols-2">{groups.map(group => {
-        const item = group[0], facts = padronTitleFacts(item.title);
+        const item = group[0], facts = padronFacts(item);
         return <Card as="article" key={item.id} className="rounded-2xl p-4">
-          <p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"} · {facts.type} · {padronYear(item) ?? "Año no determinado"}</p>
+          <p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"} · {tab === "references" ? padronRecordKind(item)==="folder" ? "Carpeta oficial" : "Aviso o referencia" : facts.type} · {padronYear(item) ?? "Año no determinado"}</p>
+          {tab === "references" ? <p className="mt-1 text-sm text-[var(--text-secondary)]">Esta referencia no acredita por sí sola el contenido ni la vigencia de un padrón. Abrí la fuente para consultar sus documentos.</p> : facts.year!==null && facts.year<selection.currentYear ? <p className="mt-1 text-sm text-[var(--text-secondary)]">Documento histórico. Es un período anterior a {selection.currentYear}; su disponibilidad no confirma vigencia actual.</p> : <p className="mt-1 text-sm text-[var(--text-secondary)]">El año del documento no confirma por sí solo su vigencia actual.</p>}
           <h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2>
           {facts.subject && <p className="mt-1 text-sm text-[var(--text-secondary)]">{facts.subject}</p>}
+          {facts.scope&&tab!=="references"&&<p className="mt-1 text-sm text-[var(--text-secondary)]">Padrón de concurso; no equivale al padrón general de interinatos y suplencias.</p>}
           {group.length > 1 && <p className="mt-1 text-xs text-[var(--text-secondary)]">Enlaces relacionados por título; comprobá cada documento en la fuente.</p>}
           <div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button>
             {group.map((source, index) => <a key={source.id} href={source.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial{group.length > 1 ? ` ${index + 1}` : ""} <ExternalLink className="size-4" /></a>)}
           </div>
         </Card>;
-      })}</div> : <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-white p-5">No hay padrones verificados para esta selección. Consultá el historial o el portal oficial.</div>}
+      })}</div> : <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-white p-5">{loading ? "Todavía se están cargando los padrones de esta selección." : "No se recibieron documentos de padrón para esta selección. Esto no confirma que no existan: consultá Carpetas y avisos, el historial o la fuente oficial."}</div>}
     </>}
     <a href="https://padrones.educaciontuc.gov.ar/" target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-[#075f9b] underline">Consultar portal oficial de Juntas <ExternalLink className="size-4" /></a>
+    <details className="text-sm"><summary>Carpetas oficiales por Junta</summary><ul className="mt-2 space-y-2">{JUNTA_EXTERNAL_SOURCES.filter(source=>source[1]==='Padrones'&&(junta==='todas'||normalizeJunta(source[2])===junta)).map(source=><li key={source[0]}><a className="underline" href={source[3]} target="_blank" rel="noreferrer">{source[2]}</a></li>)}</ul></details>
   </section>;
 }
 
@@ -770,7 +781,7 @@ function OfficialBoardSection({ view, publications, query, junta, setJunta, onOp
       const response = await fetch(`/api/boards?${params}`, { cache: "no-store" });
       if (!response.ok) throw new Error("BOARD_LOAD_FAILED");
       const result = await response.json() as { items: Publication[]; nextCursor: string | null };
-      if (generation.current === current) { setRows((previous) => [...previous, ...result.items]); setCursor(result.nextCursor); }
+      if (generation.current === current) { setRows((previous) => view === "comunicados" ? [...new Map([...previous, ...result.items].map(item => [item.id, item])).values()] : [...previous, ...result.items]); setCursor(result.nextCursor); }
     } catch { if (generation.current === current) setBoardError("No pudimos consultar los documentos de Juntas."); }
     finally { if (generation.current === current) setLoading(false); }
   };
@@ -781,14 +792,14 @@ function OfficialBoardSection({ view, publications, query, junta, setJunta, onOp
   };
   const matchesBoard = (item: Publication) => junta === "todas" || matchesJunta(item, junta) || (readMetadata(item.metadata).portalPlacements as { junta: string }[] | undefined)?.some(p => matchesJunta({ junta: p.junta, level: "" }, junta));
   const entries = remote ? rows : boardItems(publications, view).filter((item) => matchesBoard(item) && (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query))));
-  const sources = publications.filter((item) => item.id.startsWith("padrones:") && (view === "actos" || view === "comunicados" ? item.category === "Comunicados" : view === "llamados" ? item.category === "Llamados abiertos" : false) && matchesBoard(item));
+  const sources = (view === "comunicados" ? publications.filter(isPublicPublication) : publications).filter((item) => item.id.startsWith("padrones:") && (view === "actos" || view === "comunicados" ? item.category === "Comunicados" : view === "llamados" ? item.category === "Llamados abiertos" : false) && matchesBoard(item));
   return <section className="space-y-4 pb-16 md:pb-0">
     <VisualSectionBanner kind={view === "padrones" || view === "llamados" ? "padrones" : "novedades"} title={title} description={description} />
     <div className="max-w-lg"><Label htmlFor="board-junta">Junta</Label><Select value={junta} onValueChange={(value) => { restart(); setJunta((value || "todas") as typeof junta); }}><SelectTrigger id="board-junta" className="mt-1 h-11 rounded-xl border-[#c8e1f1] bg-white"><SelectValue placeholder="Todas las juntas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
     {view === "llamados" && <div className="flex flex-wrap gap-2"><Button variant={!references ? "default" : "outline"} onClick={() => { if (references) restart(false); }}>Vigentes verificados</Button><Button variant={references ? "default" : "outline"} onClick={() => { if (!references) restart(true); }}>Documentos para consultar</Button></div>}
     {view === "llamados" && references && <p className="rounded-xl border border-amber-200 bg-[var(--surface-primary)] p-3 text-sm text-[var(--text-secondary)]">Estos documentos están en carpetas de Llamados. Su ubicación no confirma una inscripción abierta ni su vigencia. Revisá fecha y requisitos en la fuente oficial.</p>}
     {(view === "comunicados" || view === "padrones") && <p className="rounded-xl border border-[#c8e1f1] bg-white p-3 text-sm text-[#315d7a]">Estos son documentos oficiales. Una carpeta o un documento completo no equivale a un llamado vigente; comprobá siempre la fecha y los requisitos en la fuente.</p>}
-    {entries.length ? <div className="grid gap-3 md:grid-cols-2">{entries.map((item) => <Card as="article" key={item.id} className="rounded-2xl p-4"><p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"}</p><h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2><OfficialPublicationSummary item={item} />{!officialMetadata(item) && (view === "actos" || view === "llamados") && !references && <p className="mt-1 text-sm text-[var(--text-secondary)]">{dateLabel(item.starts_at, true)}{item.location ? ` · ${item.location}` : ""}</p>}<div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button><a href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial <ExternalLink className="size-4" /></a></div></Card>)}</div>
+    {entries.length ? <div className="grid gap-3 md:grid-cols-2">{entries.map((item) => <Card as="article" key={item.id} className="rounded-2xl p-4"><p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"}</p>{view === "comunicados" && <p className="mt-1 text-xs text-[var(--text-secondary)]">{item.source_published_at ? `Publicado ${dateLabel(item.source_published_at)}` : "Fecha de publicación no informada"}</p>}<h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2><OfficialPublicationSummary item={item} />{!officialMetadata(item) && (view === "actos" || view === "llamados") && !references && <p className="mt-1 text-sm text-[var(--text-secondary)]">{dateLabel(item.starts_at, true)}{item.location ? ` · ${item.location}` : ""}</p>}<div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button><a href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial <ExternalLink className="size-4" /></a></div>{view === "comunicados" && <JuntaRevisions publicationId={item.id} />}</Card>)}</div>
       : (!remote || !loading && !boardError) && <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-primary)] p-5"><h2 className="font-bold text-[var(--text-primary)]">{references ? "No hay documentos de Llamados en esta selección" : view === "actos" || view === "llamados" ? "No hay registros individuales con fecha y vigencia verificadas en esta copia" : "No hay documentos indexados en esta vista"}</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">Esto no significa que la Junta no haya publicado novedades. Consultá las fuentes originales mientras se completa la clasificación.</p></div>}
     {sources.length > 0 && <div><h2 className="mb-2 font-bold text-[var(--text-primary)]">Documentos originales para verificar</h2><div className="flex flex-wrap gap-2">{sources.filter((item) => junta === "todas" || matchesJunta(item, junta)).map((item) => <a key={item.id} href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-[#c8e1f1] bg-white px-3 text-sm font-semibold text-[#075f9b]">{item.junta} <ExternalLink className="size-4" /></a>)}</div></div>}
     {remote && loading && <p role="status" className="text-sm text-[var(--text-secondary)]">Consultando documentos…</p>}
