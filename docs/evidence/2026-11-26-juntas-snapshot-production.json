@@ -1,0 +1,1598 @@
+{
+  "date": "2026-11-26",
+  "codeSha": "0bc583aae1c7a3b23b09aa8298ddf9fc900cf257",
+  "base": "85c4a912c346bb480e5707639e3a82ae48a5b866",
+  "previousVersion": "6fb7a6a2-1552-4e43-9e2d-9d054e370419",
+  "rollbackVersion": "2d817125-3063-4af1-bc29-3dc55357ae5f",
+  "finalVersion": "028c43fb-200a-43c4-8848-0aa385dd7215",
+  "deployment": "8a72df3c-3ce1-4712-9f61-245328bb341f",
+  "traffic": [
+    {
+      "version_id": "028c43fb-200a-43c4-8848-0aa385dd7215",
+      "percentage": 100
+    }
+  ],
+  "database": "baaf5886-0123-4948-96da-aa7106424549",
+  "namespace": "858e9655787e4ebcb01f8b09c3d9510f",
+  "objects": [
+    {
+      "id": "3a94cd3b64e2fa8b7daae241c55caec7d9a4bee264e1b7720069df5ebe4157b6",
+      "hasStoredData": true
+    }
+  ],
+  "sourceDocuments": {
+    "public/documents/Modelo_Licencia_Art_51F.docx": "97ebb8bd506466b2011511624416930af0f70506980e2a898074f4b708204a46",
+    "public/documents/Nueva_DDJJ_2026_en_blanco.docx": "8ebf7eab0eb66fc146f285596bc0439b433a6f20b9a62913e5e86c186385aee7",
+    "public/documents/Nueva_DDJJ_2026_en_blanco.pdf": "1baf727f7ccf823bc82a514e1dbc928c39877525ddcfa3f19077955845948532",
+    "public/documents/Parte_de_Licencias_Tucuman.pdf": "a557a8dc8d4a7e750ca248199e4ed9540be94192c19655af701ea76f43d9d9b6"
+  },
+  "artifactHashes": {
+    "candidate-artifact": {
+      ".openai/hosting.json": "ae89d08302f8c36cf4821ccc80507ea0d8659cb9d769b2276e99985342de69e2",
+      "client/.assetsignore": "14ce8d5101f6d8f172242053466d44f5e2cd622dee81db53c14bd445c25d1942",
+      "client/docentetuc-logo.png": "6542f1b08acf58cfeef190826dfa3fde8cad1aad2165dbb7808af6fc91440ca7",
+      "client/docentetuc-logo.webp": "6ff65223b24645fd5bcb1ac28f6d553083312f1d11dc50522cc61308de52e427",
+      "client/education-banner.svg": "b6ed7bfcf8b98f7d7ac2ed753038912f388832ec126cdad6e53e87b54dbbf98e",
+      "client/favicon.png": "d0361ecf7641c9b0cef4460bd1e19ec176e08891f43fc7e7317f44fd74f41f78",
+      "client/favicon.svg": "12d55dfc1bde2cccfffb3bfb6d3ffb173c25cdcaaa7e364a404395c093e4b642",
+      "client/file.svg": "81a9ce5ca9bc60870c1d72c0fd5b98b2bc5c8c02b0e04fefeab9efcc11277228",
+      "client/globe.svg": "13187c071b4d369df3a7a179f69a927165bf624e1a524ee6c93b7d3be75d6fc8",
+      "client/icon-192.png": "90d1d232a0a792bf9f93268268fd1f20fd7db692078c3506a874a1fff4108785",
+      "client/icon-512.png": "8a2ad83399edae69df0651ad66592b15c9137832a7177bdd8696b395fd853674",
+      "client/icon-maskable-512.png": "987100d0f333e56a5db98fe46922d3a8e58ded7a081738a650260df28506c13a",
+      "client/sw.js": "76783238b6a83f5b1a2faac1fb3e63033ced7cd78837e750a3f6cb710f8e6aa9",
+      "client/vinext-client-entry-manifest.json": "cc18f9247976f7a91016ad5861ba34edb90e82648302c4ef220c24416f4d12b8",
+      "client/window.svg": "d3cd4bf0c1123258fcc266409856e28c93d4fc1cf8476702225e17842900ca63",
+      "client/_headers": "2148fb62669525f5091532d36d4a48a8da95b08a5a797bacde75d2fe981351bb",
+      "server/BUILD_ID": "436e578e05787ac8a317a8ba0389860d2fab7ab2757c3b223970b93918707b22",
+      "server/index.js": "4c25d1a13e901061ad0a1a0b3a2d10ce85c17605a1301fdfa61c8e9a89063e24",
+      "server/juntas-document.mjs": "1494c837260bd6866e6d0ce500ae0ccb27c4331ac70171f53a286d51ec926fda",
+      "server/juntas-public-api.mjs": "a09b0e2cc9213180b0877852fa146dd3771de64176833fce1a59e0195579a450",
+      "server/juntas-shell.mjs": "95754571c56c4defd5b0861eb01bec545af67cc6fb6a550ed071644e24e5c63c",
+      "server/public-app-api.mjs": "a65fa68cbdf6e9f6c716f7b9fdfbe32954d2854802e0445e215c2972b5e1b442",
+      "server/public-snapshot.mjs": "16fcc2fa8e4a3f263095d600997c703ba2baea87a082a1c0fc7f96abb9f4cc49",
+      "server/scheduled-task.mjs": "c0a5e40a1bc4d65d7a5c878373c76471045bdf3d84e07d3b92669cca197e04a0",
+      "server/vinext-client-assets.js": "2355143fe452207f495c62d07cc6a6e8c4c246edae52791b329265be1e166b76",
+      "server/vinext-externals.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "server/vinext-server.json": "d38b271d2248f7e51eb79a3837cba63fde25451879843c13d78dda7485b87e9d",
+      "server/worker-entry.mjs": "4cf910bbce2246ad54acacd9af69aaf39625abb1860bdcdba93384d2e57f80c1",
+      "server/wrangler.json": "892588ca2b4037529594fb214c52826611d14f5c9ce29c86cb9c336359376826",
+      "server/__vite_rsc_assets_manifest.js": "cd8aec50b65982715ec50937c8e441f7dcec263b43f4bd2653f2ebe44b37c87e",
+      ".openai/drizzle/0000_docentetuc.sql": "7d9162f504db89422191d4c035068ca8e6f157b6740daef900707c72bcc10326",
+      ".openai/drizzle/0001_training_metadata.sql": "9c90e1bee4d2a971f4d9ba01d377f364269b3e3aee6abb70e3cdcc5dd7da0563",
+      ".openai/drizzle/0002_reminders_ai.sql": "ee41c35ac9ec6835e41531a898abd02c047995d9de5850326a74eae16a367dc6",
+      ".openai/drizzle/0003_web_push.sql": "54523991ff9f7548d8e9df777df31874ec402056645a16ec749a25fb5c691b53",
+      ".openai/drizzle/0004_information_agenda.sql": "bc0473a386bc0cd24905f7f4f6d79d56f58241114a90b33d6f1449fd280d8b8e",
+      ".openai/drizzle/0005_agenda_reminders.sql": "30efb8450157bf41e3a61f064105461fcfcb43cebfaeb7013fd7cece33e12f7d",
+      "client/.vite/manifest.json": "6e04402f38097d2064196decbcda17077b04875bfbccdd94d1f6579a1f05b464",
+      "client/.well-known/assetlinks.json": "4975d685ca5dace0d111f17c7053871ffc9673ce76112668a2b0d7ad1db603da",
+      "client/avatars/avatar_01.webp": "88155599faf246f856a38eff453cbfc17719f546397f7b74e052074de339b752",
+      "client/avatars/avatar_02.webp": "bf251912440dbe6c942687bc7319a608450a3e5bf24922282126b460d6072b84",
+      "client/avatars/avatar_03.webp": "7d96ebf5cd7574467a6ee424a379e4795a4dbff6351ec13a42866c18ff6a2cc9",
+      "client/avatars/avatar_04.webp": "e509d8c07985bb2edce87feb7780b5c305172864cbd3a08ec624f76d18a0728e",
+      "client/avatars/avatar_05.webp": "62eed9b6987b99593deff2dc5b78cba0739dbb1e4b27d9c193167b6e4b106a95",
+      "client/avatars/avatar_06.webp": "de31cad537c80b8f4ccc912cd41b3d5cfa8442e56e6c9f87e43e28e7ec75cd8b",
+      "client/avatars/avatar_07.webp": "6fc412ac412ee86687659187eead0d88d57c83053ba3198d7469bc0f07f0033a",
+      "client/avatars/avatar_08.webp": "afb0a16c2a3ed40a57ca1e7dcaee4a3568964fe2193e3eaeb1bf9ddb58931992",
+      "client/avatars/avatar_09.webp": "bb0c79798e41bc3435c1cecb111ebb0926ce6b76c736f10fea733a721817bf64",
+      "client/avatars/avatar_10.webp": "eb66f7fc797555f17b48f205a2312c6f142bb5dfdc12580f0187aece5ceea13a",
+      "client/avatars/avatar_11.webp": "2099cfddba5458931f44d1e1b05c7435b9faf1b0058cac13c0c251a2c9ec087d",
+      "client/avatars/avatar_12.webp": "9f43d35f643f62db4d1b1115c0c41a2e58394c503f75217d69627fa3bcf711d1",
+      "client/avatars/avatar_13.webp": "34a8d7898af662da375ce70b047862a1e93c3d61a61d0cba86f8829f900860d7",
+      "client/avatars/avatar_14.webp": "6145586fa539cc3b5dc0f966db6dcf166d0d9cf2688c267ffade45970b959d36",
+      "client/avatars/avatar_15.webp": "ea2c595fc3572af15a6ad33a456efb66a6110a05af631d62046328be3e2866d6",
+      "client/avatars/avatar_16.webp": "b491e3d90aae01bbb32d79ef185152341f24b59521dbf6f9aaed758eebe11a18",
+      "client/avatars/avatar_17.webp": "91d3c62ecccb2a3edc8536b7d6854247a8cc61d45ad73a43d7a6abc5d89eb6e9",
+      "client/avatars/avatar_18.webp": "0e07bd41379a210db19a99018988f75f3aa05307a8f367b3987cb63af67464cb",
+      "client/avatars/avatar_19.webp": "e192e2fad30b542074c35349d2a49e83237c3961363baa288b4821d519d74f7f",
+      "client/avatars/avatar_20.webp": "6093b2e396081da3b102c337bac4fd86336d1169be3f77c4d3c2d5a3d1b47c5d",
+      "client/avatars/avatar_21.webp": "321ad0befca9177fbc275f8f0d6ad18302bbddbebd795979315fbe7d7678f0e8",
+      "client/avatars/avatar_22.webp": "9a899859f4f9305004db3b00aebc21cc110f2f416d564557500190dbce0c6b63",
+      "client/avatars/avatar_23.webp": "7bd7a36ac5467d1d2519a2ae8615bdc61b3321a4104230292d4cacd9d35f0d49",
+      "client/avatars/avatar_24.webp": "ba900b7f077ad6e2a09ba1193d68f4651c940cd1e785f21caa57220783ce1d18",
+      "client/documents/Modelo_Licencia_Art_51F.docx": "97ebb8bd506466b2011511624416930af0f70506980e2a898074f4b708204a46",
+      "client/documents/Nueva_DDJJ_2026_en_blanco.docx": "8ebf7eab0eb66fc146f285596bc0439b433a6f20b9a62913e5e86c186385aee7",
+      "client/documents/Nueva_DDJJ_2026_en_blanco.pdf": "1baf727f7ccf823bc82a514e1dbc928c39877525ddcfa3f19077955845948532",
+      "client/documents/Parte_de_Licencias_Tucuman.pdf": "a557a8dc8d4a7e750ca248199e4ed9540be94192c19655af701ea76f43d9d9b6",
+      "server/.vite/manifest.json": "0a987964e4893d42cdb95df196204cff564927afeda75a6bbefc5ef0816be239",
+      "server/ssr/index.js": "0f8d1851cb1cfd4bcc8ab870ce1b01eab8bee6e7d167a5a10c2892a5360a073e",
+      "server/ssr/vinext-client-assets.js": "2355143fe452207f495c62d07cc6a6e8c4c246edae52791b329265be1e166b76",
+      "server/ssr/vinext-server.json": "d38b271d2248f7e51eb79a3837cba63fde25451879843c13d78dda7485b87e9d",
+      "server/ssr/__vite_rsc_assets_manifest.js": "cd8aec50b65982715ec50937c8e441f7dcec263b43f4bd2653f2ebe44b37c87e",
+      ".openai/drizzle/meta/_journal.json": "7146c5d551a0c9b1d01eb9b869fb77e02cc4af0eeca9d516cf4861eba6bddc68",
+      "client/assets/docentetuc/agenda-classroom.webp": "f307d9a959b57ddf91ba36523bc4f47796d34166e35e582c2eec6e594bf5239c",
+      "client/assets/docentetuc/agenda-hero.webp": "cadc4f1cdfa0aca47ca92acc3a5ec002b19ce69d834e60be6d3ce7d7826740db",
+      "client/assets/docentetuc/capacitaciones-hero.webp": "a5a32bbabb3fe3dc7fde5bea1236de83c76c7ce58bbd87e3095cee15f17366fa",
+      "client/assets/docentetuc/community-header.webp": "8a19443faeb01c69df239b795fa7930714265102ce778dd0b852034bf525136f",
+      "client/assets/docentetuc/designaciones-hero.webp": "886037ed012ab1ec3e6f29a1d4f3fb31dcca064c4daf7bf0aa2dc590611a380b",
+      "client/assets/docentetuc/home-hero.webp": "51db979b7891abe565728a4bdd7b8b70f336c30c14307dd102370ef8b75bb36f",
+      "client/assets/docentetuc/ia-hero.webp": "735cea2394ff92d5a35e1824e9ba74fb3946fe4b82ef06d8cd93dd3a1e247f0c",
+      "client/assets/docentetuc/informacion-util-hero.webp": "5a8d065fe67017bb3bd60962d21b204396151aa11adb3aeb4e9b1723cf6c5b56",
+      "client/assets/docentetuc/novedades-hero.webp": "cecdf5980723dfda8b19b04db89d7045e7c7a645f666d13c8d5c1803141bb204",
+      "client/assets/docentetuc/padrones-hero.webp": "c9f01d8c2aa26203ee515f31ff382748ef040e582e7bbe8342a0cc3ec32f222d",
+      "client/assets/news-editorial/boards.svg": "f3b30fdba22b33ee28e7ab8c6fc3bec5280194a01632c4932e28ff8c2d5ec4c6",
+      "client/assets/news-editorial/designation.svg": "ceb9d09466c3133df95f8f138c8bef550e7c1d6ba7311e616912c398df910f6e",
+      "client/assets/news-editorial/education.svg": "d75dc02194c13717ac369213ba60353387833d28775e5c4512949651f5808335",
+      "client/assets/news-editorial/general.svg": "3f92996848af8abbae669f4d078ee9bed4286f8824ca60c3cacaac98618484e4",
+      "client/assets/news-editorial/provenance.json": "5da949b32ed6d8b66af68ca5144c35ab1a11909fc1af6b191830b70991a22658",
+      "client/assets/news-editorial/regulations.svg": "2bc93a47b96fd9429f015e3f9b7be24d57aeaed0b7d70cd41689e26657d834c1",
+      "client/assets/news-editorial/technology.svg": "a0413aef82c1bf4605ee5c1120ace6d99bcaadc61f65650eb6be990463efc036",
+      "client/assets/news-editorial/training.svg": "92930e929ae901a35e84f9cbd485600b7f1dfcc7a0234a822fd108a787821281",
+      "client/assets/news-editorial/union.svg": "f98f4167dc3377eca6f95d7f8e5d67653218fb6f20daede971148e430f0bb063",
+      "client/assets/platforms/infod-logo.webp": "449d7f565406bb7148fe367caba05abf248b05c9385159ce7f527cc226871d75",
+      "client/assets/platforms/tucuman-education-emblem.webp": "ed4763155f047390cc888972373978f2cbfd135a1444aaba82cc5cca851dbba1",
+      "server/_next/static/admin-notices-C2ALe5-h.js": "909e9bbc9ac427b998926ddce7baebc92f1b40f6433d3687efcbc6abc09d3769",
+      "server/_next/static/admin-route-B_v4j4by.js": "3d81630674dda1f163c8b7f56792b5784b61ecd03ce418ce53f76067401c8fae",
+      "server/_next/static/ai-wk4wMYEz.js": "8cfdf1f7405e10a2e9099a282c491eb1d9f4e5bd6ab1852791dda2fa359851ab",
+      "server/_next/static/als-registry-BxXlcmpy.js": "7fdda219b9ed7bafe02b108d9f78eadca22a197eb185b5e7606247e4170e2d44",
+      "server/_next/static/app-page-cache-finalizer-DfTiqqkU.js": "1ecb14dbc08b14a1da86971f03d7e25fc9840b8e00560090cef6e0afc6c4a631",
+      "server/_next/static/app-page-cache-render-Bl2swn_S.js": "37e7c68be4848f8e2241b36c5a6edd25133687bc7b44751b2809b1669f4ba0b9",
+      "server/_next/static/app-page-cache-yPaNsEuo.js": "2c5b4967b0becb6a324383455d994265cd1aea3930db47608829c385db3d93b7",
+      "server/_next/static/app-page-stream-DOJNZVR-.js": "13d64c9146bae5c39616c2a58d565b1718d91110536b27db9509e4a8a1c29a2d",
+      "server/_next/static/app-prerender-endpoints-DwNG3QjT.js": "7305433e882905198360d755f94e9964292afa8dcb97a1e948727fd7775ceb3b",
+      "server/_next/static/app-prerender-static-params-DCYPXH3J.js": "87c0c63984436bd545b9693023b4650f2c10d5fde37035d47e0cd5b91ab5fd70",
+      "server/_next/static/app-route-handler-dispatch-D_h8QivE.js": "16219cabbaaa64fb04844cc23e9b920e3ad0e82ba282451b98d25180ab0fecaf",
+      "server/_next/static/app-segment-config-C0dEieMp.js": "365479b6a87773345a38aabf81070c5def9afc1534f1a27ddef0bbdbdad98c82",
+      "server/_next/static/app-static-generation-AaPj29WF.js": "71451721ae4a42108e9ed32567cd9d9861beb4952215b0fd57ffc373cd3edc01",
+      "server/_next/static/auth-Ck7kcGay.js": "1e0d320b523a6cae289513c4ed94b55375461b4c938dbc0e8af141feeb22dc5e",
+      "server/_next/static/auth-identity-CEzwGb6X.js": "f31d0f55bc163b30d8cc2f9f07533be11c6f07bea39fda8c9e8598b2f1bc3073",
+      "server/_next/static/auth-schema-zBuLUSlm.js": "61deff2003ad310a83b4906f8f4d0fc8ad14c4c8e66d61016ffd16e7df14848f",
+      "server/_next/static/auth-session-AFXOw-J8.js": "4586febefabee4f69ac3aca30d8947467ebf67f4998e2eef922673bbb59f7f9d",
+      "server/_next/static/base-path-DoTXrg9A.js": "aec215e6d7cfafe5b43a6150a977f725e0a1b151093c3395cf1cf47969a2a750",
+      "server/_next/static/board-view-fq0a9hZN.js": "cdc088eee338dea9549c07208427731651dfeab8cec09abb03d348af7f05bf01",
+      "server/_next/static/bun-sqlite-dialect-BW9W1_Ps-JVn5XQSj.js": "667163ebaffc99df735f036d4209f9a8da968cec250623a08e4b54b3faafe5c9",
+      "server/_next/static/cache-headers-LWwOWh8r.js": "55cf06a9e0ab1aaf389fea08281c5f0d47ea3c3e7d6eba2a7ccea8bd8c545d41",
+      "server/_next/static/community-admin-DwGetPQJ.js": "6c85d03853b13af91b69bb65b66350bbc6b025d56bc484191883f224b755cb65",
+      "server/_next/static/community-BRlvfoa3.js": "994e3ccbbce64bdac69824526f2e3ca6544eba9a3474915fb7675e68a5e897a6",
+      "server/_next/static/community-route-BFMvfAmX.js": "4295e02d364f8d9ece1a279512533c44225921866707725ead15bf58810a1637",
+      "server/_next/static/current-user-BdEek2vp.js": "088bd0646762a5a1a7f5b8adad865a770b559ea19a68eb8e34f636a569665bbd",
+      "server/_next/static/d1-D8YA6P2G.js": "7bfe683c7765534757cc7bcb8cba43698abf4a908cd401c9080ab0b28dd75080",
+      "server/_next/static/d1-sqlite-dialect-BLC8LXE6-BQroDsTC.js": "4e49f040eb2325cc6aa3697dc07d226da896cb0930532cecc7cb28318a207363",
+      "server/_next/static/db-BROgDT-T.js": "e6eee70c37a6b9d48f732b2e0d4a6f01532eb4acb0f8a38b42c30065005e8f96",
+      "server/_next/static/default-query-compiler-DW5wCV-K.js": "2fcef18f52a31643edce0c4d14a77d006eb6dce608cea5630afddf9883599474",
+      "server/_next/static/designations-hypp6TVV.js": "c81e652cbb9b346e2989aa751f614f9ce1778ec08e0010c1b6b4ddaf63ff4c29",
+      "server/_next/static/dist-BpUnwdEG.js": "e00694b49cbb60eed839a37ef37a493808a552b6265bbaf4a7b60880518ee109",
+      "server/_next/static/dist-v70jCMmN.js": "2632604273b783447070d6cb04500f8efe7f2d2d54a206398e3c60af1ad861f6",
+      "server/_next/static/file-based-metadata-DmOMdGAc.js": "a4f21d37bb718f440c9546e8b83b1220bb1da8163cb0fee44b87f58912407adc",
+      "server/_next/static/framework~index-CgE5CHRU.js": "e66d0a8c534b401c27047cfc819e17ccd0efe1d417f843064e5e4dcc34a83c08",
+      "server/_next/static/framework~index~app-page-cache-render~app-page-cache~page~page~layout~page~page~page~app-ro~dzeqblap-BLcjy3Jd.js": "c57d6bf2a1f6372f8dfa8908f35593dcc3d6b51950f35f0391801a6baabd8b13",
+      "server/_next/static/framework~index~page~page~page~page~page~app-route-handler-dispatch-DGrdvgp0.js": "2eaeafb30ac1ebe370a400adbe60b713c97d1b02407bc93e606bd9a6cd8d636d",
+      "server/_next/static/headers-BwVXsraU.js": "75db62fed8b6d066513aab220129d72316b81fade9d9cc6c471d8773fe742abb",
+      "server/_next/static/headers-D6xdAAX3.js": "b313705498a96d539b1e3e8e8cbc53319d19d79034ff0b5a6467f2752abba38d",
+      "server/_next/static/http-error-responses-MHMqC7hK.js": "6705152b49b905a92686e9895fa771f52a1f21c3e66e8cb45fc10890ef697a96",
+      "server/_next/static/identity-link-CEbkc0T-.js": "174e9cd556091578ead43e6d5615d7f7454c2169edc9bb867ef8cd828563dfdc",
+      "server/_next/static/implicit-tags-cbfp7SRW.js": "5233d9c02d2081af2f4435afb0f91616eb8a7270e216975d4670d27d0d7ad8ba",
+      "server/_next/static/isr-cache-CgKp0uT-.js": "b1d5ad81d353c46f5ce0c56164b80c99af344c5ad6baf456ca766411dcdfabef",
+      "server/_next/static/juntas-DCoVYsmC.js": "962696f2e2e463bb2749bb02918f3ebd2d470756a6d4e5dd01b5148debd820ed",
+      "server/_next/static/juntas-public-api-CL2U8H7v.js": "6762e2d010d53c32c89801e087aad9ce47edd8d6f961b733f303f06f50311388",
+      "server/_next/static/kysely-adapter-DYhpqAP1.js": "70465f5ba2ac80e558254fa1fdaab2240622da07cdee6e308f89a5dff902a99a",
+      "server/_next/static/kysely-migration-tables-JkVUjPF_-D5z-PV1_.js": "6d20fbb8071503e879a51d45f5f21e12ef4704a5c15d0ee6a5663b28054c053c",
+      "server/_next/static/link-B-GKLdgv.js": "7ba4b27b47618018c6b0eb119456b0661b18d2042b6b457b22977e09372e0e32",
+      "server/_next/static/matching-CyfsoOEs.js": "05e4e03729320773c7f625ce9d3b0aa94fd7e65f4e78e33ac6ee5f47f7bde031",
+      "server/_next/static/metadata-route-response-CP2THa1x.js": "7c4e52f906dbf7eeaf25d71ae081ec3425702c24dc0960e8d3d66e1539e5c2a8",
+      "server/_next/static/metadata-routes-DYczmGep.js": "2097b528e3fb707d8444436091bde99f77098bbd88b86bbab466348d5be5a008",
+      "server/_next/static/navigation-errors-Bdsxd1u3.js": "47325758dad9bf5945a02c16c4aa9b523ecc4add161bf097e9fcaf693fa97755",
+      "server/_next/static/navigation-runtime-COZXORCm.js": "e8918d80e9cb31210f2e8ab7b33b28f79abe25f4a1e9d49e29b1ed0763876e08",
+      "server/_next/static/navigation.react-server-BQ6Jm-Zw.js": "4b7a294a4e7a9f44ff8aa779f4c99bd682c3eb8d89f743aab8977c639d4704ed",
+      "server/_next/static/news-editorial-D3S8ptWj.js": "b9f984e6ec4d7bf9b298f9c4cd24f432dc109f151522af7a1f46554119392953",
+      "server/_next/static/node-sqlite-dialect-CdkqXpqd.js": "d823f372300ff78cc5603a625bc39a5864cfeb6f38e6ea77ed4f200ab3f4b2fa",
+      "server/_next/static/official-publication-DaVHe1yr.js": "46f7d073aef2e72a98b45e004606fa10baa5b921e8395c7d69eaf0fd36d83296",
+      "server/_next/static/page-BHfGpidf.js": "7dfbda9548139a394e7f223e1c25b72a28ba299f65cc658c19d9a14a6bcaabfd",
+      "server/_next/static/page-Byr821rv.js": "79e21d38abc4812516a4c9b2ab73576fe8dd7b609d3c25161bd5c7b25c0ed410",
+      "server/_next/static/page-CrCB0ay1.js": "47b7101cc2497ab9c40ddb49c7dc62af592d3acd189fa97f1f0cf789c82383a5",
+      "server/_next/static/page-DBPVXszn.js": "7fd8e0e1440054a2576b8d58d22f540c3e4a7f710629ee6cae9079488974bb72",
+      "server/_next/static/page-Dbr0e7l_.js": "e3a910249eb17fbe0e2e7284dcc09a6e251ee2ac50ca4ffd44765d340cd93998",
+      "server/_next/static/ppr-fallback-shell-F8H6YPkD.js": "49c113b0aaa9d2232bbdb363bdfd28cfdc532e36e02a3543d612aa3e01c2fde0",
+      "server/_next/static/profile-r0I--zz6.js": "059374ee40a205ddb1b74e0a5135746fef81059c291aa13fc85188e21e1a513c",
+      "server/_next/static/public-news-aFp3VjRN.js": "48644b036bb16d6d6febf8a5c878797c6f1ef339c225fcf93294774b8422dbb6",
+      "server/_next/static/public-profile-DX48yG9u.js": "df5123917de8331b8f2fff19a04ad691d76761f784fb2704b5eeba066ca13888",
+      "server/_next/static/publication-lifecycle-53YYaXX6.js": "da6a64d61b56858fc47703a1c086354b5d48d7227f31428652df692c4e6b069b",
+      "server/_next/static/publication-search-us7HXXir.js": "46ad5959d7c49219260d40ce5d51e5af21b90ec8a95f8e38e9616e3b048a6913",
+      "server/_next/static/push-_Css33zD.js": "b1e5df567a2f8df305e092e634bf9f2edb216c6112076642e3f2cd36370c8a63",
+      "server/_next/static/record-DunW85rk.js": "b9bdb7b7d0e4844d241dba61104d18111d61ef92af3f137d15749531d276f9cf",
+      "server/_next/static/redirect-digest-BV6xQy3C.js": "b92ec9aa7c6dcd33cfbe31e79016b8e95e069db3104601e782c0eab8aa9d331b",
+      "server/_next/static/rolldown-runtime-DUnMT5BP.js": "5db5ba82eef00d1dee7e86e663098c9427d01183a88d357437daff295aec3e75",
+      "server/_next/static/root-params-CzteawXg.js": "1ee8de99573adc90ee570d803a5cf9fd89f5ef3b534ffd09371d0717f141bb43",
+      "server/_next/static/route--3ZhxhYr.js": "6a6c5cc342d688e0572bf1935a78b9ef44836b96e20abc043101295f529adc29",
+      "server/_next/static/route-0uX-RDr2.js": "3b11c66358e4591ae4bacd95d6bd556a53df61dd0923d3d9796c0d9f748c9f9c",
+      "server/_next/static/route-B3uTim-O.js": "517eed74d2935a456d9155220c10bac58aa7446c4af5d37f56c322775c854fe4",
+      "server/_next/static/route-B3xTDk9w.js": "8a76a81d9e9cb3de601d1eeb580f43fc6a3927375d8d9c222007139df621bf25",
+      "server/_next/static/route-B6TsOfIF.js": "2b5fdac9b88882f3c860a9f38f961d0706600e8ffb07c3ab0422edb814229a1d",
+      "server/_next/static/route-BdO9RHvE2.js": "607e6fad49c86d8e37f4ec8e53f232b3affd16f10e9ecce645002058e5c195ab",
+      "server/_next/static/route-BGWWlxsi2.js": "eb9ee75f4658fc7f72687a64b38e711117eb2e5bef86b9c1d48f576eae8b7265",
+      "server/_next/static/route-BH2wDaFH.js": "10db7640cfb55e8f821d904d271aa7905d95cdc66781eaa6a88c805fadc0f4eb",
+      "server/_next/static/route-BkI5YtKb.js": "e5113c9faa963c66c71f9f453d681fe117597efc58428d7c3032c5abb9cb5b0d",
+      "server/_next/static/route-BMVXVPQ22.js": "71842a190979ee0cc778d003302cd782adaabd6b9bfab5f0c15b8a6d4e6c3fc3",
+      "server/_next/static/route-BN7zl3cu.js": "efbbb7debb51f3520426c872af4056478c2e51b657c865a698d7791b67367c00",
+      "server/_next/static/route-BVuSGySZ2.js": "803115b913cd6fdc549c9cb29ad683ac527c83bc71b7d86dd3b3a12e144cb30e",
+      "server/_next/static/route-BWuOqxNc.js": "5092b14b089568c2a5aad5f1091d359f9129b6dbd1bb03d6901628d2e7360161",
+      "server/_next/static/route-Bz0wI-Qu.js": "161eed75ff36ca75be17d7b3de249bee6cd3c9d913a9261257736a5fd8177c35",
+      "server/_next/static/route-BzGQRETX.js": "8a241bd0851cfde3da585edefc3087d4cf7d267fb11c3a79f7989feb74ea11b9",
+      "server/_next/static/route-BZqofaN8.js": "396fad3cf49e7d474335679e0ce3a7dea79fc600b048e74c7f46de4d060c8db5",
+      "server/_next/static/route-C5c3Eig12.js": "12aae2dde9271d4a82dfaea41b0c70af8f41056081de742746bac94f0349d5e9",
+      "server/_next/static/route-CDHisRtO2.js": "6393f4e0a779062a5d0900013287e633f7bfce7f49c8e2d80396a40f7adcc143",
+      "server/_next/static/route-CFIituKX.js": "2255ead10f505e285895a30f6e0241c508c23692fce869ec757534f7cd8d47f9",
+      "server/_next/static/route-Ck2oqA-92.js": "055c6c69bdd2fcee14b4a42023a929a3a100dbe2d7728d6a6b5e22ad61dbfe0f",
+      "server/_next/static/route-CnQ8NXim2.js": "35c6ccb84d229bdb03fba8202ff1e1a3af311430021db82a6a9e50c6cb0fb43e",
+      "server/_next/static/route-Cocju8A1.js": "9d0fd519cdfb1b3fb3fa553e6be570cfbae5f4e52f96f21577aea45f7f0817db",
+      "server/_next/static/route-cptktTgx.js": "768e8af5510e77503f57b17a76f393c7a2ad581f9e3de185b7a1ea5a51d8d77d",
+      "server/_next/static/route-CU-j0CVh.js": "7ce3f24326d6864904b1ee46f12bb7ec355c65f3fcee71cb16d1ebc9dad5b1c4",
+      "server/_next/static/route-CYqjvGMb.js": "585a82e561534091652cfd44f8f6dc4d974d7db68b7225c131f9b1399e7259fd",
+      "server/_next/static/route-D7tXKJrD.js": "b479719398466eefe7a1db19b2cb929759943a34d52bdc5dce712ea41f20169a",
+      "server/_next/static/route-DAbLsva9.js": "6bfe8ea8c0c5c23e969239cb80c5eb601889da79a16cde3973525de03bae687a",
+      "server/_next/static/route-DC3bxeER.js": "313d7cf8d2cf042cbb9ab36663e56f3e36bc9cb2a97ac2fd652b9944be623dce",
+      "server/_next/static/route-DdfdFFMI.js": "b7548b80579ba10391b2fbcf1d4b4a74b19f6c584fc8b13f3c3e39debc560a01",
+      "server/_next/static/route-DP9Nk-mq.js": "c51c1b5ee8b410c472d18abf6460f08c54b37f147aa967071f29481e6fb2d1dd",
+      "server/_next/static/route-g-p9x3Et.js": "75b1eda8f279d54628f08c7948bf7d6253a50ee94062d91234e83f9f16d86c58",
+      "server/_next/static/route-GJauk1Tl.js": "43c1d9758d4b825377c0e5aedce2518525377e9869335f1a561cd2f84f87b220",
+      "server/_next/static/route-jHlulZ9c.js": "908ec67b3e4c02a245281ec6b051f58b2bfdabf53ce40a5ef5da741f352bee7f",
+      "server/_next/static/route-KL1f7Pop.js": "6d7627f90ed97b9812feaa3a7b1adbaf4efc6a2c81d9c601e6c459b3521bef9e",
+      "server/_next/static/route-orDb-bIR.js": "2da6a2d2e7b1925aa9e43a8ee831c73076e2150b8e7ddb91e23f04bae5edab65",
+      "server/_next/static/route-pattern-D1PWTDh8.js": "03b91eaa5728fe8673ca4ea77ad3816e47fd0ea3e93da66ef40a26d957431a6f",
+      "server/_next/static/route-uHo16wAt.js": "654e508153cdd074bda69aca81c754c08a6fd8e012f2b06f0fadace78e2efbd5",
+      "server/_next/static/route-vAF-om8F.js": "3d19d71a601d261e8f81900b3794f2dab0306dd217e527c6f2d375a36e37db0e",
+      "server/_next/static/route-WRpJ9E57.js": "77b2ced94eeb85b22958d8d5fe7ab80a279fbe04f19a9eebc84425bbe7632aad",
+      "server/_next/static/route-XzvBWCkd.js": "b1fcc14af993576681a9f17d9316efb63e130a7283528bd37fec232d43e53571",
+      "server/_next/static/rsc-C8oad86C.js": "8095865f228aef17d25ab38712091250a5eb1a17836cbe6cb932afc59a7bf2b5",
+      "server/_next/static/site-identity-Cs4J0eLn.js": "baacc1cf84b30b364108665fff0c94012771157d633b8ece2fefa94ea293220d",
+      "server/_next/static/source-health-BbLD93jW.js": "8968d4b6e1bb6501ac3120a0fc4f8c23a4ddb66ccbd0337c147f90b48d7d2deb",
+      "server/_next/static/text-stream-D68R1MLE.js": "30cb0a18bd988db2ac56e214a469a4899a58f9ba4f31650f5483b94a2a55fb41",
+      "server/_next/static/thenable-params-D5ZNex6l.js": "ad6040e39a9139ad3cfcecb0933d3eb4b9e5d533b71cd2aa9a2b9944478ee1de",
+      "server/_next/static/training-9AFXhoUm.js": "4f3d500135b47ecafc4a07b36c5cc1dcfa791e7c4fc71b2234abc65b32267394",
+      "server/_next/static/unified-request-context-qhL7wVUy.js": "6719a10ecc2942096e9d84385fb20fe585102c59a37f2482f0962c26dbd9923a",
+      "client/_next/static/2726eecc-71d7-4979-b7b4-05139a6fec84/_buildManifest.js": "47f02b34be6dc481257b6efce4c19e19111f37ef5c437f8ffed44f0da97fa9bb",
+      "client/_next/static/2726eecc-71d7-4979-b7b4-05139a6fec84/_ssgManifest.js": "653f3e53e89b4f8548ff86c19e92bb3c6b84b6be7485a320b1e00893ed877479",
+      "client/_next/static/chunks/admin-panel-BOgY86XN.js": "53f9425596353ed8a0149c4a4a0aa494671769e41cbc02bc198fa861e7776a11",
+      "client/_next/static/chunks/app-elements-H_Dr48wG.js": "d8ccfb80cfa806cf9cae4413268bee663723cbdf183b3f078e93c82c27a6ff88",
+      "client/_next/static/chunks/app-route-prefetch-policy-DEeF_dgA.js": "232dd2bfb207cd1d76ba4d9763ae9948ca033c6bc1f149bc9d95ddca84180e2e",
+      "client/_next/static/chunks/app-rsc-cache-busting-_K6jM8fB.js": "fe861cf3061d402ce9b5c06dc94b553b531f1b42b9559c9be1c82c150de62d1f",
+      "client/_next/static/chunks/app-rsc-render-mode-CvTCGruk.js": "b9db37ffe7d7e3f76c7e6bdffc078b9da7b799d56513d9bb5387f887b4d658dc",
+      "client/_next/static/chunks/app-sidebar-D-Nl-aMz.js": "5c679f34a2acee1e4f733c2c47fb4cded6151e3ced61bac0823543ee7f79d5ae",
+      "client/_next/static/chunks/community-phase-3a-CZ24-2K9.js": "a12bf7020746aa59b8c4a549b29c157e83760f5958a0c2ad33418dccdef7e900",
+      "client/_next/static/chunks/deployment-id-DFhHa9wO.js": "cff727c88395e970914fe0fd68f0d2f78c51dc9ec13c7b6e6db8e5104ecb240b",
+      "client/_next/static/chunks/docente-app-B1wv9lV6.js": "ab057b090eb04b2db1e772efcc6c47bc476cbd23df5033bcbebf5b01dc5339aa",
+      "client/_next/static/chunks/framework-D_rUT4EX.js": "939d0fabebb3b2f01753bb866b067d8d3384fb06da19f0e6557609d3b1a9f4f7",
+      "client/_next/static/chunks/hash-Cp347hhd.js": "fba69692645d8206561e12edf1653f0f7931d0f14f8f753ec3be5031dfd004d1",
+      "client/_next/static/chunks/headers-C_MtfdF4.js": "d84532fc42b9a35aa8ebc1a2659d97cfecc4fc341718a0cf9f7c42f763ced4be",
+      "client/_next/static/chunks/hybrid-client-route-owner-M8eDztwY.js": "793a122c992151f43a1d2d3eedcfa75dae4f8d54bd67c0410892562f2689830c",
+      "client/_next/static/chunks/index-CSUogbYk.js": "7b8741c9011c56a7cba8cc3dd852e310d389ae345b2c510837156cbcae293bd8",
+      "client/_next/static/chunks/juntas-client-CBMAeQKQ.js": "a40affa169380f0e93639fb0018ff0418acc8038019a4d41e4e45ec1bc4cf789",
+      "client/_next/static/chunks/layout-segment-context-DhmRf1B2.js": "afd0701a39dc129b884f862a18be1a22e8aa7d243bcffe3a321a7b6d7eb9c61c",
+      "client/_next/static/chunks/link-CZvsO0JL.js": "fec03232de47f55f6e3525bd505ba4e26ecfba176605faa787b0bfb34ba794e7",
+      "client/_next/static/chunks/navigation-errors-D5LMQqDL.js": "8079365b302385be914b5750316813c78cdbb88f897349ecec72f5998fb65500",
+      "client/_next/static/chunks/protocol-headers-B9-bVeat.js": "9b15d2c8452ddb9df5d6f2cfb3a23dd576a10dc0450fb72565d9f293abab0edd",
+      "client/_next/static/chunks/public-profile-Dlw4gyQe.js": "0d7df779b5165290e26f52a88a00ccad6fd910b284110d354941554a3425ad08",
+      "client/_next/static/chunks/query-DtBGhX2J.js": "0a1973f3c6175c2655da2d796c0b590a07352ee8c22aed1a49cd90513fa34b02",
+      "client/_next/static/chunks/react-BFm3rhLc.js": "9301af88293ad05cf08dc6537a622408d9c124aeb2a473568ef9d4242d48a5c1",
+      "client/_next/static/chunks/record-uXSNv6cl.js": "b9bdb7b7d0e4844d241dba61104d18111d61ef92af3f137d15749531d276f9cf",
+      "client/_next/static/chunks/rolldown-runtime-C60lm6uB.js": "5db5ba82eef00d1dee7e86e663098c9427d01183a88d357437daff295aec3e75",
+      "client/_next/static/chunks/streamed-icons-20nPfslU.js": "7eb2a6b44b9c0faa7300c8dd36b0fae7a35d9f65e139dd9046b3df193aa83bc8",
+      "client/_next/static/css/index.DKSm-Y2Y.css": "4e91969216b6989cb64da9307c60f74128dce875176d5085594cf64485db1df4",
+      "server/ssr/_next/static/admin-panel-CIgccau4.js": "addd130a53a7fa8a24ea7a84dd1197de7e61eb08fcc6a7d4395e50a586087d7b",
+      "server/ssr/_next/static/app-nav-failure-handler-C4RoBmS8.js": "f6a9d62fb9873f70236c9c3eb21337fa5337df87f170dcb04565daeffb5f2f62",
+      "server/ssr/_next/static/app-prefetch-fetch-queue-BfMum-Ox.js": "01a23632b6f453a7fea439e6a9cc51a5840e06594af4e968b87588c0abf191c0",
+      "server/ssr/_next/static/app-router-scroll-DQxn7J4v.js": "f6873e5098e1fc3c781c7f584278b66f92993833ef931027018c74714558e2c0",
+      "server/ssr/_next/static/app-router-scroll-state-B6HKt8Cn.js": "e7964c9603534ac8f5158341b5deefc94a71f5f9f803978601c93830593c30ea",
+      "server/ssr/_next/static/app-sidebar-CQAkJjBd.js": "b4278966585ff326454cc142dca8cf18dd0d759531d1586ece502a6e36e47569",
+      "server/ssr/_next/static/community-phase-3a-CsYuJV0y.js": "336d189f845d763f8318a4329d76d5aca004499a881b558abad76efee9b71513",
+      "server/ssr/_next/static/docente-app-K6IVUN07.js": "ba97508b981ebb01dbc7a7f79e1a0aebd9ac0ddf74281345ecd796e644b7cc37",
+      "server/ssr/_next/static/error-boundary-Cpp_0QrM.js": "0a5ef99e9f6d05f8cf68a495bb4862ef096a73f9fb36f9ed3a1ac98ee11d04eb",
+      "server/ssr/_next/static/html-limited-bots-CjPrI8zP.js": "8bf46585e768b6fa7da70bd4d76afd6ac28573b71de7c13189399587b813b137",
+      "server/ssr/_next/static/hybrid-client-route-owner-mUmzS4CA.js": "128c74d7e93a1fe8c8b527f9fb3151b87ab3c92082bb9aca2a91b038c2af8075",
+      "server/ssr/_next/static/juntas-client-DbLuIDFg.js": "976ce27ee36ac3f44f23a2b257a525e3f951006180e9e4fc0d043586b8177b53",
+      "server/ssr/_next/static/layout-segment-context-BYoWuoV5.js": "be5beb05151317db1d4e7990b96fb6b22b109eb8dbb2f43a43d6ba2f40a56d23",
+      "server/ssr/_next/static/link-CKTfplAa.js": "442a26cc1ff12390fa315a4223c893fc926f827fa995c91654e7cb8954e391cc",
+      "server/ssr/_next/static/navigation-YKT3OLBc.js": "49f07a1083c62923d0ec8892491477fc1a11a795ad0ed192f8cfba256dca7ea0",
+      "server/ssr/_next/static/public-profile-XazO4z68.js": "b2a217bb5f87e802409c3808cad8f8a8bdfbb3a27105b1e1794571028f1a868d",
+      "server/ssr/_next/static/query-bT6ZOeQH.js": "64abf6fde819d39344c044923b54e1c95e72d24fe2d767cc40bb8cc182aea6c8",
+      "server/ssr/_next/static/react-D04BiMWA.js": "1642189f663d4acd8610202ee81ca2c60f2a9b78777f78ab0f192a869c52ca67",
+      "server/ssr/_next/static/static.edge-DXvyvMXD.js": "5ad69dcb57ea6d302e53bd144c682a7e68fc04576a3267909121e471238b3ddb",
+      "server/ssr/_next/static/streamed-icons-8ARsNRPi.js": "26ecdf72268555087f2b82f82faf64136aa17e1b3e3e1bcd4de9f812236eebfc",
+      "server/_next/static/css/index.DKSm-Y2Y.css": "4e91969216b6989cb64da9307c60f74128dce875176d5085594cf64485db1df4"
+    },
+    "baseline-artifact": {
+      ".openai/hosting.json": "ae89d08302f8c36cf4821ccc80507ea0d8659cb9d769b2276e99985342de69e2",
+      "client/.assetsignore": "14ce8d5101f6d8f172242053466d44f5e2cd622dee81db53c14bd445c25d1942",
+      "client/docentetuc-logo.png": "6542f1b08acf58cfeef190826dfa3fde8cad1aad2165dbb7808af6fc91440ca7",
+      "client/docentetuc-logo.webp": "6ff65223b24645fd5bcb1ac28f6d553083312f1d11dc50522cc61308de52e427",
+      "client/education-banner.svg": "b6ed7bfcf8b98f7d7ac2ed753038912f388832ec126cdad6e53e87b54dbbf98e",
+      "client/favicon.png": "d0361ecf7641c9b0cef4460bd1e19ec176e08891f43fc7e7317f44fd74f41f78",
+      "client/favicon.svg": "12d55dfc1bde2cccfffb3bfb6d3ffb173c25cdcaaa7e364a404395c093e4b642",
+      "client/file.svg": "81a9ce5ca9bc60870c1d72c0fd5b98b2bc5c8c02b0e04fefeab9efcc11277228",
+      "client/globe.svg": "13187c071b4d369df3a7a179f69a927165bf624e1a524ee6c93b7d3be75d6fc8",
+      "client/icon-192.png": "90d1d232a0a792bf9f93268268fd1f20fd7db692078c3506a874a1fff4108785",
+      "client/icon-512.png": "8a2ad83399edae69df0651ad66592b15c9137832a7177bdd8696b395fd853674",
+      "client/icon-maskable-512.png": "987100d0f333e56a5db98fe46922d3a8e58ded7a081738a650260df28506c13a",
+      "client/sw.js": "76783238b6a83f5b1a2faac1fb3e63033ced7cd78837e750a3f6cb710f8e6aa9",
+      "client/vinext-client-entry-manifest.json": "918443db76c62be9c33c4c81c0219b934988261af540541a6e0dd295494b6ff1",
+      "client/window.svg": "d3cd4bf0c1123258fcc266409856e28c93d4fc1cf8476702225e17842900ca63",
+      "client/_headers": "2148fb62669525f5091532d36d4a48a8da95b08a5a797bacde75d2fe981351bb",
+      "server/BUILD_ID": "a52ff42765fe7c24851968a5dc48957e585a508f39e80c7f793e8ecc0d1ea6c4",
+      "server/index.js": "e67df13c2ad53a7ed698c04b0f01913529f7b8ffc9fa75eab49e1b3bcd5bd423",
+      "server/public-snapshot.mjs": "16fcc2fa8e4a3f263095d600997c703ba2baea87a082a1c0fc7f96abb9f4cc49",
+      "server/scheduled-task.mjs": "c0a5e40a1bc4d65d7a5c878373c76471045bdf3d84e07d3b92669cca197e04a0",
+      "server/snapshot-baseline-entry.mjs": "d173cddbf8eb224573aa823d7e39cc71ff52c599d6020e1d6bd7f2f5a0ab54eb",
+      "server/vinext-client-assets.js": "fd35290c6d5f9a721daefb9f4e6ceb43eb486f0deb9e56be9f5de9b34bc9dd24",
+      "server/vinext-externals.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "server/vinext-server.json": "7b9d5d6c598f1dd46f720e7633f42a1dde3ac82170221f23e22b52cbb7e43249",
+      "server/worker-entry.mjs": "aa2c262c5902fe67fe0be4017a3641ee8f2721d2b4ee49f5fa5ffbbbc58d143a",
+      "server/wrangler.json": "892588ca2b4037529594fb214c52826611d14f5c9ce29c86cb9c336359376826",
+      "server/__vite_rsc_assets_manifest.js": "f0d7a220a148171d8098cdfa645bebaf88ad6e3ff8532933d08b3b0667668ef0",
+      ".openai/drizzle/0000_docentetuc.sql": "7d9162f504db89422191d4c035068ca8e6f157b6740daef900707c72bcc10326",
+      ".openai/drizzle/0001_training_metadata.sql": "9c90e1bee4d2a971f4d9ba01d377f364269b3e3aee6abb70e3cdcc5dd7da0563",
+      ".openai/drizzle/0002_reminders_ai.sql": "ee41c35ac9ec6835e41531a898abd02c047995d9de5850326a74eae16a367dc6",
+      ".openai/drizzle/0003_web_push.sql": "54523991ff9f7548d8e9df777df31874ec402056645a16ec749a25fb5c691b53",
+      ".openai/drizzle/0004_information_agenda.sql": "bc0473a386bc0cd24905f7f4f6d79d56f58241114a90b33d6f1449fd280d8b8e",
+      ".openai/drizzle/0005_agenda_reminders.sql": "30efb8450157bf41e3a61f064105461fcfcb43cebfaeb7013fd7cece33e12f7d",
+      "client/.vite/manifest.json": "1805d12b08341dd4ec89c86e7892b992cd1071267da5473c7cbfd8d3b7dbcaf8",
+      "client/.well-known/assetlinks.json": "4975d685ca5dace0d111f17c7053871ffc9673ce76112668a2b0d7ad1db603da",
+      "client/avatars/avatar_01.webp": "88155599faf246f856a38eff453cbfc17719f546397f7b74e052074de339b752",
+      "client/avatars/avatar_02.webp": "bf251912440dbe6c942687bc7319a608450a3e5bf24922282126b460d6072b84",
+      "client/avatars/avatar_03.webp": "7d96ebf5cd7574467a6ee424a379e4795a4dbff6351ec13a42866c18ff6a2cc9",
+      "client/avatars/avatar_04.webp": "e509d8c07985bb2edce87feb7780b5c305172864cbd3a08ec624f76d18a0728e",
+      "client/avatars/avatar_05.webp": "62eed9b6987b99593deff2dc5b78cba0739dbb1e4b27d9c193167b6e4b106a95",
+      "client/avatars/avatar_06.webp": "de31cad537c80b8f4ccc912cd41b3d5cfa8442e56e6c9f87e43e28e7ec75cd8b",
+      "client/avatars/avatar_07.webp": "6fc412ac412ee86687659187eead0d88d57c83053ba3198d7469bc0f07f0033a",
+      "client/avatars/avatar_08.webp": "afb0a16c2a3ed40a57ca1e7dcaee4a3568964fe2193e3eaeb1bf9ddb58931992",
+      "client/avatars/avatar_09.webp": "bb0c79798e41bc3435c1cecb111ebb0926ce6b76c736f10fea733a721817bf64",
+      "client/avatars/avatar_10.webp": "eb66f7fc797555f17b48f205a2312c6f142bb5dfdc12580f0187aece5ceea13a",
+      "client/avatars/avatar_11.webp": "2099cfddba5458931f44d1e1b05c7435b9faf1b0058cac13c0c251a2c9ec087d",
+      "client/avatars/avatar_12.webp": "9f43d35f643f62db4d1b1115c0c41a2e58394c503f75217d69627fa3bcf711d1",
+      "client/avatars/avatar_13.webp": "34a8d7898af662da375ce70b047862a1e93c3d61a61d0cba86f8829f900860d7",
+      "client/avatars/avatar_14.webp": "6145586fa539cc3b5dc0f966db6dcf166d0d9cf2688c267ffade45970b959d36",
+      "client/avatars/avatar_15.webp": "ea2c595fc3572af15a6ad33a456efb66a6110a05af631d62046328be3e2866d6",
+      "client/avatars/avatar_16.webp": "b491e3d90aae01bbb32d79ef185152341f24b59521dbf6f9aaed758eebe11a18",
+      "client/avatars/avatar_17.webp": "91d3c62ecccb2a3edc8536b7d6854247a8cc61d45ad73a43d7a6abc5d89eb6e9",
+      "client/avatars/avatar_18.webp": "0e07bd41379a210db19a99018988f75f3aa05307a8f367b3987cb63af67464cb",
+      "client/avatars/avatar_19.webp": "e192e2fad30b542074c35349d2a49e83237c3961363baa288b4821d519d74f7f",
+      "client/avatars/avatar_20.webp": "6093b2e396081da3b102c337bac4fd86336d1169be3f77c4d3c2d5a3d1b47c5d",
+      "client/avatars/avatar_21.webp": "321ad0befca9177fbc275f8f0d6ad18302bbddbebd795979315fbe7d7678f0e8",
+      "client/avatars/avatar_22.webp": "9a899859f4f9305004db3b00aebc21cc110f2f416d564557500190dbce0c6b63",
+      "client/avatars/avatar_23.webp": "7bd7a36ac5467d1d2519a2ae8615bdc61b3321a4104230292d4cacd9d35f0d49",
+      "client/avatars/avatar_24.webp": "ba900b7f077ad6e2a09ba1193d68f4651c940cd1e785f21caa57220783ce1d18",
+      "client/documents/Modelo_Licencia_Art_51F.docx": "97ebb8bd506466b2011511624416930af0f70506980e2a898074f4b708204a46",
+      "client/documents/Nueva_DDJJ_2026_en_blanco.docx": "8ebf7eab0eb66fc146f285596bc0439b433a6f20b9a62913e5e86c186385aee7",
+      "client/documents/Nueva_DDJJ_2026_en_blanco.pdf": "1baf727f7ccf823bc82a514e1dbc928c39877525ddcfa3f19077955845948532",
+      "client/documents/Parte_de_Licencias_Tucuman.pdf": "a557a8dc8d4a7e750ca248199e4ed9540be94192c19655af701ea76f43d9d9b6",
+      "server/.vite/manifest.json": "75c1470b4100bff8d663b10ab6d26664bd11a0ee62b600c2edbfca9f9a76de23",
+      "server/ssr/index.js": "f7ff10570e2e1acdac5afc9f444cd2359d490e822fcf4fbcb920e3f4592438f3",
+      "server/ssr/vinext-client-assets.js": "fd35290c6d5f9a721daefb9f4e6ceb43eb486f0deb9e56be9f5de9b34bc9dd24",
+      "server/ssr/vinext-server.json": "7b9d5d6c598f1dd46f720e7633f42a1dde3ac82170221f23e22b52cbb7e43249",
+      "server/ssr/__vite_rsc_assets_manifest.js": "f0d7a220a148171d8098cdfa645bebaf88ad6e3ff8532933d08b3b0667668ef0",
+      ".openai/drizzle/meta/_journal.json": "7146c5d551a0c9b1d01eb9b869fb77e02cc4af0eeca9d516cf4861eba6bddc68",
+      "client/assets/docentetuc/agenda-classroom.webp": "f307d9a959b57ddf91ba36523bc4f47796d34166e35e582c2eec6e594bf5239c",
+      "client/assets/docentetuc/agenda-hero.webp": "cadc4f1cdfa0aca47ca92acc3a5ec002b19ce69d834e60be6d3ce7d7826740db",
+      "client/assets/docentetuc/capacitaciones-hero.webp": "a5a32bbabb3fe3dc7fde5bea1236de83c76c7ce58bbd87e3095cee15f17366fa",
+      "client/assets/docentetuc/community-header.webp": "8a19443faeb01c69df239b795fa7930714265102ce778dd0b852034bf525136f",
+      "client/assets/docentetuc/designaciones-hero.webp": "886037ed012ab1ec3e6f29a1d4f3fb31dcca064c4daf7bf0aa2dc590611a380b",
+      "client/assets/docentetuc/home-hero.webp": "51db979b7891abe565728a4bdd7b8b70f336c30c14307dd102370ef8b75bb36f",
+      "client/assets/docentetuc/ia-hero.webp": "735cea2394ff92d5a35e1824e9ba74fb3946fe4b82ef06d8cd93dd3a1e247f0c",
+      "client/assets/docentetuc/informacion-util-hero.webp": "5a8d065fe67017bb3bd60962d21b204396151aa11adb3aeb4e9b1723cf6c5b56",
+      "client/assets/docentetuc/novedades-hero.webp": "cecdf5980723dfda8b19b04db89d7045e7c7a645f666d13c8d5c1803141bb204",
+      "client/assets/docentetuc/padrones-hero.webp": "c9f01d8c2aa26203ee515f31ff382748ef040e582e7bbe8342a0cc3ec32f222d",
+      "client/assets/news-editorial/boards.svg": "f3b30fdba22b33ee28e7ab8c6fc3bec5280194a01632c4932e28ff8c2d5ec4c6",
+      "client/assets/news-editorial/designation.svg": "ceb9d09466c3133df95f8f138c8bef550e7c1d6ba7311e616912c398df910f6e",
+      "client/assets/news-editorial/education.svg": "d75dc02194c13717ac369213ba60353387833d28775e5c4512949651f5808335",
+      "client/assets/news-editorial/general.svg": "3f92996848af8abbae669f4d078ee9bed4286f8824ca60c3cacaac98618484e4",
+      "client/assets/news-editorial/provenance.json": "5da949b32ed6d8b66af68ca5144c35ab1a11909fc1af6b191830b70991a22658",
+      "client/assets/news-editorial/regulations.svg": "2bc93a47b96fd9429f015e3f9b7be24d57aeaed0b7d70cd41689e26657d834c1",
+      "client/assets/news-editorial/technology.svg": "a0413aef82c1bf4605ee5c1120ace6d99bcaadc61f65650eb6be990463efc036",
+      "client/assets/news-editorial/training.svg": "92930e929ae901a35e84f9cbd485600b7f1dfcc7a0234a822fd108a787821281",
+      "client/assets/news-editorial/union.svg": "f98f4167dc3377eca6f95d7f8e5d67653218fb6f20daede971148e430f0bb063",
+      "client/assets/platforms/infod-logo.webp": "449d7f565406bb7148fe367caba05abf248b05c9385159ce7f527cc226871d75",
+      "client/assets/platforms/tucuman-education-emblem.webp": "ed4763155f047390cc888972373978f2cbfd135a1444aaba82cc5cca851dbba1",
+      "server/_next/static/admin-notices-CNjkRMno.js": "39e1965271f80b50031f4a80bc47fb18bbca2d873aa6bbae5cf6fc203e8e8434",
+      "server/_next/static/admin-route-BDwR3RdV.js": "72363696cd2dbeba9235b0c02a946bb8cb68282af41d3253c01c09baeb0f4a93",
+      "server/_next/static/ai-bYtkJXDS.js": "a08d96434398b55d4e7d4473b4a91c8be6c4729a586e0c7a0181f40520a36b69",
+      "server/_next/static/als-registry-BxXlcmpy.js": "7fdda219b9ed7bafe02b108d9f78eadca22a197eb185b5e7606247e4170e2d44",
+      "server/_next/static/app-page-cache-Dlkctxfl.js": "d837c00312fa80026564e6f878eeb25799558140e4be8331aa15aea54432970e",
+      "server/_next/static/app-page-cache-finalizer-DksPLdmU.js": "fdc9813ef4f83c55907d6950e6cbf49658a57e626bfe9e94f2225a90407ad2d3",
+      "server/_next/static/app-page-cache-render-B696Ibzt.js": "3feac0148b92cb87826a2ba9c28ecac1abc36d369cace6303c72ee15af2e44ec",
+      "server/_next/static/app-page-stream-CP3FAewk.js": "06164baff57b79d4b768ba03826c84d4dafc288811963844571e5e0e567888ce",
+      "server/_next/static/app-prerender-endpoints-DwNG3QjT.js": "7305433e882905198360d755f94e9964292afa8dcb97a1e948727fd7775ceb3b",
+      "server/_next/static/app-prerender-static-params-DCYPXH3J.js": "87c0c63984436bd545b9693023b4650f2c10d5fde37035d47e0cd5b91ab5fd70",
+      "server/_next/static/app-route-handler-dispatch-jqI-E24y.js": "2c74a2415c1a5cd09da082ed7448938ebe6a1f3c7c5b457e31f1f8c602b989ee",
+      "server/_next/static/app-segment-config-C0dEieMp.js": "365479b6a87773345a38aabf81070c5def9afc1534f1a27ddef0bbdbdad98c82",
+      "server/_next/static/app-static-generation-AaPj29WF.js": "71451721ae4a42108e9ed32567cd9d9861beb4952215b0fd57ffc373cd3edc01",
+      "server/_next/static/auth-Ck7kcGay.js": "1e0d320b523a6cae289513c4ed94b55375461b4c938dbc0e8af141feeb22dc5e",
+      "server/_next/static/auth-identity-CEzwGb6X.js": "f31d0f55bc163b30d8cc2f9f07533be11c6f07bea39fda8c9e8598b2f1bc3073",
+      "server/_next/static/auth-schema-zBuLUSlm.js": "61deff2003ad310a83b4906f8f4d0fc8ad14c4c8e66d61016ffd16e7df14848f",
+      "server/_next/static/auth-session-t2N0BQuv.js": "4586febefabee4f69ac3aca30d8947467ebf67f4998e2eef922673bbb59f7f9d",
+      "server/_next/static/base-path-DoTXrg9A.js": "aec215e6d7cfafe5b43a6150a977f725e0a1b151093c3395cf1cf47969a2a750",
+      "server/_next/static/board-page-DUvPGbsY.js": "33eafc63fc0a53e079d139c0262a40fbd7f5a2df3de25de7f8ee6030d6e3d6f8",
+      "server/_next/static/board-view-maWu1ruq.js": "3aeb8c8b5b7f7d3e976a88c32c12d2caf4726e3065bb0874cfd627149f091210",
+      "server/_next/static/bun-sqlite-dialect-BW9W1_Ps-JVn5XQSj.js": "667163ebaffc99df735f036d4209f9a8da968cec250623a08e4b54b3faafe5c9",
+      "server/_next/static/cache-headers-BVBDNK6t.js": "0ea841ee33b3df29e4b0a52304c21f8bffcc6ed3a095af01c337be7bc2c874f5",
+      "server/_next/static/community-admin-CeTXnSSa.js": "b142a9de4a95c528ab6744e24a611e00ecf4b3db81ff813e310a393f0882aa4d",
+      "server/_next/static/community-DTWcIVp8.js": "286cb3d5f2914948a592bdf0d0bbc8d5c3391aaec4839cba96307005c4f4501b",
+      "server/_next/static/community-route-Cl2Ex7ik.js": "af0bac4dbb17b801dcc2d7f0d4fe549974a9b0a60c9c20770c35dd45b64945c3",
+      "server/_next/static/current-user-DLoGNy4y.js": "c6b35f73ddd50fb25afcea15c46f9525e60be49175612914741270f250c7a163",
+      "server/_next/static/d1-sqlite-dialect-BLC8LXE6-BQroDsTC.js": "4e49f040eb2325cc6aa3697dc07d226da896cb0930532cecc7cb28318a207363",
+      "server/_next/static/db-DrBb7enK.js": "373ffc88643b1a51609a82536ffc2f524eb52a3c4f6e1859cd3040cf982bf3c0",
+      "server/_next/static/default-query-compiler-DW5wCV-K.js": "2fcef18f52a31643edce0c4d14a77d006eb6dce608cea5630afddf9883599474",
+      "server/_next/static/designations-boW3jM8a.js": "c81e652cbb9b346e2989aa751f614f9ce1778ec08e0010c1b6b4ddaf63ff4c29",
+      "server/_next/static/dist-BpUnwdEG.js": "e00694b49cbb60eed839a37ef37a493808a552b6265bbaf4a7b60880518ee109",
+      "server/_next/static/dist-v70jCMmN.js": "2632604273b783447070d6cb04500f8efe7f2d2d54a206398e3c60af1ad861f6",
+      "server/_next/static/file-based-metadata-DmOMdGAc.js": "a4f21d37bb718f440c9546e8b83b1220bb1da8163cb0fee44b87f58912407adc",
+      "server/_next/static/framework~index-CgE5CHRU.js": "e66d0a8c534b401c27047cfc819e17ccd0efe1d417f843064e5e4dcc34a83c08",
+      "server/_next/static/framework~index~app-page-cache-render~app-page-cache~page~page~layout~page~page~page~app-ro~dzeqblap-BLcjy3Jd.js": "c57d6bf2a1f6372f8dfa8908f35593dcc3d6b51950f35f0391801a6baabd8b13",
+      "server/_next/static/framework~index~page~page~page~page~page~app-route-handler-dispatch-DGrdvgp0.js": "2eaeafb30ac1ebe370a400adbe60b713c97d1b02407bc93e606bd9a6cd8d636d",
+      "server/_next/static/headers-BwVXsraU.js": "75db62fed8b6d066513aab220129d72316b81fade9d9cc6c471d8773fe742abb",
+      "server/_next/static/headers-D6xdAAX3.js": "b313705498a96d539b1e3e8e8cbc53319d19d79034ff0b5a6467f2752abba38d",
+      "server/_next/static/http-error-responses-MHMqC7hK.js": "6705152b49b905a92686e9895fa771f52a1f21c3e66e8cb45fc10890ef697a96",
+      "server/_next/static/identity-link-LR69qJZr.js": "174e9cd556091578ead43e6d5615d7f7454c2169edc9bb867ef8cd828563dfdc",
+      "server/_next/static/implicit-tags-C1gkq4JF.js": "268b80b066ef9c37043c2d8a48d6323a92afb6bac16b54be7ff3a92e92e6f5f2",
+      "server/_next/static/isr-cache-DGum_VCg.js": "65f6de9667a411e007887047ebbf4bcda5035724179d53a9a6ae5b60c7c2304d",
+      "server/_next/static/juntas-B6s_rOgB.js": "35f013f3500bdb0fb32708ac2f9493205bee61b23f3f37a1f1cf637eba6faaa4",
+      "server/_next/static/kysely-adapter-DYhpqAP1.js": "70465f5ba2ac80e558254fa1fdaab2240622da07cdee6e308f89a5dff902a99a",
+      "server/_next/static/kysely-migration-tables-JkVUjPF_-D5z-PV1_.js": "6d20fbb8071503e879a51d45f5f21e12ef4704a5c15d0ee6a5663b28054c053c",
+      "server/_next/static/link-Ccx3dYCE.js": "7ba4b27b47618018c6b0eb119456b0661b18d2042b6b457b22977e09372e0e32",
+      "server/_next/static/matching-C_13znvj.js": "05e4e03729320773c7f625ce9d3b0aa94fd7e65f4e78e33ac6ee5f47f7bde031",
+      "server/_next/static/metadata-route-response-CP2THa1x.js": "7c4e52f906dbf7eeaf25d71ae081ec3425702c24dc0960e8d3d66e1539e5c2a8",
+      "server/_next/static/metadata-routes-DYczmGep.js": "2097b528e3fb707d8444436091bde99f77098bbd88b86bbab466348d5be5a008",
+      "server/_next/static/navigation-errors-Bdsxd1u3.js": "47325758dad9bf5945a02c16c4aa9b523ecc4add161bf097e9fcaf693fa97755",
+      "server/_next/static/navigation-runtime-mfCcRNtf.js": "8dda9235dc1ee9d03b9df70f2c440f2cdce0d65fa9d2e129e36b2c764330389f",
+      "server/_next/static/navigation.react-server-BQ6Jm-Zw.js": "4b7a294a4e7a9f44ff8aa779f4c99bd682c3eb8d89f743aab8977c639d4704ed",
+      "server/_next/static/news-editorial-C9oeZ6c5.js": "b9f984e6ec4d7bf9b298f9c4cd24f432dc109f151522af7a1f46554119392953",
+      "server/_next/static/node-sqlite-dialect-CdkqXpqd.js": "d823f372300ff78cc5603a625bc39a5864cfeb6f38e6ea77ed4f200ab3f4b2fa",
+      "server/_next/static/official-publication-DCN3jqUA.js": "46f7d073aef2e72a98b45e004606fa10baa5b921e8395c7d69eaf0fd36d83296",
+      "server/_next/static/page-BB8rtScA.js": "51cc945f38d4ef7d404fb7fbd2a1ddc7557839cd531dd80205dc372f73b18ea5",
+      "server/_next/static/page-CEXThtOO.js": "e3a910249eb17fbe0e2e7284dcc09a6e251ee2ac50ca4ffd44765d340cd93998",
+      "server/_next/static/page-D4rwlrai.js": "067aae24b988bb72fe8d6f1b06c74941d4c757daf65ced7e066883bd87467c51",
+      "server/_next/static/page-DdQepK0P.js": "77087d99e1ffa06efbaf4a67af5e6c3fd21d0d733c61894866ec99d940e96f77",
+      "server/_next/static/page-DVeUZnUC.js": "2fd7079a79f7b6c86f9ea540e6f456326b11ee7d27cb6ed557b9baeed4a089b3",
+      "server/_next/static/ppr-fallback-shell-F8H6YPkD.js": "49c113b0aaa9d2232bbdb363bdfd28cfdc532e36e02a3543d612aa3e01c2fde0",
+      "server/_next/static/profile-0Hm4G6vx.js": "059374ee40a205ddb1b74e0a5135746fef81059c291aa13fc85188e21e1a513c",
+      "server/_next/static/public-news-BHmwzADf.js": "1f8cdc2251b1e5b421a7429754c2ab4d14f873ef149913a3787224eb86bc9b53",
+      "server/_next/static/public-profile-5bHsArIi.js": "df5123917de8331b8f2fff19a04ad691d76761f784fb2704b5eeba066ca13888",
+      "server/_next/static/publication-lifecycle-D5BhWhXo.js": "da6a64d61b56858fc47703a1c086354b5d48d7227f31428652df692c4e6b069b",
+      "server/_next/static/publication-search-CX9rB7Oa.js": "46ad5959d7c49219260d40ce5d51e5af21b90ec8a95f8e38e9616e3b048a6913",
+      "server/_next/static/push-QegEazmk.js": "b1e5df567a2f8df305e092e634bf9f2edb216c6112076642e3f2cd36370c8a63",
+      "server/_next/static/record-DunW85rk.js": "b9bdb7b7d0e4844d241dba61104d18111d61ef92af3f137d15749531d276f9cf",
+      "server/_next/static/redirect-digest-BV6xQy3C.js": "b92ec9aa7c6dcd33cfbe31e79016b8e95e069db3104601e782c0eab8aa9d331b",
+      "server/_next/static/rolldown-runtime-DUnMT5BP.js": "5db5ba82eef00d1dee7e86e663098c9427d01183a88d357437daff295aec3e75",
+      "server/_next/static/root-params-CzteawXg.js": "1ee8de99573adc90ee570d803a5cf9fd89f5ef3b534ffd09371d0717f141bb43",
+      "server/_next/static/route--E49AsMh2.js": "b4d9fc5f16d573b48f866b13067a60f7f50216016cd40d3ba4b0248a07045f1d",
+      "server/_next/static/route-B-oEAWSN.js": "c75d8c73f7ce6b4cfea5dbd83668f9560867b9e04ac3d502545018c5baaa7375",
+      "server/_next/static/route-B532-QoI.js": "43e6d479605849fb3782f7a3e54600034951587159851054cdf0ea645c6d2240",
+      "server/_next/static/route-B5Q6TdP8.js": "153cac7f412a14de0ea3f3536f422bed7f9621af8aa8f914eb3aef58ceb45af4",
+      "server/_next/static/route-BbxtVSeW.js": "4c1d7b2749667f60cdfd89ae225d9d9e66d816606b44ec0fcc427c98daa5bb41",
+      "server/_next/static/route-BE6Bz-8K.js": "a69095fafdb7c2e72ed793b14d635dbd0efa2394c0169ee1d432152bfa80b982",
+      "server/_next/static/route-BneVPRwv.js": "0b11d0d7895ff3de67c4f54175f17f1380ff1ed63b8992d19553b600d2c7b617",
+      "server/_next/static/route-BuwUJaP9.js": "ecd4d6b6e6ada519d7ddb0b450a2f3c340dd1a1b29990a2c75e5677985501290",
+      "server/_next/static/route-BWUn-SbI.js": "2e8a9c9898768dc57310c7d3af5a08c2e300511411bd6f0aa7d195969a97dd65",
+      "server/_next/static/route-C0QvYemV2.js": "c1d66b18244050c135b35e9e0ad2a0979534e007b4b4d48532156ca6f43ac0a1",
+      "server/_next/static/route-CAuO_ruy.js": "96232f91fc0a0023dcaaee82c999db666ed388a0c86e747e7658d111c1c530cc",
+      "server/_next/static/route-Cc7svQr3.js": "56e89203712f766bd1b8251c568b72c7f451338eedbe80cbcb28dc1e6a684411",
+      "server/_next/static/route-CfVXCtYA.js": "d180a93f9711bd422a636acaeeaa9db27e198fc923a1e011ee4a08a81976a289",
+      "server/_next/static/route-CfxQazue.js": "98368cc0c50539800b2014c3fe6a8e1fc70f5c686c28f7ffc5866154f6d2e669",
+      "server/_next/static/route-CIHU8c4H2.js": "924f694b4a54ef098a4561aa8a2933fb559debe3f4648e0b2e8d24dce1abc421",
+      "server/_next/static/route-CkadKhZe.js": "543f9e5a3011bcb0664ef9aeae7a230eaa30f9646f0138169df873de7504591d",
+      "server/_next/static/route-CpGjO7AY.js": "17869537e61a0b4c633f6302bccad2b9a192aa7249de41ab2e82d0f8d9ec7049",
+      "server/_next/static/route-CRkZgvEm.js": "508becac61354c222033d5d85e8f5d6e54007d609ec21870313cadbc324ea625",
+      "server/_next/static/route-CtV8S06V.js": "4826a07dfab129651d959fcdbb08cc44cb0ba61141e63983c355e1d8d57e18f6",
+      "server/_next/static/route-CUfcSpvt.js": "123f1bb021097ead039dfdeb61822683ad6f27a0d74af29c7788cc173992f647",
+      "server/_next/static/route-C_kzkypg.js": "78ddf7516c8d405c1f0d92c4fd447672dd07e84a9db9735c8f6fa5848f197c62",
+      "server/_next/static/route-D43DR4-y.js": "e8651e8febcacfac1b9e3625de80b41460cfe182eb9b7bd8fd2020a72236bc98",
+      "server/_next/static/route-D5GEQImI2.js": "44c0cf4b3e5ad288484a914d8e981ee5ed9cef05888dd1c5783b460816703b81",
+      "server/_next/static/route-D6a7F2Lq.js": "3572781bbd7b948cbef6a0adbbe7b33f5e50f44f9be9867782afdbe1f4028917",
+      "server/_next/static/route-DETk4C7m.js": "de63b60988a0f337e5dd253ac3f3d7f1b7e643decf09b16cd73cf2533e7a9dfe",
+      "server/_next/static/route-DGP2E0VH.js": "90986e8f5f0f9fbf46feae9ad33625b45412db965b6079f813f5a57a3f30d69c",
+      "server/_next/static/route-DhGzAYa5.js": "350b9ba688c9b5eda430892f60e58b00ab4c6ef828f0ed886f0fc4402dfedd2b",
+      "server/_next/static/route-DmlNFg57.js": "e4f2f0781236d236285bcd9fa231143d1be7340065928310c1554b3743891242",
+      "server/_next/static/route-DPyUCmww.js": "161eed75ff36ca75be17d7b3de249bee6cd3c9d913a9261257736a5fd8177c35",
+      "server/_next/static/route-DqTi8xhR.js": "5c1ea7e78ceef04d79e40bcab12903d9e53e9e22d94fda6b87db2ab0f6de628a",
+      "server/_next/static/route-DRkUALaC.js": "ab28ec5620b1bbfeeb32f233f285855920be4ad7adfe6a8905a4dd3563814adc",
+      "server/_next/static/route-Du59w2ON2.js": "e00f7e688cc76fc5d97c9789b35e4be91712a5a9b16a89d1a57bbd57d813523b",
+      "server/_next/static/route-el-xH_l9.js": "b648aafa0897d71ce6efb3c3ef281a8075ab3de2f5c35e48210ccd29b7c571b1",
+      "server/_next/static/route-fxd_7wmb2.js": "7052b4eb975364d7feab8191bc92d2094b94547bb268c8313866379156ce37a3",
+      "server/_next/static/route-g-jSR-XC2.js": "5f8399174a268836f4d5bb927c0706f23bf1287bd3f3e27d4a36e624c02079c8",
+      "server/_next/static/route-iI-znxdp.js": "a7dd945605998026a14d85a10a03e167b4eee2a61b7c550525f76b560d0ff024",
+      "server/_next/static/route-mOoSDriu.js": "2d5a18d4d9a3fbb55bb74257a372086342bd4838818523660f6be9a4ab25f80a",
+      "server/_next/static/route-pattern-D1PWTDh8.js": "03b91eaa5728fe8673ca4ea77ad3816e47fd0ea3e93da66ef40a26d957431a6f",
+      "server/_next/static/route-SvfA9kKt.js": "a3467da54c62d4d8094fb73d000624ba216650fa9fc73623596b1889e3e567e5",
+      "server/_next/static/rsc-C8oad86C.js": "8095865f228aef17d25ab38712091250a5eb1a17836cbe6cb932afc59a7bf2b5",
+      "server/_next/static/site-identity-Cs4J0eLn.js": "baacc1cf84b30b364108665fff0c94012771157d633b8ece2fefa94ea293220d",
+      "server/_next/static/source-health-CIZcd1Du.js": "8968d4b6e1bb6501ac3120a0fc4f8c23a4ddb66ccbd0337c147f90b48d7d2deb",
+      "server/_next/static/text-stream-DJe77fyO.js": "87c8d4e9b39cfd693748aa5da30aa058358627691968e6cf6407c76f1ce2e767",
+      "server/_next/static/thenable-params-D5ZNex6l.js": "ad6040e39a9139ad3cfcecb0933d3eb4b9e5d533b71cd2aa9a2b9944478ee1de",
+      "server/_next/static/training-CCnz1x-o.js": "4f3d500135b47ecafc4a07b36c5cc1dcfa791e7c4fc71b2234abc65b32267394",
+      "server/_next/static/unified-request-context-qhL7wVUy.js": "6719a10ecc2942096e9d84385fb20fe585102c59a37f2482f0962c26dbd9923a",
+      "client/_next/static/chunks/admin-panel-D01Oy-Gt.js": "c94e970564b3f5612d4096d8c38256fc6950c31a84a0feb6d6c687c7466c6c58",
+      "client/_next/static/chunks/app-elements-H_Dr48wG.js": "d8ccfb80cfa806cf9cae4413268bee663723cbdf183b3f078e93c82c27a6ff88",
+      "client/_next/static/chunks/app-route-prefetch-policy-DiJSWOSc.js": "43b3cc46059c287486dc7f9bfd19da35df5646e71cbc9f1bc48317331fed4533",
+      "client/_next/static/chunks/app-rsc-cache-busting-CxWYniUJ.js": "8028a954f1f80d9f8f3a5f955992ed05047bfe5455dcec102e89f3b3777ca80d",
+      "client/_next/static/chunks/app-rsc-render-mode-CvTCGruk.js": "b9db37ffe7d7e3f76c7e6bdffc078b9da7b799d56513d9bb5387f887b4d658dc",
+      "client/_next/static/chunks/app-sidebar-Dd8Kfbnc.js": "16ef1e4c53881392d97b361c90ffba3fc0ef77d766bba5457c87f532da1ce295",
+      "client/_next/static/chunks/community-phase-3a-YUMlAg_S.js": "2cbc99397187b060d4d48c4063929a5631e87b483ad1228d6d6b8c50ddef9b73",
+      "client/_next/static/chunks/deployment-id-DFhHa9wO.js": "cff727c88395e970914fe0fd68f0d2f78c51dc9ec13c7b6e6db8e5104ecb240b",
+      "client/_next/static/chunks/docente-app-CaIKTOCx.js": "4a35301f5df5398a3956fb4476b74270937bf898b48cf27f7900a8c0a61af421",
+      "client/_next/static/chunks/framework-D_rUT4EX.js": "939d0fabebb3b2f01753bb866b067d8d3384fb06da19f0e6557609d3b1a9f4f7",
+      "client/_next/static/chunks/hash-Cp347hhd.js": "fba69692645d8206561e12edf1653f0f7931d0f14f8f753ec3be5031dfd004d1",
+      "client/_next/static/chunks/headers-C_MtfdF4.js": "d84532fc42b9a35aa8ebc1a2659d97cfecc4fc341718a0cf9f7c42f763ced4be",
+      "client/_next/static/chunks/hybrid-client-route-owner-GAtup5ph.js": "9a16ba7f7e8be782fe8dbfa22f901d6b6520c9fe75c38abf6bb659d19429fe3e",
+      "client/_next/static/chunks/index-Bz9qISGZ.js": "55c8fbc3ee85d8befad0400042cbb2ea4502c7690c30990a443fbc3d36736d59",
+      "client/_next/static/chunks/layout-segment-context-DmKUOaP1.js": "a9e556611d04a3af81a47e357777ba13c25b8e2308d0cb4c697baf191b5d0f3f",
+      "client/_next/static/chunks/link-Yd0vh_AM.js": "3624d8a6bad047ade3c14aea141130abc1c0b1da2dd5fd004726627f09710e74",
+      "client/_next/static/chunks/navigation-errors-D5LMQqDL.js": "8079365b302385be914b5750316813c78cdbb88f897349ecec72f5998fb65500",
+      "client/_next/static/chunks/protocol-headers-B9-bVeat.js": "9b15d2c8452ddb9df5d6f2cfb3a23dd576a10dc0450fb72565d9f293abab0edd",
+      "client/_next/static/chunks/public-profile-BBck-XOd.js": "57dccad8c4f8dc05dffc8297b2b6f1ca0b5b6ab4b48e08e2f1c3b74476e6ee95",
+      "client/_next/static/chunks/query-DtBGhX2J.js": "0a1973f3c6175c2655da2d796c0b590a07352ee8c22aed1a49cd90513fa34b02",
+      "client/_next/static/chunks/react-BFm3rhLc.js": "9301af88293ad05cf08dc6537a622408d9c124aeb2a473568ef9d4242d48a5c1",
+      "client/_next/static/chunks/record-uXSNv6cl.js": "b9bdb7b7d0e4844d241dba61104d18111d61ef92af3f137d15749531d276f9cf",
+      "client/_next/static/chunks/rolldown-runtime-C60lm6uB.js": "5db5ba82eef00d1dee7e86e663098c9427d01183a88d357437daff295aec3e75",
+      "client/_next/static/chunks/streamed-icons-20nPfslU.js": "7eb2a6b44b9c0faa7300c8dd36b0fae7a35d9f65e139dd9046b3df193aa83bc8",
+      "client/_next/static/css/index.DKSm-Y2Y.css": "4e91969216b6989cb64da9307c60f74128dce875176d5085594cf64485db1df4",
+      "client/_next/static/ebcc0fa1-cd4d-4d46-babe-312c51e608d6/_buildManifest.js": "47f02b34be6dc481257b6efce4c19e19111f37ef5c437f8ffed44f0da97fa9bb",
+      "client/_next/static/ebcc0fa1-cd4d-4d46-babe-312c51e608d6/_ssgManifest.js": "653f3e53e89b4f8548ff86c19e92bb3c6b84b6be7485a320b1e00893ed877479",
+      "server/ssr/_next/static/admin-panel-CgeqekvK.js": "549b6644df7e846e5fa9970035fc11460f9503b175b9ff86e7a07d33db3a8e41",
+      "server/ssr/_next/static/app-nav-failure-handler-C4RoBmS8.js": "f6a9d62fb9873f70236c9c3eb21337fa5337df87f170dcb04565daeffb5f2f62",
+      "server/ssr/_next/static/app-prefetch-fetch-queue-hw5mJqr_.js": "13735455679137299a21ad9f78010ce21a58bedc598918b88365a32b12f1b8ed",
+      "server/ssr/_next/static/app-router-scroll-iqQAVi9Y.js": "5ae09113417032558fed9aac74ec38d0e856a8b1ff74d882c2b5e3d3b87fcec5",
+      "server/ssr/_next/static/app-router-scroll-state-B6HKt8Cn.js": "e7964c9603534ac8f5158341b5deefc94a71f5f9f803978601c93830593c30ea",
+      "server/ssr/_next/static/app-sidebar-DdppsdeU.js": "a8a4c4a46a7d73a5426a284e89d408bf0ee7a3c472288c72b27f00d67e980080",
+      "server/ssr/_next/static/community-phase-3a-C9zahKJF.js": "936b196c8c660826de0e5a3bfc1ae3c4abaf786350470f4f15640c9df5e65884",
+      "server/ssr/_next/static/docente-app-D3aQOBoM.js": "22da3c9e8283f78dba8cb3ef4bfdec13fd2a71922d0361f731c6824ddf2fb105",
+      "server/ssr/_next/static/error-boundary-BRcoi3vN.js": "846e2e37d6aca93646268825e02d71ca886ff2190f46f5cbf972f95b72831c35",
+      "server/ssr/_next/static/html-limited-bots-CjPrI8zP.js": "8bf46585e768b6fa7da70bd4d76afd6ac28573b71de7c13189399587b813b137",
+      "server/ssr/_next/static/hybrid-client-route-owner-Dl5VQbyQ.js": "0b2de3e81263c9d03795f635d58d631f4b3ad17cb02c00516721ebbca770cd26",
+      "server/ssr/_next/static/layout-segment-context-0exoe1U_.js": "281a3ed9ed9e12b536405a758f4487b3236244ec9dbd0b76eefa4d702d559a05",
+      "server/ssr/_next/static/link-C2DUaCO5.js": "84d1be07cde42a1b0ba1da961d13357dcbd543b60ee37ccdd2fd1db3288b4d92",
+      "server/ssr/_next/static/navigation-DFlyLXaM.js": "9a30000e2f34f2c3872033297a7de8561d4102c7c5e17adb6fa351314bf19d22",
+      "server/ssr/_next/static/public-profile-KtoAg63_.js": "9ce2b27a668244ed2f75766aff189605dc88944f087962f3f220bf46d9ab2c2d",
+      "server/ssr/_next/static/query-bT6ZOeQH.js": "64abf6fde819d39344c044923b54e1c95e72d24fe2d767cc40bb8cc182aea6c8",
+      "server/ssr/_next/static/react-CliQ7ZXa.js": "f3a819b281fb9fbd7ee3eb19c0c8cec94624b5c42f4133ca5fabb95047faeade",
+      "server/ssr/_next/static/static.edge-B2rU3fwm.js": "abfa54d1d8a6ca568173e78601b6eef216fdca9786ecd72978a8aea5a6a80f94",
+      "server/ssr/_next/static/streamed-icons-B7Q3Dow9.js": "85e3109e6ee67c2505ff6387f6c772a3bdd06838ddcdbeda276e71cb416e122d",
+      "server/_next/static/css/index.DKSm-Y2Y.css": "4e91969216b6989cb64da9307c60f74128dce875176d5085594cf64485db1df4"
+    }
+  },
+  "requests": [
+    {
+      "label": "warm",
+      "start": 1795735653536,
+      "path": "/api/public-app",
+      "status": 200,
+      "cache": "PREPARED",
+      "bytes": 1934914,
+      "sha256": "8a704ca24b3a578419bdef7258492609638b83c1de41666e0243c1d1d761eab1",
+      "ray": "a60caa22f93252d2-GRU",
+      "wallClientMs": 1947
+    },
+    {
+      "label": "hot",
+      "start": 1795735759236,
+      "path": "/api/public-app",
+      "status": 200,
+      "cache": "PREPARED",
+      "bytes": 1934914,
+      "sha256": "8a704ca24b3a578419bdef7258492609638b83c1de41666e0243c1d1d761eab1",
+      "ray": "a60cacb76ce4bfb7-GRU",
+      "wallClientMs": 1224
+    },
+    {
+      "label": "home",
+      "start": 1795735760527,
+      "path": "/",
+      "status": 200,
+      "cache": null,
+      "bytes": 71746,
+      "sha256": "3ce5ff1fcb252823d6c093aed3310434fb3a6e1d17ea64b75176c7f265983a9c",
+      "ray": "a60cacbd7991203e-EZE",
+      "wallClientMs": 385
+    },
+    {
+      "label": "padrones",
+      "start": 1795735760999,
+      "path": "/api/boards/padrones?limit=50",
+      "status": 200,
+      "cache": null,
+      "bytes": 66405,
+      "sha256": "42d7fcbeb1f193c0e9da6b8847b99f9daea98f6da043e9a65d397d293ce4a56a",
+      "ray": "a60cacc27cec23b4-GRU",
+      "wallClientMs": 927
+    },
+    {
+      "label": "comunicados",
+      "start": 1795735762010,
+      "path": "/api/boards?view=comunicados&limit=50",
+      "status": 200,
+      "cache": null,
+      "bytes": 30,
+      "sha256": "d47160c01f441269d023ff1a0e5126668c511828d22da948a5f6f4ed033367a5",
+      "ray": "a60cacc8aabd0482-GRU",
+      "wallClientMs": 625
+    },
+    {
+      "label": "expired",
+      "start": 1795735929258,
+      "path": "/api/public-app",
+      "status": 200,
+      "cache": "PREPARED",
+      "bytes": 1934914,
+      "sha256": "8a704ca24b3a578419bdef7258492609638b83c1de41666e0243c1d1d761eab1",
+      "ray": "a60cb0de1f3a4f6e-GRU",
+      "wallClientMs": 1531
+    },
+    {
+      "label": "padronesHtml",
+      "start": 1795735930856,
+      "path": "/?section=padrones",
+      "status": 200,
+      "cache": null,
+      "bytes": 14780,
+      "sha256": "a527c596ed1c5c54e6acc4406792556a21a71258f7f94fcbfb9b77eb28371948",
+      "ray": "a60cb0e81e70f1d2-GRU",
+      "wallClientMs": 654
+    },
+    {
+      "label": "comunicadosHtml",
+      "start": 1795735931589,
+      "path": "/?section=comunicados",
+      "status": 200,
+      "cache": null,
+      "bytes": 14786,
+      "sha256": "4823af93ba854d07e419b884930e4cea944ce76d8287a207f349db3ac2d02560",
+      "ray": "a60cb0ec99d2287d-GRU",
+      "wallClientMs": 594
+    }
+  ],
+  "native": [
+    {
+      "at": 1795735655489,
+      "version": "2d817125-3063-4af1-bc29-3dc55357ae5f",
+      "outcome": "ok",
+      "status": 200,
+      "path": "/api/public-app",
+      "cpuTimeMs": 32,
+      "wallTimeMs": 746,
+      "durableObjectId": "3a94cd3b64e2fa8b7daae241c55caec7d9a4bee264e1b7720069df5ebe4157b6",
+      "entrypoint": "PublicSnapshot",
+      "exceptions": [],
+      "logs": [
+        {
+          "public_snapshot": "build",
+          "bytes": 1934914
+        },
+        {
+          "status": 200,
+          "revision": 0,
+          "expires": 1795735715491,
+          "bytes": 1934914,
+          "probe": true
+        }
+      ]
+    },
+    {
+      "at": 1795735654905,
+      "version": "2d817125-3063-4af1-bc29-3dc55357ae5f",
+      "outcome": "ok",
+      "status": 200,
+      "path": "/api/public-app",
+      "cpuTimeMs": 0,
+      "wallTimeMs": 1175,
+      "durableObjectId": null,
+      "entrypoint": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795735760817,
+      "version": "028c43fb-200a-43c4-8848-0aa385dd7215",
+      "outcome": "ok",
+      "status": 200,
+      "path": "/api/public-app",
+      "cpuTimeMs": 7,
+      "wallTimeMs": 232,
+      "durableObjectId": "3a94cd3b64e2fa8b7daae241c55caec7d9a4bee264e1b7720069df5ebe4157b6",
+      "entrypoint": "PublicSnapshot",
+      "exceptions": [],
+      "logs": [
+        {
+          "status": 200,
+          "revision": 0,
+          "expires": 1795735820818,
+          "bytes": 1934914,
+          "probe": true
+        }
+      ]
+    },
+    {
+      "at": 1795735760567,
+      "version": "028c43fb-200a-43c4-8848-0aa385dd7215",
+      "outcome": "ok",
+      "status": 200,
+      "path": "/api/public-app",
+      "cpuTimeMs": 1,
+      "wallTimeMs": 317,
+      "durableObjectId": null,
+      "entrypoint": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795735761539,
+      "version": "028c43fb-200a-43c4-8848-0aa385dd7215",
+      "outcome": "ok",
+      "status": 200,
+      "path": "/",
+      "cpuTimeMs": 1,
+      "wallTimeMs": 1,
+      "durableObjectId": null,
+      "entrypoint": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795735762345,
+      "version": "028c43fb-200a-43c4-8848-0aa385dd7215",
+      "outcome": "ok",
+      "status": 200,
+      "path": "/api/boards/padrones",
+      "cpuTimeMs": 3,
+      "wallTimeMs": 312,
+      "durableObjectId": null,
+      "entrypoint": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795735763346,
+      "version": "028c43fb-200a-43c4-8848-0aa385dd7215",
+      "outcome": "ok",
+      "status": 200,
+      "path": "/api/boards",
+      "cpuTimeMs": 1,
+      "wallTimeMs": 140,
+      "durableObjectId": null,
+      "entrypoint": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795735930837,
+      "version": "028c43fb-200a-43c4-8848-0aa385dd7215",
+      "outcome": "ok",
+      "status": 200,
+      "path": "/api/public-app",
+      "cpuTimeMs": 6,
+      "wallTimeMs": 255,
+      "durableObjectId": "3a94cd3b64e2fa8b7daae241c55caec7d9a4bee264e1b7720069df5ebe4157b6",
+      "entrypoint": "PublicSnapshot",
+      "exceptions": [],
+      "logs": [
+        {
+          "status": 200,
+          "revision": 0,
+          "expires": 1795735990837,
+          "bytes": 1934914,
+          "probe": true
+        }
+      ]
+    },
+    {
+      "at": 1795735930601,
+      "version": "028c43fb-200a-43c4-8848-0aa385dd7215",
+      "outcome": "ok",
+      "status": 200,
+      "path": "/api/public-app",
+      "cpuTimeMs": 1,
+      "wallTimeMs": 222,
+      "durableObjectId": null,
+      "entrypoint": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795735932196,
+      "version": "028c43fb-200a-43c4-8848-0aa385dd7215",
+      "outcome": "ok",
+      "status": 200,
+      "path": "/",
+      "cpuTimeMs": 0,
+      "wallTimeMs": 0,
+      "durableObjectId": null,
+      "entrypoint": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795735932928,
+      "version": "028c43fb-200a-43c4-8848-0aa385dd7215",
+      "outcome": "ok",
+      "status": 200,
+      "path": "/",
+      "cpuTimeMs": 0,
+      "wallTimeMs": 0,
+      "durableObjectId": null,
+      "entrypoint": null,
+      "exceptions": [],
+      "logs": []
+    }
+  ],
+  "before": {
+    "publications": {
+      "count": 7139,
+      "sha256": "972571d4283dc2096a64a4b3d6e72997d8734f5353ce96995e60742dcdf3a999"
+    },
+    "revisions": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "checkpoints": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "signatures": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "split": [
+      {
+        "source": "Capacitación Docente",
+        "category": "Capacitación",
+        "n": 243
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6161",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6162",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6186",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6192",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6197",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6294",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6295",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6311",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6330",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6334",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6335",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6342",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6343",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6344",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6345",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6346",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6347",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6348",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6349",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6350",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6351",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6359",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6364",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6373",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6375",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6432",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6434",
+        "n": 1
+      },
+      {
+        "source": "CeNET / INET",
+        "category": "CeNET / INET",
+        "n": 6
+      },
+      {
+        "source": "CeNET / INET",
+        "category": "Diseño, Producción y Especializaciones Técnicas",
+        "n": 22
+      },
+      {
+        "source": "CeNET / INET",
+        "category": "Estrategias pedagógicas para la ETP",
+        "n": 8
+      },
+      {
+        "source": "CeNET / INET",
+        "category": "Innovación y entornos digitales",
+        "n": 11
+      },
+      {
+        "source": "CeNET / INET",
+        "category": "Seguridad institucional",
+        "n": 3
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Ambiente, territorio y producción",
+        "n": 2
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Cuidado, diversidad y vida escolar",
+        "n": 4
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Cursos para nivel inicial",
+        "n": 6
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Educación Financiera y Tributaria",
+        "n": 4
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Enseñanza de idiomas",
+        "n": 1
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Habilidades socioemocionales",
+        "n": 3
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "IA y Educación",
+        "n": 2
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "INFoD / AulaS-TIC",
+        "n": 1
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Plan Nacional de Alfabetización",
+        "n": 15
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Programa Nacional de Matemática",
+        "n": 6
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Webinarios INFoD",
+        "n": 21
+      },
+      {
+        "source": "Informacion oficial Tucuman",
+        "category": "Tramites",
+        "n": 1
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "CIIDEPT",
+        "n": 1
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Capacitación y FDCI",
+        "n": 1
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Expedientes",
+        "n": 1
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Gestión escolar",
+        "n": 2
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Jubilaciones",
+        "n": 1
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Juntas",
+        "n": 1
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Licencias y salud laboral",
+        "n": 1
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Normativa y documentación",
+        "n": 2
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Personal docente",
+        "n": 2
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Sueldo y haberes",
+        "n": 2
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Trámites",
+        "n": 2
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Títulos y certificados",
+        "n": 2
+      },
+      {
+        "source": "Padrones y Comunicados",
+        "category": "Comunicados",
+        "n": 4
+      },
+      {
+        "source": "Padrones y Comunicados",
+        "category": "Llamados abiertos",
+        "n": 1286
+      },
+      {
+        "source": "Padrones y Comunicados",
+        "category": "Padrones",
+        "n": 3454
+      },
+      {
+        "source": "Padrones y Comunicados",
+        "category": "Resoluciones",
+        "n": 2
+      },
+      {
+        "source": "SIME",
+        "category": "Llamado abierto",
+        "n": 511
+      },
+      {
+        "source": "SIME",
+        "category": "Procedimiento pendiente de verificar",
+        "n": 285
+      },
+      {
+        "source": "SIME",
+        "category": "Vacante",
+        "n": 1193
+      }
+    ],
+    "reads": 7139
+  },
+  "after": {
+    "publications": {
+      "count": 7139,
+      "sha256": "972571d4283dc2096a64a4b3d6e72997d8734f5353ce96995e60742dcdf3a999"
+    },
+    "revisions": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "checkpoints": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "signatures": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "split": [
+      {
+        "source": "Capacitación Docente",
+        "category": "Capacitación",
+        "n": 243
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6161",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6162",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6186",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6192",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6197",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6294",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6295",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6311",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6330",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6334",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6335",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6342",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6343",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6344",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6345",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6346",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6347",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6348",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6349",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6350",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6351",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6359",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6364",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6373",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6375",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6432",
+        "n": 1
+      },
+      {
+        "source": "Capacitación Docente",
+        "category": "Comisión #6434",
+        "n": 1
+      },
+      {
+        "source": "CeNET / INET",
+        "category": "CeNET / INET",
+        "n": 6
+      },
+      {
+        "source": "CeNET / INET",
+        "category": "Diseño, Producción y Especializaciones Técnicas",
+        "n": 22
+      },
+      {
+        "source": "CeNET / INET",
+        "category": "Estrategias pedagógicas para la ETP",
+        "n": 8
+      },
+      {
+        "source": "CeNET / INET",
+        "category": "Innovación y entornos digitales",
+        "n": 11
+      },
+      {
+        "source": "CeNET / INET",
+        "category": "Seguridad institucional",
+        "n": 3
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Ambiente, territorio y producción",
+        "n": 2
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Cuidado, diversidad y vida escolar",
+        "n": 4
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Cursos para nivel inicial",
+        "n": 6
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Educación Financiera y Tributaria",
+        "n": 4
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Enseñanza de idiomas",
+        "n": 1
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Habilidades socioemocionales",
+        "n": 3
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "IA y Educación",
+        "n": 2
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "INFoD / AulaS-TIC",
+        "n": 1
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Plan Nacional de Alfabetización",
+        "n": 15
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Programa Nacional de Matemática",
+        "n": 6
+      },
+      {
+        "source": "INFoD / AulaS-TIC",
+        "category": "Webinarios INFoD",
+        "n": 21
+      },
+      {
+        "source": "Informacion oficial Tucuman",
+        "category": "Tramites",
+        "n": 1
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "CIIDEPT",
+        "n": 1
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Capacitación y FDCI",
+        "n": 1
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Expedientes",
+        "n": 1
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Gestión escolar",
+        "n": 2
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Jubilaciones",
+        "n": 1
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Juntas",
+        "n": 1
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Licencias y salud laboral",
+        "n": 1
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Normativa y documentación",
+        "n": 2
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Personal docente",
+        "n": 2
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Sueldo y haberes",
+        "n": 2
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Trámites",
+        "n": 2
+      },
+      {
+        "source": "Información oficial Tucumán",
+        "category": "Títulos y certificados",
+        "n": 2
+      },
+      {
+        "source": "Padrones y Comunicados",
+        "category": "Comunicados",
+        "n": 4
+      },
+      {
+        "source": "Padrones y Comunicados",
+        "category": "Llamados abiertos",
+        "n": 1286
+      },
+      {
+        "source": "Padrones y Comunicados",
+        "category": "Padrones",
+        "n": 3454
+      },
+      {
+        "source": "Padrones y Comunicados",
+        "category": "Resoluciones",
+        "n": 2
+      },
+      {
+        "source": "SIME",
+        "category": "Llamado abierto",
+        "n": 511
+      },
+      {
+        "source": "SIME",
+        "category": "Procedimiento pendiente de verificar",
+        "n": 285
+      },
+      {
+        "source": "SIME",
+        "category": "Vacante",
+        "n": 1193
+      }
+    ],
+    "reads": 7139
+  },
+  "assets": {
+    "documents": [
+      {
+        "path": "/documents/Modelo_Licencia_Art_51F.docx",
+        "status": 200,
+        "bytes": 14056,
+        "sha256": "97ebb8bd506466b2011511624416930af0f70506980e2a898074f4b708204a46",
+        "unchanged": true
+      },
+      {
+        "path": "/documents/Nueva_DDJJ_2026_en_blanco.docx",
+        "status": 200,
+        "bytes": 37017,
+        "sha256": "8ebf7eab0eb66fc146f285596bc0439b433a6f20b9a62913e5e86c186385aee7",
+        "unchanged": true
+      },
+      {
+        "path": "/documents/Nueva_DDJJ_2026_en_blanco.pdf",
+        "status": 200,
+        "bytes": 59794,
+        "sha256": "1baf727f7ccf823bc82a514e1dbc928c39877525ddcfa3f19077955845948532",
+        "unchanged": true
+      },
+      {
+        "path": "/documents/Parte_de_Licencias_Tucuman.pdf",
+        "status": 200,
+        "bytes": 79730,
+        "sha256": "a557a8dc8d4a7e750ca248199e4ed9540be94192c19655af701ea76f43d9d9b6",
+        "unchanged": true
+      }
+    ],
+    "auth": {
+      "status": 200,
+      "configured": true,
+      "authenticated": false
+    }
+  },
+  "publicSources": {
+    "Informacion oficial Tucuman": 1,
+    "Información oficial Tucumán": 18,
+    "SIME": 281,
+    "INFoD / AulaS-TIC": 64,
+    "CeNET / INET": 36
+  },
+  "publicResponseBytes": 1934914,
+  "migration0101": [
+    {
+      "type": "trigger",
+      "name": "public_snapshot_pub_delete"
+    },
+    {
+      "type": "trigger",
+      "name": "public_snapshot_pub_insert"
+    },
+    {
+      "type": "trigger",
+      "name": "public_snapshot_pub_update"
+    },
+    {
+      "type": "table",
+      "name": "public_snapshot_revision"
+    },
+    {
+      "type": "trigger",
+      "name": "public_snapshot_sync_delete"
+    },
+    {
+      "type": "trigger",
+      "name": "public_snapshot_sync_insert"
+    },
+    {
+      "type": "trigger",
+      "name": "public_snapshot_sync_update"
+    }
+  ],
+  "migration0100Repeated": false,
+  "alarmsScheduled": false,
+  "newImports": 0,
+  "newDocuments": 0,
+  "retainedGenericCommunicadoReferences": 4,
+  "individualCommunicadosReturned": 0,
+  "schedules": [
+    "1 * * * *",
+    "*/5 * * * *"
+  ],
+  "historyTriggersPreserved": [
+    "trg_juntas_revision_changed",
+    "trg_juntas_revision_created",
+    "trg_juntas_revision_previous"
+  ],
+  "activeLeases": 0,
+  "visualChecks": {
+    "padrones": "real records and official links visible",
+    "comunicados": "empty classified view with explicit incomplete-coverage notice",
+    "ddjj": "PDF and DOCX cards visible",
+    "licencias": "PDF and DOCX cards visible"
+  },
+  "remainingCaveats": [
+    "Only 8 tagged measurement GETs; not a sustained-performance statistic",
+    "No documentary recovery/import performed",
+    "REST object inventory initially empty; later listed the measured object with stored data",
+    "Account-wide remaining billing quotas not queried again"
+  ]
+}
