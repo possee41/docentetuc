@@ -1,0 +1,667 @@
+{
+  "date": "2026-11-26",
+  "codeSha": "69b92fb114471e80c015c1f6dd2b64421982e773",
+  "sourceHashes": {
+    "prototypes/public-snapshot/worker.ts": "8c53aa9c51b62e597e9998fcfef1694c9b73148e8e641e53a114c56b6f372ca2",
+    "prototypes/public-snapshot/coordinator.mjs": "c1a2102d25edfe11566fc049394a5590083af92e995494c356dddc49c8866f17",
+    "prototypes/public-snapshot/revision.sql": "103fa84db6f580f26af6ae59f99e4cde25a759bd5bfba2d6c1437dd9f4a7c7c2"
+  },
+  "candidateVersion": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+  "originalVersion": "6a2af26c-fa5f-4cdd-b402-edb4bdf4634a",
+  "restoredCodeVersion": "7930c830-d3ff-463c-b62d-e422ee659c65",
+  "restoredDeployment": "0df4746c-7027-4ae5-b095-ac8cb0cf8d4c",
+  "worker": "docentetuc-web-juntas-canary-1-2",
+  "database": "0979f2c2-0e96-4b5c-811b-adcccc2dbd6d",
+  "requests": [
+    {
+      "label": "canary-cold",
+      "start": 1795728620433,
+      "representative": false,
+      "status": 200,
+      "cache": "PREPARED",
+      "revision": "0",
+      "expires": "1795728682328",
+      "bytes": 894126,
+      "sha256": "416c9a1c00bb5b419f467caed0f076ab140555cc0c042946218e2ecfca2e780b",
+      "ray": "a60bfe6d6f27f190-GRU",
+      "wallClientMs": 1959
+    },
+    {
+      "label": "canary-hot",
+      "start": 1795728636937,
+      "representative": false,
+      "status": 200,
+      "cache": "PREPARED",
+      "revision": "0",
+      "expires": "1795728682328",
+      "bytes": 894126,
+      "sha256": "416c9a1c00bb5b419f467caed0f076ab140555cc0c042946218e2ecfca2e780b",
+      "ray": "a60bfed458f4f23d-GRU",
+      "wallClientMs": 1066
+    },
+    {
+      "label": "representative-cold-a",
+      "start": 1795728656987,
+      "representative": true,
+      "status": 200,
+      "cache": "PREPARED",
+      "revision": "0",
+      "expires": "1795728718740",
+      "bytes": 1934914,
+      "sha256": "8a704ca24b3a578419bdef7258492609638b83c1de41666e0243c1d1d761eab1",
+      "ray": "a60bff51aeac0113-GRU",
+      "wallClientMs": 2229
+    },
+    {
+      "label": "representative-cold-b",
+      "start": 1795728656987,
+      "representative": true,
+      "status": 200,
+      "cache": "PREPARED",
+      "revision": "0",
+      "expires": "1795728718740",
+      "bytes": 1934914,
+      "sha256": "8a704ca24b3a578419bdef7258492609638b83c1de41666e0243c1d1d761eab1",
+      "ray": "a60bff51acbbf250-GRU",
+      "wallClientMs": 1968
+    },
+    {
+      "label": "representative-hot",
+      "start": 1795728677408,
+      "representative": true,
+      "status": 200,
+      "cache": "PREPARED",
+      "revision": "0",
+      "expires": "1795728718740",
+      "bytes": 1934914,
+      "sha256": "8a704ca24b3a578419bdef7258492609638b83c1de41666e0243c1d1d761eab1",
+      "ray": "a60bffd14e821b29-GRU",
+      "wallClientMs": 1450
+    },
+    {
+      "label": "canary-expired",
+      "start": 1795728705870,
+      "representative": false,
+      "status": 200,
+      "cache": "PREPARED",
+      "revision": "1",
+      "expires": "1795728767296",
+      "bytes": 894126,
+      "sha256": "416c9a1c00bb5b419f467caed0f076ab140555cc0c042946218e2ecfca2e780b",
+      "ray": "a60c00832a17fe12-GRU",
+      "wallClientMs": 1356
+    },
+    {
+      "label": "representative-expired",
+      "start": 1795728734855,
+      "representative": true,
+      "status": 200,
+      "cache": "PREPARED",
+      "revision": "1",
+      "expires": "1795728796264",
+      "bytes": 1934914,
+      "sha256": "8a704ca24b3a578419bdef7258492609638b83c1de41666e0243c1d1d761eab1",
+      "ray": "a60c01384e43fc2c-GRU",
+      "wallClientMs": 1730
+    },
+    {
+      "label": "representative-bypass",
+      "start": 1795728736648,
+      "representative": true,
+      "status": 200,
+      "cache": "BYPASS",
+      "revision": "1",
+      "expires": "1795728797923",
+      "bytes": 1934914,
+      "sha256": "8a704ca24b3a578419bdef7258492609638b83c1de41666e0243c1d1d761eab1",
+      "ray": "a60c014399a323b4-GRU",
+      "wallClientMs": 1597
+    }
+  ],
+  "native": [
+    {
+      "at": 1795728622326,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 31,
+      "wallTimeMs": 300,
+      "eventType": null,
+      "durableObjectId": "9ff693097c8b4e88afc84c478b3bba9a5a664a1deb4c3b0be0c0654b106c4873",
+      "exceptions": [],
+      "logs": [
+        {
+          "snapshot": "build",
+          "dataset": "canary",
+          "count": 1,
+          "bytes": 894126,
+          "wallMs": 71
+        },
+        {
+          "snapshot": "served",
+          "dataset": "canary",
+          "status": 200,
+          "revision": 0,
+          "expires": 1795728682328
+        }
+      ]
+    },
+    {
+      "at": 1795728621687,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 0,
+      "wallTimeMs": 864,
+      "eventType": null,
+      "durableObjectId": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795728638414,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 5,
+      "wallTimeMs": 7,
+      "eventType": null,
+      "durableObjectId": "9ff693097c8b4e88afc84c478b3bba9a5a664a1deb4c3b0be0c0654b106c4873",
+      "exceptions": [],
+      "logs": [
+        {
+          "snapshot": "served",
+          "dataset": "canary",
+          "status": 200,
+          "revision": 0,
+          "expires": 1795728682328
+        }
+      ]
+    },
+    {
+      "at": 1795728638166,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 1,
+      "wallTimeMs": 145,
+      "eventType": null,
+      "durableObjectId": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795728658740,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 24,
+      "wallTimeMs": 632,
+      "eventType": null,
+      "durableObjectId": "4dcabf9d4d59745156a97beef6e74e1317d178fec5105e8dc72f38ff63bb4581",
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795728658762,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 30,
+      "wallTimeMs": 592,
+      "eventType": null,
+      "durableObjectId": "4dcabf9d4d59745156a97beef6e74e1317d178fec5105e8dc72f38ff63bb4581",
+      "exceptions": [],
+      "logs": [
+        {
+          "snapshot": "build",
+          "dataset": "representative",
+          "count": 1,
+          "bytes": 1934914,
+          "wallMs": 252
+        },
+        {
+          "snapshot": "served",
+          "dataset": "representative",
+          "status": 200,
+          "revision": 0,
+          "expires": 1795728718740
+        },
+        {
+          "snapshot": "served",
+          "dataset": "representative",
+          "status": 200,
+          "revision": 0,
+          "expires": 1795728718740
+        }
+      ]
+    },
+    {
+      "at": 1795728658228,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 0,
+      "wallTimeMs": 1063,
+      "eventType": null,
+      "durableObjectId": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795728658198,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 1,
+      "wallTimeMs": 887,
+      "eventType": null,
+      "durableObjectId": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795728672429,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "path": null,
+      "cpuTimeMs": 2,
+      "wallTimeMs": 38,
+      "eventType": null,
+      "durableObjectId": "9ff693097c8b4e88afc84c478b3bba9a5a664a1deb4c3b0be0c0654b106c4873",
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795728678870,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 7,
+      "wallTimeMs": 254,
+      "eventType": null,
+      "durableObjectId": "4dcabf9d4d59745156a97beef6e74e1317d178fec5105e8dc72f38ff63bb4581",
+      "exceptions": [],
+      "logs": [
+        {
+          "snapshot": "served",
+          "dataset": "representative",
+          "status": 200,
+          "revision": 0,
+          "expires": 1795728718740
+        }
+      ]
+    },
+    {
+      "at": 1795728678622,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 1,
+      "wallTimeMs": 144,
+      "eventType": null,
+      "durableObjectId": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795728707295,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 17,
+      "wallTimeMs": 165,
+      "eventType": null,
+      "durableObjectId": "9ff693097c8b4e88afc84c478b3bba9a5a664a1deb4c3b0be0c0654b106c4873",
+      "exceptions": [],
+      "logs": [
+        {
+          "snapshot": "build",
+          "dataset": "canary",
+          "count": 1,
+          "bytes": 894126,
+          "wallMs": 84
+        },
+        {
+          "snapshot": "served",
+          "dataset": "canary",
+          "status": 200,
+          "revision": 1,
+          "expires": 1795728767296
+        }
+      ]
+    },
+    {
+      "at": 1795728707093,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 0,
+      "wallTimeMs": 281,
+      "eventType": null,
+      "durableObjectId": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795728709017,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "path": null,
+      "cpuTimeMs": 5,
+      "wallTimeMs": 39,
+      "eventType": null,
+      "durableObjectId": "4dcabf9d4d59745156a97beef6e74e1317d178fec5105e8dc72f38ff63bb4581",
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795728722430,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "path": null,
+      "cpuTimeMs": 2,
+      "wallTimeMs": 38,
+      "eventType": null,
+      "durableObjectId": "9ff693097c8b4e88afc84c478b3bba9a5a664a1deb4c3b0be0c0654b106c4873",
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795728736263,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 55,
+      "wallTimeMs": 583,
+      "eventType": null,
+      "durableObjectId": "4dcabf9d4d59745156a97beef6e74e1317d178fec5105e8dc72f38ff63bb4581",
+      "exceptions": [],
+      "logs": [
+        {
+          "snapshot": "build",
+          "dataset": "representative",
+          "count": 1,
+          "bytes": 1934914,
+          "wallMs": 310
+        },
+        {
+          "snapshot": "served",
+          "dataset": "representative",
+          "status": 200,
+          "revision": 1,
+          "expires": 1795728796264
+        }
+      ]
+    },
+    {
+      "at": 1795728736066,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 0,
+      "wallTimeMs": 553,
+      "eventType": null,
+      "durableObjectId": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795728737923,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 42,
+      "wallTimeMs": 483,
+      "eventType": null,
+      "durableObjectId": "4dcabf9d4d59745156a97beef6e74e1317d178fec5105e8dc72f38ff63bb4581",
+      "exceptions": [],
+      "logs": [
+        {
+          "snapshot": "build",
+          "dataset": "representative",
+          "count": 2,
+          "bytes": 1934914,
+          "wallMs": 217
+        },
+        {
+          "snapshot": "served",
+          "dataset": "representative",
+          "status": 200,
+          "revision": 1,
+          "expires": 1795728797923
+        }
+      ]
+    },
+    {
+      "at": 1795728737881,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "GET",
+      "path": "/api/public-app",
+      "cpuTimeMs": 0,
+      "wallTimeMs": 447,
+      "eventType": null,
+      "durableObjectId": null,
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795728759019,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "path": null,
+      "cpuTimeMs": 5,
+      "wallTimeMs": 38,
+      "eventType": null,
+      "durableObjectId": "4dcabf9d4d59745156a97beef6e74e1317d178fec5105e8dc72f38ff63bb4581",
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795728772431,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "path": null,
+      "cpuTimeMs": 3,
+      "wallTimeMs": 56,
+      "eventType": null,
+      "durableObjectId": "9ff693097c8b4e88afc84c478b3bba9a5a664a1deb4c3b0be0c0654b106c4873",
+      "exceptions": [],
+      "logs": []
+    },
+    {
+      "at": 1795728772793,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "POST",
+      "path": "/__probe_close",
+      "cpuTimeMs": 1,
+      "wallTimeMs": 35,
+      "eventType": null,
+      "durableObjectId": "9ff693097c8b4e88afc84c478b3bba9a5a664a1deb4c3b0be0c0654b106c4873",
+      "exceptions": [],
+      "logs": [
+        {
+          "snapshot": "closed",
+          "dataset": "canary",
+          "alarm": null
+        }
+      ]
+    },
+    {
+      "at": 1795728773242,
+      "worker": "docentetuc-web-juntas-canary-1-2",
+      "version": "51e1ff3f-e447-495e-9fc0-6b979f68d52a",
+      "outcome": "ok",
+      "status": 200,
+      "method": "POST",
+      "path": "/__probe_close",
+      "cpuTimeMs": 0,
+      "wallTimeMs": 33,
+      "eventType": null,
+      "durableObjectId": "4dcabf9d4d59745156a97beef6e74e1317d178fec5105e8dc72f38ff63bb4581",
+      "exceptions": [],
+      "logs": [
+        {
+          "snapshot": "closed",
+          "dataset": "representative",
+          "alarm": null
+        }
+      ]
+    }
+  ],
+  "integrityBefore": [
+    {
+      "count": 248,
+      "sha256": "dc167be1486cb2fac462e8b21f9a064629ae8edb16774dd92becef5a26fb6ebc"
+    },
+    {
+      "count": 89,
+      "sha256": "0ed06a99f033e862119b21a26d0e679d7a004fc8a2ab6422229fea39e05980fa"
+    },
+    {
+      "count": 15,
+      "sha256": "13badc7e75a24d4ad9b126fc91e76712fb39524b5d18264e79e947709d1fde64"
+    },
+    {
+      "count": 65,
+      "sha256": "cdf40dc7faaf5ea0ddec1790fbc62db495a74b2092d8de51b38e791060d9259d"
+    }
+  ],
+  "integrityAfter": [
+    {
+      "count": 248,
+      "sha256": "dc167be1486cb2fac462e8b21f9a064629ae8edb16774dd92becef5a26fb6ebc"
+    },
+    {
+      "count": 89,
+      "sha256": "0ed06a99f033e862119b21a26d0e679d7a004fc8a2ab6422229fea39e05980fa"
+    },
+    {
+      "count": 15,
+      "sha256": "13badc7e75a24d4ad9b126fc91e76712fb39524b5d18264e79e947709d1fde64"
+    },
+    {
+      "count": 65,
+      "sha256": "cdf40dc7faaf5ea0ddec1790fbc62db495a74b2092d8de51b38e791060d9259d"
+    }
+  ],
+  "closed": {
+    "status": 200,
+    "result": [
+      {
+        "closed": true,
+        "alarm": null
+      },
+      {
+        "closed": true,
+        "alarm": null
+      }
+    ]
+  },
+  "namespace": [
+    {
+      "id": "fd5a575222df418ca357f59e87ab3183",
+      "name": "docentetuc-web-juntas-canary-1-2_PublicSnapshot",
+      "script": "docentetuc-web-juntas-canary-1-2"
+    }
+  ],
+  "remainingObjects": [],
+  "restoredRoutes": [
+    {
+      "path": "/api/public-app",
+      "status": 200,
+      "keys": [
+        "profile",
+        "publicProfile",
+        "publications",
+        "saved",
+        "notifications",
+        "reminders",
+        "designations",
+        "manualEvents",
+        "sync"
+      ],
+      "neutralPublicBody": true
+    },
+    {
+      "path": "/api/boards/padrones?limit=50",
+      "status": 200,
+      "keys": [
+        "items",
+        "nextCursor",
+        "coverage"
+      ]
+    }
+  ],
+  "temporaryD1SchemaRemoved": true,
+  "initialOriginalTriggers": [
+    "trg_juntas_revision_changed",
+    "trg_juntas_revision_created",
+    "trg_juntas_revision_previous"
+  ],
+  "finalOriginalTriggers": [
+    "trg_juntas_revision_changed",
+    "trg_juntas_revision_created",
+    "trg_juntas_revision_previous"
+  ],
+  "billingMetadataRead": "HTTP 403; not repeated",
+  "remotePublicationWrites": 0,
+  "remoteImports": 0,
+  "productionOperations": 0
+}
