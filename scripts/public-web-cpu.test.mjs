@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import{DatabaseSync}from'node:sqlite';
 import path from 'node:path';import{createRequire}from'node:module';
 import{APP_PUBLICATIONS_QUERY}from'../lib/app-publications-query.ts';
-import{PUBLIC_APP_ROWS_QUERY,publicAppApi,getPublicApp}from'../lib/public-app.ts';
+import{PUBLIC_APP_ROWS_QUERY,PUBLIC_APP_TRANSPORT_QUERY,publicAppApi,getPublicApp}from'../lib/public-app.ts';
 import{juntasDocument}from'./juntas-document.mjs';
 
 test('public JSON rows preserve every column, value, order, large metadata, nulls and escaping',()=>{
@@ -12,6 +12,7 @@ test('public JSON rows preserve every column, value, order, large metadata, null
   const original=db.prepare(APP_PUBLICATIONS_QUERY).all(),encoded=db.prepare(PUBLIC_APP_ROWS_QUERY).all().map(row=>JSON.parse(row.row_json));
   assert.equal(original.length,400);assert.deepEqual(encoded,JSON.parse(JSON.stringify(original)));assert.equal(Object.keys(encoded[0]).length,db.prepare('PRAGMA table_info(publications)').all().length);
   assert.ok(encoded.every(x=>typeof x.metadata==='string'));assert.ok(encoded.some(x=>x.starts_at===null));assert.ok(encoded.some(x=>x.metadata.length>16000));
+  assert.deepEqual(db.prepare(PUBLIC_APP_TRANSPORT_QUERY).all().map(row=>JSON.parse(Buffer.from(row.row_hex,'hex').toString('utf8'))),encoded);
  }finally{db.close();}
 });
 
@@ -28,6 +29,21 @@ test('fast public endpoint leaves private/API/RSC operations to existing authent
  for(const headers of [{RSC:'1'},{'Next-Router-State-Tree':'synthetic'},{Accept:'text/x-component'}])assert.equal(juntasDocument(new Request('https://local.invalid/',{headers}),documents),null);
  assert.equal(await juntasDocument(new Request('https://local.invalid/',{method:'HEAD'}),documents).text(),'');
  const failed=await getPublicApp(new Request('https://local.invalid/api/public-app'),forbidden);assert.equal(failed.status,503);assert.equal(failed.headers.get('cache-control'),'no-store');
+});
+
+test('MISS prepares one immutable body without clone; cache and client independently receive identical 2 MB content',async()=>{
+ const saved=Object.getOwnPropertyDescriptor(globalThis,'caches'),clone=Response.prototype.clone;
+ const records=Array.from({length:400},(_,i)=>({id:'local-'+i,metadata:JSON.stringify({text:'\\"ñ'.repeat(1500)})}));
+ const encoded=records.map(row=>[Buffer.from(JSON.stringify(row)).toString('hex')]);let reads=0,stored=null,storedHeaders=null;
+ const cache={async match(){return stored?new Response(stored,{headers:storedHeaders}):undefined;},async put(key,response){assert.equal(key.headers.has('authorization'),false);assert.equal(response.headers.get('cache-control'),'public, max-age=60');storedHeaders=new Headers(response.headers);stored=await response.arrayBuffer();}};
+ Object.defineProperty(globalThis,'caches',{configurable:true,value:{default:cache}});Response.prototype.clone=()=>{throw Error('RESPONSE_TEE_MUST_NOT_BE_USED');};
+ try{
+  const db={prepare(sql){return{raw:async()=>{assert.match(sql,/AS row_hex/);reads++;return encoded;},all:async()=>{reads++;return{results:[]};}};}};
+  const response=await getPublicApp(new Request('https://local.invalid/api/public-app'),()=>db);
+  assert.equal(response.status,200);assert.equal(response.headers.get('x-public-app-cache'),'MISS');assert.equal(reads,2);
+  const client=await response.arrayBuffer();assert.ok(client.byteLength>1_900_000);assert.deepEqual(new Uint8Array(client),new Uint8Array(stored));assert.deepEqual(JSON.parse(new TextDecoder().decode(client)).publications,records);
+  const hit=await getPublicApp(new Request('https://local.invalid/api/public-app'),()=>{throw Error('CACHE_HIT_MUST_NOT_READ_D1');});assert.equal(hit.headers.get('x-public-app-cache'),'HIT');assert.deepEqual(new Uint8Array(await hit.arrayBuffer()),new Uint8Array(stored));
+ }finally{Response.prototype.clone=clone;if(saved)Object.defineProperty(globalThis,'caches',saved);else delete globalThis.caches;}
 });
 
 test('compiled homepage equals same-build SSR with cookies and future date, without DB or network',async()=>{

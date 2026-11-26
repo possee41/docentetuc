@@ -15,7 +15,7 @@ const output = resolve(root, ".wrangler/public-app-cache-canary");
 mkdirSync(output, { recursive: true });
 const result = await build({ stdin: { resolveDir: root, loader: "ts", contents: `
   import {GET} from './app/api/public-app/route.ts';
-  import {PUBLIC_APP_ROWS_QUERY} from './lib/public-app.ts';
+  import {PUBLIC_APP_TRANSPORT_QUERY} from './lib/public-app.ts';
   import {storage} from 'public-cache-test-context';
   const syncSQL='SELECT source, synced_at, last_attempt_at, last_successful_sync_at, sync_status FROM sync_state ORDER BY source';
   const closed=()=>new Response('CACHE_TEST_CLOSED',{status:503,headers:{'Cache-Control':'no-store'}});
@@ -31,7 +31,7 @@ const result = await build({ stdin: { resolveDir: root, loader: "ts", contents: 
       ||!['miss','hit','expired'].includes(step)) return new Response('NOT_FOUND',{status:404});
     const metrics={queries:0,rowsRead:0,rowsWritten:0,statements:[]};
     const db={prepare(sql){
-      const label=sql===PUBLIC_APP_ROWS_QUERY?'publications':sql===syncSQL?'sync':null;
+      const label=sql===PUBLIC_APP_TRANSPORT_QUERY?'publications':sql===syncSQL?'sync':null;
       if(!label) throw new Error('CACHE_TEST_SQL_DENIED');
       return {async all(){
         metrics.queries++;
@@ -40,7 +40,7 @@ const result = await build({ stdin: { resolveDir: root, loader: "ts", contents: 
         metrics.rowsRead+=m.rows_read;metrics.rowsWritten+=m.rows_written;
         metrics.statements.push({label,rowsRead:m.rows_read,rowsWritten:m.rows_written});
         return result;
-      }};
+      },async raw(){const r=await this.all();return r.results.map(row=>Object.values(row));}};
     }};
     let response;
     try {response=await storage.run(db,()=>GET(request));}catch{return closed();}
@@ -53,7 +53,7 @@ const result = await build({ stdin: { resolveDir: root, loader: "ts", contents: 
     headers.set('X-Public-Cache-Test-Rows-Written',String(metrics.rowsWritten));
     return new Response(response.body,{status:response.status,headers});
   }};` }, bundle: true, write: false, platform: "browser", format: "esm", target: "es2022",
-  external: ["cloudflare:workers", "node:async_hooks"], plugins: [{ name: "public-cache-measured-db", setup(b) {
+  external: ["cloudflare:workers", "node:async_hooks", "node:buffer"], plugins: [{ name: "public-cache-measured-db", setup(b) {
     b.onResolve({ filter: /^@\/db(?:\/d1)?$|^public-cache-test-context$/ }, a => ({ path: a.path, namespace: "measured" }));
     b.onLoad({ filter: /.*/, namespace: "measured" }, a => ({ contents: a.path.startsWith("@/db")
       ? "import {storage} from 'public-cache-test-context'; export const getD1=()=>{const db=storage.getStore();if(!db)throw new Error('CACHE_TEST_NO_CONTEXT');return db};"

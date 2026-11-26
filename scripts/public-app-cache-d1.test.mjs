@@ -10,7 +10,7 @@ const { build } = require("../node_modules/.pnpm/esbuild@0.28.2/node_modules/esb
 const { Miniflare } = require("../node_modules/.pnpm/miniflare@4.20260515.0/node_modules/miniflare");
 
 test("public-app: caché real aislada, privacidad, expiración y consumo D1", async (t) => {
-  const bundled = await build({ stdin: { resolveDir: process.cwd(), loader: "ts", contents: `
+  const bundled = await build({ external: ['node:buffer'], stdin: { resolveDir: process.cwd(), loader: "ts", contents: `
     import {GET} from './app/api/public-app/route.ts';
     const realNow=Date.now, started=realNow();
     export default {async fetch(request,env){
@@ -25,7 +25,7 @@ test("public-app: caché real aislada, privacidad, expiración y consumo D1", as
           if(request.headers.has('x-test-d1-failure')) throw new Error('SYNTHETIC_D1_FAILURE');
           const r=await env.DB.prepare(sql).all();
           metrics.rowsRead+=r.meta.rows_read;metrics.rowsWritten+=r.meta.rows_written;return r;
-        }};
+        },async raw(){const r=await this.all();return r.results.map(row=>Object.values(row));}};
       }};
       const start=performance.now(),response=await GET(request),body=await response.json();
       const result={status:response.status,body,headers:Object.fromEntries(response.headers),metrics,wallMs:performance.now()-start};
@@ -44,7 +44,7 @@ test("public-app: caché real aislada, privacidad, expiración y consumo D1", as
       b.onResolve({ filter: /^@\// }, args => ({ path: resolve(process.cwd(), args.path.slice(2) + ".ts") }));
     } }] });
   const mf = new Miniflare({ modules: true, script: bundled.outputFiles[0].text, d1Databases: ["DB"],
-    cachePersist: false, d1Persist: false });
+    cachePersist: false, d1Persist: false, compatibilityDate: '2026-05-15', compatibilityFlags: ['nodejs_compat'] });
   try {
     const db = await mf.getD1Database("DB");
     await db.prepare(readFileSync('lib/fixtures/juntas-production-schema-20261121.sql','utf8').match(/CREATE TABLE `publications`[\s\S]+?;/)[0]).run();

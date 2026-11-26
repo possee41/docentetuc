@@ -8,7 +8,7 @@ const require = createRequire(realpathSync("node_modules/wrangler/package.json")
 await require("esbuild").build({ entryPoints: ["lib/juntas-public-api.ts"],
   outfile: "dist/server/juntas-public-api.mjs", bundle: true, format: "esm", platform: "browser", target: "es2022" });
 await require("esbuild").build({ entryPoints: ["lib/public-app.ts"],
-  outfile: "dist/server/public-app-api.mjs", bundle: true, format: "esm", platform: "browser", target: "es2022" });
+  outfile: "dist/server/public-app-api.mjs", bundle: true, format: "esm", platform: "browser", target: "es2022", external: ['node:buffer'] });
 
 await prepareJuntasShell();
 

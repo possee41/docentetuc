@@ -1,4 +1,5 @@
 import { APP_PUBLICATIONS_QUERY } from "./app-publications-query.ts";
+import { Buffer } from 'node:buffer';
 export type PublicAppSettings = { PUBLIC_APP_CACHE_ENABLED?: string; PUBLIC_APP_CACHE_VERSION?: string };
 
 const TTL_MS = 60_000;
@@ -8,6 +9,10 @@ const EXPIRES_HEADER = "X-Public-App-Cache-Expires";
 // Per-row JSON avoids D1's single-value size limit for the complete catalogue.
 const PUBLIC_COLUMNS = 'id,source,external_id,kind,category,title,summary,level,area,junta,location,shift,character,starts_at,ends_at,status,official_url,content_hash,source_updated_at,first_seen_at,updated_at,metadata,circuit,source_circuit_raw,circuit_inference_source,last_seen_at,last_changed_at,source_published_at,registration_open_at,registration_close_at,expires_at,source_status,normalized_status,removed_at,circuit_confidence'.split(',');
 export const PUBLIC_APP_ROWS_QUERY = `SELECT json_object(${PUBLIC_COLUMNS.map(column => `'${column}',${column}`).join(',')}) AS row_json FROM (${APP_PUBLICATIONS_QUERY})`;
+// Transport JSON as plain ASCII instead of a JSON string nested in the D1
+// response. Native hex decoding restores the exact UTF-8 bytes without another
+// large escaped-string parse, join or UTF-8 encoding pass in the Worker.
+export const PUBLIC_APP_TRANSPORT_QUERY = `SELECT hex(row_json) AS row_hex FROM (${PUBLIC_APP_ROWS_QUERY})`;
 
 function clientResponse(response: Response, state: string) {
   const headers = new Headers(response.headers);
@@ -42,22 +47,31 @@ export async function getPublicApp(request: Request, getD1: () => D1Database, se
   try {
     const db = getD1();
     const [publications, sync] = await Promise.all([
-      db.prepare(PUBLIC_APP_ROWS_QUERY).all<{ row_json: string }>(),
+      // SQLite already returns a single encoded column. raw() avoids the D1
+      // object's per-row key reconstruction just to read row_json back out.
+      db.prepare(PUBLIC_APP_TRANSPORT_QUERY).raw<[string]>(),
       db.prepare("SELECT source, synced_at, last_attempt_at, last_successful_sync_at, sync_status FROM sync_state ORDER BY source").all(),
     ]);
-    const body = '{"profile":null,"publicProfile":null,"publications":['
-      + publications.results.map(row => row.row_json).join(',')
-      + '],"saved":[],"notifications":[],"reminders":[],"designations":[],"manualEvents":[],"sync":'
-      + JSON.stringify(sync.results) + '}';
-    const response = new Response(body, { headers: { 'Content-Type': 'application/json' } });
+    const parts: BlobPart[] = ['{"profile":null,"publicProfile":null,"publications":['];
+    for (let index = 0; index < publications.length; index++) {
+      if (index) parts.push(',');
+      parts.push(Buffer.from(publications[index][0], 'hex'));
+    }
+    parts.push('],"saved":[],"notifications":[],"reminders":[],"designations":[],"manualEvents":[],"sync":'
+      + JSON.stringify(sync.results) + '}');
+    // Prepare immutable UTF-8 once. Independent Blob readers avoid teeing the
+    // large response through clone() just to store the same bytes in Cache API.
+    const prepared = new Blob(parts, { type: 'application/json' });
     if (cache && Date.now() < expires) {
-      const stored = response.clone();
-      stored.headers.set("Cache-Control", "public, max-age=60");
-      stored.headers.set(EXPIRES_HEADER, String(expires));
+      const stored = new Response(prepared, { headers: {
+        'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60',
+        [EXPIRES_HEADER]: String(expires),
+      } });
       try { await cache.put(key, stored); }
       catch { /* Return the real D1 result even if the cache cannot store it. */ }
     }
-    return clientResponse(response, cache ? "MISS" : "BYPASS");
+    return new Response(prepared, { headers: { 'Content-Type': 'application/json',
+      'Cache-Control': 'no-store', 'X-Public-App-Cache': cache ? 'MISS' : 'BYPASS' } });
   } catch (error) {
     console.error("[api/public-app] GET failed", error);
     return clientResponse(Response.json({ error: "No se pudo cargar la información pública." }, { status: 503 }), "BYPASS");

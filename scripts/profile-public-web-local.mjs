@@ -17,7 +17,7 @@ try{
  for(const row of data.sync){const keys=Object.keys(row);await db.prepare('INSERT INTO sync_state('+keys.join(',')+') VALUES('+keys.map(()=>'?').join(',')+')').bind(...keys.map(c=>row[c]??null)).run();}
  profiler=await connectWorkerdCpuProfiler(await mf.getInspectorURL());
  const results=[];
- for(const [name,route]of [['home-first','/'],['home-repeat-1','/'],['home-repeat-2','/'],['public-first','/api/public-app'],['public-hit','/api/public-app'],['public-bypass','/api/public-app?profile-local=1']]){
+ for(const [name,route]of [['home-first','/'],['home-repeat-1','/'],['home-repeat-2','/'],['public-first','/api/public-app'],['public-hit','/api/public-app'],['public-bypass','/api/public-app?profile-local=1']].filter(([,route])=>process.argv[5]!=='--api-only'||route!=='/')){
   const {value,cpu,profile}=await profiler.measure(async()=>{const t=performance.now(),r=await mf.dispatchFetch('https://local.invalid'+route,{headers:{Accept:route==='/'?'text/html':'application/json'}}),body=await r.text();assert.equal(r.status,200,name);fs.writeFileSync(path.join(out,name+(route==='/'?'.html':'.json')),body);return {name,route,status:r.status,bytes:Buffer.byteLength(body),cache:r.headers.get('x-public-app-cache'),wallLocalMs:performance.now()-t,sha256:crypto.createHash('sha256').update(body).digest('hex')};});
   fs.writeFileSync(path.join(out,name+'.cpuprofile'),JSON.stringify(profile));
   results.push({...value,cpu});
