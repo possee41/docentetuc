@@ -108,6 +108,7 @@ test('diff funcional limitado al paquete Juntas aprobado sobre la base productiv
   const allowed=new Set(execFileSync('git',['diff','--name-only','2d32f22e888e296948f70711efd86692691cabe9','1a33d4cee2bbed4d770739a3fe48332127656277'],{encoding:'utf8'}).trim().split('\n'));
   // Explicitly authorized common-route CPU correction; no other module edits.
   for(const file of ['app/api/public-app/route.ts','lib/public-app.ts','scripts/profile-public-web-local.mjs','scripts/workerd-cpu-profiler.mjs','scripts/public-web-cpu.test.mjs','scripts/public-app-cache-d1.test.mjs','scripts/public-app-cache-canary.test.mjs','scripts/prepare-public-app-cache-canary.mjs','docs/juntas-cpu-publicacion-2026-11-26.md'])allowed.add(file);
+  for(const file of ['docs/juntas-public-miss-candidato-2026-11-26.md','docs/juntas-public-miss-resultado-2026-11-26.md'])allowed.add(file);
   const changed=execFileSync('git',['diff',base,'--name-only'],{encoding:'utf8'}).trim().split('\n').filter(Boolean);
   for(const file of changed)assert.ok(allowed.has(file)||file==='docs/juntas-reconciliacion-productiva-2026-11-26.md','Fuera de alcance: '+file);
 });
