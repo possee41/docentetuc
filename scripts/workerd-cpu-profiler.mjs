@@ -74,7 +74,7 @@ export async function connectWorkerdCpuProfiler(inspectorUrl) {
       catch (error) { await send("Profiler.stop").catch(() => {}); throw error; }
       const result = await send("Profiler.stop");
       if (!result.profile) throw new Error("WORKERD_CPU_PROFILE_MISSING");
-      return { value, cpu: summarizeCpuProfile(result.profile) };
+      return { value, cpu: summarizeCpuProfile(result.profile), profile: result.profile };
     },
     close() { socket.close(); },
   };

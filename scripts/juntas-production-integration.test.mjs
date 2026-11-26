@@ -80,7 +80,7 @@ test('Llamados mantiene exactamente el SQL y los parámetros productivos; módul
   const js=stripTypeScriptTypes(old).replace(/import \{ OFFICIAL_JUNTAS[^;]+;/,'const OFFICIAL_JUNTAS='+JSON.stringify(OFFICIAL_JUNTAS)+';');
   const previous=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
   for(const junta of ['todas',...OFFICIAL_JUNTAS.map(x=>x.id)])for(const mode of ['current','references'])for(const q of ['','Matemática'])assert.deepEqual(boardPageQuery('llamados',junta,mode,q),previous.boardPageQuery('llamados',junta,mode,q));
-  for(const file of ['lib/board-view.ts','lib/app-publications-query.ts','app/api/app/route.ts','app/api/public-app/route.ts','app/api/search/route.ts','components/fdci-catalog-pilot.tsx','scripts/scheduled-task.mjs','wrangler.1.2-web-production.jsonc','.github/workflows/sime-import.yml']){
+  for(const file of ['lib/board-view.ts','lib/app-publications-query.ts','app/api/app/route.ts','app/api/search/route.ts','components/fdci-catalog-pilot.tsx','scripts/scheduled-task.mjs','wrangler.1.2-web-production.jsonc','.github/workflows/sime-import.yml']){
     assert.equal(read(file).replaceAll('\r\n','\n'),execFileSync('git',['show',base+':'+file],{encoding:'utf8'}).replaceAll('\r\n','\n'),file);
   }
   const beforeUi=execFileSync('git',['show',base+':app/docente-app.tsx'],{encoding:'utf8'}),afterUi=read('app/docente-app.tsx');
@@ -106,6 +106,8 @@ test('reconciliación conserva DDJJ PDF/Word, Trámites, Licencias y toda Inform
 
 test('diff funcional limitado al paquete Juntas aprobado sobre la base productiva vigente',()=>{
   const allowed=new Set(execFileSync('git',['diff','--name-only','2d32f22e888e296948f70711efd86692691cabe9','1a33d4cee2bbed4d770739a3fe48332127656277'],{encoding:'utf8'}).trim().split('\n'));
+  // Explicitly authorized common-route CPU correction; no other module edits.
+  for(const file of ['app/api/public-app/route.ts','lib/public-app.ts','scripts/profile-public-web-local.mjs','scripts/workerd-cpu-profiler.mjs','scripts/public-web-cpu.test.mjs','scripts/public-app-cache-d1.test.mjs','scripts/public-app-cache-canary.test.mjs','scripts/prepare-public-app-cache-canary.mjs','docs/juntas-cpu-publicacion-2026-11-26.md'])allowed.add(file);
   const changed=execFileSync('git',['diff',base,'--name-only'],{encoding:'utf8'}).trim().split('\n').filter(Boolean);
   for(const file of changed)assert.ok(allowed.has(file)||file==='docs/juntas-reconciliacion-productiva-2026-11-26.md','Fuera de alcance: '+file);
 });

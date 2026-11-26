@@ -30,8 +30,8 @@ test("preparación canary: cerrado sin tablas, métricas por petición y vencimi
       PUBLIC_CACHE_TEST_RUN_ID: "cache-local-only", PUBLIC_APP_CACHE_VERSION: "cache-local-only" };
     await mf.setOptions({ ...options, bindings: enabled });
     const db = await mf.getD1Database("DB");
-    await db.prepare("CREATE TABLE publications(id TEXT PRIMARY KEY,kind TEXT,metadata TEXT,ends_at TEXT,starts_at TEXT,updated_at TEXT)").run();
-    await db.prepare("INSERT INTO publications VALUES('synthetic:1','informacion','{}',NULL,NULL,'2026-10-30')").run();
+    await db.prepare(readFileSync(resolve(root,'lib/fixtures/juntas-production-schema-20261121.sql'),'utf8').match(/CREATE TABLE `publications`[\s\S]+?;/)[0]).run();
+    await db.prepare("INSERT INTO publications(id,kind,source,external_id,category,title,official_url,content_hash,metadata,updated_at) VALUES('synthetic:1','informacion','Fixture','synthetic:1','Información','Sólo prueba local','https://local.invalid/','synthetic-hash','{}','2026-10-30')").run();
     await db.prepare("CREATE TABLE sync_state(source TEXT,synced_at TEXT,last_attempt_at TEXT,last_successful_sync_at TEXT,sync_status TEXT)").run();
     const headers = { "x-public-cache-test-run": "cache-local-only", "x-public-cache-test-step": "miss" };
     const first = await mf.dispatchFetch(url, { headers });

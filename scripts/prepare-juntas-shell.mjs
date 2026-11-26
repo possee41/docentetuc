@@ -17,11 +17,11 @@ export async function prepareJuntasShell() {
     outboundService: () => { throw Error('JUNTAS_BUILD_EXTERNAL_NETWORK_FORBIDDEN'); } });
   try {
     const documents = {};
-    for (const section of ['padrones', 'comunicados']) {
-      const response = await mf.dispatchFetch(`https://local.invalid/?section=${section}`, { headers: { Accept: 'text/html' } });
+    for (const section of ['inicio', 'padrones', 'comunicados']) {
+      const response = await mf.dispatchFetch(section === 'inicio' ? 'https://local.invalid/' : `https://local.invalid/?section=${section}`, { headers: { Accept: 'text/html' } });
       const html = await response.text();
       if (response.status !== 200 || !html.startsWith('<!DOCTYPE html>') ||
-          !html.includes('Cargando documentos oficiales') || response.headers.has('set-cookie'))
+          (section !== 'inicio' && !html.includes('Cargando documentos oficiales')) || response.headers.has('set-cookie'))
         throw Error('JUNTAS_PUBLIC_SHELL_INVALID');
       documents[section] = html;
     }

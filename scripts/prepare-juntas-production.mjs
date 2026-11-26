@@ -16,7 +16,7 @@ const upload={...config,account_id:'6bbc3dae7e111660f0c835677ceffb69',main:'../.
 delete upload.triggers;delete upload.preview_urls;delete upload.vars;
 fs.writeFileSync(dir+'/web-upload.json',JSON.stringify(upload,null,2));
 fs.writeFileSync(dir+'/traffic-only.json',JSON.stringify({name:'docentetuc',account_id:upload.account_id},null,2));
-for(const file of ['worker-entry.mjs','juntas-shell.mjs','juntas-document.mjs','juntas-public-api.mjs'])if(!fs.existsSync('dist/server/'+file))throw Error('BUILD_REQUIRED');
+for(const file of ['worker-entry.mjs','juntas-shell.mjs','juntas-document.mjs','juntas-public-api.mjs','public-app-api.mjs'])if(!fs.existsSync('dist/server/'+file))throw Error('BUILD_REQUIRED');
 if(fs.existsSync('dist/server/worker-juntas-readonly-entry.mjs'))throw Error('CANARY_WRAPPER_MUST_NOT_SHIP_TO_PRODUCTION');
 const hash=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const files=['dist/server','dist/client'].flatMap(root=>fs.readdirSync(root,{recursive:true}).map(file=>path.posix.join(root,String(file).replaceAll('\\','/'))).filter(file=>fs.statSync(file).isFile())).sort();
@@ -31,7 +31,8 @@ for(const source of execFileSync('git',['ls-tree','-r','--name-only',base,'publi
   preservedDocuments[asset]=approved;
 }
 const manifest={codeSha:sha,base,referenceProductionVersion:'6fb7a6a2-1552-4e43-9e2d-9d054e370419',
-  referenceDeployment:'19c53725-1c8e-4a71-85e7-0996b8c1dc02',databaseId:config.d1_databases[0].database_id,
+  referenceDeployment:'26986bd9-2d6d-4336-b449-71f7169facdd',databaseId:config.d1_databases[0].database_id,
+  migrationPolicy:'0100 already applied on 2026-11-26; do not execute again',
   generatedAt:new Date().toISOString(),sourceHashes,preservedDocuments,artifactHashes:Object.fromEntries(files.map(file=>[file,hash(file)])),
   uploadConfigSha256:hash(dir+'/web-upload.json'),trafficConfigSha256:hash(dir+'/traffic-only.json'),remoteOperations:0};
 fs.writeFileSync(dir+'/production-package-manifest.json',JSON.stringify(manifest,null,2));
