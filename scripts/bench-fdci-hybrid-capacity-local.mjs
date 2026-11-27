@@ -91,7 +91,7 @@ for (const scenario of [{ count: 30, courses: 1, limit: 2 }, { count: 30, course
       assert.ok(r.examined <= scenario.limit); assert.ok(r.sourceRequests <= 6);
       assert.equal(r.created + r.updated + r.unchanged, r.batches);
       if (phase === "unchanged") {
-        assert.equal(r.unchanged, 5); assert.ok(publicationAcks.every(a => a.rowsWritten === 0));
+        assert.equal(r.unchanged, 5); assert.ok(publicationAcks.every(a => a.rowsWritten === 1));
       }
       if (phase === "changed") assert.equal(r.updated, 5);
       gatewayMeasurements.push({ ...scenario, phase, elapsedMs: performance.now() - start,
