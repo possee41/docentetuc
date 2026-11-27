@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {padronAccess} from './padron-documents.ts';
 import {newOfficial,withOfficial} from './official-publication.ts';
 import {driveEntryUrl} from './public-documents.ts';
+import {JUNTA_EXTERNAL_SOURCES} from './junta-external-sources.ts';
 import type {Publication} from './types.ts';
 
 const original='https://drive.google.com/file/d/old-public-document/view';
@@ -32,4 +33,14 @@ test('a folder move retains file identity; a replacement uses a different URL',(
  const after={...before,parent:'new-folder'};
  assert.equal(driveEntryUrl(before),driveEntryUrl(after));
  assert.notEqual(driveEntryUrl({...after,id:'replacement-file'}),driveEntryUrl(before));
+});
+test('the inaccessible historical Secundaria record uses exactly the footer root, without changing stored evidence or other links',()=>{
+ const row=item('unavailable');
+ row.id='drive:pad-secundaria:1NdgFtOpLdWN33RETK0wY5Z5AkayO615H';
+ const before=JSON.stringify(row);
+ const officialRoot=JUNTA_EXTERNAL_SOURCES.find(source=>source[0]==='pad-secundaria')![3];
+ assert.deepEqual(padronAccess(row),{unavailable:true,directUrl:null,folderUrl:officialRoot});
+ assert.equal(JSON.stringify(row),before);
+ assert.equal(padronAccess(item('unavailable')).folderUrl,folder);
+ assert.equal(padronAccess({...row,metadata:item('available').metadata}).directUrl,original);
 });

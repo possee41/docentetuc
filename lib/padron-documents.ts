@@ -83,6 +83,11 @@ export function padronAccess(item: Publication) {
           /^\/drive\/folders\/[A-Za-z0-9_-]+$/.test(url.pathname)) folderUrl = url.toString();
     } catch { /* Invalid folder evidence cannot become a public link. */ }
   }
+  // This historical record uses the same official root as the Junta footer.
+  // Keep its original file URL and earlier folder evidence intact.
+  if (unavailable && item.id === 'drive:pad-secundaria:1NdgFtOpLdWN33RETK0wY5Z5AkayO615H') {
+    folderUrl = JUNTA_EXTERNAL_SOURCES.find(source => source[0] === 'pad-secundaria')?.[3] ?? null;
+  }
   return { unavailable, directUrl: unavailable ? null : item.official_url, folderUrl };
 }
 
