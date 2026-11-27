@@ -8,6 +8,13 @@ export const COMUNICADOS_RECEIVER = 'https://docentetuc-sources-1-2.possee41.wor
 const sources = JUNTA_EXTERNAL_SOURCES.filter(source => source[1] === 'Comunicados');
 const errorCode = error => /^(?:COMUNICADOS|JUNTAS)_[A-Z_0-9]{2,100}$/.test(error?.message || '') ? error.message :
   ['AbortError', 'TimeoutError', 'TypeError'].includes(error?.name) ? error.name.toUpperCase() : 'UNEXPECTED_ERROR';
+export function boundedLeaseDeadline(expiresAt, requestedAt, now, { maxTtlMs = 600_000, clockSkewMs = 10_000 } = {}) {
+  const expires = Date.parse(expiresAt);
+  if (!Number.isFinite(expires)) throw Error('COMUNICADOS_EXPIRATION_INVALID');
+  if (expires <= now) throw Error('COMUNICADOS_EXPIRATION_EXPIRED');
+  if (expires - requestedAt > maxTtlMs + clockSkewMs) throw Error('COMUNICADOS_EXPIRATION_INVALID');
+  return Math.min(expires, requestedAt + maxTtlMs);
+}
 
 export function comunicadosConfig(env, sha, { closing = false } = {}) {
   if (!/^[a-f0-9]{40}$/.test(sha || '') || env.COMUNICADOS_APPROVED_SHA !== sha ||
@@ -83,10 +90,9 @@ export async function runComunicadosProduction(env, sha, { fetcher = fetch, main
     if (id.id !== env.JUNTAS_DATABASE_ID || id.name !== env.JUNTAS_DATABASE_NAME) throw Error('COMUNICADOS_IDENTITY_MISMATCH');
     emit('identity_ack', { httpStatus: identity.status });
     opened = true;
+    const leaseRequestedAt = clock();
     const lease = await gate('open');
-    const expires = Date.parse(lease.expiresAt);
-    if (!Number.isFinite(expires) || expires <= clock() || expires - clock() > 600000) throw Error('COMUNICADOS_EXPIRATION_INVALID');
-    deadline = expires - 30000;
+    deadline = boundedLeaseDeadline(lease.expiresAt, leaseRequestedAt, clock()) - 30000;
     const db = createJuntasGatewayDb({ origin: config.origin, secret: config.secret }, receive);
     const sourceFetch = async (input, init = {}) => {
       if (clock() >= deadline) throw Error('COMUNICADOS_WINDOW_EXPIRED');

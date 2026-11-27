@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runComunicadosProduction, COMUNICADOS_RECEIVER } from './comunicados-production.mjs';
+import { runComunicadosProduction, COMUNICADOS_RECEIVER, boundedLeaseDeadline } from './comunicados-production.mjs';
 import { runJuntasMaintenance } from './juntas-maintenance.mjs';
 import { JUNTA_EXTERNAL_SOURCES } from '../lib/junta-external-sources.ts';
 import { DatabaseSync } from 'node:sqlite';
@@ -39,6 +39,18 @@ test('siete raíces oficiales, cuatro Juntas, cupos y cierre ante éxito', async
   } });
   assert.deepEqual(actions, ['open', 'close']);
   assert.equal(result.closed, true);
+});
+
+test('vencimiento ISO tolera desfase pequeño y limita siempre la ventana local a 600 s', () => {
+  const requestedAt = Date.parse('2026-11-27T12:00:00.000Z');
+  const elapsed = 1_500;
+  const now = requestedAt + elapsed;
+  const serverExpires = new Date(requestedAt + 600_000 + 2_000).toISOString();
+  assert.equal(boundedLeaseDeadline(serverExpires, requestedAt, now), requestedAt + 600_000);
+  assert.equal(boundedLeaseDeadline(new Date(requestedAt + 590_000).toISOString(), requestedAt, now), requestedAt + 590_000);
+  assert.throws(() => boundedLeaseDeadline('invalid', requestedAt, now), /COMUNICADOS_EXPIRATION_INVALID/);
+  assert.throws(() => boundedLeaseDeadline(new Date(now - 1).toISOString(), requestedAt, now), /COMUNICADOS_EXPIRATION_EXPIRED/);
+  assert.throws(() => boundedLeaseDeadline(new Date(requestedAt + 611_000).toISOString(), requestedAt, now), /COMUNICADOS_EXPIRATION_INVALID/);
 });
 
 test('rechazo de identidad impide abrir concesión; error de importación la cierra', async () => {
