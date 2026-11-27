@@ -16,7 +16,7 @@ function transport(actions) {
   return async (input, init) => {
     const url = new URL(input);
     if (url.pathname.endsWith('/import-identity')) {
-      assert.equal(init.headers.Authorization, `Bearer ${env.JUNTAS_IMPORT_SECRET}`);
+      assert.equal(new Headers(init.headers).get('authorization'), `Bearer ${env.JUNTAS_IMPORT_SECRET}`);
       return Response.json({ id: env.JUNTAS_DATABASE_ID, name: env.JUNTAS_DATABASE_NAME });
     }
     assert.equal(url.pathname, '/api/internal/import-gate');
@@ -47,6 +47,23 @@ test('rechazo de identidad impide abrir concesión; error de importación la cie
   await assert.rejects(runComunicadosProduction(env, sha, { fetcher: transport(actions), maintenance: async () => { throw Error('SOURCE_FAILED'); } }), /SOURCE_FAILED/);
   assert.deepEqual(actions, ['open', 'close']);
   await assert.rejects(runComunicadosProduction({ ...env, COMUNICADOS_APPROVED_SHA: 'b'.repeat(40) }, sha, { fetcher: transport([]) }), /COMUNICADOS_IDENTITY_INVALID/);
+});
+
+test('checkpoint reutiliza una sola cabecera Authorization y conserva dueño de concesión', async () => {
+  const actions = [];
+  const fetcher = async (input, init) => {
+    if (new URL(input).pathname === '/api/internal/juntas-checkpoint') {
+      assert.equal(new Headers(init.headers).get('authorization'), `Bearer ${env.JUNTAS_IMPORT_SECRET}`);
+      assert.equal(new Headers(init.headers).get('x-import-gate-owner'), 'juntas-123');
+      return Response.json({ ok: true, result: null });
+    }
+    return transport(actions)(input, init);
+  };
+  await runComunicadosProduction(env, sha, { fetcher, maintenance: async ({ db }) => {
+    await db.prepare('SELECT status,last_success_at FROM juntas_import_checkpoint WHERE root_id=?').bind('com-primaria').first();
+    return { sourceRequests: 0, publicationAttempts: 0, created: 0, updated: 0, unchanged: 0, coverage: [], failures: [] };
+  } });
+  assert.deepEqual(actions, ['open', 'close']);
 });
 
 test('coordinador real reparte solicitudes y escrituras entre cuatro Juntas y guarda checkpoints', async () => {

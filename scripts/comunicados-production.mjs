@@ -40,7 +40,10 @@ export async function runComunicadosProduction(env, sha, { fetcher = fetch, main
   const receive = async (input, init = {}) => {
     if (new URL(input).origin !== config.origin) throw Error('COMUNICADOS_DESTINATION_FORBIDDEN');
     if (clock() >= deadline) throw Error('COMUNICADOS_WINDOW_EXPIRED');
-    return fetcher(input, { ...init, redirect: 'error', headers: { ...Object.fromEntries(new Headers(init.headers)), ...headers, 'X-Import-Gate-Owner': config.owner },
+    const requestHeaders = new Headers(init.headers);
+    requestHeaders.set('Authorization', `Bearer ${config.secret}`);
+    requestHeaders.set('X-Import-Gate-Owner', config.owner);
+    return fetcher(input, { ...init, redirect: 'error', headers: requestHeaders,
       signal: AbortSignal.any([...(init.signal ? [init.signal] : []), AbortSignal.timeout(Math.max(1, Math.min(20000, deadline - clock())))]) });
   };
   const identity = await receive(config.origin + '/api/internal/import-identity?source=juntas');
