@@ -1,7 +1,7 @@
 # Prepared for approval. The schedule is intentionally disabled.
 name: Comunicados daily production
 on:
-  # schedule: [{ cron: '7 11 * * *' }] # 08:07 America/Argentina/Tucuman (UTC-3)
+  schedule: [{ cron: '7 11 * * *' }] # 08:07 America/Argentina/Tucuman (UTC-3)
   workflow_dispatch:
     inputs:
       approved_sha:
@@ -69,3 +69,4 @@ jobs:
       - name: Close the Juntas grant after failure or cancellation
         if: always()
         run: node --experimental-strip-types scripts/comunicados-production.mjs --close
+
