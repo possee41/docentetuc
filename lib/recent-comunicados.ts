@@ -10,8 +10,8 @@ export function recentComunicadoDays(now: Date = new Date()) {
   return { today, yesterday };
 }
 
-export function isRecentComunicado(item: Pick<Publication, "source" | "category" | "source_published_at">, now: Date = new Date()) {
-  if (item.source !== "Padrones y Comunicados" || item.category !== "Comunicados") return true;
+export function isRecentComunicado(item: Pick<Publication, "id" | "source" | "source_published_at">, now: Date = new Date()) {
+  if (item.source !== "Padrones y Comunicados" || !item.id.startsWith("notice:")) return true;
   const { today, yesterday } = recentComunicadoDays(now);
   return item.source_published_at === today || item.source_published_at === yesterday;
 }

@@ -37,7 +37,7 @@ export function publicationSearchQuery(query: string, cursor?: string, pageSize 
   const days = recentComunicadoDays();
   params.unshift(days.today, days.yesterday);
   const sql = `SELECT * FROM publications WHERE kind IN ('vacante','capacitacion','junta','informacion')
-    AND (source!='Padrones y Comunicados' OR category!='Comunicados' OR source_published_at IN (?,?))
+    AND (source!='Padrones y Comunicados' OR id NOT LIKE 'notice:%' OR source_published_at IN (?,?))
     ${kind && kind !== "all" ? "AND kind=?" : ""}
     AND (CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.official.canonicalId') IS NULL ELSE 1 END)
     ${terms.length ? `AND ${terms.map(() => `${foldedText} LIKE ? ESCAPE '\\'`).join(" AND ")}` : ""}${cursorCondition}
