@@ -109,7 +109,7 @@ export function canScheduleTrainingReminder(metadata: TrainingMetadata | null, s
     ["PROXIMAMENTE", "ABRE_HOY"].includes(enrollmentState(metadata, sourceStatus, normalizedStatus, now));
 }
 
-export function trainingStatus(commission: OfficialCommission | undefined, now = new Date()): TrainingStatus {
+export function trainingStatus(commission: OfficialCommission | undefined, now = new Date(), listedActive = false): TrainingStatus {
   if (!commission) return "consultar";
   const time = now.getTime();
   const opens = localDateTime(commission.fecha_apertura_preinscripcion);
@@ -119,7 +119,8 @@ export function trainingStatus(commission: OfficialCommission | undefined, now =
   const closed = Boolean(Number(commission.comision_cerrada));
   if (closed) return "inscripción cerrada";
   if (opens && time < new Date(opens).getTime()) return "próximamente";
-  if (opens && commission.isActivePre != null && !Boolean(Number(commission.isActivePre))) return "inscripción cerrada";
+  // The detail flag can be 0 while the official active list still includes the commission.
+  if (opens && !listedActive && commission.isActivePre != null && !Boolean(Number(commission.isActivePre))) return "inscripción cerrada";
   if (closes && time > new Date(closes).getTime()) return "inscripción cerrada";
   if (opens && (closes || Boolean(Number(commission.isActivePre)))) return "inscripción abierta";
   if (starts && time < new Date(starts).getTime()) return "consultar";
@@ -158,7 +159,7 @@ export function openingCountdown(opensAt: string, now = new Date(), hasTime = tr
   return days === 1 ? "Abre mañana" : `Abre en ${days} días`;
 }
 
-function opportunity(course: OfficialCourse, commission?: OfficialCommission, now = new Date()): TrainingOpportunity {
+function opportunity(course: OfficialCourse, commission?: OfficialCommission, now = new Date(), listedActive = false): TrainingOpportunity {
   const trainingId = text(commission?.capacitacion_id || course.capacitacion_id);
   const commissionId = commission?.id == null ? "" : text(commission.id);
   const token = text(course.token || commission?.token), slug = text(course.slug || commission?.slug);
@@ -182,7 +183,7 @@ function opportunity(course: OfficialCourse, commission?: OfficialCommission, no
     level: text(course.niveles), area: text(course.areas || course.eje_prioritario),
     location: text(commission?.lugar), modality: text(course.modalidad || commission?.modalidad),
     startsAt: courseStartsAt || null, endsAt: registrationClosesAt || null,
-    status: trainingStatus(commission, now), officialUrl,
+    status: trainingStatus(commission, now, listedActive), officialUrl,
     sourceUpdatedAt: text(commission?.updated_at) || null,
     metadata: {
       entity: commissionId ? "commission" : "course", trainingId, ...(commissionId ? { commissionId } : {}),
@@ -202,7 +203,8 @@ function opportunity(course: OfficialCourse, commission?: OfficialCommission, no
   };
 }
 
-export function mergeTrainingData(courses: OfficialCourse[], commissions: OfficialCommission[], now = new Date()) {
+export function mergeTrainingData(courses: OfficialCourse[], commissions: OfficialCommission[], now = new Date(), activeCommissions = new Set<string>()) {
+  const listedActive = (commission: OfficialCommission) => activeCommissions.has(`${text(commission.capacitacion_id)}:${text(commission.id)}`);
   const byTraining = new Map<string, OfficialCommission[]>();
   for (const commission of commissions) {
     const id = text(commission.capacitacion_id);
@@ -212,9 +214,9 @@ export function mergeTrainingData(courses: OfficialCourse[], commissions: Offici
   const courseIds = new Set(courses.map((course) => text(course.capacitacion_id)));
   const result = courses.flatMap((course) => {
     const linked = byTraining.get(text(course.capacitacion_id)) || [];
-    return linked.length ? linked.map((commission) => opportunity(course, commission, now)) : [opportunity(course, undefined, now)];
+    return linked.length ? linked.map((commission) => opportunity(course, commission, now, listedActive(commission))) : [opportunity(course, undefined, now)];
   });
-  for (const commission of commissions) if (!courseIds.has(text(commission.capacitacion_id))) result.push(opportunity(commission, commission, now));
+  for (const commission of commissions) if (!courseIds.has(text(commission.capacitacion_id))) result.push(opportunity(commission, commission, now, listedActive(commission)));
   return [...new Map(result.map((item) => [item.id, item])).values()];
 }
 

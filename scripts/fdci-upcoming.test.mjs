@@ -51,6 +51,35 @@ test("6441: un curso próximo fuera de getCapaActivas se verifica y entra en D1 
   assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM publications").get().n, 2);
 });
 
+test("6436: el listado activo confirma la inscripción aunque el detalle tenga isActivePre=0", async t => {
+  const { sqlite, db } = fdciLocalFixture(); t.after(() => sqlite.close());
+  const owner = "active-local", secret = "synthetic_active_secret_1234567890123456";
+  sqlite.prepare("INSERT INTO import_gateway_identity VALUES(1,?,?)").run("synthetic-active", "synthetic-id");
+  sqlite.exec("INSERT INTO import_gate_lease VALUES(1,'fdci','2099-01-01T00:00:00Z','2026-01-01T00:00:00Z','active-local')");
+  const target = { origin: "http://127.0.0.1:8798", endpoint: "http://127.0.0.1:8798/api/internal/fdci-import", secret };
+  const env = { DB: db, IMPORT_DATABASE_NAME: "synthetic-active", IMPORT_DATABASE_ID: "synthetic-id", FDCI_IMPORT_SECRET: secret,
+    IMPORT_GATE_ENABLED: "false", IMPORT_GATE_LEASE_REQUIRED: "true", IMPORT_GATE_ALLOWED_SOURCE: "fdci", FDCI_EXTERNAL_ENABLED: "true" };
+  const activeCourse = { ...course, capacitacion_id: 3114, nombre: "Inteligencia artificial: experiencias y decisiones pedagógicas en el Nivel Inicial" };
+  const activeCommission = { ...commission, id: 6436, capacitacion_id: 3114,
+    fecha_apertura_preinscripcion: "2026-11-26 23:00:00", fecha_cierre_preinscripcion: "2026-11-30 08:00:00",
+    isActivePre: 0, comision_cerrada: 0 };
+  const source = async url => Response.json(String(url).endsWith("getCapaActivas") ? [activeCommission] :
+    String(url).endsWith("getRestoCapas") ? [activeCourse] : { comisiones: [activeCommission] });
+  const fetcher = (url, init) => new URL(url).origin === target.origin
+    ? gateway.fetch(new Request(url, init), env) : source(url, init);
+  const observedAt = new Date("2026-11-27T19:00:00-03:00");
+  const first = await runIncrementalFdci(target, { maxPublications: 2, owner }, fetcher, observedAt);
+  assert.deepEqual([first.status, first.created, first.cycleComplete], ["OK", 1, true]);
+  const row = sqlite.prepare("SELECT normalized_status,status,registration_open_at,registration_close_at FROM publications WHERE id='fdci:commission:6436'").get();
+  assert.equal(row.normalized_status, "ACTIVE");
+  assert.equal(row.status, "inscripción abierta");
+  assert.equal(row.registration_open_at, "2026-11-26T23:00:00-03:00");
+  assert.equal(row.registration_close_at, "2026-11-30T08:00:00-03:00");
+  const again = await runIncrementalFdci(target, { maxPublications: 2, owner }, fetcher, observedAt);
+  assert.deepEqual([again.created, again.updated, again.unchanged], [0, 0, 1]);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM publications WHERE id='fdci:commission:6436'").get().n, 1);
+});
+
 test("una fecha futura resumida sin comisión comprobable no publica y se reintenta en el ciclo siguiente", async t => {
   const { sqlite, db } = fdciLocalFixture(); t.after(() => sqlite.close());
   const owner = "upcoming-local", secret = "synthetic_upcoming_secret_12345678901234";

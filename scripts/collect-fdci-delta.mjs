@@ -20,6 +20,7 @@ export async function collectFdciDeltaSlice(fetcher, { state, queued, courseLimi
     if (previous && String(previous.capacitacion_id) !== String(c.capacitacion_id)) throw new Error("FDCI_SCHEMA_CHANGED");
     commissions.set(String(c.id), c);
   }
+  const listedActive = new Set([...commissions.values()].map(c => `${c.capacitacion_id}:${c.id}`));
   const parents = new Map();
   const activeKeys = new Set([...commissions.values()].map(c => courseKey(c.capacitacion_id)));
   const upcomingKeys = new Set();
@@ -78,7 +79,7 @@ export async function collectFdciDeltaSlice(fetcher, { state, queued, courseLimi
       if (!matched.length) throw new Error("FDCI_DELTA_COLLECTION_INCOMPLETE");
     }
     if (new Set(matched.map(c => String(c.id))).size !== matched.length) throw new Error("FDCI_SCHEMA_CHANGED");
-    const verified = (await prepareFdciImports([course], matched, now)).filter(item =>
+    const verified = (await prepareFdciImports([course], matched, now, listedActive)).filter(item =>
       !upcomingKeys.has(key) || commissions.has(item.externalId) || item.normalizedStatus === "UPCOMING");
     if (upcomingKeys.has(key) && !verified.some(item => item.normalizedStatus === "UPCOMING"))
       throw new Error("FDCI_DELTA_COLLECTION_INCOMPLETE");

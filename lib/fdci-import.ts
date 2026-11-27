@@ -39,8 +39,8 @@ export type FdciImport = {
   circuit: string; sourceCircuitRaw: string; circuitInferenceSource: string; circuitConfidence: number;
 };
 
-export async function prepareFdciImports(courses: OfficialCourse[], commissions: OfficialCommission[], now = new Date()): Promise<FdciImport[]> {
-  return Promise.all(mergeTrainingData(courses, commissions, now).map(async (item) => {
+export async function prepareFdciImports(courses: OfficialCourse[], commissions: OfficialCommission[], now = new Date(), activeCommissions = new Set<string>()): Promise<FdciImport[]> {
+  return Promise.all(mergeTrainingData(courses, commissions, now, activeCommissions).map(async (item) => {
     const metadata = serializeFdciMetadata(item.metadata);
     const inferred = inferCircuit({ locality: item.location });
     const sourceHash = await hashSourceSnapshot(item.raw, { metadata: item.metadata, status: item.status, startsAt: item.startsAt, endsAt: item.endsAt });

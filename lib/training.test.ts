@@ -79,6 +79,9 @@ test("FDCI prefiere las fechas y horas de la comisión al catálogo y al cursado
 
 test("FDCI respeta un cierre oficial aunque la ventana todavía no terminó", () => {
   assert.equal(trainingStatus({ ...commission, isActivePre: 0 }, now), "inscripción cerrada");
+  assert.equal(trainingStatus({ ...commission, isActivePre: 0 }, now, true), "inscripción abierta", "el listado oficial activo confirma la ventana pese al flag de detalle");
+  assert.equal(trainingStatus({ ...commission, isActivePre: 0, comision_cerrada: 1 }, now, true), "inscripción cerrada");
+  assert.equal(trainingStatus({ ...commission, isActivePre: 0 }, new Date("2026-09-29T12:00:00-03:00"), true), "inscripción cerrada");
   assert.equal(trainingStatus({ ...commission, isActivePre: 0 }, new Date("2026-09-24T12:00:00-03:00")), "próximamente");
   assert.equal(trainingStatus({ ...commission, comision_cerrada: 1 }, new Date("2026-09-24T12:00:00-03:00")), "inscripción cerrada");
   assert.equal(trainingStatus({ ...commission, fecha_cierre_preinscripcion: undefined }, now), "consultar", "sin cierre ni estado abierto oficial no se presume abierta indefinidamente");

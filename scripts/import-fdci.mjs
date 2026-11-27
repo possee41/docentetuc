@@ -32,6 +32,7 @@ export async function collectFdci(fetcher = fetch, selection, scope = "full") {
       !/^[0-9]{1,12}$/.test(selection.commissionId))) throw new Error("FDCI_SELECTION_INVALID");
   const activeIds = new Set(active.map((item) => String(item.capacitacion_id)));
   const activeCommissionIds = new Set(active.map((item) => String(item.id)));
+  const listedActive = new Set(active.map((item) => `${item.capacitacion_id}:${item.id}`));
   const candidates = selection
     ? courses.filter((item) => item.token === selection.token && item.slug === selection.slug)
     : scope === "active" ? courses.filter((item) => activeIds.has(String(item.capacitacion_id))) : courses;
@@ -68,7 +69,7 @@ export async function collectFdci(fetcher = fetch, selection, scope = "full") {
     }
   }
   // The same commission can occur in active and detail responses.
-  const items = await prepareFdciImports(candidates, commissions);
+  const items = await prepareFdciImports(candidates, commissions, new Date(), listedActive);
   if (selection && !items.some((item) => item.id === `fdci:commission:${selection.commissionId}`)) throw new Error("FDCI_COMMISSION_NOT_FOUND");
   return { items: selection ? items.filter((item) => item.id === `fdci:commission:${selection.commissionId}`) : scope === "active" ? items.filter((item) => activeCommissionIds.has(item.externalId)) : items,
     failures, diagnostics, coursesFetched: coursesExamined, coursesAvailable: candidates.length,

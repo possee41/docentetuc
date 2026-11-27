@@ -52,6 +52,7 @@ export async function runIncrementalFdci(target, safety, fetcher, at = new Date(
       if (ids.has(String(item.id)) && ids.get(String(item.id)) !== key) throw new Error("FDCI_SCHEMA_CHANGED");
       ids.set(String(item.id), key); keyed.set(key, item);
     }
+    const listedActive = new Set(active.map(item => `${item.capacitacion_id}:${item.id}`));
     const upcoming = new Set();
     const now = at.getTime();
     for (const course of courses) {
@@ -113,7 +114,7 @@ export async function runIncrementalFdci(target, safety, fetcher, at = new Date(
         if (commission.upcoming) {
           const matching = detail.filter(c => String(c.capacitacion_id) === courseId);
           if (matching.length !== detail.length || !matching.length) throw new Error("FDCI_COMMISSION_UNAVAILABLE");
-          items = (await prepareFdciImports([course], matching, at)).filter(item =>
+          items = (await prepareFdciImports([course], matching, at, listedActive)).filter(item =>
             ["ACTIVE", "UPCOMING"].includes(item.normalizedStatus) &&
             (ids.has(item.externalId) || item.normalizedStatus === "UPCOMING"))
             .sort((a, b) => fdciKey(courseId, a.externalId).localeCompare(fdciKey(courseId, b.externalId)));
@@ -121,7 +122,7 @@ export async function runIncrementalFdci(target, safety, fetcher, at = new Date(
         } else {
           const matches = detail.filter(c => String(c.id) === String(commission.id) && String(c.capacitacion_id) === courseId);
           if (matches.length !== 1) throw new Error("FDCI_COMMISSION_UNAVAILABLE");
-          items = await prepareFdciImports([course], matches, at);
+          items = await prepareFdciImports([course], matches, at, listedActive);
         }
         if (items.some(item => !validFdciImport(item))) throw new Error("FDCI_RECORD_INVALID");
       } catch (error) {
