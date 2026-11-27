@@ -61,10 +61,12 @@ export async function runJuntasMaintenance(options){
     const remainingBoardWrites=fairBoards?5-(boardWrites.get(source[2])||0):20;
     if(remainingWrites<1||remainingRequests<1||remainingBoard<1||remainingBoardWrites<1)return null;
     activeRoot=source[0];
+    options.onRoot?.(activeRoot);
     const result=await runJuntasCheckpoint({...options,sourceFetch,clock,rootOnly:false,sources:[source],now,
       documentTimeoutMs:options.documentTimeoutMs??45_000,prioritizePadrones:true,prioritizeRecentNotices:fairBoards,...limits,
       maxRequests:Math.min(limits.maxRequests,remainingRequests,remainingBoard),maxPublicationWrites:Math.min(limits.maxPublicationWrites,remainingWrites,remainingBoardWrites)});
     if(fairBoards)boardWrites.set(source[2],(boardWrites.get(source[2])||0)+result.publicationAttempts);
+    options.onRootResult?.(activeRoot,result);
     results.push({rootId:source[0],scope:limits.rootOnly?'root':'full',...result});return result;
   };
   const comunicados=rotate(sources.filter(s=>s[1]==='Comunicados'));

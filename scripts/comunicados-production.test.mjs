@@ -35,7 +35,7 @@ test('siete raíces oficiales, cuatro Juntas, cupos y cierre ante éxito', async
     assert.equal(options.maxRequests, 25);
     assert.equal(options.maxPublicationWrites, 20);
     assert.equal(options.comunicadosOnlyFair, true);
-    return { sourceRequests: 7, publicationAttempts: 2, created: 1, updated: 1, unchanged: 0, coverage: [], failures: [] };
+    return { sourceRequests: 0, publicationAttempts: 0, created: 0, updated: 0, unchanged: 0, coverage: [], failures: [] };
   } });
   assert.deepEqual(actions, ['open', 'close']);
   assert.equal(result.closed, true);
@@ -64,6 +64,85 @@ test('checkpoint reutiliza una sola cabecera Authorization y conserva dueño de 
     return { sourceRequests: 0, publicationAttempts: 0, created: 0, updated: 0, unchanged: 0, coverage: [], failures: [] };
   } });
   assert.deepEqual(actions, ['open', 'close']);
+});
+
+test('el fallo posterior a una solicitud oficial conserva contador, etapa y cierre sin filtrar credenciales', async () => {
+  const actions = [], events = [];
+  const secret = env.JUNTAS_IMPORT_SECRET;
+  const fetcher = async (input, init) => new URL(input).hostname === 'docs.google.com'
+    ? new Response('', { status: 503 }) : transport(actions)(input, init);
+  await assert.rejects(runComunicadosProduction(env, sha, { fetcher, report: event => events.push(event),
+    maintenance: async options => {
+      options.onRoot('com-secundaria');
+      assert.equal((await options.sourceFetch('https://docs.google.com/document/d/example')).status, 503);
+      throw Error('JUNTAS_SOURCE_HTTP_503');
+    } }), /JUNTAS_SOURCE_HTTP_503/);
+  assert.deepEqual(actions, ['open', 'close']);
+  const failed = events.find(event => event.event === 'failure');
+  assert.equal(failed.rootId, 'com-secundaria');
+  assert.equal(failed.officialRequests, 1);
+  assert.equal(failed.publicationAttempts, 0);
+  assert.equal(failed.errorCode, 'JUNTAS_SOURCE_HTTP_503');
+  assert.equal(events.at(-1).lease, 'closed');
+  assert.ok(events.some(event => event.event === 'official_response_error' && event.httpStatus === 503));
+  assert.doesNotMatch(JSON.stringify(events), new RegExp(secret));
+  assert.doesNotMatch(JSON.stringify(events), /Authorization|docs\.google\.com/);
+});
+
+test('un rechazo del receptor cuenta el intento de publicación antes del HTTP y registra operación', async () => {
+  const actions = [], events = [];
+  const fetcher = async (input, init) => new URL(input).pathname === '/api/internal/public-source-import/juntas'
+    ? new Response('', { status: 503 }) : transport(actions)(input, init);
+  await assert.rejects(runComunicadosProduction(env, sha, { fetcher, report: event => events.push(event),
+    maintenance: async options => {
+      options.onRoot('com-tecnica');
+      const response = await options.receiverOverride.receiverFetch(COMUNICADOS_RECEIVER + '/api/internal/public-source-import/juntas',
+        { method: 'POST', body: '{}' });
+      assert.equal(response.status, 503);
+      throw Error('JUNTAS_RECEIVER_HTTP_503');
+    } }), /JUNTAS_RECEIVER_HTTP_503/);
+  assert.equal(events.find(event => event.event === 'failure').publicationAttempts, 1);
+  assert.ok(events.some(event => event.event === 'receiver_response_error' && event.httpStatus === 503));
+  assert.deepEqual(actions, ['open', 'close']);
+});
+
+test('la identidad rechazada registra HTTP sin abrir concesión ni consumir presupuesto', async () => {
+  const events = [];
+  await assert.rejects(runComunicadosProduction(env, sha, { fetcher: async () => new Response('', { status: 401 }),
+    report: event => events.push(event) }), /COMUNICADOS_IDENTITY_HTTP_401/);
+  assert.equal(events.at(-1).errorCode, 'COMUNICADOS_IDENTITY_HTTP_401');
+  assert.equal(events.at(-1).officialRequests, 0);
+  assert.equal(events.at(-1).publicationAttempts, 0);
+  assert.equal(events.at(-1).lease, 'closed');
+});
+
+test('los límites se aplican antes del HTTP aun cuando el coordinador intente excederlos', async () => {
+  const actions = [], events = [];
+  let officialCalls = 0, publicationCalls = 0;
+  const fetcher = async (input, init) => {
+    const url = new URL(input);
+    if (url.hostname === 'docs.google.com') { officialCalls++; return new Response('ok'); }
+    if (url.pathname === '/api/internal/public-source-import/juntas') { publicationCalls++; return Response.json({ ok: true }); }
+    return transport(actions)(input, init);
+  };
+  await assert.rejects(runComunicadosProduction(env, sha, { fetcher, report: event => events.push(event),
+    maintenance: async options => {
+      options.onRoot('com-superior');
+      for (let n = 0; n < 25; n++) await options.sourceFetch('https://docs.google.com/document/d/example');
+      await options.sourceFetch('https://docs.google.com/document/d/example');
+    } }), /COMUNICADOS_REQUEST_BUDGET_EXHAUSTED/);
+  assert.equal(officialCalls, 25);
+  assert.equal(events.find(event => event.event === 'failure').officialRequests, 25);
+
+  await assert.rejects(runComunicadosProduction(env, sha, { fetcher, report: event => events.push(event),
+    maintenance: async options => {
+      options.onRoot('com-primaria');
+      for (let n = 0; n < 21; n++) await options.receiverOverride.receiverFetch(
+        COMUNICADOS_RECEIVER + '/api/internal/public-source-import/juntas', { method: 'POST', body: '{}' });
+    } }), /COMUNICADOS_PUBLICATION_BUDGET_EXHAUSTED/);
+  assert.equal(publicationCalls, 20);
+  assert.equal(events.filter(event => event.event === 'publication_attempt').length, 20);
+  assert.deepEqual(actions, ['open', 'close', 'open', 'close']);
 });
 
 test('coordinador real reparte solicitudes y escrituras entre cuatro Juntas y guarda checkpoints', async () => {
