@@ -1,6 +1,5 @@
 "use client";
 
-import { JUNTA_EXTERNAL_SOURCES } from "@/lib/junta-external-sources";
 import { PADRON_MAX_PAGES } from "@/lib/board-page";
 import { isPublicPublication } from "@/lib/publication-visibility";
 import { JuntaRevisions } from "@/components/juntas-revisions";
@@ -65,7 +64,7 @@ import { boardItems } from "@/lib/board-view";
 import { useFdciCatalogPilot, FdciCatalogPilotBanner, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
 import { sourceHealth, sourceNotices } from "@/lib/source-health";
 import type { BoardView } from "@/lib/board-view";
-import { groupPadrones, padronDocuments, padronReferences, padronRecordKind, padronSelection, padronFacts, padronYear, padronAccess } from "@/lib/padron-documents";
+import { groupPadrones, padronDocuments, padronReferences, padronRecordKind, padronSelection, padronFacts, padronYear, padronAccess, padronFooterSources } from "@/lib/padron-documents";
 import { eventDate as officialEventDate, hasOfficialTopic, officialDestination, officialMetadata, readMetadata } from "@/lib/official-publication";
 import { officialSavedLookup, resolveOfficialAlias } from "@/lib/official-reconciliation";
 import { OfficialPublicationDetails, OfficialPublicationSummary } from "@/components/official-publication-details";
@@ -725,6 +724,7 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
   const visible = useMemo(() => chosen.filter(item => (junta === "todas" || matchesJunta(item, junta)) &&
     (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query)))), [chosen, junta, query]);
   const groups = useMemo(() => tab === "references" ? visible.map(item=>[item]) : groupPadrones(visible), [visible,tab]);
+  const footerSources = useMemo(() => padronFooterSources(visible, junta), [visible, junta]);
   const retryPanel = <Button variant="outline" onClick={() => setRetry(value => value + 1)} className="mt-3 min-h-10 rounded-xl">Reintentar</Button>;
   return <section className="space-y-4 pb-16 md:pb-0">
     <VisualSectionBanner kind="padrones" title="Padrones" description="Últimos listados disponibles por Junta; verificá el período de cada documento" />
@@ -756,7 +756,7 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
       })}</div> : <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-white p-5">{loading ? "Todavía se están cargando los padrones de esta selección." : "No se recibieron documentos de padrón para esta selección. Esto no confirma que no existan: consultá Carpetas y avisos, el historial o la fuente oficial."}</div>}
     </>}
     <a href="https://padrones.educaciontuc.gov.ar/" target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-[#075f9b] underline">Consultar portal oficial de Juntas <ExternalLink className="size-4" /></a>
-    <details className="text-sm"><summary>Carpetas oficiales por Junta</summary><ul className="mt-2 space-y-2">{JUNTA_EXTERNAL_SOURCES.filter(source=>source[1]==='Padrones'&&(junta==='todas'||normalizeJunta(source[2])===junta)).map(source=><li key={source[0]}><a className="underline" href={source[3]} target="_blank" rel="noreferrer">{source[2]}</a></li>)}</ul></details>
+    {footerSources.length > 0 && <details className="text-sm"><summary>Carpetas oficiales por Junta</summary><ul className="mt-2 space-y-2">{footerSources.map(source=><li key={source[0]}><a className="underline" href={source[3]} target="_blank" rel="noreferrer">{source[2]}</a></li>)}</ul></details>}
   </section>;
 }
 

@@ -91,6 +91,12 @@ export function padronAccess(item: Publication) {
   return { unavailable, directUrl: unavailable ? null : item.official_url, folderUrl };
 }
 
+export function padronFooterSources(visibleItems: Publication[], junta = 'todas') {
+  const linkedFolders = new Set(visibleItems.map(item => padronAccess(item).folderUrl));
+  return JUNTA_EXTERNAL_SOURCES.filter(source => source[1] === 'Padrones' &&
+    (junta === 'todas' || normalizeJunta(source[2]) === junta) && !linkedFolders.has(source[3]));
+}
+
 export function padronYear(item: Publication) {
   const stored = officialMetadata(item)?.facts.padronYear?.value;
   return stored && /^20\d{2}$/.test(stored) ? Number(stored) : padronTitleFacts(item.title).year;

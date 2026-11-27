@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {padronAccess} from './padron-documents.ts';
+import {padronAccess,padronFooterSources} from './padron-documents.ts';
 import {newOfficial,withOfficial} from './official-publication.ts';
 import {driveEntryUrl} from './public-documents.ts';
 import {JUNTA_EXTERNAL_SOURCES} from './junta-external-sources.ts';
@@ -43,4 +43,19 @@ test('the inaccessible historical Secundaria record uses exactly the footer root
  assert.equal(JSON.stringify(row),before);
  assert.equal(padronAccess(item('unavailable')).folderUrl,folder);
  assert.equal(padronAccess({...row,metadata:item('available').metadata}).directUrl,original);
+});
+test('a visible alternative removes only the equivalent footer link, retaining other Juntas',()=>{
+ const row=item('unavailable');row.id='drive:pad-secundaria:1NdgFtOpLdWN33RETK0wY5Z5AkayO615H';
+ assert.deepEqual(padronFooterSources([row]).map(source=>source[0]),['pad-primaria','pad-tecnica','pad-superior']);
+ assert.equal(padronFooterSources([row],'secundaria').length,0);
+ assert.equal(padronAccess(row).unavailable,true);
+});
+test('an absent or search-filtered card restores the official folder access',()=>{
+ assert.equal(padronFooterSources([]).length,4);
+ assert.equal(padronFooterSources([],'secundaria')[0][0],'pad-secundaria');
+ const row=item('available');row.id='drive:pad-secundaria:1NdgFtOpLdWN33RETK0wY5Z5AkayO615H';
+ assert.equal(padronFooterSources([row],'secundaria').length,1);
+});
+test('a subfolder alternative does not hide the distinct main official folder',()=>{
+ assert.equal(padronFooterSources([item('unavailable')],'secundaria').length,1);
 });
