@@ -35,9 +35,11 @@ export function boardItems<T extends BoardPublication>(publications: T[], view: 
     if (m.canonicalId) return false;
     if (view === "comunicados") return m.entity === "notice";
     if (view === "padrones" && m.entity === "reference") return item.category === "Padrones";
-    return hasOfficialTopic(item, topic[view]) && (view !== "actos" || m.entity === "event");
+    return (hasOfficialTopic(item, topic[view]) || view === "llamados" && hasOfficialTopic(item, "CLASIFICACION_PENDIENTE")) && (view !== "actos" || m.entity === "event");
   });
   if (view === "padrones" || view === "comunicados") return items.sort((a, b) => Date.parse(b.source_published_at || b.updated_at) - Date.parse(a.source_published_at || a.updated_at));
-  return items.filter(item => isVerifiedCurrentBoardItem(item, view, now))
+  return items.filter(item => view === "llamados" && hasOfficialTopic(item, "CLASIFICACION_PENDIENTE")
+    ? !item.removed_at && !["EXPIRED", "CLOSED", "REMOVED_FROM_SOURCE"].includes(item.normalized_status || "")
+    : isVerifiedCurrentBoardItem(item, view, now))
     .sort((a, b) => (Date.parse(eventDate(a) || a.starts_at || "") || Number.MAX_SAFE_INTEGER) - (Date.parse(eventDate(b) || b.starts_at || "") || Number.MAX_SAFE_INTEGER));
 }

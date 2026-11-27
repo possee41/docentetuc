@@ -13,7 +13,7 @@ export function OfficialPublicationSummary({ item }: { item: Publication }) {
     {m.entity === "opportunity" && <p className="font-semibold">{procedures[m.procedure]}</p>}
     {m.facts.designation && <p className="font-semibold">Designación: {officialDateLabel(item)}</p>}
     {m.entity === "opportunity" && !item.ends_at && !m.facts.registrationEnd && <p>Vigencia no determinada por la fuente.</p>}
-    {m.topics.includes("CLASIFICACION_PENDIENTE") && <p>Clasificación pendiente: no se pudo determinar el procedimiento o la fecha.</p>}
+    {m.topics.includes("CLASIFICACION_PENDIENTE") && <p>Procedimiento pendiente de verificar: no se pudo confirmar la clasificación o la fecha.</p>}
     {m.detailStatus === "PENDING" && <p>Detalle SIME pendiente de recuperación.</p>}
     {m.detailStatus === "STALE" && <p>Detalle SIME conservado del último intento válido; verificar fuente.</p>}
     {m.candidateIds?.length ? <p>Posible relación con otra publicación; todavía no se fusionó.</p> : null}

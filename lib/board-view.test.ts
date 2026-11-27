@@ -48,6 +48,25 @@ test("llamados: evidencia y vigencia, no solo clasificación; ambas vías conser
   assert.equal(boardItems([row()], "llamados", now).length, 0);
 });
 
+test("un trámite sin clasificación queda visible como pendiente, nunca como llamado vigente confirmado", () => {
+  const source = { id: "synthetic-pending", source: "Junta", url: "https://example.invalid/aviso", excerpt: "Trámite informado" };
+  const m = newOfficial("opportunity", "Primaria", [source]);
+  m.topics = ["CLASIFICACION_PENDIENTE"];
+  const row = { ...base, id: "pending", metadata: withOfficial("{}", m) };
+  assert.deepEqual(boardItems([row], "llamados", now).map((item) => item.id), ["pending"]);
+  assert.equal(boardItems([{ ...row, removed_at: "2026-10-09" }], "llamados", now).length, 0);
+  const app = readFileSync(new URL("../app/docente-app.tsx", import.meta.url), "utf8");
+  const details = readFileSync(new URL("../components/official-publication-details.tsx", import.meta.url), "utf8");
+  assert.match(app, /hasOfficialTopic\(item, "CLASIFICACION_PENDIENTE"\) \? "PROCEDIMIENTO PENDIENTE DE VERIFICAR"/u);
+  assert.match(details, /Procedimiento pendiente de verificar/u);
+});
+
+test("el título de Comunicados cambia solo en su vista", () => {
+  const app = readFileSync(new URL("../app/docente-app.tsx", import.meta.url), "utf8");
+  assert.match(app, /comunicados: \["Últimas novedades de Comunicados"/u);
+  assert.match(app, /\.filter\(\(item\) => view !== "comunicados" \|\| isRecentComunicado\(item\)\)/u);
+});
+
 test("actos: próximos con evidencia, no provisionales, vencidos ni fechas en conflicto", () => {
   const source = { id: "synthetic", source: "Junta", url: "https://example.invalid/acto", excerpt: "Acto informado" };
   const m = newOfficial("event", "Primaria", [source]); m.topics = ["ACTO_DESIGNACION"];
