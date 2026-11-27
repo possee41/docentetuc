@@ -195,10 +195,15 @@ async function applyItems(items, offset, limit, receiver, metrics, now) {
   }
   return index;
 }
-async function advanceDocument(db, source, state, budget, limit, receiver, metrics, sourceFetch, now, timeoutMs) {
+async function advanceDocument(db, source, state, budget, limit, receiver, metrics, sourceFetch, now, timeoutMs, prioritizeRecentNotices = false) {
   if (state.noticeParserVersion !== 2) {
     state.docIndex = 0; state.docProcessingHash = null; state.lastDocHash = null;
     state.noticeParserVersion = 2;
+  }
+  const orderVersion = prioritizeRecentNotices ? 1 : 0;
+  if ((state.noticeOrderVersion || 0) !== orderVersion) {
+    state.docIndex = 0; state.docProcessingHash = null; state.lastDocHash = null;
+    state.noticeOrderVersion = orderVersion;
   }
   const documentId = new URL(source[3]).pathname.split("/d/")[1]?.split("/")[0];
   if (!documentId) throw new Error("JUNTAS_CHECKPOINT_INVALID");
@@ -217,7 +222,8 @@ async function advanceDocument(db, source, state, budget, limit, receiver, metri
   if (!notices.length) throw new Error("JUNTAS_NOTICE_FORMAT_UNRECOGNIZED");
   // The three Superior child documents are linked by the public index. Their
   // first publication slot should expose a notice, not another index card.
-  const items = source[0].startsWith("com-superior-") ? notices : [root, ...notices];
+  const ordered = prioritizeRecentNotices ? [...notices].sort((a, b) => (b.sourcePublishedAt || '').localeCompare(a.sourcePublishedAt || '')) : notices;
+  const items = source[0].startsWith("com-superior-") ? ordered : prioritizeRecentNotices ? [...ordered, root] : [root, ...ordered];
   state.docIndex = await applyItems(items, state.docIndex, limit, receiver, metrics, now);
   if (state.docIndex < items.length) return { state, complete: false, progressed: true };
   state.lastDocHash = hash; state.docProcessingHash = null; state.docIndex = 0;
@@ -326,7 +332,7 @@ async function advanceFolder(db, source, state, budget, limit, receiver, metrics
 export async function runJuntasCheckpoint({ db, driveKey, sourceFetch = fetch, sources = JUNTA_EXTERNAL_SOURCES,
   now = new Date(), maxRequests = 25, maxPublicationWrites = 20, maxSteps = 100, refreshAfterMs = day,
   focusFolderId = null, focusFilesOnly = false, receiverOverride = null, rootOnly = false, folderUpdates = [], clock = () => now,
-  documentTimeoutMs = 20_000, prioritizePadrones = false, refreshCurrentFolders = false }) {
+  documentTimeoutMs = 20_000, prioritizePadrones = false, prioritizeRecentNotices = false, refreshCurrentFolders = false }) {
   if (!db || !Array.isArray(sources) || !sources.length || !Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 100 ||
       !Number.isInteger(maxPublicationWrites) || maxPublicationWrites < 1 || maxPublicationWrites > 50 ||
       !Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 200 || refreshAfterMs < 0 ||
@@ -374,6 +380,7 @@ export async function runJuntasCheckpoint({ db, driveKey, sourceFetch = fetch, s
       let state = decode(claimed.state_json);
       if (claimed.status === "OK") {
         state = { ...initial(source, state.cycle + 1, state.noticeParserVersion === 2 ? state.lastDocHash : null), folderVersions: state.folderVersions || {},
+          ...(source[1] === 'Comunicados' ? { noticeOrderVersion: state.noticeOrderVersion || 0 } : {}),
           ...(rootOnly ? { knownFolders: state.knownFolders || {}, folderUpdates: state.folderUpdates || {} } : {}) };
         await save(db, rootId, owner, state, instant, false, clock().toISOString());
       }
@@ -412,7 +419,7 @@ export async function runJuntasCheckpoint({ db, driveKey, sourceFetch = fetch, s
         await save(db, rootId, owner, state, instant, false, clock().toISOString());
       }
       const output = source[3].includes("docs.google.com/document/")
-        ? await advanceDocument(db, source, state, budget, limit, receiver, metrics, sourceFetch, now, documentTimeoutMs)
+        ? await advanceDocument(db, source, state, budget, limit, receiver, metrics, sourceFetch, now, documentTimeoutMs, prioritizeRecentNotices)
         : await advanceFolder(db, source, state, budget, limit, receiver, metrics, sourceFetch, driveKey, instant, focusFilesOnly, rootOnly, documentTimeoutMs, prioritizePadrones && !focusFolderId);
       if (output.progressed) await save(db, rootId, owner, output.state, instant, output.complete, clock().toISOString());
       if (output.complete || !output.progressed) finished.add(rootId);

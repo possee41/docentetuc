@@ -1,7 +1,6 @@
 "use client";
 
 import { PadronesSection } from "@/components/padrones-section";
-import { isPublicPublication } from "@/lib/publication-visibility";
 import { JuntaRevisions } from "@/components/juntas-revisions";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -67,6 +66,7 @@ import type { BoardView } from "@/lib/board-view";
 import { padronAccess } from "@/lib/padron-documents";
 import { eventDate as officialEventDate, hasOfficialTopic, officialDestination, officialMetadata, readMetadata } from "@/lib/official-publication";
 import { officialSavedLookup, resolveOfficialAlias } from "@/lib/official-reconciliation";
+import { isRecentComunicado, tucumanCalendarDay } from "@/lib/recent-comunicados";
 import { OfficialPublicationDetails, OfficialPublicationSummary } from "@/components/official-publication-details";
 import type { AdminNotice } from "@/lib/admin-notices";
 
@@ -89,6 +89,23 @@ const INFOD_LOGIN = "https://aulastic.infd.edu.ar/";
 const EDUCATION_LEVELS = ["Inicial", "Primario", "Secundario", "Superior"];
 
 const normalize = (value = "") => value.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+function useTucumanDay() {
+  const [day, setDay] = useState(() => tucumanCalendarDay());
+  useEffect(() => {
+    const refresh = () => setDay(tucumanCalendarDay());
+    let first = Date.now(), last = first + 27 * 60 * 60 * 1000;
+    while (first + 1 < last) {
+      const middle = Math.floor((first + last) / 2);
+      if (tucumanCalendarDay(new Date(middle)) === day) first = middle;
+      else last = middle;
+    }
+    const timer = window.setTimeout(refresh, Math.max(100, last - Date.now() + 100));
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearTimeout(timer); document.removeEventListener("visibilitychange", refresh); window.removeEventListener("focus", refresh); };
+  }, [day]);
+  return day;
+}
 const publicationLabel = (item: Publication) => officialMetadata(item)?.entity === "event" ? "ACTO DE DESIGNACIÓN" : hasOfficialTopic(item, "LLAMADO_ABIERTO") ? "LLAMADO ABIERTO" : hasOfficialTopic(item, "INSCRIPCION_SIME") ? "INSCRIPCIÓN SIME" : hasOfficialTopic(item, "CLASIFICACION_PENDIENTE") ? "PROCEDIMIENTO PENDIENTE DE VERIFICAR" : item.kind === "capacitacion" ? "CAPACITACIÓN" : item.category.toUpperCase();
 const simeCodeForPublication = (item?: Pick<Publication, "metadata"> | null) => {
   if (!item?.metadata) return "";
@@ -398,6 +415,8 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     return () => controller.abort();
   }, [setView]);
 
+  const day = useTucumanDay();
+  const displayedData = useMemo(() => data && { ...data, publications: data.publications.filter((item) => isRecentComunicado(item, new Date(`${day}T12:00:00-03:00`))) }, [data, day]);
   const savedMap = useMemo(() => officialSavedLookup(data?.saved || [], data?.publications || []), [data]);
   const reminderMap = useMemo(() => new Map((data?.reminders || []).map((item) => [item.training_id, item])), [data]);
   const profile = data?.profile ?? undefined;
@@ -433,7 +452,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         : ["ABRE_HOY", "PROXIMAMENTE", "ABIERTA"].includes(enrollmentForUI(item, now)));
       return view === "capacitaciones" ? current.sort(trainingCompare) : current;
     }
-    let items = (view === "capacitaciones" ? trainingPilot.publications : data?.publications || []).filter(item => !officialMetadata(item)?.canonicalId || resolveOfficialAlias(item, data?.publications || []).id === item.id);
+    let items = (view === "capacitaciones" ? trainingPilot.publications : displayedData?.publications || []).filter(item => !officialMetadata(item)?.canonicalId || resolveOfficialAlias(item, data?.publications || []).id === item.id);
     if (view === "vacantes") items = items.filter((item) => hasOfficialTopic(item, "INSCRIPCION_SIME") || item.source === "SIME" && hasOfficialTopic(item, "CLASIFICACION_PENDIENTE"));
     if (view === "capacitaciones") items = items.filter((item) => item.kind === "capacitacion");
     if (view === "junta") items = items.filter((item) => item.kind === "junta");
@@ -510,7 +529,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
     if (action === "remind") { if (publication.kind === "vacante") setTrackingPublication(publication); else setReminderPublication(publication); return; }
     await mutateSaved(action, publication, true);
   };
-  const alertPublicationMap = new Map((data?.publications || []).map((item) => [item.id, item]));
+  const alertPublicationMap = new Map((displayedData?.publications || []).map((item) => [item.id, item]));
   const followedPublicationIds = new Set([...(data?.saved || []).map((item) => item.publication_id), ...(data?.reminders || []).map((item) => item.publication_id), ...(data?.designations || []).map((item) => item.publication_id)]);
   const unread = new Set((data?.notifications || []).filter((notice) => !Boolean(notice.read)).filter((notice) => {
     const item = alertPublicationMap.get(notice.publication_id);
@@ -566,7 +585,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         : accessState === "recovery_required" ? <RecoveryRequiredNotice onOpenAccount={() => setView("cuentas")} />
         : <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><h1 className="font-black text-[var(--text-primary)]">{accessState === "error" ? "No pudimos comprobar el acceso en este momento" : "No podemos mostrar tus datos privados todavía"}</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{accessState === "error" ? "Hubo un problema de conexión o del servicio. Tus datos permanecen conservados; intentá nuevamente." : "Verificá esta instalación o iniciá sesión con la cuenta vinculada. Tus datos permanecen conservados."}</p><Button onClick={() => void load(false)} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
         : loadError && !data && !["inicio", "cuentas", "busqueda", "noticias"].includes(view) ? <section role="alert" className="grid min-h-52 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--surface-primary)] p-6 text-center"><div><WifiOff className="mx-auto mb-3 size-8 text-[var(--accent-text)]" /><h1 className="font-black text-[var(--text-primary)]">No pudimos cargar esta sección</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{loadError}</p><Button onClick={() => { void loadPublic(); void load(false); }} className="mt-4 min-h-10 rounded-xl"><RefreshCw className="size-4" />Reintentar</Button></div></section>
-        : view === "inicio" ? <Dashboard data={data} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={navigateToView} loading={loading} error={loadError} />
+        : view === "inicio" ? <Dashboard data={displayedData} profile={profile} savedMap={savedMap} reminderMap={reminderMap} matches={matches} matchResult={matchResult} onOpen={openPublication} onRemind={setReminderPublication} onView={navigateToView} loading={loading} error={loadError} />
         : view === "busqueda" ? <GlobalPublicationSearch query={query} onQuery={setQuery} kind={searchKind} onKind={setSearchKind} onOpen={openPublication} />
         : view === "noticias" ? <PublicNewsSection />
         : view === "perfil" ? <>
@@ -584,12 +603,12 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
           <PlatformAccessSection />
           <DataDeletionSection profile={profile ?? null} />
         </>
-        : view === "alertas" ? <><PushSettings key={`push:${profile?.updated_at || "profile"}`} profile={profile ?? null} /><Alerts data={data} onOpen={openPublication} onOpenManual={setManualEvent} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} /></>
+        : view === "alertas" ? <><PushSettings key={`push:${profile?.updated_at || "profile"}`} profile={profile ?? null} /><Alerts data={displayedData} onOpen={openPublication} onOpenManual={setManualEvent} onRead={async (id) => { await fetch("/api/app", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ action: "read_notification", id }) }); await load(false); }} /></>
           : view === "agenda" ? <Agenda focusAt={agendaFocusAt} publications={data?.publications || []} savedMap={savedMap} manualEvents={data?.manualEvents || []} onOpen={openPublication} onNewEvent={(date) => { setManualEventDate(date || ""); setManualEvent("new"); }} onEditEvent={setManualEvent} />
         : view === "informacion" ? <InformationHub items={items} query={query} onQuery={setQuery} onBrowse={() => navigateToView("busqueda", "", "informacion")} savedMap={savedMap} onOpen={openPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAskAI={() => openAI({ type: "informacion", title: viewTitles.informacion[0] })} />
         : view === "junta" ? <OfficialConsultations onView={navigateToView} />
         : view === "padrones" ? <PadronesSection />
-        : ["comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection key={`${view}:${query}`} view={view as BoardView} publications={data?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
+        : ["comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection key={`${view}:${query}`} view={view as BoardView} publications={displayedData?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
             {view === "capacitaciones" && <FdciCatalogPilotBanner pilot={trainingPilot} />}
             <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void refreshSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
             <Filters filter={filter} setFilter={setFilter} junta={juntaFilter} setJunta={setJuntaFilter} character={character} setCharacter={setCharacter} query={designationQuery} setQuery={setDesignationQuery} kind={view} date={trainingDate} setDate={setTrainingDate} source={trainingSource} setSource={setTrainingSource} compatibility={trainingCompatibility} setCompatibility={setTrainingCompatibility} sort={trainingSort} setSort={setTrainingSort} hasTrainingTerritoryData={hasTrainingTerritoryData} circuit={view === "capacitaciones" ? trainingCircuit : "todos"} setCircuit={view === "capacitaciones" ? setTrainingCircuit : () => {}} />
@@ -681,6 +700,7 @@ function PadronSourceLink({ item, label = "Fuente oficial" }: { item: Publicatio
 }
 
 function OfficialBoardSection({ view, publications, query, junta, setJunta, onOpen }: { view: BoardView; publications: Publication[]; query: string; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; onOpen: (item: Publication) => void }) {
+  const day = useTucumanDay();
   const [title, description] = viewTitles[view];
   const [rows, setRows] = useState<Publication[]>([]);
   const [cursor, setCursor] = useState<string | null>("");
@@ -701,7 +721,7 @@ function OfficialBoardSection({ view, publications, query, junta, setJunta, onOp
       .catch(() => { if (!controller.signal.aborted && generation.current === current) setBoardError("No pudimos consultar los documentos de Juntas."); })
       .finally(() => { if (!controller.signal.aborted && generation.current === current) setLoading(false); });
     return () => controller.abort();
-  }, [remote, view, junta, query, references, retry]);
+  }, [remote, view, junta, query, references, retry, day]);
   const loadMore = async () => {
     if (!cursor || loading) return;
     const current = generation.current;
@@ -721,8 +741,8 @@ function OfficialBoardSection({ view, publications, query, junta, setJunta, onOp
     setReferences(nextReferences); setRetry((value) => value + 1);
   };
   const matchesBoard = (item: Publication) => junta === "todas" || matchesJunta(item, junta) || (readMetadata(item.metadata).portalPlacements as { junta: string }[] | undefined)?.some(p => matchesJunta({ junta: p.junta, level: "" }, junta));
-  const entries = remote ? rows : boardItems(publications, view).filter((item) => matchesBoard(item) && (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query))));
-  const sources = (view === "comunicados" ? publications.filter(isPublicPublication) : publications).filter((item) => item.id.startsWith("padrones:") && (view === "actos" || view === "comunicados" ? item.category === "Comunicados" : view === "llamados" ? item.category === "Llamados abiertos" : false) && matchesBoard(item));
+  const entries = (remote ? rows : boardItems(publications, view).filter((item) => matchesBoard(item) && (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query))))).filter((item) => view !== "comunicados" || isRecentComunicado(item));
+  const sources = view === "comunicados" ? [] : publications.filter((item) => item.id.startsWith("padrones:") && (view === "actos" ? item.category === "Comunicados" : view === "llamados" ? item.category === "Llamados abiertos" : false) && matchesBoard(item));
   return <section className="space-y-4 pb-16 md:pb-0">
     <VisualSectionBanner kind={view === "padrones" || view === "llamados" ? "padrones" : "novedades"} title={title} description={description} />
     <div className="max-w-lg"><Label htmlFor="board-junta">Junta</Label><Select value={junta} onValueChange={(value) => { restart(); setJunta((value || "todas") as typeof junta); }}><SelectTrigger id="board-junta" className="mt-1 h-11 rounded-xl border-[#c8e1f1] bg-white"><SelectValue placeholder="Todas las juntas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
@@ -730,7 +750,7 @@ function OfficialBoardSection({ view, publications, query, junta, setJunta, onOp
     {view === "llamados" && references && <p className="rounded-xl border border-amber-200 bg-[var(--surface-primary)] p-3 text-sm text-[var(--text-secondary)]">Estos documentos están en carpetas de Llamados. Su ubicación no confirma una inscripción abierta ni su vigencia. Revisá fecha y requisitos en la fuente oficial.</p>}
     {(view === "comunicados" || view === "padrones") && <p className="rounded-xl border border-[#c8e1f1] bg-white p-3 text-sm text-[#315d7a]">Estos son documentos oficiales. Una carpeta o un documento completo no equivale a un llamado vigente; comprobá siempre la fecha y los requisitos en la fuente.</p>}
     {entries.length ? <div className="grid gap-3 md:grid-cols-2">{entries.map((item) => <Card as="article" key={item.id} className="rounded-2xl p-4"><p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"}</p>{view === "comunicados" && <p className="mt-1 text-xs text-[var(--text-secondary)]">{item.source_published_at ? `Publicado ${dateLabel(item.source_published_at)}` : "Fecha de publicación no informada"}</p>}<h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2><OfficialPublicationSummary item={item} />{!officialMetadata(item) && (view === "actos" || view === "llamados") && !references && <p className="mt-1 text-sm text-[var(--text-secondary)]">{dateLabel(item.starts_at, true)}{item.location ? ` · ${item.location}` : ""}</p>}<div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button><a href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial <ExternalLink className="size-4" /></a></div>{view === "comunicados" && <JuntaRevisions publicationId={item.id} />}</Card>)}</div>
-      : (!remote || !loading && !boardError) && <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-primary)] p-5"><h2 className="font-bold text-[var(--text-primary)]">{references ? "No hay documentos de Llamados en esta selección" : view === "actos" || view === "llamados" ? "No hay registros individuales con fecha y vigencia verificadas en esta copia" : "No hay documentos indexados en esta vista"}</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">Esto no significa que la Junta no haya publicado novedades. Consultá las fuentes originales mientras se completa la clasificación.</p></div>}
+      : (!remote || !loading && !boardError) && <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-primary)] p-5"><h2 className="font-bold text-[var(--text-primary)]">{view === "comunicados" ? "No hay comunicados oficiales publicados hoy ni ayer" : references ? "No hay documentos de Llamados en esta selección" : view === "actos" || view === "llamados" ? "No hay registros individuales con fecha y vigencia verificadas en esta copia" : "No hay documentos indexados en esta vista"}</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">Esto no significa que la Junta no haya publicado novedades. Consultá las fuentes originales mientras se completa la clasificación.</p></div>}
     {sources.length > 0 && <div><h2 className="mb-2 font-bold text-[var(--text-primary)]">Documentos originales para verificar</h2><div className="flex flex-wrap gap-2">{sources.filter((item) => junta === "todas" || matchesJunta(item, junta)).map((item) => <a key={item.id} href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-[#c8e1f1] bg-white px-3 text-sm font-semibold text-[#075f9b]">{item.junta} <ExternalLink className="size-4" /></a>)}</div></div>}
     {remote && loading && <p role="status" className="text-sm text-[var(--text-secondary)]">Consultando documentos…</p>}
     {remote && boardError && <div role="alert"><p>{boardError}</p><Button variant="outline" onClick={() => cursor && rows.length ? void loadMore() : restart()}>Reintentar</Button></div>}

@@ -6,6 +6,7 @@ import { padronCoverage } from "./padron-documents.ts";
 import { PUBLICATION_VISIBILITY_SQL, isPublicPublication } from "./publication-visibility.ts";
 import { officialMetadata } from "./official-publication.ts";
 import { JUNTA_EXTERNAL_SOURCES } from "./junta-external-sources.ts";
+import { recentComunicadoDays } from "./recent-comunicados.ts";
 
 // Public documents only; no installation, profile, session or saved-data lookup.
 export async function padronesPage(request: Request, getD1: () => D1Database) {
@@ -50,7 +51,8 @@ export async function boardPage(request: Request, getD1: () => D1Database) {
   try {
     const now = new Date();
     const today = query.needsNow ? new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Tucuman", year: "numeric", month: "2-digit", day: "2-digit" }).format(now) : "";
-    const binds = [...cursorBinds, ...(query.needsNow ? [today, today] : []), ...query.binds];
+    const days = query.needsRecentDays ? recentComunicadoDays(now) : null;
+    const binds = [...cursorBinds, ...(days ? [days.today, days.yesterday] : []), ...(query.needsNow ? [today, today] : []), ...query.binds];
     const rows = (await getD1().prepare(query.sql).bind(...binds).all<Publication>()).results;
     const page = rows.slice(0, BOARD_PAGE_SIZE);
     const items = view === "llamados" && mode === "current" ? boardItems(page, "llamados", now) : page;

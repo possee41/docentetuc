@@ -10,8 +10,11 @@ import {OFFICIAL_JUNTAS} from '../lib/juntas.ts';
 import {padronesPage,boardPage,boardRevisions} from '../lib/juntas-public-api.ts';
 import {juntasProductionConfig,runJuntasProduction,JUNTAS_PRODUCTION_ORIGIN} from './juntas-production.mjs';
 import receiver from '../workers/juntas-production.mjs';
+import { recentComunicadoDays } from '../lib/recent-comunicados.ts';
+import { PUBLICATION_VISIBILITY_SQL } from '../lib/publication-visibility.ts';
 
-const base='85c4a912c346bb480e5707639e3a82ae48a5b866';
+// Current approved Web baseline, including the finished Padrones 2026 design.
+const base='5e04fa69c3cbebba5e65f4b12996f5b8c4b24a7e';
 const sha='a'.repeat(40),secret='synthetic_juntas_only_'.padEnd(48,'x');
 const config={JUNTAS_APPROVED_SHA:sha,JUNTAS_PRODUCTION_ENABLED:'true',JUNTAS_SCHEMA_READY:'true',
   JUNTAS_DATABASE_ID:'baaf5886-0123-4948-96da-aa7106424549',JUNTAS_DATABASE_NAME:'docentetuc-db',
@@ -64,7 +67,8 @@ test('Comunicados/historial integrados: fecha descendente, cursor y exclusión d
   const h=harness();try{
     h.raw.exec(read('migrations/0100_juntas_document_revisions.sql'));
     const meta=JSON.stringify({official:{version:1,sourceCategory:'Comunicados',entity:'notice',facts:{},sources:[],issues:[]}});
-    for(let i=0;i<55;i++)h.insert('notice:local-'+String(i).padStart(2,'0'),'Comunicados','Secundaria',meta,`2026-11-${String(1+i%20).padStart(2,'0')}T12:00:00Z`);
+    const days=recentComunicadoDays();
+    for(let i=0;i<55;i++)h.insert('notice:local-'+String(i).padStart(2,'0'),'Comunicados','Secundaria',meta,i%2?days.today:days.yesterday);
     h.insert('notice:preview','Comunicados','Secundaria',JSON.stringify({...JSON.parse(meta),preview:true}),'2026-12-01T00:00:00Z');
     const a=await(await boardPage(new Request('https://local.invalid/api/boards?view=comunicados'),()=>h.db)).json();
     const b=await(await boardPage(new Request('https://local.invalid/api/boards?view=comunicados&cursor='+encodeURIComponent(a.nextCursor)),()=>h.db)).json();
@@ -77,7 +81,8 @@ test('Comunicados/historial integrados: fecha descendente, cursor y exclusión d
 });
 test('Llamados mantiene exactamente el SQL y los parámetros productivos; módulos ajenos sin cambios',async()=>{
   const old=execFileSync('git',['show',base+':lib/board-page.ts'],{encoding:'utf8'});
-  const js=stripTypeScriptTypes(old).replace(/import \{ OFFICIAL_JUNTAS[^;]+;/,'const OFFICIAL_JUNTAS='+JSON.stringify(OFFICIAL_JUNTAS)+';');
+  const js=stripTypeScriptTypes(old).replace(/import \{ OFFICIAL_JUNTAS[^;]+;/,'const OFFICIAL_JUNTAS='+JSON.stringify(OFFICIAL_JUNTAS)+';')
+    .replace(/import \{ PUBLICATION_VISIBILITY_SQL[^;]+;/,'const PUBLICATION_VISIBILITY_SQL='+JSON.stringify(PUBLICATION_VISIBILITY_SQL)+';');
   const previous=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
   for(const junta of ['todas',...OFFICIAL_JUNTAS.map(x=>x.id)])for(const mode of ['current','references'])for(const q of ['','Matemática'])assert.deepEqual(boardPageQuery('llamados',junta,mode,q),previous.boardPageQuery('llamados',junta,mode,q));
   for(const file of ['lib/board-view.ts','lib/app-publications-query.ts','app/api/app/route.ts','app/api/search/route.ts','components/fdci-catalog-pilot.tsx','scripts/scheduled-task.mjs','wrangler.1.2-web-production.jsonc','.github/workflows/sime-import.yml']){
@@ -105,12 +110,13 @@ test('reconciliación conserva DDJJ PDF/Word, Trámites, Licencias y toda Inform
 });
 
 test('diff funcional limitado al paquete Juntas aprobado sobre la base productiva vigente',()=>{
-  const allowed=new Set(execFileSync('git',['diff','--name-only','2d32f22e888e296948f70711efd86692691cabe9','1a33d4cee2bbed4d770739a3fe48332127656277'],{encoding:'utf8'}).trim().split('\n'));
-  // Explicitly authorized common-route CPU correction; no other module edits.
-  for(const file of ['app/api/public-app/route.ts','lib/public-app.ts','scripts/profile-public-web-local.mjs','scripts/workerd-cpu-profiler.mjs','scripts/public-web-cpu.test.mjs','scripts/public-app-cache-d1.test.mjs','scripts/public-app-cache-canary.test.mjs','scripts/prepare-public-app-cache-canary.mjs','docs/juntas-cpu-publicacion-2026-11-26.md'])allowed.add(file);
-  for(const file of ['docs/juntas-public-miss-candidato-2026-11-26.md','docs/juntas-public-miss-resultado-2026-11-26.md'])allowed.add(file);
+  const allowed=new Set(['app/docente-app.tsx','lib/app-publications-query.test.ts','lib/board-page.test.ts','lib/board-page.ts',
+    'lib/juntas-public-api.ts','lib/publication-search.test.ts','lib/publication-search.ts','lib/recent-comunicados.test.ts',
+    'lib/recent-comunicados.ts','scripts/juntas-production-integration.test.mjs','scripts/comunicados-production.mjs',
+    'scripts/comunicados-production.test.mjs','scripts/juntas-maintenance.mjs','scripts/import-juntas-checkpoint.mjs',
+    '.github/workflows/comunicados-daily-production.yml']);
   const changed=execFileSync('git',['diff',base,'--name-only'],{encoding:'utf8'}).trim().split('\n').filter(Boolean);
-  for(const file of changed)assert.ok(allowed.has(file)||file==='docs/juntas-reconciliacion-productiva-2026-11-26.md','Fuera de alcance: '+file);
+  for(const file of changed)assert.ok(allowed.has(file),'Fuera de alcance: '+file);
 });
 
 test('configuración productiva rechaza origen, SHA, activación, evento y reintentos incorrectos antes de HTTP',async()=>{

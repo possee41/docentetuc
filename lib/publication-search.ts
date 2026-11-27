@@ -14,6 +14,7 @@ const searchableText = `(${[...textFields.map(field => `coalesce(${field}, '')`)
 const accentPairs = [["á", "a"], ["é", "e"], ["í", "i"], ["ó", "o"], ["ú", "u"], ["ü", "u"], ["ñ", "n"], ["Á", "a"], ["É", "e"], ["Í", "i"], ["Ó", "o"], ["Ú", "u"], ["Ü", "u"], ["Ñ", "n"]];
 const foldedText = `lower(${accentPairs.reduce((expression, [from, to]) => `replace(${expression}, '${from}', '${to}')`, searchableText)})`;
 const escapeLike = (term: string) => term.replace(/[\\%_]/g, "\\$&");
+import { recentComunicadoDays } from "./recent-comunicados.ts";
 
 export function publicationSearchQuery(query: string, cursor?: string, pageSize = PUBLICATION_SEARCH_PAGE_SIZE, kind?: PublicationSearchKind) {
   if (query.length > 120) throw new Error("Búsqueda demasiado larga.");
@@ -33,7 +34,10 @@ export function publicationSearchQuery(query: string, cursor?: string, pageSize 
     params.push(value[0], value[0], value[1]);
   }
   if (kind && kind !== "all") params.unshift(kind);
+  const days = recentComunicadoDays();
+  params.unshift(days.today, days.yesterday);
   const sql = `SELECT * FROM publications WHERE kind IN ('vacante','capacitacion','junta','informacion')
+    AND (source!='Padrones y Comunicados' OR category!='Comunicados' OR source_published_at IN (?,?))
     ${kind && kind !== "all" ? "AND kind=?" : ""}
     AND (CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.official.canonicalId') IS NULL ELSE 1 END)
     ${terms.length ? `AND ${terms.map(() => `${foldedText} LIKE ? ESCAPE '\\'`).join(" AND ")}` : ""}${cursorCondition}

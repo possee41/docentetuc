@@ -10,13 +10,29 @@ export async function runJuntasMaintenance(options){
     sources.filter(s=>s[1]==='Comunicados').length>7 || sources.filter(s=>s[1]==='Padrones').length>4 ||
     sources.filter(s=>s[1]==='Llamados abiertos').length>2 || sources.some(s=>!['Comunicados','Padrones','Llamados abiertos'].includes(s[1])))throw Error('JUNTAS_MAINTENANCE_SCOPE_INVALID');
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Tucuman',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
+  const fairBoards=options.comunicadosOnlyFair===true;
+  if(fairBoards&&sources.some(source=>source[1]!=='Comunicados'))throw Error('JUNTAS_MAINTENANCE_SCOPE_INVALID');
+  // Seven source documents represent four Juntas. Reserve six real HTTP hops
+  // per Junta; the remaining request rotates daily between them.
+  const boards=[...new Set(sources.map(source=>source[2]))];
+  const extraBoard=boards[Math.floor(now.getTime()/day)%boards.length];
+  const boardRequests=new Map(boards.map(board=>[board,0]));
+  const boardWrites=new Map(boards.map(board=>[board,0]));
+  const boardLimit=board=>fairBoards?6+Number(board===extraBoard):25;
+  const boardForRoot=new Map(sources.map(source=>[source[0],source[2]]));
   const dailyWindow=now.getTime()-Date.parse(today+'T00:00:00-03:00')+1,weeklyWindow=dailyWindow+6*day;
   const rotate=rows=>{if(!rows.length)return rows;const offset=Math.floor(now.getTime()/day)%rows.length;return [...rows.slice(offset),...rows.slice(0,offset)];};
   const results=[],probes=new Map();
   const started=performance.now(),clock=()=>new Date(now.getTime()+Math.max(0,performance.now()-started));
   const documentResponses=new Map();let sourceRequests=0,cachedDocumentReads=0;
   const sourceChecks=[];let activeRoot=null;
-  const transport=createJuntasSourceFetch({fetcher:options.sourceFetch||fetch});
+  const transport=createJuntasSourceFetch({fetcher:(input,init)=>{
+    if(fairBoards){const board=boardForRoot.get(activeRoot),used=boardRequests.get(board)||0;
+      if(used>=boardLimit(board))throw Error('JUNTAS_REQUEST_BUDGET_EXHAUSTED');
+      boardRequests.set(board,used+1);
+    }
+    return (options.sourceFetch||fetch)(input,init);
+  }});
   const checkedFetch=async(input,init)=>{
     const start=performance.now(),url=new URL(String(input));
     const check={rootId:activeRoot,kind:url.hostname==='docs.google.com'?'document':'drive',phase:'headers'};
@@ -41,11 +57,14 @@ export async function runJuntasMaintenance(options){
   const run=async(source,limits)=>{
     const remainingWrites=20-results.reduce((n,result)=>n+result.publicationAttempts,0);
     const remainingRequests=25-sourceRequests;
-    if(remainingWrites<1||remainingRequests<1)return null;
+    const remainingBoard=boardLimit(source[2])-(boardRequests.get(source[2])||0);
+    const remainingBoardWrites=fairBoards?5-(boardWrites.get(source[2])||0):20;
+    if(remainingWrites<1||remainingRequests<1||remainingBoard<1||remainingBoardWrites<1)return null;
     activeRoot=source[0];
     const result=await runJuntasCheckpoint({...options,sourceFetch,clock,rootOnly:false,sources:[source],now,
-      documentTimeoutMs:options.documentTimeoutMs??45_000,prioritizePadrones:true,...limits,
-      maxRequests:Math.min(limits.maxRequests,remainingRequests),maxPublicationWrites:Math.min(limits.maxPublicationWrites,remainingWrites)});
+      documentTimeoutMs:options.documentTimeoutMs??45_000,prioritizePadrones:true,prioritizeRecentNotices:fairBoards,...limits,
+      maxRequests:Math.min(limits.maxRequests,remainingRequests,remainingBoard),maxPublicationWrites:Math.min(limits.maxPublicationWrites,remainingWrites,remainingBoardWrites)});
+    if(fairBoards)boardWrites.set(source[2],(boardWrites.get(source[2])||0)+result.publicationAttempts);
     results.push({rootId:source[0],scope:limits.rootOnly?'root':'full',...result});return result;
   };
   const comunicados=rotate(sources.filter(s=>s[1]==='Comunicados'));
@@ -81,6 +100,7 @@ export async function runJuntasMaintenance(options){
     const writesLeft=20-results.reduce((n,result)=>n+result.publicationAttempts,0);
     if(requestsLeft<1||writesLeft<1)break;
     const source=pendingOrder[step%pendingOrder.length];
+    if(fairBoards&&((boardRequests.get(source[2])||0)>=boardLimit(source[2])||(boardWrites.get(source[2])||0)>=5)){idle++;continue;}
     const current=results.at(-1).health.find(row=>row.root_id===source[0]);
     const probe=results.at(-1).health.find(row=>row.root_id===`probe:${source[0]}`);
     const fullPending=current?.status==='PARTIAL'&&!current.error_code;
@@ -125,6 +145,7 @@ export async function runJuntasMaintenance(options){
       sync_status=excluded.sync_status,error_code=excluded.error_code`).bind(category,now.toISOString(),success,status,error).run();
   }
   return {completed:coverage.length>0&&coverage.every(s=>s.status==='OK'),coverage,
+    ...(fairBoards?{boardRequests:Object.fromEntries(boardRequests),boardWrites:Object.fromEntries(boardWrites)}:{}),
     sourceRequests,cachedDocumentReads,sourceChecks,httpTrace:transport.metrics().trace,requestBudgetUsed:sourceRequests,
     checkpointRequestSteps:results.reduce((n,r)=>n+r.sourceRequests,0),publicationAttempts:results.reduce((n,r)=>n+r.publicationAttempts,0),
     created:results.reduce((n,r)=>n+r.created,0),updated:results.reduce((n,r)=>n+r.updated,0),unchanged:results.reduce((n,r)=>n+r.unchanged,0),

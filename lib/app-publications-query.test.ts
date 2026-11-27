@@ -48,13 +48,14 @@ test("mismas filas completas y orden ante fechas, alias, JSON inválido, empates
 
 test("la carga inicial queda acotada y el catálogo anterior sigue navegable por páginas", () => {
   const db = new DatabaseSync(":memory:");
-  db.exec("CREATE TABLE publications (id TEXT PRIMARY KEY, kind TEXT, metadata TEXT, ends_at TEXT, starts_at TEXT, updated_at TEXT)");
-  const insert = db.prepare("INSERT INTO publications VALUES (?, ?, '{}', NULL, NULL, ?)");
+  db.exec("CREATE TABLE publications (id TEXT PRIMARY KEY, kind TEXT, metadata TEXT, ends_at TEXT, starts_at TEXT, updated_at TEXT, source TEXT, category TEXT, source_published_at TEXT)");
+  const insert = db.prepare("INSERT INTO publications(id,kind,metadata,ends_at,starts_at,updated_at) VALUES (?, ?, '{}', NULL, NULL, ?)");
   db.exec("BEGIN");
   for (let index = 0; index < 1501; index++) insert.run(`junta:${index}`, "junta", "2026-10-11");
   insert.run("infd:curso-2026", "capacitacion", "2026-08-01");
   insert.run("call:verified", "junta", "2026-01-01");
   db.prepare("UPDATE publications SET metadata=? WHERE id='call:verified'").run(JSON.stringify({ official: { entity: "opportunity" } }));
+  db.exec("UPDATE publications SET source='Junta Secundaria', category='Padrones'");
   db.exec("COMMIT");
   const rows = db.prepare(APP_PUBLICATIONS_QUERY).all() as { id: string }[];
   assert.equal(rows.length, 400);

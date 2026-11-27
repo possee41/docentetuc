@@ -39,6 +39,7 @@ export function boardPageQuery(view: BoardPageView, junta: JuntaId | "todas", mo
   if(view!=="llamados")conditions.push(PUBLICATION_VISIBILITY_SQL);
   const binds: string[] = [];
   if (view === "comunicados") conditions[2] = "(?=0 OR coalesce(source_published_at,'')<? OR (coalesce(source_published_at,'')=? AND id>?))";
+  if (view === "comunicados") conditions.push("source_published_at IN (?,?)");
   if (view === "llamados" && mode === "references") {
     conditions.push("category='Llamados abiertos'");
   } else {
@@ -60,5 +61,5 @@ export function boardPageQuery(view: BoardPageView, junta: JuntaId | "todas", mo
     binds.push(`%${search}%`, `%${search}%`);
   }
   return { sql: `SELECT * FROM publications WHERE ${conditions.join(" AND ")} ORDER BY ${view === "comunicados" ? "coalesce(source_published_at,'') DESC," : ""}id LIMIT ${(view === "padrones" ? PADRON_PAGE_SIZE : BOARD_PAGE_SIZE) + 1}`,
-    binds, needsNow: view === "llamados" && mode === "current" };
+    binds, needsNow: view === "llamados" && mode === "current", ...(view === "comunicados" ? { needsRecentDays: true } : {}) };
 }

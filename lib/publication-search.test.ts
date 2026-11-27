@@ -9,9 +9,9 @@ function fixture() {
   db.exec(`CREATE TABLE publications (
     id TEXT PRIMARY KEY, kind TEXT, source TEXT, category TEXT, title TEXT, summary TEXT,
     level TEXT, area TEXT, junta TEXT, location TEXT, character TEXT, source_circuit_raw TEXT,
-    metadata TEXT, starts_at TEXT, ends_at TEXT, updated_at TEXT
+    metadata TEXT, starts_at TEXT, ends_at TEXT, updated_at TEXT, source_published_at TEXT
   )`);
-  const insert = db.prepare("INSERT INTO publications VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)");
+  const insert = db.prepare("INSERT INTO publications VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, NULL)");
   const add = (id: string, title: string, kind = "junta", fields: Record<string, string> = {}) =>
     insert.run(id, kind, fields.source || "Junta Secundaria", fields.category || "Comunicados", title,
       fields.summary || "", fields.level || "", fields.area || "", fields.junta || "",
