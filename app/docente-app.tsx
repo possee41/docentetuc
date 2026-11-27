@@ -58,7 +58,7 @@ type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<
 const viewTitles: Record<View, [string, string]> = {
   inicio: ["Inicio", "Lo más relevante según tus preferencias"], vacantes: ["Inscripciones SIME", "Pedidos de cobertura publicados en SIME"],
   capacitaciones: ["Capacitaciones", "Formación docente"], junta: ["Consultas oficiales", "Padrones, comunicados y fuentes de las Juntas"],
-  padrones: ["Padrones", "Listados y puntajes oficiales por Junta"], comunicados: ["Comunicados", "Documentos y avisos oficiales de las Juntas"],
+  padrones: ["Padrones", "Listados y puntajes oficiales por Junta"], comunicados: ["Últimas novedades de Comunicados", "Documentos y avisos oficiales de las Juntas"],
   actos: ["Actos de designación", "Fechas informadas por SIME y las Juntas; verificar horario y modalidad"], llamados: ["Llamados abiertos", "Convocatorias oficiales según el procedimiento; verificar requisitos y vigencia"],
   informacion: ["Información útil", "Organismos, trámites y servicios oficiales organizados por necesidad"],
   agenda: ["Agenda docente", "Fechas y vencimientos de las publicaciones"], alertas: ["Alertas", "Novedades detectadas sin duplicados"],
@@ -92,7 +92,7 @@ const fromNow = (value: string | null) => {
   const date = safeDate(value); if (!date) return "Sin fecha informada"; const hours = Math.ceil((date.getTime() - Date.now()) / 36e5);
   return hours <= 0 ? "Finalizó" : hours < 24 ? `Vence en ${hours} h` : `Vence en ${Math.ceil(hours / 24)} días`;
 };
-const tucumanDay = (value: Date | string) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(typeof value === "string" ? new Date(value) : value);
+const tucumanDay = (value: Date | string) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Tucuman" }).format(typeof value === "string" ? new Date(value) : value);
 const opensToday = (item: Publication) => { const opens = parseTrainingMetadata(item.metadata)?.registrationOpensAt; return Boolean(opens && tucumanDay(opens) === tucumanDay(new Date())); };
 const healthNameForPublication = (item: Publication) => item.source === "Padrones y Comunicados" ? officialMetadata(item)?.sourceCategory || item.category : item.source;
 const healthForPublication = (item: Publication, sync: SyncStatus[]) => sync.find((source) => source.source === healthNameForPublication(item));
@@ -841,7 +841,7 @@ function PageHeader({ view, count, filter = "todas", query = "", syncing = false
   const isNovedades = filter === "nuevas" || (filter !== "comunicados" && /novedad/.test(normalize(query)));
   const isComunicados = filter === "comunicados" || (filter !== "nuevas" && /comunicad/.test(normalize(query)));
   const isNewsTab = view === "junta" && (isNovedades || isComunicados);
-  const title = isNewsTab ? (isNovedades ? "Novedades" : "Comunicados") : defaultTitle;
+  const title = isNewsTab ? (isNovedades ? "Novedades" : "Últimas novedades de Comunicados") : defaultTitle;
   const action = view === "vacantes" || view === "capacitaciones" ? undefined : <div className="flex flex-wrap gap-2">{onAskAI && <Button onClick={onAskAI} className="rounded-xl bg-[#0878be] text-[var(--text-on-accent)]"><Sparkles className="size-4" />Preguntar a IA</Button>}{onSync && <Button onClick={onSync} disabled={syncing} variant="outline" className="dt-refresh-button rounded-xl"><RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />Actualizar</Button>}</div>;
   const kind = view === "vacantes" || view === "capacitaciones" ? view : view === "junta" ? (isNewsTab ? "novedades" : "padrones") : "informacion";
   return <VisualSectionBanner kind={kind} title={title} description={view === "perfil" ? subtitle : `${subtitle} · ${count} resultados`} action={action} />;
