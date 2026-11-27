@@ -69,6 +69,23 @@ export function padronReferences(items: Publication[]) {
   return padronCandidates(items).filter(item=>padronRecordKind(item)!=='document');
 }
 
+// Availability is recorded after a separate source check, never inferred from
+// the age/year of a document or from a public parent folder.
+export function padronAccess(item: Publication) {
+  const facts = officialMetadata(item)?.facts;
+  const unavailable = item.kind === 'junta' && padronRecordKind(item) === 'document' &&
+    facts?.documentAccess?.status === 'reported' && facts.documentAccess.value === 'unavailable';
+  let folderUrl: string | null = null;
+  if (unavailable && facts?.documentFolder?.status === 'reported') {
+    try {
+      const url = new URL(facts.documentFolder.value);
+      if (url.protocol === 'https:' && url.hostname === 'drive.google.com' && !url.username && !url.password &&
+          /^\/drive\/folders\/[A-Za-z0-9_-]+$/.test(url.pathname)) folderUrl = url.toString();
+    } catch { /* Invalid folder evidence cannot become a public link. */ }
+  }
+  return { unavailable, directUrl: unavailable ? null : item.official_url, folderUrl };
+}
+
 export function padronYear(item: Publication) {
   const stored = officialMetadata(item)?.facts.padronYear?.value;
   return stored && /^20\d{2}$/.test(stored) ? Number(stored) : padronTitleFacts(item.title).year;

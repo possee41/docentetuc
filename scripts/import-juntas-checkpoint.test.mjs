@@ -229,6 +229,28 @@ test("a queue beyond 64 folders resumes without losing descendants", async () =>
   h.sqlite.close();
 });
 
+test("moving one document preserves its public file ID and resource key without duplicating it", async () => {
+  const h = isolatedD1();
+  const rootId = "123456789012345678901234567890";
+  const oldFolder = "old_folder_1234567890", newFolder = "new_folder_1234567890";
+  const pdf = { ...file(1), name: "PADRÓN DEFINITIVO 2026.pdf", resourceKey: "0-file-key" };
+  const folder = id => ({ id, name: "PADRONES DEFINITIVOS 2026", mimeType: "application/vnd.google-apps.folder" });
+  const listing = new Map([[rootId, [folder(oldFolder)]], [oldFolder, [pdf]]]);
+  const fixture = driveFixture(listing);
+  const options = { db: h.db, driveKey: key, sources: [root], sourceFetch: fixture.fetcher,
+    maxRequests: 2, maxPublicationWrites: 2, maxSteps: 2, refreshAfterMs: 0 };
+  try {
+    await runJuntasCheckpoint({ ...options, now });
+    const first = h.sqlite.prepare("SELECT id,official_url FROM publications").get();
+    assert.ok(first.official_url.endsWith("/view?resourcekey=0-file-key"));
+    listing.set(rootId, [folder(newFolder)]); listing.set(newFolder, [pdf]); listing.delete(oldFolder);
+    const moved = await runJuntasCheckpoint({ ...options, now: new Date(+now + 86400000) });
+    assert.equal(moved.created, 0); assert.equal(moved.unchanged, 1);
+    assert.deepEqual(h.sqlite.prepare("SELECT id,official_url FROM publications").get(), first);
+    assert.equal(h.sqlite.prepare("SELECT count(*) n FROM publications").get().n, 1);
+  } finally { h.sqlite.close(); }
+});
+
 test("an unexpired lease prevents another runner from processing the same root", async () => {
   const h = isolatedD1();
   const fixture = driveFixture(new Map([["123456789012345678901234567890", [file(1)]]]));

@@ -65,7 +65,7 @@ import { boardItems } from "@/lib/board-view";
 import { useFdciCatalogPilot, FdciCatalogPilotBanner, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
 import { sourceHealth, sourceNotices } from "@/lib/source-health";
 import type { BoardView } from "@/lib/board-view";
-import { groupPadrones, padronDocuments, padronReferences, padronRecordKind, padronSelection, padronFacts, padronYear } from "@/lib/padron-documents";
+import { groupPadrones, padronDocuments, padronReferences, padronRecordKind, padronSelection, padronFacts, padronYear, padronAccess } from "@/lib/padron-documents";
 import { eventDate as officialEventDate, hasOfficialTopic, officialDestination, officialMetadata, readMetadata } from "@/lib/official-publication";
 import { officialSavedLookup, resolveOfficialAlias } from "@/lib/official-reconciliation";
 import { OfficialPublicationDetails, OfficialPublicationSummary } from "@/components/official-publication-details";
@@ -671,6 +671,16 @@ function OfficialConsultations({ onView }: { onView: (view: View) => void }) {
   </section>;
 }
 
+function PadronSourceLink({ item, label = "Fuente oficial" }: { item: Publication; label?: string }) {
+  const access = padronAccess(item);
+  const style = "inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white";
+  return <div>
+    {access.unavailable && <p className="mb-2 text-sm text-[var(--text-secondary)]">El documento original no está disponible mediante su enlace.</p>}
+    {access.directUrl ? <a href={access.directUrl} target="_blank" rel="noreferrer" className={style}>{label} <ExternalLink className="size-4" /></a>
+      : access.folderUrl && <a href={access.folderUrl} target="_blank" rel="noreferrer" className={style}>Carpeta oficial — no es enlace directo al PDF <ExternalLink className="size-4" /></a>}
+  </div>;
+}
+
 function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; onOpen: (item: Publication) => void }) {
   const [rows, setRows] = useState<Publication[]>([]);
   const [coverage,setCoverage]=useState<{junta:string;state:string;lastCheckedAt:string|null}[]>([]);
@@ -740,7 +750,7 @@ function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junt
           {facts.scope&&tab!=="references"&&<p className="mt-1 text-sm text-[var(--text-secondary)]">{facts.scope === "Ascenso" ? "Padrón de ascenso" : "Padrón de concurso"}; no equivale al padrón general de interinatos y suplencias.</p>}
           {group.length > 1 && <p className="mt-1 text-xs text-[var(--text-secondary)]">Enlaces relacionados por título; comprobá cada documento en la fuente.</p>}
           <div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button>
-            {group.map((source, index) => <a key={source.id} href={source.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial{group.length > 1 ? ` ${index + 1}` : ""} <ExternalLink className="size-4" /></a>)}
+            {group.map((source, index) => <PadronSourceLink key={source.id} item={source} label={`Fuente oficial${group.length > 1 ? ` ${index + 1}` : ""}`} />)}
           </div>
         </Card>;
       })}</div> : <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-white p-5">{loading ? "Todavía se están cargando los padrones de esta selección." : "No se recibieron documentos de padrón para esta selección. Esto no confirma que no existan: consultá Carpetas y avisos, el historial o la fuente oficial."}</div>}
@@ -1486,7 +1496,7 @@ function PublicationSheet({ publication, sync, saved, tracking, match, onClose, 
             {(publication.kind === "junta" || publication.kind === "vacante") && <Button variant={Boolean(saved?.followed) ? "default" : "outline"} onClick={() => onFollow(publication, !Boolean(saved?.followed))} className="h-11 rounded-xl"><Bell className="size-4" />{Boolean(saved?.followed) ? "Dejar de seguir" : "Seguir"}</Button>}
             {publication.kind === "vacante" && tracking && <Button variant="outline" onClick={() => onEditDesignation(publication)} className="h-11 rounded-xl">Editar seguimiento</Button>}
           </div>}
-          {publication.kind === "vacante"
+          {padronAccess(publication).unavailable ? <PadronSourceLink item={publication} /> : publication.kind === "vacante"
             ? <Button type="button" onClick={() => onExternal(publication)} className="min-h-12 w-full rounded-xl bg-[#17362d] px-5 text-white">{!unverified && lifecycle === "ACTIVE" && hasOfficialTopic(publication, "INSCRIPCION_SIME") ? "Inscribirme en sitio oficial" : "Ver procedimiento en fuente oficial"} <ExternalLink className="size-4" /></Button>
             : info?.wordUrl
               ? <div className="flex flex-wrap gap-2">
