@@ -92,7 +92,7 @@ test('reconciliación conserva DDJJ PDF/Word, Trámites, Licencias y toda Inform
   }
   assert.equal(read('lib/useful-information.ts').replaceAll('\r\n','\n'),execFileSync('git',['show',base+':lib/useful-information.ts'],{encoding:'utf8'}).replaceAll('\r\n','\n'));
   const before=execFileSync('git',['show',base+':app/docente-app.tsx'],{encoding:'utf8'}),after=read('app/docente-app.tsx');
-  const section=text=>text.slice(text.indexOf('function InformationHub('),text.indexOf('function PadronSection(')).replaceAll('\r\n','\n');
+  const section=text=>text.slice(text.indexOf('function InformationHub('),text.indexOf('function OfficialConsultations(')).replaceAll('\r\n','\n');
   assert.ok(before.includes('function InformationHub(')&&after.includes('function InformationHub('));
   assert.equal(section(after),section(before));
   assert.match(section(after),/normalize\(category \|\| ""\) === "tramites"/);

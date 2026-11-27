@@ -1,6 +1,6 @@
 "use client";
 
-import { PADRON_MAX_PAGES } from "@/lib/board-page";
+import { PadronesSection } from "@/components/padrones-section";
 import { isPublicPublication } from "@/lib/publication-visibility";
 import { JuntaRevisions } from "@/components/juntas-revisions";
 
@@ -64,7 +64,7 @@ import { boardItems } from "@/lib/board-view";
 import { useFdciCatalogPilot, FdciCatalogPilotBanner, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
 import { sourceHealth, sourceNotices } from "@/lib/source-health";
 import type { BoardView } from "@/lib/board-view";
-import { groupPadrones, padronDocuments, padronReferences, padronRecordKind, padronSelection, padronFacts, padronYear, padronAccess, padronFooterSources } from "@/lib/padron-documents";
+import { padronAccess } from "@/lib/padron-documents";
 import { eventDate as officialEventDate, hasOfficialTopic, officialDestination, officialMetadata, readMetadata } from "@/lib/official-publication";
 import { officialSavedLookup, resolveOfficialAlias } from "@/lib/official-reconciliation";
 import { OfficialPublicationDetails, OfficialPublicationSummary } from "@/components/official-publication-details";
@@ -541,7 +541,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         <AppBackground>
         <AppHeader className="mobile-topbar min-h-20 gap-3 border-[#dce8e1] px-4 md:px-8">
           <AppSidebarTrigger pinned={sidebar.pinned} open={sidebar.open} onTogglePin={sidebar.togglePin} />
-          {view === "inicio" ? <div className="flex min-w-0 flex-1 items-center gap-3"><Image src="/icon-192.png" alt="" width={40} height={40} unoptimized className="size-10 shrink-0 rounded-xl md:hidden" /><span className="hidden font-black text-[#062b55] min-[410px]:inline md:hidden">DocenteTuc</span></div> : !["busqueda", "noticias", "vacantes", "perfil", "cuentas"].includes(view) ? <div className="relative min-w-0 max-w-2xl flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#52708c]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={view === "capacitaciones" ? "Buscar capacitaciones" : "Buscar en esta sección"} placeholder={view === "capacitaciones" ? "Buscar capacitaciones..." : "Buscar en esta sección..."} className="h-12 rounded-2xl border-[#c8e1f1] bg-white pl-11 shadow-sm" />{query && <button aria-label="Limpiar búsqueda" onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div> : <div className="min-w-0 flex-1" />}
+          {view === "inicio" ? <div className="flex min-w-0 flex-1 items-center gap-3"><Image src="/icon-192.png" alt="" width={40} height={40} unoptimized className="size-10 shrink-0 rounded-xl md:hidden" /><span className="hidden font-black text-[#062b55] min-[410px]:inline md:hidden">DocenteTuc</span></div> : !["busqueda", "noticias", "vacantes", "perfil", "cuentas", "padrones"].includes(view) ? <div className="relative min-w-0 max-w-2xl flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#52708c]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={view === "capacitaciones" ? "Buscar capacitaciones" : "Buscar en esta sección"} placeholder={view === "capacitaciones" ? "Buscar capacitaciones..." : "Buscar en esta sección..."} className="h-12 rounded-2xl border-[#c8e1f1] bg-white pl-11 shadow-sm" />{query && <button aria-label="Limpiar búsqueda" onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div> : <div className="min-w-0 flex-1" />}
           <Button onClick={() => setView("busqueda")} size="icon" variant="outline" className="size-11 shrink-0 rounded-xl border-[#dce8e1] bg-white" aria-label="Abrir buscador global"><Search className="size-5" /></Button>
           {installPrompt && <Button onClick={install} variant="outline" className="hidden h-11 rounded-xl border-[#bdd0c6] bg-white sm:flex"><Download className="size-4" />Instalar</Button>}
           {view === "inicio" && accountPhoto.authenticated && <Button onClick={() => setView("cuentas")} size="icon" variant="outline" aria-label="Ir a Cuentas y accesos" className="size-11 shrink-0 rounded-full border-[#dce8e1] bg-white p-0"><GoogleAccountPhoto src={accountPhoto.image} /></Button>}
@@ -588,7 +588,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
           : view === "agenda" ? <Agenda focusAt={agendaFocusAt} publications={data?.publications || []} savedMap={savedMap} manualEvents={data?.manualEvents || []} onOpen={openPublication} onNewEvent={(date) => { setManualEventDate(date || ""); setManualEvent("new"); }} onEditEvent={setManualEvent} />
         : view === "informacion" ? <InformationHub items={items} query={query} onQuery={setQuery} onBrowse={() => navigateToView("busqueda", "", "informacion")} savedMap={savedMap} onOpen={openPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAskAI={() => openAI({ type: "informacion", title: viewTitles.informacion[0] })} />
         : view === "junta" ? <OfficialConsultations onView={navigateToView} />
-        : view === "padrones" ? <PadronSection query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} />
+        : view === "padrones" ? <PadronesSection />
         : ["comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection key={`${view}:${query}`} view={view as BoardView} publications={data?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
             {view === "capacitaciones" && <FdciCatalogPilotBanner pilot={trainingPilot} />}
             <PageHeader view={view} count={items.length} filter={filter} query={query} syncing={syncing} onSync={() => void refreshSources()} onAskAI={() => openAI({ type: view, title: viewTitles[view][0] })} />
@@ -678,86 +678,6 @@ function PadronSourceLink({ item, label = "Fuente oficial" }: { item: Publicatio
     {access.directUrl ? <a href={access.directUrl} target="_blank" rel="noreferrer" className={style}>{label} <ExternalLink className="size-4" /></a>
       : access.folderUrl && <a href={access.folderUrl} target="_blank" rel="noreferrer" className={style}>Carpeta oficial — no es enlace directo al PDF <ExternalLink className="size-4" /></a>}
   </div>;
-}
-
-function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; onOpen: (item: Publication) => void }) {
-  const [rows, setRows] = useState<Publication[]>([]);
-  const [coverage,setCoverage]=useState<{junta:string;state:string;lastCheckedAt:string|null}[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [retry, setRetry] = useState(0);
-  const [tab, setTab] = useState<"current" | "history" | "undetermined" | "references">("current");
-  useEffect(() => {
-    const controller = new AbortController();
-    const load = async () => {
-      setLoading(true); setError(""); setRows([]);setCoverage([]);
-      const found: Publication[] = [], seen = new Set<string>();
-      try {
-        let cursor = "";
-        // ponytail: 20k-document safety cap; add server-side year cursors if the corpus outgrows it.
-        for (let page = 0; page < PADRON_MAX_PAGES; page++) {
-          // Fetch the selected Junta directly; a large earlier Junta must not delay its list.
-          const response = await fetch(`/api/boards/padrones?cursor=${encodeURIComponent(cursor)}&junta=${encodeURIComponent(junta)}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
-          if (!response.ok) throw new Error("No pudimos consultar los padrones.");
-          const result = await response.json() as { items: Publication[]; nextCursor: string | null; coverage?:typeof coverage };
-          if (!Array.isArray(result.items) || result.nextCursor && result.nextCursor === cursor) throw new Error("La consulta de padrones devolvió una página inválida.");
-          for (const item of result.items) if (!seen.has(item.id)) { seen.add(item.id); found.push(item); }
-          if (controller.signal.aborted) return;
-          if(!cursor&&Array.isArray(result.coverage))setCoverage(result.coverage);
-          setRows([...found]);
-          if (!result.nextCursor) return;
-          cursor = result.nextCursor;
-        }
-        throw new Error("La consulta de padrones requiere más páginas de las previstas.");
-      } catch {
-        if (!controller.signal.aborted) setError("No pudimos consultar todos los padrones en este momento.");
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    };
-    void load();
-    return () => controller.abort();
-  }, [retry, junta]);
-  const documents = useMemo(() => padronDocuments(rows), [rows]);
-  const selection = useMemo(() => padronSelection(documents), [documents]);
-  const chosen = tab === "references" ? padronReferences(rows) : tab === "history" ? selection.history : tab === "undetermined" ? selection.undetermined : selection.current;
-  const visible = useMemo(() => chosen.filter(item => (junta === "todas" || matchesJunta(item, junta)) &&
-    (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query)))), [chosen, junta, query]);
-  const groups = useMemo(() => tab === "references" ? visible.map(item=>[item]) : groupPadrones(visible), [visible,tab]);
-  const footerSources = useMemo(() => padronFooterSources(visible, junta), [visible, junta]);
-  const retryPanel = <Button variant="outline" onClick={() => setRetry(value => value + 1)} className="mt-3 min-h-10 rounded-xl">Reintentar</Button>;
-  return <section className="space-y-4 pb-16 md:pb-0">
-    <VisualSectionBanner kind="padrones" title="Padrones" description="Últimos listados disponibles por Junta; verificá el período de cada documento" />
-    <div className="flex flex-wrap gap-2" role="group" aria-label="Período de padrones">
-      {([["current", "Últimos por Junta"], ["history", "Historial"], ["undetermined", "Año no determinado"], ["references", "Carpetas y avisos"]] as const).map(([key, label]) =>
-        <Button key={key} variant={tab === key ? "default" : "outline"} onClick={() => setTab(key)} className="min-h-10 rounded-xl" aria-pressed={tab === key}>{label}</Button>)}
-    </div>
-    <div className="max-w-lg"><Label htmlFor="padron-junta">Junta</Label><Select value={junta} onValueChange={(value) => setJunta((value || "todas") as typeof junta)}><SelectTrigger id="padron-junta" className="mt-1 h-11 rounded-xl border-[#c8e1f1] bg-white"><SelectValue placeholder="Todas las juntas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map(item => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
-    <p className="rounded-xl border border-[#c8e1f1] bg-white p-3 text-sm text-[#315d7a]">El año y el tipo deben constar en el documento o su carpeta oficial. La fecha de descarga no determina la vigencia.</p>
-    {!loading&&coverage.some(source=>source.state!=='complete')&&<p className="text-sm text-[var(--text-secondary)]">Faltan documentos por verificar en: {coverage.filter(source=>source.state!=='complete').map(source=>source.junta).join('; ')}. El listado puede estar incompleto.</p>}
-    {!rows.length && loading && <p role="status" className="rounded-xl bg-white p-4">Consultando padrones publicados…</p>}
-    {!rows.length && !loading && error && <div role="alert" className="rounded-xl border border-amber-200 bg-white p-4"><p>{error}</p>{retryPanel}</div>}
-    {(rows.length > 0 || !loading && !error) && <>
-      {error && <div role="alert" className="rounded-xl border border-amber-200 bg-white p-4"><p>Mostramos los padrones ya recibidos. {error}</p>{retryPanel}</div>}
-      {loading && <p role="status" className="text-xs font-semibold text-[var(--text-muted)]">Cargando el resto de los padrones…</p>}
-      {groups.length ? <div className="grid gap-3 md:grid-cols-2">{groups.map(group => {
-        const item = group[0], facts = padronFacts(item);
-        return <Card as="article" key={item.id} className="rounded-2xl p-4">
-          <p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"} · {tab === "references" ? padronRecordKind(item)==="folder" ? "Carpeta oficial" : "Aviso o referencia" : facts.type} · {padronYear(item) ?? "Año no determinado"}</p>
-          {tab === "references" ? <p className="mt-1 text-sm text-[var(--text-secondary)]">Esta referencia no acredita por sí sola el contenido ni la vigencia de un padrón. Abrí la fuente para consultar sus documentos.</p> : facts.year!==null && facts.year<selection.currentYear ? <p className="mt-1 text-sm text-[var(--text-secondary)]">Documento histórico. Es un período anterior a {selection.currentYear}; su disponibilidad no confirma vigencia actual.</p> : <p className="mt-1 text-sm text-[var(--text-secondary)]">El año del documento no confirma por sí solo su vigencia actual.</p>}
-          <h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2>
-          {facts.subject && <p className="mt-1 text-sm text-[var(--text-secondary)]">{facts.subject}</p>}
-          {facts.scope&&tab!=="references"&&<p className="mt-1 text-sm text-[var(--text-secondary)]">{facts.scope === "Ascenso" ? "Padrón de ascenso" : "Padrón de concurso"}; no equivale al padrón general de interinatos y suplencias.</p>}
-          {group.length > 1 && <p className="mt-1 text-xs text-[var(--text-secondary)]">Enlaces relacionados por título; comprobá cada documento en la fuente.</p>}
-          <div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button>
-            {group.map((source, index) => <PadronSourceLink key={source.id} item={source} label={`Fuente oficial${group.length > 1 ? ` ${index + 1}` : ""}`} />)}
-          </div>
-        </Card>;
-      })}</div> : <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-white p-5">{loading ? "Todavía se están cargando los padrones de esta selección." : "No se recibieron documentos de padrón para esta selección. Esto no confirma que no existan: consultá Carpetas y avisos, el historial o la fuente oficial."}</div>}
-    </>}
-    <a href="https://padrones.educaciontuc.gov.ar/" target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-[#075f9b] underline">Consultar portal oficial de Juntas <ExternalLink className="size-4" /></a>
-    {footerSources.length > 0 && <details className="text-sm"><summary>Carpetas oficiales por Junta</summary><ul className="mt-2 space-y-2">{footerSources.map(source=><li key={source[0]}><a className="underline" href={source[3]} target="_blank" rel="noreferrer">{source[2]}</a></li>)}</ul></details>}
-  </section>;
 }
 
 function OfficialBoardSection({ view, publications, query, junta, setJunta, onOpen }: { view: BoardView; publications: Publication[]; query: string; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; onOpen: (item: Publication) => void }) {
