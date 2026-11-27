@@ -21,7 +21,10 @@ export function comunicadosConfig(env, sha, { closing = false } = {}) {
     env.JUNTAS_DATABASE_ID !== 'baaf5886-0123-4948-96da-aa7106424549' ||
     env.JUNTAS_DATABASE_NAME !== 'docentetuc-db' || env.JUNTAS_RECEIVER_ORIGIN !== COMUNICADOS_RECEIVER)
     throw Error('COMUNICADOS_IDENTITY_INVALID');
-  if (!closing && (env.COMUNICADOS_DAILY_ENABLED !== 'true' || env.GITHUB_EVENT_NAME !== 'schedule' ||
+  const authorizedSchedule = env.GITHUB_EVENT_NAME === 'schedule' && env.COMUNICADOS_DAILY_ENABLED === 'true';
+  const authorizedManual = env.GITHUB_EVENT_NAME === 'workflow_dispatch' && env.COMUNICADOS_MANUAL_RUN === 'true' &&
+    env.GITHUB_REF === 'refs/heads/release/comunicados-automaticos-20261127';
+  if (!closing && (!(authorizedSchedule || authorizedManual) ||
     env.GITHUB_REPOSITORY !== 'possee41/docentetuc' || env.GITHUB_RUN_ATTEMPT !== '1'))
     throw Error('COMUNICADOS_DISABLED');
   const owner = `juntas-${env.GITHUB_RUN_ID || ''}`;

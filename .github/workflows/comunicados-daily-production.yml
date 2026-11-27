@@ -3,6 +3,11 @@ name: Comunicados daily production
 on:
   # schedule: [{ cron: '7 11 * * *' }] # 08:07 America/Argentina/Tucuman (UTC-3)
   workflow_dispatch:
+    inputs:
+      approved_sha:
+        description: Approved immutable Comunicados commit
+        required: true
+        type: string
 permissions:
   contents: read
   actions: read
@@ -11,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   preflight:
-    if: github.repository == 'possee41/docentetuc' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.event_name == 'schedule' && vars.COMUNICADOS_DAILY_ENABLED == 'true' && github.run_attempt == 1
+    if: github.repository == 'possee41/docentetuc' && ((github.event_name == 'schedule' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && vars.COMUNICADOS_DAILY_ENABLED == 'true') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release/comunicados-automaticos-20261127' && vars.COMUNICADOS_DAILY_ENABLED != 'true' && inputs.approved_sha == '90b92f5d31eaade4ca41a58911f9478e20361039')) && github.run_attempt == 1
     runs-on: ubuntu-latest
     outputs:
       runtime_sha: ${{ steps.validate.outputs.runtime_sha }}
@@ -23,7 +28,9 @@ jobs:
         with:
           script: |
             const {owner,repo}=context.repo;
-            if(!/^[a-f0-9]{40}$/.test(process.env.COMUNICADOS_APPROVED_SHA||''))throw Error('COMUNICADOS_SHA_MISSING');
+            const approved='90b92f5d31eaade4ca41a58911f9478e20361039';
+            if(process.env.COMUNICADOS_APPROVED_SHA!==approved)throw Error('COMUNICADOS_SHA_MISSING');
+            if(context.eventName==='workflow_dispatch' && context.payload.inputs?.approved_sha!==approved)throw Error('COMUNICADOS_MANUAL_SHA_INVALID');
             const {data:env}=await github.rest.repos.getEnvironment({owner,repo,environment_name:'juntas-production'});
             if(env.protection_rules?.some(rule=>rule.type==='required_reviewers'))throw Error('COMUNICADOS_UNATTENDED_ENVIRONMENT_BLOCKED');
             core.setOutput('runtime_sha',process.env.COMUNICADOS_APPROVED_SHA);
@@ -36,6 +43,8 @@ jobs:
     env:
       COMUNICADOS_APPROVED_SHA: ${{ needs.preflight.outputs.runtime_sha }}
       COMUNICADOS_DAILY_ENABLED: ${{ vars.COMUNICADOS_DAILY_ENABLED }}
+      COMUNICADOS_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.approved_sha == '90b92f5d31eaade4ca41a58911f9478e20361039' && vars.COMUNICADOS_DAILY_ENABLED != 'true' && 'true' || 'false' }}
+      GITHUB_REF: ${{ github.ref }}
       JUNTAS_RECEIVER_ORIGIN: https://docentetuc-sources-1-2.possee41.workers.dev
       JUNTAS_DATABASE_ID: baaf5886-0123-4948-96da-aa7106424549
       JUNTAS_DATABASE_NAME: docentetuc-db

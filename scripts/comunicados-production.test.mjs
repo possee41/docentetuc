@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runComunicadosProduction, COMUNICADOS_RECEIVER, boundedLeaseDeadline } from './comunicados-production.mjs';
+import { runComunicadosProduction, COMUNICADOS_RECEIVER, boundedLeaseDeadline, comunicadosConfig } from './comunicados-production.mjs';
 import { runJuntasMaintenance } from './juntas-maintenance.mjs';
 import { JUNTA_EXTERNAL_SOURCES } from '../lib/junta-external-sources.ts';
 import { DatabaseSync } from 'node:sqlite';
@@ -59,6 +59,15 @@ test('rechazo de identidad impide abrir concesión; error de importación la cie
   await assert.rejects(runComunicadosProduction(env, sha, { fetcher: transport(actions), maintenance: async () => { throw Error('SOURCE_FAILED'); } }), /SOURCE_FAILED/);
   assert.deepEqual(actions, ['open', 'close']);
   await assert.rejects(runComunicadosProduction({ ...env, COMUNICADOS_APPROVED_SHA: 'b'.repeat(40) }, sha, { fetcher: transport([]) }), /COMUNICADOS_IDENTITY_INVALID/);
+});
+
+test('ejecución manual requiere evento explícito, rama y SHA correctos con daily disabled', () => {
+  const manual = { ...env, COMUNICADOS_DAILY_ENABLED: 'false', GITHUB_EVENT_NAME: 'workflow_dispatch',
+    GITHUB_REF: 'refs/heads/release/comunicados-automaticos-20261127', COMUNICADOS_MANUAL_RUN: 'true' };
+  assert.equal(comunicadosConfig(manual, sha).owner, 'juntas-123');
+  assert.throws(() => comunicadosConfig({ ...manual, GITHUB_REF: 'refs/heads/main' }, sha), /COMUNICADOS_DISABLED/);
+  assert.throws(() => comunicadosConfig({ ...manual, COMUNICADOS_MANUAL_RUN: 'false' }, sha), /COMUNICADOS_DISABLED/);
+  assert.throws(() => comunicadosConfig({ ...manual, COMUNICADOS_APPROVED_SHA: 'b'.repeat(40) }, sha), /COMUNICADOS_IDENTITY_INVALID/);
 });
 
 test('checkpoint reutiliza una sola cabecera Authorization y conserva dueño de concesión', async () => {
