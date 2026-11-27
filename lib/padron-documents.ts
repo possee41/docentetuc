@@ -15,13 +15,22 @@ export const PADRON_PAGE_QUERY = `SELECT * FROM publications
 
 // Only an explicit padrón/ciclo/vigencia label is evidence of its year.
 export function padronTitleFacts(title: string) {
-  const text = normalizeOfficialText(title).replace(/\b(padron(?:es)?)\s+def\.(?=\s|$)/g, "$1 definitivo");
+  const text = normalizeOfficialText(title).replace(/_/g, ' ')
+    .replace(/\b(padron(?:es)?)\s+def\.(?=\s|$)/g, "$1 definitivo")
+    // Official Técnica titles use PD/PP only with these explicit procedures.
+    // Do not turn arbitrary codes (e.g. PDVC timestamps) into padrón evidence.
+    .replace(/^(pd|pp)\s+(?=(?:int(?:erinatos)?\s+y\s+sup(?:lencias)?|asc(?:enso)?\s+jer(?:arquia)?|concentracion)\b)/,
+      (_, type: string) => `padron ${type === 'pd' ? 'definitivo' : 'provisorio'} `);
+  // A typed concurso padrón can have its own explicit year. Its scope remains
+  // separate from the general padrón; convocatoria/publication dates cannot fill it.
+  const typedPadron = /\bpadron(?:es)?\s+(?:definitiv[oa]s?|provisori[oa]s?|complementari[oa]s?|especial(?:es)?|def\.?)(?=\s|$)/.test(text);
   const years = [
-    ...[...text.matchAll(/\bpadron(?:es)?\b([^.;,]{0,55}?)\b(20\d{2})\b(?:\s*(?:y|\/|a|–|-)\s*(20\d{2})\b)?/g)]
-      .filter(match => !/\b(convocatoria|concurso|llamado|resolucion|publicad[oa]|actualizad[oa]|modificad[oa]|drive)\b/.test(match[1]))
+    ...[...text.matchAll(/\bpadron(?:es)?\b([^.;,]{0,140}?)\b(20\d{2})\b(?:\s*(?:y|\/|a|–|-)\s*(20\d{2})\b)?/g)]
+      .filter(match => !/\b(convocatoria|llamado|resolucion|publicad[oa]|actualizad[oa]|modificad[oa]|drive)\b/.test(match[1]) &&
+        (!/\bconcurso\b/.test(match[1]) || typedPadron))
       .flatMap(match => match[3] ? [Number(match[2]),Number(match[3])] : [Number(match[2])]),
     ...[...text.matchAll(/\b(?:ciclo lectivo|vigencia)\s*(?:a[nñ]o\s*)?(20\d{2})\b/g)].map(match => Number(match[1])),
-    ...[...text.matchAll(/\b(20\d{2})\s+padron(?:es)?\b/g)].map(match => Number(match[1])),
+    ...[...text.matchAll(/\b(20\d{2})\s*(?:[-–—:]\s*)?padron(?:es)?\b/g)].map(match => Number(match[1])),
   ];
   const uniqueYears = [...new Set(years)];
   const typeWords = { Provisorio: /\bprovisori[oa]s?\b/, Definitivo: /\bdefinitiv[oa]s?\b|\bpadron(?:es)?\s+def\.?(?=\s|$)/,
@@ -68,8 +77,10 @@ export function padronYear(item: Publication) {
 export function padronFacts(item: Publication) {
   const parsed = padronTitleFacts(item.title), facts = officialMetadata(item)?.facts;
   const type = facts?.padronType?.value;
+  const scopeText = normalizeOfficialText(item.title+' '+(facts?.padronScope?.value||''));
   return { ...parsed, year: padronYear(item),
-    scope: /\bconcurso\b|ascenso de jerarquia/.test(normalizeOfficialText(item.title+' '+(facts?.padronScope?.value||''))) ? 'Concurso' : null,
+    scope: /\bascenso\b|\basc\s+jer\b/.test(scopeText) ? 'Ascenso'
+      : /\bconcurso\b|\bantecedentes y oposicion\b/.test(scopeText) ? 'Concurso' : null,
     type: ["Provisorio", "Definitivo", "Complementario", "Especial"].includes(type || "") ? type as PadronType : parsed.type };
 }
 
