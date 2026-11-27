@@ -79,9 +79,12 @@ function leaseValid(lease, source) {
   return Number.isFinite(expires) && expires > Date.now();
 }
 
-async function verifyIdentity(env, expected) {
+async function verifyIdentity(env, expected, withFdciLease = false) {
   let identity;
-  try { identity = await env.DB.prepare("SELECT database_name,database_id FROM import_gateway_identity WHERE id=1").first(); }
+  try { identity = await env.DB.prepare(withFdciLease
+    ? `SELECT i.database_name,i.database_id,l.source,l.expires_at,l.opened_by
+       FROM import_gateway_identity i LEFT JOIN import_gate_lease l ON l.id=1 WHERE i.id=1`
+    : "SELECT database_name,database_id FROM import_gateway_identity WHERE id=1").first(); }
   catch { return { error: reply(503, "DATABASE_IDENTITY_UNAVAILABLE") }; }
   if (identity?.database_name !== expected.name || identity?.database_id !== expected.id)
     return { error: reply(503, "DATABASE_IDENTITY_MISMATCH") };
@@ -163,13 +166,14 @@ const gateway = { async fetch(request, env) {
   const [secretName, receiver] = route;
   if (!await authorized(request.headers.get("authorization"), env[secretName])) return reply(401, "UNAUTHORIZED");
   const expected = { name: env.IMPORT_DATABASE_NAME, id: env.IMPORT_DATABASE_ID };
-  const checked = await verifyIdentity(env, expected);
+  const fdciImportLease = leaseMode(env) && url.pathname === "/api/internal/fdci-import";
+  const checked = await verifyIdentity(env, expected, fdciImportLease);
   if (checked.error) return checked.error;
   if (identityRequest) return Response.json({ name: checked.identity.database_name, id: checked.identity.database_id },
     { headers: noStore });
   let owner;
   if (leaseMode(env)) {
-    const lease = await readLease(env);
+    const lease = fdciImportLease ? checked.identity : await readLease(env);
     if (!leaseValid(lease, requestedSource)) return reply(503, "IMPORT_DISABLED");
     owner = request.headers.get("x-import-gate-owner");
     if (!validOwner(owner) || lease.opened_by !== owner) return reply(409, "GATE_OWNER_MISMATCH");

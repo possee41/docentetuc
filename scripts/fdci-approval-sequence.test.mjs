@@ -4,6 +4,7 @@ import test from "node:test";
 import gateway from "../workers/source-import-gateway.mjs";
 import { callGate, preflightFdciJob } from "./import-gate.mjs";
 import { fdciLocalFixture } from "./fdci-local-fixture.mjs";
+import { prepareFdciImports } from "../lib/fdci-import.ts";
 
 const config = {
   SYNC_SOURCE: "fdci", IMPORT_GATEWAY_ENABLED: "true",
@@ -97,6 +98,30 @@ test("after approval, owner opens once, foreign owners are rejected and normal c
   // A closed lease is not a disarmed gateway; the operator must restore flags.
   f.close();
   await assertClosed(f);
+});
+
+test("FDCI import reads identity and lease together without bypassing either check", async t => {
+  const f = fixture(t);
+  f.arm();
+  await callGate("open", config, f.fetcher);
+  const [item] = await prepareFdciImports(
+    [{ capacitacion_id: 100, nombre: "Sintético", token: "synthetic", slug: "synthetic" }],
+    [{ id: 9001, capacitacion_id: 100, fecha_apertura_preinscripcion: "2026-11-01 23:00:00",
+      fecha_cierre_preinscripcion: "2026-11-03 08:00:00", comision_cerrada: 1 }]);
+  const body = { mode: "batch", items: [item] };
+  const before = f.queries();
+  const first = await f.request("/api/internal/fdci-import", { body });
+  assert.equal(first.status, 200);
+  assert.equal((await first.json()).created, 1);
+  assert.equal(f.queries() - before, 3);
+  const afterFirst = f.queries();
+  const repeat = await f.request("/api/internal/fdci-import", { body });
+  assert.equal((await repeat.json()).unchanged, 1);
+  assert.equal(f.queries() - afterFirst, 3);
+  assert.equal((await f.request("/api/internal/fdci-import", { body, owner: "foreign" })).status, 409);
+  f.sqlite.prepare("UPDATE import_gateway_identity SET database_id='wrong' WHERE id=1").run();
+  assert.equal((await f.request("/api/internal/fdci-import", { body })).status, 503);
+  assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM publications").get().n, 1);
 });
 
 test("cancellation or 120-second preapproval deadline: independent operator shutdown needs no GitHub", async t => {

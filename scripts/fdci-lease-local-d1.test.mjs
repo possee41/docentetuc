@@ -44,7 +44,7 @@ test("gateway real en Workerd y D1 efímera: propietario, escritura y repetició
     assert.equal(repeat.status, 200);
     const unchanged = await repeat.json();
     assert.equal(unchanged.unchanged, 1);
-    assert.equal(unchanged.rowsWritten, 0);
+    assert.equal(unchanged.rowsWritten, 1); // last_seen_at records the verified reobservation.
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM publications").first()).n, 1);
     assert.equal((await control("close", "loser")).status, 409);
     assert.equal((await control("close", owner)).status, 200);
@@ -65,10 +65,10 @@ test("gateway real en Workerd y D1 efímera: propietario, escritura y repetició
     }
     assert.equal(cycles[0].reduce((s,x)=>s+x.created,0),30);
     assert.equal(cycles[1].reduce((s,x)=>s+x.unchanged,0),30);
-    assert.ok(publicationAcks.slice(30).every(x=>x.rowsWritten===0));
+    assert.ok(publicationAcks.slice(30).every(x=>x.rowsWritten===1));
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM publications").first()).n,31);
     assert.equal((await control("close", owner)).status,200);
-    console.log(JSON.stringify({runtime:"local-workerd",firstCycleRuns:6,secondCycleRuns:6,publications:31,repeatPublicationWrites:0,cpuMs:null}));
+    console.log(JSON.stringify({runtime:"local-workerd",firstCycleRuns:6,secondCycleRuns:6,publications:31,repeatPublicationWrites:1,cpuMs:null}));
     console.log(JSON.stringify({ runtime: "local-workerd", receiver: { first: created, repeat: unchanged }, cpuMs: null }));
   } finally { await mf.dispose(); }
 });
