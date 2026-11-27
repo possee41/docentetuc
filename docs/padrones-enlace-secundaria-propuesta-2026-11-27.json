@@ -1,0 +1,37 @@
+{
+  "status": "PREPARED_NOT_APPLIED",
+  "expected": {
+    "id": "drive:pad-secundaria:1NdgFtOpLdWN33RETK0wY5Z5AkayO615H",
+    "contentHash": "bdc4dcac86c9845e87d87c05ab9a4a703aa11c62827ec0d16b474ea7d5077c56",
+    "metadataSha256": "c88b18ec3602411bb3caccf76bdb95b19156b6e151cb3896522a721eef0616d6"
+  },
+  "checkedAt": "2026-11-27T03:02:57.550Z",
+  "operation": "Revalidate precondition; submit this single preserved-ID record through authorized receiver only after approval. Never use a circuit PDF as replacement without equivalence evidence.",
+  "payload": {
+    "id": "drive:pad-secundaria:1NdgFtOpLdWN33RETK0wY5Z5AkayO615H",
+    "source": "Padrones y Comunicados",
+    "externalId": "1NdgFtOpLdWN33RETK0wY5Z5AkayO615H",
+    "kind": "junta",
+    "category": "Padrones",
+    "title": "PADRON DEFINITIVO DE ANTECEDENTES ASCENSO DE JERARQUIA EN TITULARIDAD 2026.pdf",
+    "summary": "Referencia conservada: el enlace original no está disponible. La carpeta oficial de Ascenso de Jerarquía se ofrece como alternativa de consulta; no es un enlace directo ni confirma un reemplazo equivalente del PDF.",
+    "level": "",
+    "area": "",
+    "junta": "Secundaria",
+    "location": "",
+    "shift": "",
+    "character": "",
+    "startsAt": null,
+    "endsAt": null,
+    "status": "Documento público · vigencia no informada",
+    "officialUrl": "https://drive.google.com/file/d/1NdgFtOpLdWN33RETK0wY5Z5AkayO615H/view",
+    "metadata": "{\"contentAvailable\":false,\"format\":\"application/pdf\",\"parent\":\"pad-secundaria\",\"official\":{\"version\":1,\"entity\":\"padron\",\"junta\":\"Secundaria\",\"sources\":[{\"id\":\"drive:pad-secundaria:1NdgFtOpLdWN33RETK0wY5Z5AkayO615H\",\"source\":\"Junta\",\"url\":\"https://drive.google.com/file/d/1NdgFtOpLdWN33RETK0wY5Z5AkayO615H/view\",\"excerpt\":\"PADRON DEFINITIVO DE ANTECEDENTES ASCENSO DE JERARQUIA EN TITULARIDAD 2026.pdf\"}],\"topics\":[\"PADRON\"],\"procedure\":\"unknown\",\"codes\":[],\"scope\":{\"school\":null,\"role\":null,\"subject\":null,\"hours\":null,\"shift\":null,\"character\":null,\"circuit\":null},\"facts\":{\"padronYear\":{\"value\":\"2026\",\"precision\":\"text\",\"status\":\"reported\",\"evidence\":[{\"id\":\"drive:pad-secundaria:1NdgFtOpLdWN33RETK0wY5Z5AkayO615H\",\"source\":\"Junta\",\"url\":\"https://drive.google.com/file/d/1NdgFtOpLdWN33RETK0wY5Z5AkayO615H/view\",\"excerpt\":\"2026\"}]},\"padronType\":{\"value\":\"Definitivo\",\"precision\":\"text\",\"status\":\"reported\",\"evidence\":[{\"id\":\"drive:pad-secundaria:1NdgFtOpLdWN33RETK0wY5Z5AkayO615H\",\"source\":\"Junta\",\"url\":\"https://drive.google.com/file/d/1NdgFtOpLdWN33RETK0wY5Z5AkayO615H/view\",\"excerpt\":\"Definitivo\"}]},\"documentAccess\":{\"value\":\"unavailable\",\"precision\":\"text\",\"status\":\"reported\",\"evidence\":[{\"id\":\"drive:pad-secundaria:1NdgFtOpLdWN33RETK0wY5Z5AkayO615H\",\"source\":\"Junta\",\"url\":\"https://drive.google.com/file/d/1NdgFtOpLdWN33RETK0wY5Z5AkayO615H/view\",\"excerpt\":\"2026-11-27T03:02:57.550Z: Drive muestra Necesitas acceso; metadatos sin OAuth devuelven HTTP 404. No se determina si fue retirado o restringido.\"}]},\"documentFolder\":{\"value\":\"https://drive.google.com/drive/folders/1-Vnz9r_0kvEmvGRcd3xwT2xX1DBPLMBf\",\"precision\":\"text\",\"status\":\"reported\",\"evidence\":[{\"id\":\"1-Vnz9r_0kvEmvGRcd3xwT2xX1DBPLMBf\",\"source\":\"Junta\",\"url\":\"https://drive.google.com/drive/folders/1-Vnz9r_0kvEmvGRcd3xwT2xX1DBPLMBf\",\"excerpt\":\"Carpeta oficial ASCENSO DE JERARQUIA, accesible. Contiene ramas DIRECTOR - VICEDIRECTOR y SUPERVISOR; no equivale al PDF antiguo.\"}]}},\"relatedIds\":[],\"issues\":[],\"sourceCategory\":\"Padrones\"}}",
+    "contentHash": "f50b1644ca1e8fbc62992cca93428958c07af144f41befa8e606d5b1590cd83d",
+    "sourceUpdatedAt": "2026-09-09T11:48:19.297Z",
+    "sourcePublishedAt": null,
+    "registrationOpenAt": null,
+    "registrationCloseAt": null,
+    "expiresAt": null,
+    "normalizedStatus": "UNKNOWN"
+  }
+}

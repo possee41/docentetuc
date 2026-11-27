@@ -12,7 +12,4 @@ export function getDb() {
   return drizzle(env.DB, { schema });
 }
 
-export function getD1() {
-  if (!env.DB) throw new Error("La base de datos no está disponible.");
-  return env.DB;
-}
+export { getD1 } from "./d1";

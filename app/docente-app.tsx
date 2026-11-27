@@ -1,5 +1,9 @@
 "use client";
 
+import { PadronesSection } from "@/components/padrones-section";
+import { isPublicPublication } from "@/lib/publication-visibility";
+import { JuntaRevisions } from "@/components/juntas-revisions";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import Image from "next/image";
@@ -62,7 +66,7 @@ import { boardItems } from "@/lib/board-view";
 import { useFdciCatalogPilot, FdciCatalogPilotBanner, isFdciCatalogOnly } from "@/components/fdci-catalog-pilot";
 import { sourceHealth, sourceNotices } from "@/lib/source-health";
 import type { BoardView } from "@/lib/board-view";
-import { groupPadrones, padronDocuments, padronSelection, padronTitleFacts, padronYear } from "@/lib/padron-documents";
+import { padronAccess } from "@/lib/padron-documents";
 import { eventDate as officialEventDate, hasOfficialTopic, officialDestination, officialMetadata, readMetadata } from "@/lib/official-publication";
 import { officialSavedLookup, resolveOfficialAlias } from "@/lib/official-reconciliation";
 import { OfficialPublicationDetails, OfficialPublicationSummary } from "@/components/official-publication-details";
@@ -550,7 +554,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
         <AppBackground>
         <AppHeader className="mobile-topbar min-h-20 gap-3 border-[#dce8e1] px-4 md:px-8">
           <AppSidebarTrigger pinned={sidebar.pinned} open={sidebar.open} onTogglePin={sidebar.togglePin} />
-          {view === "inicio" ? <div className="flex min-w-0 flex-1 items-center gap-3"><Image src="/icon-192.png" alt="" width={40} height={40} unoptimized className="size-10 shrink-0 rounded-xl md:hidden" /><span className="hidden font-black text-[#062b55] min-[410px]:inline md:hidden">DocenteTuc</span></div> : !["busqueda", "noticias", "vacantes", "perfil", "cuentas"].includes(view) ? <div className="relative min-w-0 max-w-2xl flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#52708c]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={view === "capacitaciones" ? "Buscar capacitaciones" : "Buscar en esta sección"} placeholder={view === "capacitaciones" ? "Buscar capacitaciones..." : "Buscar en esta sección..."} className="h-12 rounded-2xl border-[#c8e1f1] bg-white pl-11 shadow-sm" />{query && <button aria-label="Limpiar búsqueda" onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div> : <div className="min-w-0 flex-1" />}
+          {view === "inicio" ? <div className="flex min-w-0 flex-1 items-center gap-3"><Image src="/icon-192.png" alt="" width={40} height={40} unoptimized className="size-10 shrink-0 rounded-xl md:hidden" /><span className="hidden font-black text-[#062b55] min-[410px]:inline md:hidden">DocenteTuc</span></div> : !["busqueda", "noticias", "vacantes", "perfil", "cuentas", "padrones"].includes(view) ? <div className="relative min-w-0 max-w-2xl flex-1"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#52708c]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={view === "capacitaciones" ? "Buscar capacitaciones" : "Buscar en esta sección"} placeholder={view === "capacitaciones" ? "Buscar capacitaciones..." : "Buscar en esta sección..."} className="h-12 rounded-2xl border-[#c8e1f1] bg-white pl-11 shadow-sm" />{query && <button aria-label="Limpiar búsqueda" onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-2"><X className="size-4" /></button>}</div> : <div className="min-w-0 flex-1" />}
           <Button onClick={() => setView("busqueda")} size="icon" variant="outline" className="size-11 shrink-0 rounded-xl border-[#dce8e1] bg-white" aria-label="Abrir buscador global"><Search className="size-5" /></Button>
           {installPrompt && <Button onClick={install} variant="outline" className="hidden h-11 rounded-xl border-[#bdd0c6] bg-white sm:flex"><Download className="size-4" />Instalar</Button>}
           {view === "inicio" && accountPhoto.authenticated && <Button onClick={() => setView("cuentas")} size="icon" variant="outline" aria-label="Ir a Cuentas y accesos" className="size-11 shrink-0 rounded-full border-[#dce8e1] bg-white p-0"><GoogleAccountPhoto src={accountPhoto.image} /></Button>}
@@ -597,7 +601,7 @@ export default function DocenteApp({ initialSection }: { initialSection?: string
           : view === "agenda" ? <Agenda focusAt={agendaFocusAt} publications={data?.publications || []} savedMap={savedMap} manualEvents={data?.manualEvents || []} onOpen={openPublication} onNewEvent={(date) => { setManualEventDate(date || ""); setManualEvent("new"); }} onEditEvent={setManualEvent} />
         : view === "informacion" ? <InformationHub items={items} query={query} onQuery={setQuery} onBrowse={() => navigateToView("busqueda", "", "informacion")} savedMap={savedMap} onOpen={openPublication} onSave={(item, enabled) => void mutateSaved("save", item, enabled)} onAskAI={() => openAI({ type: "informacion", title: viewTitles.informacion[0] })} />
         : view === "junta" ? <OfficialConsultations onView={navigateToView} />
-        : view === "padrones" ? <PadronSection query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} />
+        : view === "padrones" ? <PadronesSection />
         : ["comunicados", "actos", "llamados"].includes(view) ? <OfficialBoardSection key={`${view}:${query}`} view={view as BoardView} publications={data?.publications || []} query={query} junta={juntaFilter} setJunta={setJuntaFilter} onOpen={openPublication} /> : <>
             {view === "capacitaciones" && <FdciCatalogPilotBanner pilot={trainingPilot} />}
             {view === "capacitaciones" && trainingCatalog.error && <p role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">{trainingCatalog.error}</p>}
@@ -665,6 +669,7 @@ function InformationHub({ items, query, onQuery, onBrowse, savedMap, onOpen, onS
     {!category && !query && favorites.length > 0 && <div><h2 className="mb-1.5 text-xs font-black uppercase tracking-wide text-[var(--accent-text)]">Mis contactos</h2><div className="grid gap-1.5">{favorites.map((item) => <button key={item.id} onClick={() => onOpen(item)} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-primary)] px-3 text-left"><Star className="size-4 fill-[#f4b942] text-[#9a6810]" /><span className="truncate font-bold text-[var(--text-primary)]">{item.title}</span><ChevronRight className="ml-auto size-4" /></button>)}</div></div>}
     {(category || query) && <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wide text-[var(--accent-text)]">{query ? "Resultados" : category}</p><p className="text-sm text-[var(--text-muted)]">{visible.length} fichas oficiales</p></div><Button variant="outline" onClick={onAskAI} className="rounded-xl bg-[var(--surface-primary)]"><Sparkles className="size-4" />Preguntar</Button></div>}
     {(category || query) && <div className="grid gap-2 md:grid-cols-2">{visible.map(usefulCard)}</div>}
+    {(normalize(category || "") === "tramites" || (!category && /ddjj|declaracion jurada|declaración jurada/i.test(query))) && <div className="space-y-2"><h2 className="text-base font-black text-[var(--text-primary)]">Formularios de Declaración Jurada</h2><div className="grid gap-2 md:grid-cols-2"><article className="rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-4"><span className="text-xs font-black text-[var(--accent-text)]">PDF</span><h3 className="mt-1 font-bold text-[var(--text-primary)]">Declaración Jurada de Cargos y Actividades</h3><p className="mt-1 text-sm text-[var(--text-secondary)]">Formulario original en blanco de dos páginas para completar e imprimir.</p><div className="mt-3 flex flex-wrap gap-2"><a href="/documents/Nueva_DDJJ_2026_en_blanco.pdf" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--border)] px-3 py-2 text-sm font-bold text-[var(--accent-text)]">Ver PDF <ExternalLink className="size-4" /></a><a href="/documents/Nueva_DDJJ_2026_en_blanco.pdf" download className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--accent-soft)] px-3 py-2 text-sm font-bold text-[var(--accent-text)]">Descargar PDF <Download className="size-4" /></a></div></article><article className="rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-4"><span className="text-xs font-black text-[var(--accent-text)]">DOCX</span><h3 className="mt-1 font-bold text-[var(--text-primary)]">Declaración Jurada de Cargos y Actividades</h3><p className="mt-1 text-sm text-[var(--text-secondary)]">Versión editable para completar los datos, cargos y horarios desde la computadora.</p><div className="mt-3 flex flex-wrap gap-2"><a href="/documents/Nueva_DDJJ_2026_en_blanco.docx" download className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--accent-soft)] px-3 py-2 text-sm font-bold text-[var(--accent-text)]">Descargar DOCX <Download className="size-4" /></a></div></article></div></div>}
     {(category === "Licencias y salud laboral" || (!category && /licencia/i.test(query))) && <div className="space-y-2"><h2 className="text-base font-black text-[var(--text-primary)]">Formularios de licencias</h2><div className="grid gap-2 md:grid-cols-2">{licenseForms.map((form) => <article key={form.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-primary)] p-4"><span className="text-xs font-black text-[var(--accent-text)]">{form.format}</span><h3 className="mt-1 font-bold text-[var(--text-primary)]">{form.title}</h3><p className="mt-1 text-sm text-[var(--text-secondary)]">{form.description}</p><div className="mt-3 flex flex-wrap gap-2">{form.format === "PDF" && <a href={form.href} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--border)] px-3 py-2 text-sm font-bold text-[var(--accent-text)]">Ver PDF <ExternalLink className="size-4" /></a>}<a href={form.href} download className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--accent-soft)] px-3 py-2 text-sm font-bold text-[var(--accent-text)]">Descargar {form.format} <Download className="size-4" /></a></div></article>)}</div></div>}
     {(category || query) && !visible.length && <Empty title="No encontramos información" text="Probá con sueldo, legajo, jubilación, certificado, título, licencia o expediente." />}
   </section>;
@@ -679,77 +684,14 @@ function OfficialConsultations({ onView }: { onView: (view: View) => void }) {
   </section>;
 }
 
-function PadronSection({ query, junta, setJunta, onOpen }: { query: string; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; onOpen: (item: Publication) => void }) {
-  const [rows, setRows] = useState<Publication[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [retry, setRetry] = useState(0);
-  const [tab, setTab] = useState<"current" | "history" | "undetermined">("current");
-  useEffect(() => {
-    const controller = new AbortController();
-    const load = async () => {
-      setLoading(true); setError("");
-      const found: Publication[] = [], seen = new Set<string>();
-      try {
-        let cursor = "";
-        // ponytail: 20k-document safety cap; add server-side year cursors if the corpus outgrows it.
-        for (let page = 0; page < 100; page++) {
-          // Junta is filtered locally: download the list once instead of refetching it per filter.
-          const response = await fetch(`/api/boards/padrones?cursor=${encodeURIComponent(cursor)}&junta=todas`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
-          if (!response.ok) throw new Error("No pudimos consultar los padrones.");
-          const result = await response.json() as { items: Publication[]; nextCursor: string | null };
-          if (!Array.isArray(result.items) || result.nextCursor && result.nextCursor === cursor) throw new Error("La consulta de padrones devolvió una página inválida.");
-          for (const item of result.items) if (!seen.has(item.id)) { seen.add(item.id); found.push(item); }
-          if (controller.signal.aborted) return;
-          setRows([...found]);
-          if (!result.nextCursor) return;
-          cursor = result.nextCursor;
-        }
-        throw new Error("La consulta de padrones requiere más páginas de las previstas.");
-      } catch {
-        if (!controller.signal.aborted) setError("No pudimos consultar todos los padrones en este momento.");
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    };
-    void load();
-    return () => controller.abort();
-  }, [retry]);
-  const documents = useMemo(() => padronDocuments(rows), [rows]);
-  const selection = useMemo(() => padronSelection(documents), [documents]);
-  const chosen = tab === "history" ? selection.history : tab === "undetermined" ? selection.undetermined : selection.current;
-  const visible = useMemo(() => chosen.filter(item => (junta === "todas" || matchesJunta(item, junta)) &&
-    (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query)))), [chosen, junta, query]);
-  const groups = useMemo(() => groupPadrones(visible), [visible]);
-  const retryPanel = <Button variant="outline" onClick={() => setRetry(value => value + 1)} className="mt-3 min-h-10 rounded-xl">Reintentar</Button>;
-  return <section className="space-y-4 pb-16 md:pb-0">
-    <VisualSectionBanner kind="padrones" title={`Padrones ${selection.year}`} description={selection.year < selection.currentYear ? `Último padrón disponible: ${selection.year}` : "Listados y puntajes oficiales por Junta"} />
-    <div className="flex flex-wrap gap-2" role="group" aria-label="Período de padrones">
-      {([["current", `Padrones ${selection.year}`], ["history", "Historial"], ["undetermined", "Año no determinado"]] as const).map(([key, label]) =>
-        <Button key={key} variant={tab === key ? "default" : "outline"} onClick={() => setTab(key)} className="min-h-10 rounded-xl" aria-pressed={tab === key}>{label}</Button>)}
-    </div>
-    <div className="max-w-lg"><Label htmlFor="padron-junta">Junta</Label><Select value={junta} onValueChange={(value) => setJunta((value || "todas") as typeof junta)}><SelectTrigger id="padron-junta" className="mt-1 h-11 rounded-xl border-[#c8e1f1] bg-white"><SelectValue placeholder="Todas las juntas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map(item => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
-    <p className="rounded-xl border border-[#c8e1f1] bg-white p-3 text-sm text-[#315d7a]">Solo se asigna un año cuando el título oficial identifica el padrón o su vigencia. La fecha de descarga no determina el año.</p>
-    {!rows.length && loading && <p role="status" className="rounded-xl bg-white p-4">Consultando padrones publicados…</p>}
-    {!rows.length && !loading && error && <div role="alert" className="rounded-xl border border-amber-200 bg-white p-4"><p>{error}</p>{retryPanel}</div>}
-    {(rows.length > 0 || !loading && !error) && <>
-      {error && <div role="alert" className="rounded-xl border border-amber-200 bg-white p-4"><p>Mostramos los padrones ya recibidos. {error}</p>{retryPanel}</div>}
-      {loading && <p role="status" className="text-xs font-semibold text-[var(--text-muted)]">Cargando el resto de los padrones…</p>}
-      {groups.length ? <div className="grid gap-3 md:grid-cols-2">{groups.map(group => {
-        const item = group[0], facts = padronTitleFacts(item.title);
-        return <Card as="article" key={item.id} className="rounded-2xl p-4">
-          <p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"} · {facts.type} · {padronYear(item) ?? "Año no determinado"}</p>
-          <h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2>
-          {facts.subject && <p className="mt-1 text-sm text-[var(--text-secondary)]">{facts.subject}</p>}
-          {group.length > 1 && <p className="mt-1 text-xs text-[var(--text-secondary)]">Enlaces relacionados por título; comprobá cada documento en la fuente.</p>}
-          <div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button>
-            {group.map((source, index) => <a key={source.id} href={source.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial{group.length > 1 ? ` ${index + 1}` : ""} <ExternalLink className="size-4" /></a>)}
-          </div>
-        </Card>;
-      })}</div> : <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-white p-5">No hay padrones verificados para esta selección. Consultá el historial o el portal oficial.</div>}
-    </>}
-    <a href="https://padrones.educaciontuc.gov.ar/" target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-[#075f9b] underline">Consultar portal oficial de Juntas <ExternalLink className="size-4" /></a>
-  </section>;
+function PadronSourceLink({ item, label = "Fuente oficial" }: { item: Publication; label?: string }) {
+  const access = padronAccess(item);
+  const style = "inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white";
+  return <div>
+    {access.unavailable && <p className="mb-2 text-sm text-[var(--text-secondary)]">El documento original no está disponible mediante su enlace.</p>}
+    {access.directUrl ? <a href={access.directUrl} target="_blank" rel="noreferrer" className={style}>{label} <ExternalLink className="size-4" /></a>
+      : access.folderUrl && <a href={access.folderUrl} target="_blank" rel="noreferrer" className={style}>Carpeta oficial — no es enlace directo al PDF <ExternalLink className="size-4" /></a>}
+  </div>;
 }
 
 function OfficialBoardSection({ view, publications, query, junta, setJunta, onOpen }: { view: BoardView; publications: Publication[]; query: string; junta: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas"; setJunta: (value: (typeof OFFICIAL_JUNTAS)[number]["id"] | "todas") => void; onOpen: (item: Publication) => void }) {
@@ -783,7 +725,7 @@ function OfficialBoardSection({ view, publications, query, junta, setJunta, onOp
       const response = await fetch(`/api/boards?${params}`, { cache: "no-store" });
       if (!response.ok) throw new Error("BOARD_LOAD_FAILED");
       const result = await response.json() as { items: Publication[]; nextCursor: string | null };
-      if (generation.current === current) { setRows((previous) => [...previous, ...result.items]); setCursor(result.nextCursor); }
+      if (generation.current === current) { setRows((previous) => view === "comunicados" ? [...new Map([...previous, ...result.items].map(item => [item.id, item])).values()] : [...previous, ...result.items]); setCursor(result.nextCursor); }
     } catch { if (generation.current === current) setBoardError("No pudimos consultar los documentos de Juntas."); }
     finally { if (generation.current === current) setLoading(false); }
   };
@@ -794,14 +736,14 @@ function OfficialBoardSection({ view, publications, query, junta, setJunta, onOp
   };
   const matchesBoard = (item: Publication) => junta === "todas" || matchesJunta(item, junta) || (readMetadata(item.metadata).portalPlacements as { junta: string }[] | undefined)?.some(p => matchesJunta({ junta: p.junta, level: "" }, junta));
   const entries = remote ? rows : boardItems(publications, view).filter((item) => matchesBoard(item) && (!query.trim() || normalizeSearchText(publicationSearchText(item)).includes(normalizeSearchText(query))));
-  const sources = publications.filter((item) => item.id.startsWith("padrones:") && (view === "actos" || view === "comunicados" ? item.category === "Comunicados" : view === "llamados" ? item.category === "Llamados abiertos" : false) && matchesBoard(item));
+  const sources = (view === "comunicados" ? publications.filter(isPublicPublication) : publications).filter((item) => item.id.startsWith("padrones:") && (view === "actos" || view === "comunicados" ? item.category === "Comunicados" : view === "llamados" ? item.category === "Llamados abiertos" : false) && matchesBoard(item));
   return <section className="space-y-4 pb-16 md:pb-0">
     <VisualSectionBanner kind={view === "padrones" || view === "llamados" ? "padrones" : "novedades"} title={title} description={description} />
     <div className="max-w-lg"><Label htmlFor="board-junta">Junta</Label><Select value={junta} onValueChange={(value) => { restart(); setJunta((value || "todas") as typeof junta); }}><SelectTrigger id="board-junta" className="mt-1 h-11 rounded-xl border-[#c8e1f1] bg-white"><SelectValue placeholder="Todas las juntas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas las juntas</SelectItem>{OFFICIAL_JUNTAS.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>
     {view === "llamados" && <div className="flex flex-wrap gap-2"><Button variant={!references ? "default" : "outline"} onClick={() => { if (references) restart(false); }}>Vigentes verificados</Button><Button variant={references ? "default" : "outline"} onClick={() => { if (!references) restart(true); }}>Documentos para consultar</Button></div>}
     {view === "llamados" && references && <p className="rounded-xl border border-amber-200 bg-[var(--surface-primary)] p-3 text-sm text-[var(--text-secondary)]">Estos documentos están en carpetas de Llamados. Su ubicación no confirma una inscripción abierta ni su vigencia. Revisá fecha y requisitos en la fuente oficial.</p>}
     {(view === "comunicados" || view === "padrones") && <p className="rounded-xl border border-[#c8e1f1] bg-white p-3 text-sm text-[#315d7a]">Estos son documentos oficiales. Una carpeta o un documento completo no equivale a un llamado vigente; comprobá siempre la fecha y los requisitos en la fuente.</p>}
-    {entries.length ? <div className="grid gap-3 md:grid-cols-2">{entries.map((item) => <Card as="article" key={item.id} className="rounded-2xl p-4"><p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"}</p><h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2><OfficialPublicationSummary item={item} />{!officialMetadata(item) && (view === "actos" || view === "llamados") && !references && <p className="mt-1 text-sm text-[var(--text-secondary)]">{dateLabel(item.starts_at, true)}{item.location ? ` · ${item.location}` : ""}</p>}<div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button><a href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial <ExternalLink className="size-4" /></a></div></Card>)}</div>
+    {entries.length ? <div className="grid gap-3 md:grid-cols-2">{entries.map((item) => <Card as="article" key={item.id} className="rounded-2xl p-4"><p className="text-xs font-bold text-[var(--accent-text)]">{item.junta || "Junta no informada"}</p>{view === "comunicados" && <p className="mt-1 text-xs text-[var(--text-secondary)]">{item.source_published_at ? `Publicado ${dateLabel(item.source_published_at)}` : "Fecha de publicación no informada"}</p>}<h2 className="mt-1 font-bold text-[var(--text-primary)]">{item.title}</h2><OfficialPublicationSummary item={item} />{!officialMetadata(item) && (view === "actos" || view === "llamados") && !references && <p className="mt-1 text-sm text-[var(--text-secondary)]">{dateLabel(item.starts_at, true)}{item.location ? ` · ${item.location}` : ""}</p>}<div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => onOpen(item)} className="min-h-10 rounded-xl">Ver detalle</Button><a href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#0878be] px-3 text-sm font-bold text-white">Fuente oficial <ExternalLink className="size-4" /></a></div>{view === "comunicados" && <JuntaRevisions publicationId={item.id} />}</Card>)}</div>
       : (!remote || !loading && !boardError) && <div role="status" className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-primary)] p-5"><h2 className="font-bold text-[var(--text-primary)]">{references ? "No hay documentos de Llamados en esta selección" : view === "actos" || view === "llamados" ? "No hay registros individuales con fecha y vigencia verificadas en esta copia" : "No hay documentos indexados en esta vista"}</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">Esto no significa que la Junta no haya publicado novedades. Consultá las fuentes originales mientras se completa la clasificación.</p></div>}
     {sources.length > 0 && <div><h2 className="mb-2 font-bold text-[var(--text-primary)]">Documentos originales para verificar</h2><div className="flex flex-wrap gap-2">{sources.filter((item) => junta === "todas" || matchesJunta(item, junta)).map((item) => <a key={item.id} href={item.official_url} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-[#c8e1f1] bg-white px-3 text-sm font-semibold text-[#075f9b]">{item.junta} <ExternalLink className="size-4" /></a>)}</div></div>}
     {remote && loading && <p role="status" className="text-sm text-[var(--text-secondary)]">Consultando documentos…</p>}
@@ -1061,7 +1003,6 @@ function PublicationList({ items, sync, loading, savedMap, reminderMap, matchRes
       {simeCode && <p className="mt-2 text-xs font-bold text-[#315d7a]">ID de trámite: {simeCode}</p>}
       <OfficialPublicationSummary item={item} />
       {training ? <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-[#61766f]">{item.character && <span><strong>Modalidad:</strong> {item.character}</span>}{item.starts_at && <span><strong>Inicio:</strong> {dateLabel(item.starts_at)}</span>}{metadata?.registrationClosesAt && <span><strong>Inscripción hasta:</strong> {dateLabel(metadata.registrationClosesAt, true)}</span>}{item.location && <span className="col-span-2"><strong>Lugar:</strong> {item.location}</span>}</div> : <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#61766f]">{item.character && <span>{item.character}</span>}{item.junta && <span>{item.junta}</span>}{item.shift && <span>Turno {item.shift}</span>}{item.ends_at && <span className="ml-auto flex items-center gap-1 font-semibold text-[#9a641f]"><Clock3 className="size-4" />{unverified ? `Cierre informado: ${dateLabel(item.ends_at, true)}` : fromNow(item.ends_at)}</span>}</div>}
-      {isFdciCatalogOnly(item) && <p className="mt-2 text-sm font-bold text-amber-800 dark:text-amber-200">FICTICIA — solo consulta, sin acciones privadas</p>}
       <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-[#e7eee9] pt-3">
         {training && !isFdciCatalogOnly(item) && sourceCurrent && canScheduleTrainingReminder(metadata, item.status, item.normalized_status) && <button onClick={() => onRemind(item)} className="flex min-h-10 items-center gap-2 rounded-xl bg-[#fff4d6] px-3 text-sm font-bold text-[#7b5500]"><Bell className="size-4" />{reminded ? "Aviso activo" : "Recordarme"}</button>}
         {training && !isFdciCatalogOnly(item) && <button onClick={() => onSave(item, !saved)} className={`flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold ${saved ? "bg-[#fff3dd] text-[#8b5b00]" : "bg-[#edf6fc] text-[#0878be]"}`}><Star className={`size-4 ${saved ? "fill-current" : ""}`} />{saved ? "Guardada" : "Guardar"}</button>}
@@ -1490,9 +1431,14 @@ function PublicationSheet({ publication, sync, saved, tracking, match, onClose, 
             {(publication.kind === "junta" || publication.kind === "vacante") && <Button variant={Boolean(saved?.followed) ? "default" : "outline"} onClick={() => onFollow(publication, !Boolean(saved?.followed))} className="h-11 rounded-xl"><Bell className="size-4" />{Boolean(saved?.followed) ? "Dejar de seguir" : "Seguir"}</Button>}
             {publication.kind === "vacante" && tracking && <Button variant="outline" onClick={() => onEditDesignation(publication)} className="h-11 rounded-xl">Editar seguimiento</Button>}
           </div>}
-          {publication.kind === "vacante"
+          {padronAccess(publication).unavailable ? <PadronSourceLink item={publication} /> : publication.kind === "vacante"
             ? <Button type="button" onClick={() => onExternal(publication)} className="min-h-12 w-full rounded-xl bg-[#17362d] px-5 text-white">{!unverified && lifecycle === "ACTIVE" && hasOfficialTopic(publication, "INSCRIPCION_SIME") ? "Inscribirme en sitio oficial" : "Ver procedimiento en fuente oficial"} <ExternalLink className="size-4" /></Button>
-            : <a href={publication.official_url} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#17362d] px-5 text-center font-bold text-white">{publication.kind === "capacitacion" ? !unverified && trainingState === "ABIERTA" && training?.commissionId ? "CONTINUAR INSCRIPCIÓN EN SITIO OFICIAL" : "Ver detalle en sitio oficial" : publication.kind === "informacion" && info?.access === "private" ? "Abrir sistema oficial" : "Abrir fuente oficial"} <ExternalLink className="size-4" /></a>}
+            : info?.wordUrl
+              ? <div className="flex flex-wrap gap-2">
+                  <a href={publication.official_url} target="_blank" rel="noreferrer" download className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-[#17362d] px-5 text-center font-bold text-white">Descargar PDF <Download className="size-4" /></a>
+                  <a href={info.wordUrl} target="_blank" rel="noreferrer" download className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-[#17362d] bg-white px-5 text-center font-bold text-[#17362d]">Descargar Word <Download className="size-4" /></a>
+                </div>
+              : <a href={publication.official_url} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#17362d] px-5 text-center font-bold text-white">{publication.kind === "capacitacion" ? !unverified && trainingState === "ABIERTA" && training?.commissionId ? "CONTINUAR INSCRIPCIÓN EN SITIO OFICIAL" : "Ver detalle en sitio oficial" : publication.kind === "informacion" && info?.access === "private" ? "Abrir sistema oficial" : "Abrir fuente oficial"} <ExternalLink className="size-4" /></a>}
           {training?.registrationUrl && training.registrationUrl !== publication.official_url && <a href={training.registrationUrl} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#0878be] bg-white px-5 text-center font-bold text-[#0878be]">{!unverified && trainingState === "ABIERTA" ? "Ingresar a inscripción oficial" : "Consultar inscripción en sitio oficial"} <ExternalLink className="size-4" /></a>}
           <p className="rounded-xl bg-[#fff3dd] p-4 text-sm leading-relaxed text-[#7d541b]">{publication.kind === "vacante" ? "DocenteTuc organiza información pública. Abrir el sitio oficial no marca una inscripción; el estado sólo cambia cuando vos lo confirmás." : publication.kind === "junta" ? "DocenteTuc muestra el contenido público recuperable. Para archivos PDF o carpetas sin texto exportable, la fuente oficial conserva el documento completo." : publication.kind === "informacion" ? `Información oficial verificada el ${info?.lastVerified || "día no informado"}. DocenteTuc nunca solicita credenciales de sistemas gubernamentales.` : "La inscripción y cualquier gestión se completan siempre en el sitio oficial."}</p>
         </div>}

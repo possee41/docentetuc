@@ -20,6 +20,7 @@ export type OfficialMetadata = {
   candidateIds?: string[];
   sourceCategory?: string;
   noticeKey?: string;
+  bodyHash?: string;
   detailCheckedAt?: string;
   detailAttemptedAt?: string;
   detailStatus?: "OK" | "STALE" | "PENDING";

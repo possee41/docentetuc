@@ -1,3 +1,4 @@
+import { boardPage } from "@/lib/juntas-public-api";
 import { getD1 } from "@/db";
 import { boardItems } from "@/lib/board-view";
 import { boardPageQuery, BOARD_PAGE_SIZE, type BoardPageMode, type BoardPageView } from "@/lib/board-page";
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
+  if (["padrones", "comunicados"].includes(params.get("view") || "")) return boardPage(request, getD1);
   const view = params.get("view") as BoardPageView;
   const junta = (params.get("junta") || "todas") as JuntaId | "todas";
   const mode = (params.get("mode") || "current") as BoardPageMode;

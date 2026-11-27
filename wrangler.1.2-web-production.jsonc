@@ -8,11 +8,14 @@
   "vars": {
     "LEGACY_SYNC_PAUSED": "true",
     "AI_WEB_SEARCH_ENABLED": "0",
-    "PUSH_DISPATCH_MODE": "disabled"
+    "PUSH_DISPATCH_MODE": "disabled",
+    "PUBLIC_SNAPSHOT_ENABLED": "true"
   },
   "no_bundle": true,
   "rules": [{ "type": "ESModule", "globs": ["**/*.js", "**/*.mjs"] }],
   "assets": { "directory": "dist/client" },
+  "durable_objects": { "bindings": [{ "name": "PUBLIC_SNAPSHOT", "class_name": "PublicSnapshot" }] },
+  "migrations": [{ "tag": "public-snapshot-v1", "new_sqlite_classes": ["PublicSnapshot"] }],
   "triggers": { "crons": ["*/5 * * * *", "1 * * * *"] },
   "d1_databases": [{
     "binding": "DB",

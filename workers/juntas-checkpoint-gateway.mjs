@@ -1,7 +1,8 @@
 // Narrow checkpoint operations for the external Junta runner. Never accepts SQL from the caller.
 import { JUNTA_EXTERNAL_SOURCES } from "../lib/junta-external-sources.ts";
 
-const roots = new Map(JUNTA_EXTERNAL_SOURCES.map(([id, category]) => [id, category]));
+const roots = new Map(JUNTA_EXTERNAL_SOURCES.flatMap(([id, category]) =>
+  category === "Padrones" ? [[id, category], [`probe:${id}`, category]] : [[id, category]]));
 const categories = ["Padrones", "Comunicados", "Llamados abiertos"];
 const validText = (value, max = 200) => typeof value === "string" && value.length > 0 && value.length <= max &&
   !/[\u0000-\u001f]/.test(value);
@@ -11,6 +12,7 @@ const reply = (body, status = 200) => Response.json(body, { status, headers: { "
 
 const operations = {
   prior: (db, [id]) => root(id) && db.prepare("SELECT status,last_success_at FROM juntas_import_checkpoint WHERE root_id=?").bind(id),
+  noticePrior: (db, [id]) => roots.get(id) === "Comunicados" && db.prepare("SELECT id,CASE WHEN json_valid(metadata) THEN json_extract(metadata,'$.official.noticeKey') END AS notice_key,CASE WHEN json_valid(metadata) AND json_extract(metadata,'$.official.bodyHash') IS NOT NULL THEN '' ELSE summary END AS summary,source_published_at FROM publications WHERE source='Padrones y Comunicados' AND id LIKE 'notice:' || ? || ':%' ORDER BY source_published_at DESC,id LIMIT 1000").bind(id),
   init: (db, [id, category, state]) => root(id) && roots.get(id) === category && validText(state, 100_000) &&
     db.prepare("INSERT OR IGNORE INTO juntas_import_checkpoint(root_id,category,state_json,status) VALUES(?,?,?,'PARTIAL')").bind(id, category, state),
   claim: (db, [owner, until, now, id, clock]) => root(id) && validText(owner, 80) && validDate(until) && validDate(now) && validDate(clock) &&
@@ -39,9 +41,9 @@ const operations = {
       last_attempt_at=excluded.last_attempt_at,last_successful_sync_at=excluded.last_successful_sync_at,
       sync_status=excluded.sync_status,error_code=excluded.error_code`).bind(category, attempt, success, status, code),
 };
-const reads = new Set(["prior", "get", "signatures", "health", "syncHealth"]);
+const reads = new Set(["prior", "noticePrior", "get", "signatures", "health", "syncHealth"]);
 const firsts = new Set(["prior", "get"]);
-const arity = { prior: 1, init: 3, claim: 5, get: 1, save: 7, release: 2, partial: 3,
+const arity = { prior: 1, noticePrior: 1, init: 3, claim: 5, get: 1, save: 7, release: 2, partial: 3,
   applied: 3, health: 0, syncHealth: 0, syncSave: 5 };
 async function readBody(request) {
   if (Number(request.headers.get("content-length") || 0) > 100_000) throw new Error("TOO_LARGE");

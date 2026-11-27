@@ -33,7 +33,7 @@ export async function listDrivePage(folderId: string, key: string,
   const url = new URL("https://www.googleapis.com/drive/v3/files");
   url.searchParams.set("q", `'${folderId}' in parents and trashed = false${filesOnly ? " and mimeType != 'application/vnd.google-apps.folder'" : ""}`);
   url.searchParams.set("pageSize", "25");
-  url.searchParams.set("fields", "nextPageToken,incompleteSearch,files(id,name,mimeType,modifiedTime,resourceKey)");
+  url.searchParams.set("fields", "nextPageToken,incompleteSearch,files(id,name,mimeType,modifiedTime,resourceKey,md5Checksum)");
   url.searchParams.set("supportsAllDrives", "true");
   url.searchParams.set("includeItemsFromAllDrives", "true");
   if (pageToken) url.searchParams.set("pageToken", pageToken);
@@ -45,7 +45,8 @@ export async function listDrivePage(folderId: string, key: string,
   } else if (resourceKey) headers["X-Goog-Drive-Resource-Keys"] = `${folderId}/${resourceKey}`;
   let response: Response;
   try { response = await fetcher(url, { headers, signal: AbortSignal.timeout(20_000) }); }
-  catch (error) { throw new Error(networkCode(error)); }
+  catch (error) { if(error instanceof Error && error.message==='JUNTAS_REQUEST_BUDGET_EXHAUSTED')throw error;
+    throw new Error(networkCode(error)); }
   if (!response.ok) {
     if (response.status === 400 && pageToken) {
       const body = await response.json().catch(() => null) as { error?: { errors?: { reason?: string }[] } } | null;
@@ -54,11 +55,11 @@ export async function listDrivePage(folderId: string, key: string,
     }
     throw new Error(`JUNTAS_DRIVE_HTTP_${response.status}`);
   }
-  let data: { incompleteSearch?: boolean; nextPageToken?: string; files?: { id: string; name: string; mimeType: string; modifiedTime?: string; resourceKey?: string }[] };
+  let data: { incompleteSearch?: boolean; nextPageToken?: string; files?: { id: string; name: string; mimeType: string; modifiedTime?: string; resourceKey?: string; md5Checksum?:string }[] };
   try { data = await response.json() as typeof data; }
   catch (error) { throw new Error(networkCode(error) === "JUNTAS_SOURCE_TIMEOUT" ? "JUNTAS_SOURCE_TIMEOUT" : "JUNTAS_DRIVE_JSON_INVALID"); }
   if (data.incompleteSearch || !Array.isArray(data.files) || data.files.length > 25 ||
-      data.files.some((file) => !file.id || !file.name || !file.mimeType) ||
+      data.files.some((file) => !file.id || !file.name || !file.mimeType || file.md5Checksum!==undefined&&!/^[a-f0-9]{32}$/i.test(file.md5Checksum)) ||
       (data.nextPageToken && data.nextPageToken === pageToken)) throw new Error("JUNTAS_DRIVE_PAGE_INVALID");
   return data;
 }

@@ -4,6 +4,7 @@ export type UsefulMetadata = {
   address?: string; phones?: string[]; emails?: string[]; openingHours?: string;
   parentOrganization?: string; access?: "public" | "private"; lastVerified: string;
   sourceStatus?: "verified" | "partial"; notes?: string; discrepancy?: string;
+  wordUrl?: string;
 };
 
 export type UsefulRecord = {
@@ -120,7 +121,13 @@ export const usefulInformation: UsefulRecord[] = [
     summary: "Portal provincial de servicios para agentes públicos. El contenido útil verificable para docentes se deriva a los sistemas oficiales específicos como DigiTUC, SIME y la Guía de Trámites.",
     officialUrl: "https://empleadopublico.tucuman.gov.ar/",
     metadata: { recordType: "system", access: "private", aliases: ["empleado público", "portal empleado", "presentismo", "servicios del agente"], lastVerified: verified, sourceStatus: "partial", notes: "El portal no expuso contenido público indexable suficiente durante la verificación; se mantiene como acceso externo autenticado." }
-  }
+  },
+  {
+    id: "ddjj-cargos-actividades", title: "Declaracion Jurada de Cargos y Actividades (DDJJ)", category: "Trámites",
+    summary: "Formulario en blanco para declarar cargos, funciones, horas catedra y horarios de trabajo docente. Documento PDF de dos paginas para completar manualmente.",
+    officialUrl: "https://docentetuc.com.ar/documents/Nueva_DDJJ_2026_en_blanco.pdf",
+    metadata: { recordType: "procedure", documents: ["Formulario DDJJ en blanco (PDF)", "Formulario DDJJ en blanco (Word)"], aliases: ["declaracion jurada", "DDJJ", "cargos y actividades", "formulario DDJJ", "declarar cargos"], lastVerified: verified, wordUrl: "https://docentetuc.com.ar/documents/Nueva_DDJS_2026_en_blanco.docx".replace("DDJS", "DDJJ"), notes: "Documento disponible para descarga en PDF y Word. El docente debe completarlo y presentarlo segun las indicaciones del Ministerio de Educacion." }
+  },
 ];
 
 export const usefulMetadata = (value: string): UsefulMetadata | null => {

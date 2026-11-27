@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
 
 const require = createRequire(import.meta.url);
 const { build } = require("../node_modules/.pnpm/esbuild@0.28.2/node_modules/esbuild");
 const { Miniflare } = require("../node_modules/.pnpm/miniflare@4.20260515.0/node_modules/miniflare");
 
 test("public-app: caché real aislada, privacidad, expiración y consumo D1", async (t) => {
-  const bundled = await build({ stdin: { resolveDir: process.cwd(), loader: "ts", contents: `
+  const bundled = await build({ external: ['node:buffer'], stdin: { resolveDir: process.cwd(), loader: "ts", contents: `
     import {GET} from './app/api/public-app/route.ts';
     const realNow=Date.now, started=realNow();
     export default {async fetch(request,env){
@@ -24,7 +25,7 @@ test("public-app: caché real aislada, privacidad, expiración y consumo D1", as
           if(request.headers.has('x-test-d1-failure')) throw new Error('SYNTHETIC_D1_FAILURE');
           const r=await env.DB.prepare(sql).all();
           metrics.rowsRead+=r.meta.rows_read;metrics.rowsWritten+=r.meta.rows_written;return r;
-        }};
+        },async raw(){const r=await this.all();return r.results.map(row=>Object.values(row));}};
       }};
       const start=performance.now(),response=await GET(request),body=await response.json();
       const result={status:response.status,body,headers:Object.fromEntries(response.headers),metrics,wallMs:performance.now()-start};
@@ -36,21 +37,21 @@ test("public-app: caché real aislada, privacidad, expiración y consumo D1", as
       return Response.json(result);
     }};` }, bundle: true, write: false, format: "esm", platform: "browser", target: "es2022",
     plugins: [{ name: "local-bindings", setup(b) {
-      b.onResolve({ filter: /^@\/db$|^cloudflare:workers$/ }, args => ({ path: args.path, namespace: "local" }));
-      b.onLoad({ filter: /.*/, namespace: "local" }, args => ({ contents: args.path === "@/db"
+      b.onResolve({ filter: /^@\/db(?:\/d1)?$|^cloudflare:workers$/ }, args => ({ path: args.path, namespace: "local" }));
+      b.onLoad({ filter: /.*/, namespace: "local" }, args => ({ contents: args.path.startsWith("@/db")
         ? "export const getD1=()=>globalThis.__db;"
         : "export const env=new Proxy({},{get:(_,key)=>globalThis.__settings[key]});" }));
       b.onResolve({ filter: /^@\// }, args => ({ path: resolve(process.cwd(), args.path.slice(2) + ".ts") }));
     } }] });
   const mf = new Miniflare({ modules: true, script: bundled.outputFiles[0].text, d1Databases: ["DB"],
-    cachePersist: false, d1Persist: false });
+    cachePersist: false, d1Persist: false, compatibilityDate: '2026-05-15', compatibilityFlags: ['nodejs_compat'] });
   try {
     const db = await mf.getD1Database("DB");
-    await db.prepare(`CREATE TABLE publications(id TEXT PRIMARY KEY,kind TEXT,source TEXT,title TEXT,summary TEXT,
-      metadata TEXT,starts_at TEXT,ends_at TEXT,updated_at TEXT)`).run();
+    await db.prepare(readFileSync('lib/fixtures/juntas-production-schema-20261121.sql','utf8').match(/CREATE TABLE `publications`[\s\S]+?;/)[0]).run();
     await db.prepare(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i<7199)
-      INSERT INTO publications SELECT printf('test:%05d',i),CASE WHEN i%4=0 THEN 'informacion' WHEN i%4=1 THEN 'capacitacion' WHEN i%4=2 THEN 'vacante' ELSE 'junta' END,
-      'Fuente sintética','Publicación pública '||i,'Solo información pública','{}',NULL,NULL,'2026-10-30T00:00:00Z' FROM n`).run();
+      INSERT INTO publications(id,kind,source,title,summary,metadata,starts_at,ends_at,updated_at,external_id,category,official_url,content_hash)
+      SELECT printf('test:%05d',i),CASE WHEN i%4=0 THEN 'informacion' WHEN i%4=1 THEN 'capacitacion' WHEN i%4=2 THEN 'vacante' ELSE 'junta' END,
+      'Fuente sintética','Publicación pública '||i,'Solo información pública','{}',NULL,NULL,'2026-10-30T00:00:00Z',printf('test:%05d',i),'Fixture','https://local.invalid/',printf('%064d',i) FROM n`).run();
     await db.prepare("CREATE TABLE sync_state(source TEXT,synced_at TEXT,last_attempt_at TEXT,last_successful_sync_at TEXT,sync_status TEXT,error_message TEXT)").run();
     await db.prepare("INSERT INTO sync_state VALUES('Fuente sintética',NULL,'2026-10-30',NULL,'PARTIAL','PRIVATE_DIAGNOSTIC')").run();
     await db.prepare("CREATE TABLE profiles(user_id TEXT,name TEXT)").run();

@@ -1,7 +1,7 @@
 // Independent, disabled-by-default import gateway. Node sends publications, never SQL.
 import fdci, { receiveAuthenticatedFdci } from "./fdci-receiver.mjs";
 import sime from "./sime-receiver.mjs";
-import publicSources from "./public-source-receiver.mjs";
+import publicSources, { receiveAuthenticatedPublicSources } from "./public-source-receiver.mjs";
 import juntasCheckpoint from "./juntas-checkpoint-gateway.mjs";
 import { fdciCheckpoint } from "./fdci-checkpoint.mjs";
 import { automationRequest } from "./fdci-automation.mjs";
@@ -186,6 +186,7 @@ const gateway = { async fetch(request, env) {
     const parsed = await leaseBody(request);
     return parsed.error || fdciCheckpoint(parsed.payload, env.DB, owner);
   }
+  if (receiver === publicSources && requestedSource === "juntas") return receiveAuthenticatedPublicSources(request, env);
   return receiver === fdci ? receiveAuthenticatedFdci(request, env) : receiver.fetch(request, env);
 } };
 export default gateway;
