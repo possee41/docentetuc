@@ -33,7 +33,7 @@ export function comunicadosConfig(env, sha, { closing = false } = {}) {
   return { origin: COMUNICADOS_RECEIVER, owner, secret: env.JUNTAS_IMPORT_SECRET };
 }
 
-export async function runComunicadosProduction(env, sha, { fetcher = fetch, maintenance = runJuntasMaintenance, clock = () => Date.now(), closing = false, report = () => {} } = {}) {
+export async function runComunicadosProduction(env, sha, { fetcher = fetch, maintenance = runJuntasMaintenance, clock = () => Date.now(), closing = false, preflightOnly = false, report = () => {} } = {}) {
   const config = comunicadosConfig(env, sha, { closing });
   const state = { phase: 'identity', rootId: null, checkpointOp: null, checkpointStatus: null,
     officialRequests: 0, publicationAttempts: 0, lease: 'closed' };
@@ -110,7 +110,20 @@ export async function runComunicadosProduction(env, sha, { fetcher = fetch, main
         return response;
       } catch (error) { emit('official_network_error', { errorCode: errorCode(error) }); throw error; }
     };
-    const result = await maintenance({ db, sources, comunicadosOnlyFair: true, maxRequests: 25, maxPublicationWrites: 20, sourceFetch,
+    const result = preflightOnly ? await (async () => {
+      const all = (await db.prepare('SELECT root_id,category,status,last_success_at,error_code FROM juntas_import_checkpoint ORDER BY root_id').bind().all()).results || [];
+      const checkpoints = [];
+      for (const [rootId] of sources) {
+        state.rootId = rootId;
+        state.phase = 'checkpoint';
+        state.checkpointOp = 'prior';
+        const prior = await db.prepare('SELECT status,last_success_at FROM juntas_import_checkpoint WHERE root_id=?').bind(rootId).first();
+        const health = all.find(row => row.root_id === rootId);
+        checkpoints.push({ rootId, status: prior?.status ?? health?.status ?? null, lastSuccessAt: prior?.last_success_at ?? health?.last_success_at ?? null, errorCode: health?.error_code ?? null });
+      }
+      if (checkpoints.length !== 7) throw Error('COMUNICADOS_PREFLIGHT_ROOTS_INVALID');
+      return { sourceRequests: 0, publicationAttempts: 0, created: 0, updated: 0, unchanged: 0, coverage: checkpoints, failures: [] };
+    })() : await maintenance({ db, sources, comunicadosOnlyFair: true, maxRequests: 25, maxPublicationWrites: 20, sourceFetch,
       onRoot: rootId => { state.rootId = rootId; state.checkpointOp = null; state.checkpointStatus = null; state.phase = 'root'; emit('root_start'); },
       onRootResult: (rootId, row) => { state.rootId = rootId; state.checkpointStatus = row.health?.find(item => item.root_id === rootId)?.status || null;
         emit('root_result', { sourceRequests: row.sourceRequests, publicationAttemptsInRoot: row.publicationAttempts }); },
@@ -135,7 +148,7 @@ export async function runComunicadosProduction(env, sha, { fetcher = fetch, main
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-    console.log(JSON.stringify(await runComunicadosProduction(process.env, sha, { closing: process.argv.includes('--close'),
+    console.log(JSON.stringify(await runComunicadosProduction(process.env, sha, { closing: process.argv.includes('--close'), preflightOnly: process.argv.includes('--preflight-only'),
       report: event => console.error(JSON.stringify(event)) })));
   } catch (error) {
     console.error(errorCode(error));
