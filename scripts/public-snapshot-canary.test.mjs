@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { canaryFetch, PublicSnapshot } from '../lib/public-snapshot-canary.ts';
-import { captureCanaryBaseline, runCanarySql } from './public-snapshot-canary-db.mjs';
+import { canaryMigrationStatements, captureCanaryBaseline, runCanarySql } from './public-snapshot-canary-db.mjs';
 
 const databaseId = '0979f2c2-0e96-4b5c-811b-adcccc2dbd6d';
 const secret = 'synthetic-canary-secret';
@@ -19,10 +19,14 @@ test('fixture, integrated cold/prepared response, isolated close and exact resto
       INSERT INTO publications(id,source,external_id,kind,category,title,official_url,content_hash)
       SELECT 'existing:'||n,'Padrones y Comunicados','existing:'||n,'junta','Canary histórico',
         'Publicación existente '||n,'https://example.invalid/existing/'||n,'existing:'||n FROM existing`);
+    for (const sql of canaryMigrationStatements()) sqlite.exec(sql);
+    const expectedMigrationObjects = sqlite.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name IN ('fdci_import_checkpoint','public_snapshot_revision','public_snapshot_pub_insert','public_snapshot_pub_update','public_snapshot_pub_delete','public_snapshot_sync_insert','public_snapshot_sync_update','public_snapshot_sync_delete') ORDER BY type,name").all();
+    sqlite.exec("DROP TRIGGER public_snapshot_pub_insert; DROP TRIGGER public_snapshot_pub_update; DROP TRIGGER public_snapshot_pub_delete; DROP TRIGGER public_snapshot_sync_insert; DROP TRIGGER public_snapshot_sync_update; DROP TRIGGER public_snapshot_sync_delete;");
+    sqlite.exec('DROP TABLE public_snapshot_revision; DROP TABLE fdci_import_checkpoint;');
     const config=JSON.parse(readFileSync('wrangler.1.2-public-snapshot-canary.jsonc','utf8'));
     const database={prepare(sql){const statement=sqlite.prepare(sql);return {first:async()=>statement.get()||null,
       all:async()=>({success:true,results:statement.all()}),run:async()=>{statement.run();return {success:true}}};}};
-    const baseline=await captureCanaryBaseline({config,database});
+    const baseline=await captureCanaryBaseline({config,database,expectedMigrationObjects});
     assert.equal((await runCanarySql({config,database,phase:'migrations',baseline})).statements,10);
     assert.equal((await runCanarySql({config,database,phase:'fixture',baseline})).statements,1);
     assert.equal(sqlite.prepare('SELECT count(*) n FROM publications').get().n, 400);
@@ -81,7 +85,10 @@ test('fixture, integrated cold/prepared response, isolated close and exact resto
     assert.equal((await canaryFetch(request('/__fdci_public_snapshot_canary_close', 'POST'), closeEnv, forwarded)).status, 200);
     assert.equal(selectedName, 'public-app-v1');
     assert.equal((await canaryFetch(request('/__fdci_public_snapshot_canary_close', 'POST'), wrongIdentity, forwarded)).status, 403);
-    const restoreResponse=await runCanarySql({config,database,phase:'restore',baseline,closeCanary:()=>object.fetch(request('/__fdci_public_snapshot_canary_close','POST'))});
+    const restoreResponse=await runCanarySql({config,database,phase:'restore',baseline,closeCanary:async()=>{
+      const response=await object.fetch(request('/__fdci_public_snapshot_canary_close','POST'));
+      return {status:response.status,json:()=>response.json(),storageEmpty:values.size===0};
+    }});
     assert.equal(restoreResponse.statements,9);
     assert.equal(sqlite.prepare('SELECT count(*) n FROM publications').get().n, 248);
     assert.equal(sqlite.prepare("SELECT count(*) n FROM sqlite_master WHERE name IN ('public_snapshot_revision','fdci_import_checkpoint')").get().n, 0);

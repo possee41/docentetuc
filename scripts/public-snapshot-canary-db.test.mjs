@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
-import { captureCanaryBaseline, runCanarySql, splitSql, validateCanaryTarget } from './public-snapshot-canary-db.mjs';
+import { canaryMigrationStatements, captureCanaryBaseline, runCanarySql, splitSql, validateCanaryTarget } from './public-snapshot-canary-db.mjs';
 
 const require=createRequire(import.meta.url);
 const {build}=require('../node_modules/.pnpm/esbuild@0.28.2/node_modules/esbuild');
@@ -48,7 +48,12 @@ test('fixed Canary config, trigger-aware SQL splitting, actual D1 identity and f
     for(const statement of splitSql(`CREATE TRIGGER historical_pub_insert AFTER INSERT ON publications BEGIN SELECT 1; END;
       CREATE TRIGGER historical_pub_update AFTER UPDATE ON publications BEGIN SELECT 1; END;
       CREATE TRIGGER historical_pub_delete AFTER DELETE ON publications BEGIN SELECT 1; END;`))await run(statement);
-    let baseline=await captureCanaryBaseline({config,database:db});
+    for(const statement of canaryMigrationStatements())await run(statement);
+    const expectedMigrationObjects=(await db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name IN ('fdci_import_checkpoint','public_snapshot_revision','public_snapshot_pub_insert','public_snapshot_pub_update','public_snapshot_pub_delete','public_snapshot_sync_insert','public_snapshot_sync_update','public_snapshot_sync_delete') ORDER BY type,name").all()).results;
+    for(const name of ['public_snapshot_pub_insert','public_snapshot_pub_update','public_snapshot_pub_delete','public_snapshot_sync_insert','public_snapshot_sync_update','public_snapshot_sync_delete'])await run(`DROP TRIGGER ${name}`);
+    await run('DROP TABLE public_snapshot_revision');
+    await run('DROP TABLE fdci_import_checkpoint');
+    let baseline=await captureCanaryBaseline({config,database:db,expectedMigrationObjects});
 
     await run("UPDATE import_gateway_identity SET database_id='wrong' WHERE id=1");
     let attempted=0;
@@ -64,7 +69,7 @@ test('fixed Canary config, trigger-aware SQL splitting, actual D1 identity and f
       error=>error.completed.length===1&&/ambiguous/.test(error.message));
     assert.equal(calls.length,2);
     await run('DROP TABLE fdci_import_checkpoint');
-    baseline=await captureCanaryBaseline({config,database:db});
+    baseline=await captureCanaryBaseline({config,database:db,expectedMigrationObjects});
 
     const migrations=await runCanarySql({config,database:db,phase:'migrations',baseline});
     assert.equal(migrations.statements,10);
@@ -73,13 +78,34 @@ test('fixed Canary config, trigger-aware SQL splitting, actual D1 identity and f
     assert.equal(inserted.statements,1);
     assert.equal((await db.prepare("SELECT count(*) AS n FROM publications WHERE id LIKE 'fdci:canary:snapshot:20261127:%'").first()).n,152);
 
+    const expectedTrigger = expectedMigrationObjects.find(object => object.name === 'public_snapshot_pub_insert');
+    await run(`DROP TRIGGER ${expectedTrigger.name}`);
+    await run('CREATE TRIGGER public_snapshot_pub_insert AFTER INSERT ON publications BEGIN SELECT 1; END');
+    const restoreAttempts=[];
+    const trackedDatabase={prepare(sql){const statement=db.prepare(sql);return {first:()=>statement.first(),all:()=>statement.all(),run:async()=>{
+      restoreAttempts.push(sql);return statement.run();
+    }}}};
+    let closeCalls=0;
+    await assert.rejects(runCanarySql({config,database:trackedDatabase,phase:'restore',baseline,closeCanary:async()=>{closeCalls++;}}),/SQL differs from local Miniflare/);
+    assert.deepEqual(restoreAttempts,[]);
+    assert.equal(closeCalls,0);
+    await run(`DROP TRIGGER ${expectedTrigger.name}`);
+    await run(expectedTrigger.sql);
+    const unverifiedRestoreSql=[];
+    const unverifiedDatabase={prepare(sql){const statement=db.prepare(sql);return {first:()=>statement.first(),all:()=>statement.all(),run:async()=>{
+      unverifiedRestoreSql.push(sql);return statement.run();
+    }}}};
+    await assert.rejects(runCanarySql({config,database:unverifiedDatabase,phase:'restore',baseline,
+      closeCanary:async()=>({status:200,json:async()=>({closed:true}),storageEmpty:false})}),/storage must be confirmed empty/);
+    assert.deepEqual(unverifiedRestoreSql,[]);
+
     const close=async()=>mf.dispatchFetch('https://canary.local/__fdci_public_snapshot_canary_close',{method:'POST',headers:{'X-DT-Canary-Secret':'synthetic'}});
     const restored=await runCanarySql({config,database:db,phase:'restore',baseline,closeCanary:async()=>{
       const response=await close();assert.equal(response.status,200);assert.equal((await response.clone().json()).closed,true);
       const namespace=await mf.getDurableObjectNamespace('PUBLIC_SNAPSHOT');
       const stub=namespace.get(namespace.idFromName('public-app-v1'));
       assert.equal((await stub.inspect()).size,0);
-      return response;
+      return {status:response.status,json:()=>response.json(),storageEmpty:true};
     }});
     assert.equal(restored.statements,9);
     assert.equal((await db.prepare('SELECT count(*) AS n FROM publications').first()).n,baseline.publicationCount);

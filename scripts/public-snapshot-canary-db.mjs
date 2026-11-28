@@ -16,6 +16,10 @@ const RESTORE = [
   'DROP TRIGGER public_snapshot_sync_update', 'DROP TRIGGER public_snapshot_sync_delete',
   'DROP TABLE public_snapshot_revision', 'DROP TABLE fdci_import_checkpoint',
 ];
+const IDENTITY_SQL = 'SELECT database_name,database_id FROM import_gateway_identity WHERE id=1';
+const INVENTORY_SQL = "SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name";
+const PUBLICATIONS_SQL = 'SELECT * FROM publications ORDER BY id';
+const FIXTURE_COUNT_SQL = `SELECT count(*) AS count FROM publications WHERE id LIKE '${FIXTURE_PREFIX}%'`;
 
 export function validateCanaryTarget(config) {
   assert.equal(config.name, CANARY_DATABASE.worker, 'Unexpected Worker');
@@ -30,22 +34,32 @@ async function resultOf(db, sql) {
 }
 
 async function effectiveIdentity(db) {
-  const row = await db.prepare('SELECT database_name,database_id FROM import_gateway_identity WHERE id=1').first();
+  const row = await db.prepare(IDENTITY_SQL).first();
   assert.equal(row?.database_name, CANARY_DATABASE.name, 'D1 destination name mismatch');
   assert.equal(row?.database_id, CANARY_DATABASE.id, 'D1 destination ID mismatch');
 }
 
 const digest = rows => createHash('sha256').update(JSON.stringify(rows)).digest('hex');
 async function inventory(db) {
-  return resultOf(db, "SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name");
+  return resultOf(db, INVENTORY_SQL);
 }
 async function publications(db) {
-  return resultOf(db, 'SELECT * FROM publications ORDER BY id');
+  return resultOf(db, PUBLICATIONS_SQL);
 }
-async function migrationStatements() {
+function migrationStatements() {
   return ['migrations/0032_fdci_import_checkpoint.sql', 'migrations/0101_public_snapshot_revision.sql']
     .flatMap(path => splitSql(readFileSync(path, 'utf8')));
 }
+export function canarySqlForPhase(phase) {
+  const reads = [IDENTITY_SQL, INVENTORY_SQL, PUBLICATIONS_SQL];
+  if (phase === 'baseline') return reads;
+  if (phase === 'migrations') return [...reads, ...migrationStatements()];
+  if (phase === 'fixture') return [...reads, FIXTURE_COUNT_SQL,
+    ...splitSql(readFileSync('scripts/public-snapshot-canary-fixture.sql', 'utf8'))];
+  if (phase === 'restore') return [...reads, ...RESTORE];
+  throw new Error('Unsupported FDCI Canary SQL phase');
+}
+export function canaryMigrationStatements() { return migrationStatements(); }
 function createdNames(statements) {
   return statements.flatMap(sql => {
     const match = sql.match(/^\s*CREATE\s+(?:TEMP(?:ORARY)?\s+)?(TABLE|TRIGGER|INDEX|VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`]?([\w]+)/i);
@@ -53,14 +67,21 @@ function createdNames(statements) {
   });
 }
 
-export async function captureCanaryBaseline({ config, database }) {
+export async function captureCanaryBaseline({ config, database, expectedMigrationObjects }) {
   validateCanaryTarget(config);
+  const expectedNames = createdNames(migrationStatements()).sort((a,b) => a.name.localeCompare(b.name));
+  assert.ok(Array.isArray(expectedMigrationObjects), 'Local Miniflare migration definitions are required');
+  assert.ok(expectedMigrationObjects.every(object => typeof object.sql === 'string' && object.sql.length > 0),
+    'Every migration definition must include exact sqlite_master SQL');
+  assert.deepEqual(expectedMigrationObjects.map(({type,name}) => ({type,name}))
+    .sort((a,b) => a.name.localeCompare(b.name)), expectedNames,
+  'Local Miniflare migration inventory is incomplete or unexpected');
   await effectiveIdentity(database);
   const [objects, rows] = await Promise.all([inventory(database), publications(database)]);
-  const forbidden = new Set(createdNames(await migrationStatements()).map(object => object.name));
+  const forbidden = new Set(expectedNames.map(object => object.name));
   assert.ok(objects.every(object => !forbidden.has(object.name)), 'Canary migration objects already exist in baseline');
   assert.ok(rows.every(row => !String(row.id).startsWith(FIXTURE_PREFIX)), 'Canary fixture rows already exist in baseline');
-  return { databaseName: CANARY_DATABASE.name, databaseId: CANARY_DATABASE.id,
+  return { databaseName: CANARY_DATABASE.name, databaseId: CANARY_DATABASE.id, migrationObjects: expectedMigrationObjects,
     objectHash: digest(objects), objects, publicationCount: rows.length, publicationHash: digest(rows) };
 }
 
@@ -77,9 +98,14 @@ async function assertMigrationInventory(database, baseline, statements) {
   const objects = await inventory(database);
   const oldNames = new Set(baseline.objects.map(object => object.name));
   assert.deepEqual(objects.filter(object => oldNames.has(object.name)), baseline.objects, 'Baseline schema changed');
-  const expected = createdNames(statements).filter(object => !oldNames.has(object.name)).sort((a,b) => a.name.localeCompare(b.name));
-  const added = objects.filter(object => !oldNames.has(object.name)).map(({type,name}) => ({type,name})).sort((a,b) => a.name.localeCompare(b.name));
-  assert.deepEqual(added, expected, 'Unexpected/missing Canary schema objects');
+  const expectedNames = createdNames(statements).filter(object => !oldNames.has(object.name))
+    .sort((a,b) => a.name.localeCompare(b.name));
+  const expected = baseline.migrationObjects.filter(object => !oldNames.has(object.name))
+    .sort((a,b) => a.name.localeCompare(b.name));
+  assert.deepEqual(expected.map(({type,name}) => ({type,name})), expectedNames,
+    'Local Miniflare migration inventory differs from authorized migrations');
+  const added = objects.filter(object => !oldNames.has(object.name)).sort((a,b) => a.name.localeCompare(b.name));
+  assert.deepEqual(added, expected, 'Canary schema object SQL differs from local Miniflare definitions');
 }
 
 async function assertFixture(database, baseline, statements) {
@@ -112,7 +138,7 @@ export async function runCanarySql({ config, database, phase, baseline, closeCan
   } else if (phase === 'fixture') {
     await assertBaselineData(database, baseline);
     await assertMigrationInventory(database, baseline, migrations);
-    assert.equal((await publications(database)).filter(row => String(row.id).startsWith(FIXTURE_PREFIX)).length, 0,
+    assert.equal((await database.prepare(FIXTURE_COUNT_SQL).first()).count, 0,
       'Fixture rows already exist; refusing to duplicate');
   } else {
     assert.equal(typeof closeCanary, 'function', 'Verified Durable Object closure is required before restoration');
@@ -120,6 +146,7 @@ export async function runCanarySql({ config, database, phase, baseline, closeCan
     const closed = await closeCanary();
     assert.equal(closed?.status, 200, 'Durable Object close did not return HTTP 200');
     assert.equal((await closed.json()).closed, true, 'Durable Object close was not confirmed');
+    assert.equal(closed?.storageEmpty, true, 'Durable Object storage must be confirmed empty before restoration');
     await effectiveIdentity(database);
     await assertFixture(database, baseline, migrations);
   }

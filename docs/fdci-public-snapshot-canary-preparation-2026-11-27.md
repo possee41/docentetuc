@@ -35,15 +35,25 @@ se conserva exactamente para reutilizar la clase y namespace existentes.
 
 Las fases SQL se ejecutan solo mediante `runCanarySql()` en
 `scripts/public-snapshot-canary-db.mjs`, con el config fijo y el handle D1
-efectivamente enlazado al Worker Canary. El ejecutor consulta la identidad desde
-ese mismo destino antes de cada sentencia; no acepta una identidad interna
-aportada por el operador. `captureCanaryBaseline()` registra identidad, inventario
-de esquema y hash/conteo de publicaciones antes de migrar. Conservar ese objeto
-de baseline fuera de Git durante todas las fases. Cada respuesta debe confirmar
-`success:true`; fallos o respuestas ambiguas detienen la secuencia y no se
-reintentan automáticamente. El ejecutor conserva el manifiesto de sentencias
-confirmadas. No ejecutar directamente el archivo de restauración ni importar el
-dump completo para “deshacer” una fase parcial.
+efectivamente enlazado al Worker Canary. La alternativa REST local preparada en
+`scripts/public-snapshot-canary-d1-rest.mjs` fija cuenta, endpoint y UUID; admite
+solo las consultas de baseline y las sentencias de la fase solicitada. No acepta
+SQL ni endpoint alternativos, conserva `results` y `meta` de D1, rechaza redirects
+y errores HTTP/envelope/resultado. No reintenta operaciones ambiguas. Las pruebas
+usan transporte simulado: no se enviaron solicitudes. El token vive solo en
+memoria y no se incluye en errores ni registros; el alcance real del token sigue
+siendo el definido por Cloudflare.
+
+El ejecutor consulta la identidad desde ese mismo destino antes de cada sentencia;
+no acepta una identidad interna aportada por el operador. Antes del baseline,
+ejecutar en Miniflare/workerd local ambas migraciones autorizadas y obtener el
+inventario resultante de `sqlite_master` (`type`, `name`, `sql`) como
+`expectedMigrationObjects`. `captureCanaryBaseline()` guarda esas definiciones
+junto al inventario y hash/conteo iniciales. Conservar el baseline fuera de Git
+durante todas las fases. Cada respuesta debe confirmar `success:true`; fallos o
+resultados ambiguos detienen la secuencia y no se reintentan automáticamente.
+No ejecutar directamente el archivo de restauración ni importar el dump completo
+para “deshacer” una fase parcial.
 
 Antes/después de cada fase guardar fuera de Git el manifiesto, inventario y
 conteos/hashes. Si una migración se interrumpe, detener ensayo, inspeccionar los
@@ -91,11 +101,15 @@ la restauración.
 Después de HTTP 200, comprobar que el almacenamiento del objeto está vacío. No
 queda marcador persistente tras `deleteAll()`; nuevas lecturas se rechazan por
 el vencimiento de la ventana original, incluso después de reiniciar el objeto.
-`runCanarySql({phase:'restore'})` exige el baseline conservado, vuelve a verificar
-que las publicaciones históricas y el inventario esperado siguen intactos y
-requiere una respuesta HTTP 200 con `closed:true` antes de ejecutar cualquier
-sentencia destructiva. Revalida la identidad del mismo D1 antes de cada
-sentencia y comprueba el resultado de cada una. El archivo
+`runCanarySql({phase:'restore'})` exige el baseline conservado y compara
+byte por byte el SQL de cada objeto nuevo con la definición generada en
+Miniflare/workerd. Un trigger alterado conservando su nombre hace abortar la
+restauración. También verifica datos históricos y esquema antes y después del
+cierre. Exige HTTP 200 con `closed:true` y confirmación externa
+`storageEmpty:true` obtenida mediante la consulta autorizada del objeto Canary
+fijo. Si identidad, baseline, DDL o cierre no coinciden, no ejecuta ningún
+`DELETE` ni `DROP`. Revalida la identidad antes de cada sentencia y exige
+`success:true`, resultados y metadatos válidos. El archivo
 `scripts/public-snapshot-canary-restore.sql` es deliberadamente no ejecutable;
 no usar `wrangler d1 execute --file` para restaurar.
 
@@ -119,16 +133,28 @@ los 8 MiB por valor; 152 sintéticas, 400 publicaciones totales; postcierre cero
 snapshot/chunks y cero fixture tras restaurar. Los valores de filas son techo
 conservador del fixture, no consumo medido. Faltan métricas nativas => inconcluso.
 
-Presupuesto remoto previsto (estimación de trabajo, no cuota restante; incluye
-preflight, ejecución, verificación, cierre y contingencias): exportar
-una vez D1 (~3 MiB esperados; confirmar bytes), como máximo 2 migraciones + hasta
-6 pasos de triggers/tabla, 1 INSERT fixture (152 filas), hasta 3 pre/postchecks,
-dos GET, 1 cierre DO, eliminación fixture (152 filas), 8 drops de objetos de
-ensayo, y hasta 20 invocaciones auxiliares de control/observabilidad. Reservar
-por lo menos 25 solicitudes Worker y 25 DO además de la cuota disponible; no
-comenzar si el preflight no confirma saldo suficiente para esos máximos y margen.
-Lecturas de diagnóstico pueden tocar hasta 400 publicaciones por query. La cuota
-real gratuita/observabilidad solo se verifica durante preflight remoto autorizado.
+Presupuesto del ciclo completo (estimación, no consumo real ni saldo restante):
+
+| Recurso | Presupuesto previsto | Notas |
+| --- | ---: | --- |
+| Llamadas API D1 | 72 estimadas | 20 sentencias SQL, 20 identidades previas, 26 consultas de baseline/inventario/verificación/cierre y 6 lecturas D1 frías. No incluye el export; no es un máximo contractual. |
+| Filas D1 leídas | ≈3.400 | Estimación para publicaciones y fechas del fixture, consultas de identidad y verificaciones. Conciliar con cada `meta.rows_read`. |
+| Filas D1 escritas | ≈1.826 + DDL | Incluye inserción/eliminación de 152 publicaciones, disparadores e índices; DDL puede añadir consumo. Conciliar con cada `meta.rows_written`. |
+| Export D1 | 1 | El respaldo queda local y fuera de Git. Lecturas facturables del export no cuantificadas. |
+| Solicitudes Worker | Tope 25 | Incluye validaciones, exactamente dos GET de medición, los dos POST de cierre, comprobación posterior y contingencias. |
+| Solicitudes DO | Tope 25 | Incluye las dos lecturas, las fases de cierre y contingencias. |
+| Almacenamiento DO | Contado aparte | Cada GET hace transacción de contador: dos lecturas y una escritura; el camino frío carga manifiesto/chunk y guarda manifiesto/chunk. El cierre bloquea, elimina alarma y ejecuta `deleteAll()`. Confirmar el consumo SQLite DO con métricas. |
+| Observabilidad | Hasta 25 invocaciones Worker + 25 DO | Muestreo 100 % solo durante Canary; requiere CPU y trazas verificables para los dos GET. |
+| Reserva para restauración | Dentro de los topes anteriores | Separar del presupuesto de ensayo y no consumirla en reintentos. Si el margen disponible no alcanza, no comenzar. |
+
+El cálculo anterior de 74 llamadas D1 era una estimación del flujo previo. Con las
+verificaciones exactas de esquema y el cierre actual, el recorrido se estima en
+72, sin prometer que sea un máximo: cualquier control adicional aumenta el total.
+Las 20 sentencias abarcan migraciones, fixture y limpieza; las identidades y
+validaciones son llamadas API separadas. El propietario confirmó visualmente el
+plan Workers Free y zona Free el 28/11/2026, sin método de pago. Sigue pendiente
+consultar consumo y margen operativo antes del ensayo. La cuota restante no se
+deduce del plan contratado ni de los agregados de uso.
 
 Luego ejecutar la fase `restore` del mismo `runCanarySql()` solo tras el cierre
 confirmado y con el baseline capturado antes de las migraciones. Compara el
