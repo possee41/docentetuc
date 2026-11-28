@@ -19,8 +19,11 @@ test("expired lease and the 30-second closure margin stop insertion", () => {
 
 test("the requested TTL and the absolute 600-second cap are both enforced", () => {
   const longer = seconds => ({ openedAt: at(0), expiresAt: at(seconds * 1_000) });
+  assert.equal(canaryLeaseDeadline(longer(180.001), 1_000, 2_000, 180), 151_000);
   assert.throws(() => canaryLeaseDeadline(longer(181), 1_000, 2_000, 180), /TIME_INVALID/);
   assert.equal(canaryLeaseDeadline(longer(600), 1_000, 2_000, 600), 571_000);
-  assert.throws(() => canaryLeaseDeadline(longer(601), 1_000, 2_000, 900), /TIME_INVALID/);
+  assert.equal(canaryLeaseDeadline(longer(600.001), 1_000, 2_000, 600), 571_000);
+  assert.throws(() => canaryLeaseDeadline(longer(601), 1_000, 2_000, 600), /TIME_INVALID/);
+  assert.throws(() => canaryLeaseDeadline(longer(600), 1_000, 2_000, 900), /TIME_INVALID/);
   assert.throws(() => canaryLeaseDeadline({ ...ack(0), expiresAt: at(-1) }, 1_000, 2_000, 180), /TIME_INVALID/);
 });
