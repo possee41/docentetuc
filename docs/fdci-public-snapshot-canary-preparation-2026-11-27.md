@@ -33,16 +33,17 @@ se conserva exactamente para reutilizar la clase y namespace existentes.
 
 ### Ejecutor, bitácora y recuperación parcial
 
-Las fases SQL se ejecutan solo con `scripts/public-snapshot-canary-db.mjs` y
-`wrangler.1.2-public-snapshot-canary.jsonc`; el ejecutor no acepta un nombre o
-UUID suministrado por el operador. Antes de cada fase compara configuración
-fija e identidad interna. Ejecuta sentencias por separado y devuelve manifiesto
-ordenado. Si una respuesta falla o se pierde, su resultado se trata como
-ambiguo: no se repite esa escritura automáticamente. Consultar el inventario
-real (tablas, triggers, índices), comparar con respaldo y manifiesto, y continuar
-solo con los objetos faltantes que coincidan con los nombres/hash esperados.
-La secuencia de solicitudes independientes no es atómica. No importar el dump
-completo para “deshacer” una fase parcial.
+Las fases SQL se ejecutan solo mediante `runCanarySql()` en
+`scripts/public-snapshot-canary-db.mjs`, con el config fijo y el handle D1
+efectivamente enlazado al Worker Canary. El ejecutor consulta la identidad desde
+ese mismo destino antes de cada sentencia; no acepta una identidad interna
+aportada por el operador. `captureCanaryBaseline()` registra identidad, inventario
+de esquema y hash/conteo de publicaciones antes de migrar. Conservar ese objeto
+de baseline fuera de Git durante todas las fases. Cada respuesta debe confirmar
+`success:true`; fallos o respuestas ambiguas detienen la secuencia y no se
+reintentan automáticamente. El ejecutor conserva el manifiesto de sentencias
+confirmadas. No ejecutar directamente el archivo de restauración ni importar el
+dump completo para “deshacer” una fase parcial.
 
 Antes/después de cada fase guardar fuera de Git el manifiesto, inventario y
 conteos/hashes. Si una migración se interrumpe, detener ensayo, inspeccionar los
@@ -51,12 +52,13 @@ inventario inicial y cuya definición coincida exactamente con el SQL autorizado
 Si hay discrepancia, no ejecutar DROP y escalar recuperación manual limitada a
 esta D1. El fixture se elimina por el prefijo + fuente + content_hash reservado.
 
-1. Aplicar **solo** `migrations/0032_fdci_import_checkpoint.sql` y
-   `migrations/0101_public_snapshot_revision.sql` a la D1 Canary; no ejecutar
-   migraciones generales. Aplicar `scripts/public-snapshot-canary-fixture.sql`,
-   que agrega 152 comisiones FDCI sintéticas (76 próximas y 76 abiertas), sin
-   tocar filas existentes. Su resumen de 5 KiB aproxima la carga máxima de la
-   respuesta pública. La fuente y URL indican explícitamente que son sintéticas.
+1. Con baseline confirmado, ejecutar mediante `runCanarySql()` **solo** las
+   migraciones `0032` y `0101`, y luego el fixture `scripts/public-snapshot-canary-fixture.sql`.
+   El parser conserva cada bloque `CREATE TRIGGER ... BEGIN ... END` como una
+   sentencia. El ejecutor verifica que se agregaron únicamente los objetos de
+   esas migraciones y 152 comisiones FDCI sintéticas (76 próximas y 76 abiertas),
+   sin cambiar publicaciones históricas. Su resumen de 5 KiB aproxima la carga
+   máxima de la respuesta pública. La fuente y URL indican que son sintéticas.
 2. Desplegar el candidato integrado **solo** al Worker Canary con el Wrangler
    cerrado y una clave temporal aleatoria en el secreto
    `PUBLIC_SNAPSHOT_CANARY_SECRET`. Antes de abrir, comprobar que el POST privado
@@ -77,25 +79,25 @@ esta D1. El fixture se elimina por el prefijo + fuente + content_hash reservado.
 
 ## Cierre y restauración
 
-Deshabilitar la ventana de GET (o esperar su vencimiento), llamar al POST privado
-`/__fdci_public_snapshot_canary_close` con la clave temporal y confirmar
-`closed:true`. El Worker y el objeto consultan la fila de identidad D1 y exigen
-el UUID Canary antes de `deleteAll()`; el objeto cancela además cualquier alarma.
-El cierre no depende de que la ventana GET siga abierta. Consultar el namespace
-por API y exigir `hasStoredData=false` para **todos** sus objetos; si no se cumple,
-detener la restauración y conservar las evidencias para un cierre manual.
+Conservar intacta la ventana original `PUBLIC_SNAPSHOT_CANARY_UNTIL` hasta cerrar;
+no vaciarla ni extenderla. Antes del vencimiento, el POST privado de cierre
+persiste el bloqueo de lecturas, espera las solicitudes ya admitidas y responde
+HTTP 202 con `closed:false`; conserva aún el almacenamiento. Tras el vencimiento,
+repetir el POST con la clave temporal: el Durable Object verifica la identidad,
+cancela la alarma, ejecuta `deleteAll()` y solo entonces devuelve HTTP 200 con
+`closed:true`. Si alguna limpieza falla, no declara cierre exitoso y se detiene
+la restauración.
 
-El cierre persiste un gate `closed` antes de esperar solicitudes ya admitidas,
-espera que concluyan, cancela la alarma y vacía el storage. Solo responde
-`closed:true` si ambas operaciones terminan; un error conserva el secreto y el
-bundle de cierre y requiere reintentar manualmente tras inspeccionar el estado.
-El gate de dos GET se guarda en el storage del objeto, no en memoria del Worker.
-Después de `deleteAll`, el marcador mínimo de cierre se vuelve a escribir para
-impedir que un reinicio acepte un tercer GET. Por eso la verificación exige que
-no queden snapshot, chunks ni alarmas; el marcador de cierre es el único dato de
-control permitido hasta retirar el runtime y secreto. Si no puede persistirse,
-mantener la ventana GET apagada y no retirar el runtime/secret. No eliminar el
-namespace ni objetos ajenos.
+Después de HTTP 200, comprobar que el almacenamiento del objeto está vacío. No
+queda marcador persistente tras `deleteAll()`; nuevas lecturas se rechazan por
+el vencimiento de la ventana original, incluso después de reiniciar el objeto.
+`runCanarySql({phase:'restore'})` exige el baseline conservado, vuelve a verificar
+que las publicaciones históricas y el inventario esperado siguen intactos y
+requiere una respuesta HTTP 200 con `closed:true` antes de ejecutar cualquier
+sentencia destructiva. Revalida la identidad del mismo D1 antes de cada
+sentencia y comprueba el resultado de cada una. El archivo
+`scripts/public-snapshot-canary-restore.sql` es deliberadamente no ejecutable;
+no usar `wrangler d1 execute --file` para restaurar.
 
 Al iniciar ejecución, configurar el Worker a cerrado inmediatamente tras cada
 fallo. Ante despliegue fallido no abrir la ventana; ante fallo de GET, vencimiento,
@@ -128,10 +130,11 @@ comenzar si el preflight no confirma saldo suficiente para esos máximos y marge
 Lecturas de diagnóstico pueden tocar hasta 400 publicaciones por query. La cuota
 real gratuita/observabilidad solo se verifica durante preflight remoto autorizado.
 
-Luego ejecutar `scripts/public-snapshot-canary-restore.sql` **solo si el preflight
-probó que ambas tablas no existían previamente**. Comparar conteos y hashes de
-filas preexistentes y triggers con el respaldo. Si difieren, no importar el
-respaldo completo a ciegas: identificar y restaurar exclusivamente la diferencia.
+Luego ejecutar la fase `restore` del mismo `runCanarySql()` solo tras el cierre
+confirmado y con el baseline capturado antes de las migraciones. Compara el
+inventario, los datos históricos y los triggers preexistentes con ese baseline;
+si difieren, no ejecutar drops ni importar el respaldo completo a ciegas:
+identificar y restaurar exclusivamente la diferencia.
 Retirar el secreto temporal, devolver el Worker a la versión de rutas previa que
 conserva la clase DO registrada, y comprobar GET cerrado, cero Cron, ningún dato
 sintético y ningún objeto con datos. El respaldo permanece local, fuera de Git.
