@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import{readFileSync,existsSync}from'node:fs';import{DatabaseSync}from'node:sqlite';import{createHash}from'node:crypto';
 import{initialDailyState,sealDailyState,validateDailyState,runDailyBatch,createDailyGitStore,SIME_JUNTAS}from'./daily-sync-state.mjs';
-import{runDailySource}from'./daily-sources.mjs';import{prepareSimeRecovery}from'./prepare-sime-recovery.mjs';
+import{runDailySource}from'./daily-sources.mjs';import{prepareSimeRecovery,prepareSimeAbsentRecovery}from'./prepare-sime-recovery.mjs';
 import{patchSimeReceiver,patchSimeWorkflow}from'./prepare-sime-production-package.mjs';
 import gateway from'../workers/daily-source-gateway.mjs';import receiver from'../workers/sime-receiver.mjs';
 import{normalizeSimeVacancy,applySimeDetail}from'../lib/sime-publications.ts';import{prepareSimeImport}from'../lib/sime-import.ts';
@@ -41,6 +41,123 @@ test('500 de Git sin persistir: permanece incierto, no repite PUT',async()=>{con
 function review(){const pending=row(2,1),other=row(3,1),state=sealDailyState({...initialDailyState('sime',sha,'production').data,generation:10,halted:true,inFlight:{mode:'batch',id:pending.id},queue:{[pending.id]:pending,[other.id]:other},pending:2,confirmed:{'sime:old':hash('old')},cursor:'sime:1000'});const receipt={at:new Date().toISOString(),databaseId:prodId,result:[{success:true,meta:{rows_written:0,changes:0},results:[{id:pending.id,source:'SIME',content_hash:pending.contentHash,removed_at:null}]}]};return{state,receipt};}
 test('conciliación offline preserva confirmaciones y cola, resuelve solo el hash aplicado y cambia SHA',()=>{const {state,receipt}=review(),n=prepareSimeRecovery(state,sha,newSha,receipt);assert.equal(n.data.generation,11);assert.equal(n.data.pending,1);assert.equal(n.data.confirmed['sime:old'],hash('old'));assert.equal(n.data.confirmed['sime:2001'],row(2,1).contentHash);assert.equal(n.data.simeCursors[2],'sime:2001');assert.equal(n.data.halted,false);assert.equal(n.data.inFlight,null);assert.equal(n.data.codeSha,newSha);assert.equal(state.data.pending,2);});
 for(const kind of ['missing','differentHash','wrongSource','removed','wrongDatabase','stale'])test('conciliación rechaza '+kind,()=>{const{state,receipt}=review();if(kind==='missing')receipt.result[0].results=[];if(kind==='differentHash')receipt.result[0].results[0].content_hash=hash('different');if(kind==='wrongSource')receipt.result[0].results[0].source='OTHER';if(kind==='removed')receipt.result[0].results[0].removed_at=new Date().toISOString();if(kind==='wrongDatabase')receipt.databaseId='853e2f5d-89b1-46a3-9c1c-5cbd46784756';if(kind==='stale')receipt.at=new Date(Date.now()-1_800_001).toISOString();assert.throws(()=>prepareSimeRecovery(state,sha,newSha,receipt),/RECOVERY/);});
+
+function absentReview(){
+  const queueEntries=Array.from({length:300},(_,i)=>row((i%4)+1,i+1));
+  const target=queueEntries[0];
+  const queue=Object.fromEntries(queueEntries.map(r=>[r.id,r]));
+  const confirmed=Object.fromEntries(Array.from({length:281},(_,i)=>[`sime:${9000+i}`,hash(`confirmed-${i}`)]));
+  const simeCursors={1:'sime:1001',2:'sime:2002',3:'sime:3003',4:'sime:4004'};
+  const simeMaintenance={detailCursors:{1:'sime:1010',2:'',3:'',4:''},deferredCursors:{1:'',2:'',3:'',4:''},deferredErrors:[]};
+  const state=sealDailyState({
+    ...initialDailyState('sime',sha,'production').data,
+    generation:250,
+    halted:true,
+    inFlight:{mode:'batch',id:target.id},
+    queue,
+    pending:300,
+    confirmed,
+    cursor:'sime:4004',
+    simeCursors,
+    simeMaintenance,
+    recoveryRunId:'44147670588',
+  });
+  const receipt={
+    at:new Date().toISOString(),
+    databaseId:prodId,
+    targetId:target.id,
+    expectedContentHash:target.contentHash,
+    result:[
+      {success:true,meta:{rows_written:0,changes:0},results:[{id:1,database_name:'docentetuc-db',database_id:prodId}]},
+      {success:true,meta:{rows_written:0,changes:0},results:[]},
+      {success:true,meta:{rows_written:0,changes:0},results:[]},
+    ],
+  };
+  return{state,receipt,target,simeCursors,simeMaintenance};
+}
+
+test('caso B válido: desbloquea halted/inFlight y conserva 300 pendientes, 281 confirmados, cursores, checkpoints y recoveryRunId',()=>{
+  const{state,receipt,target,simeCursors,simeMaintenance}=absentReview();
+  const next=prepareSimeAbsentRecovery(state,sha,newSha,receipt);
+  assert.equal(next.data.generation,251);
+  assert.equal(next.data.codeSha,newSha);
+  assert.equal(next.data.halted,false);
+  assert.equal(next.data.inFlight,null);
+  assert.equal(next.data.pending,300);
+  assert.equal(Object.keys(next.data.queue).length,300);
+  assert.deepEqual(next.data.queue[target.id],target);
+  assert.equal(Object.keys(next.data.confirmed).length,281);
+  assert.equal(next.data.confirmed[target.id],undefined);
+  assert.equal(next.data.cursor,'sime:4004');
+  assert.deepEqual(next.data.simeCursors,simeCursors);
+  assert.deepEqual(next.data.simeMaintenance,simeMaintenance);
+  assert.equal(next.data.recoveryRunId,'44147670588');
+  assert.equal(next.data.recoveryReview.outcome,'absent');
+  assert.equal(next.data.recoveryReview.resolvedId,target.id);
+  assert.equal(next.data.recoveryReview.expectedContentHash,target.contentHash);
+  assert.equal(next.data.recoveryReview.previousChecksum,state.sha256);
+  validateDailyState(next,'sime',newSha);
+});
+
+for(const[kind,err]of[
+  ['wrongHash',/SIME_RECOVERY_HASH_MISMATCH/],
+  ['wrongTarget',/SIME_RECOVERY_HASH_MISMATCH/],
+  ['unexpectedlyPresent',/SIME_RECOVERY_UNEXPECTEDLY_PRESENT/],
+  ['stale',/SIME_RECOVERY_EVIDENCE_INVALID/],
+  ['future',/SIME_RECOVERY_EVIDENCE_INVALID/],
+  ['activeLease',/SIME_RECOVERY_ACTIVE_LEASE/],
+  ['wrongDatabase',/SIME_RECOVERY_EVIDENCE_INVALID/],
+  ['wrongIdentityRow',/SIME_RECOVERY_EVIDENCE_INVALID/],
+  ['nonzeroWrite',/SIME_RECOVERY_EVIDENCE_INVALID/],
+  ['concurrentOwner',/SIME_RECOVERY_EVIDENCE_INVALID/],
+  ['checksumTampered',/DAILY_STATE_INVALID/],
+]){
+  test('caso B rechaza '+kind,()=>{
+    const{state,receipt,target}=absentReview();
+    if(kind==='wrongHash')receipt.expectedContentHash=hash('wrong');
+    if(kind==='wrongTarget')receipt.targetId='sime:999999';
+    if(kind==='unexpectedlyPresent')receipt.result[2].results=[{id:target.id,source:'SIME',content_hash:target.contentHash,removed_at:null}];
+    if(kind==='stale')receipt.at=new Date(Date.now()-1_800_001).toISOString();
+    if(kind==='future')receipt.at=new Date(Date.now()+60_000).toISOString();
+    if(kind==='activeLease')receipt.result[1].results=[{id:1,source:'sime',expires_at:new Date(Date.now()+60_000).toISOString(),opened_at:new Date().toISOString(),opened_by:'999-1'}];
+    if(kind==='wrongDatabase')receipt.databaseId='853e2f5d-89b1-46a3-9c1c-5cbd46784756';
+    if(kind==='wrongIdentityRow')receipt.result[0].results[0].database_name='other-db';
+    if(kind==='nonzeroWrite')receipt.result[2].meta.rows_written=1;
+    if(kind==='concurrentOwner'){const mutated=sealDailyState({...state.data,owner:'concurrent-1',expiresAt:new Date(Date.now()+60_000).toISOString()});assert.throws(()=>prepareSimeAbsentRecovery(mutated,sha,newSha,receipt),err);return;}
+    if(kind==='checksumTampered'){const tampered={...state,data:{...state.data,generation:state.data.generation+1}};assert.throws(()=>prepareSimeAbsentRecovery(tampered,sha,newSha,receipt),err);return;}
+    assert.throws(()=>prepareSimeAbsentRecovery(state,sha,newSha,receipt),err);
+  });
+}
+
+test('caso B rechaza conflicto CAS, segunda recuperación no autorizada y no publica pendientes no re-observados',async()=>{
+  const{state,receipt,target}=absentReview();
+  const next=prepareSimeAbsentRecovery(state,sha,newSha,receipt);
+  // 1. No admite re-aplicar conciliación sobre estado ya desbloqueado
+  assert.throws(()=>prepareSimeAbsentRecovery(next,newSha,'c'.repeat(40),receipt),/SIME_RECOVERY_REVIEW_REQUIRED/);
+  // 2. CAS rechaza estado concurrentemente modificado (revisión distinta)
+  const store={
+    load:async()=>({revision:'1'.repeat(40),state:next}),
+    save:async(p)=>{if(p.revision!=='2'.repeat(40))throw Error('DAILY_STATE_CONFLICT');},
+  };
+  await assert.rejects(store.save({revision:'0'.repeat(40)},next),/DAILY_STATE_CONFLICT/);
+  // 3. Rechaza segunda recuperación manual porque recoveryRunId ya está consumido
+  const s=sink();
+  const runtimeStore={
+    letState:next,
+    rev:'1'.repeat(40),
+    async load(){return{revision:this.rev,state:structuredClone(this.letState)};},
+    async save(p,n){if(p.revision!==this.rev)throw Error('DAILY_STATE_CONFLICT');validateDailyState(n,'sime',newSha);this.rev=hash(JSON.stringify(n)).slice(0,40);this.letState=structuredClone(n);return{revision:this.rev,state:structuredClone(n)};},
+  };
+  await assert.rejects(runDailyBatch({source:'sime',codeSha:newSha,owner:'2-1',store:runtimeStore,recoveryRunId:'99999999999',collect:collect([]),send:s.send}),/DAILY_RECOVERY_ALREADY_USED_OR_INVALID/);
+  // 4. Siguiente ejecución programada conserva los 300 pendientes diferidos y no publica ninguno antiguo sin re-observación
+  const scheduled=await runDailyBatch({source:'sime',codeSha:newSha,owner:'3-1',store:runtimeStore,scheduleDay:'2026-11-28',collect:collect([]),send:s.send});
+  assert.equal(scheduled.processed,0);
+  assert.equal(scheduled.deferred,300);
+  assert.equal(scheduled.pending,300);
+  assert.equal(scheduled.completed,false);
+  assert.equal(s.rows.size,0);
+  assert.deepEqual((await runtimeStore.load()).state.data.queue[target.id],target);
+});
 
 function sqliteD1(){const raw=new DatabaseSync(':memory:');raw.exec(readFileSync(new URL('fixtures/sime-production-schema.sql',import.meta.url),'utf8'));raw.prepare('INSERT INTO import_gateway_identity(id,database_name,database_id) VALUES(1,?,?)').run('docentetuc-db',prodId);const prep=(sql,args=[])=>({bind:(...a)=>prep(sql,a),all:async()=>{const results=raw.prepare(sql).all(...args);return{results,meta:{rows_read:results.length,rows_written:0}};},first:async()=>raw.prepare(sql).get(...args)??null,run:async()=>{const r=raw.prepare(sql).run(...args);return{meta:{changes:r.changes,rows_read:0,rows_written:r.changes}};}});return{raw,db:{prepare:prep,batch:async statements=>{raw.exec('BEGIN');try{const r=[];for(const s of statements)r.push(await s.run());raw.exec('COMMIT');return r;}catch(e){raw.exec('ROLLBACK');throw e;}}}};}
 const secret='LOCAL_SIME_SECRET_123456789012345678901234';
