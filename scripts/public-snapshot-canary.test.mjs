@@ -38,6 +38,7 @@ test('fixture, integrated cold/prepared response, isolated close and exact resto
       deleteAlarm: async () => {}, deleteAll: async () => { deleted = true; values.clear(); } };
     const env = { DB: db, PUBLIC_SNAPSHOT_CANARY_SECRET: secret, JUNTAS_CANARY_DATABASE_ID: databaseId,
       PUBLIC_SNAPSHOT_ENABLED: 'true', PUBLIC_SNAPSHOT_CANARY_ENABLED: 'true',
+      PUBLIC_SNAPSHOT_CANARY_MAX_GETS: '2',
       PUBLIC_SNAPSHOT_CANARY_UNTIL: new Date(Date.now() + 60_000).toISOString() };
     const object = new PublicSnapshot({ storage }, env);
     const cold = await object.fetch(request());
@@ -57,11 +58,13 @@ test('fixture, integrated cold/prepared response, isolated close and exact resto
     assert.equal((await new PublicSnapshot({ storage }, wrongIdentity)
       .fetch(request('/__fdci_public_snapshot_canary_close', 'POST'))).status, 403);
     assert.equal(deleted, false);
+    assert.equal((await object.fetch(request('/__fdci_public_snapshot_canary_close', 'POST'))).status, 202);
+    env.PUBLIC_SNAPSHOT_CANARY_UNTIL = new Date(Date.now() - 1).toISOString();
     assert.equal((await object.fetch(request('/__fdci_public_snapshot_canary_close', 'POST'))).status, 200);
     assert.equal(deleted, true);
     assert.equal(values.size, 0);
     const forwarded = async () => new Response('integrated');
-    assert.equal((await canaryFetch(request(), env, forwarded)).status, 200);
+    assert.equal((await canaryFetch(request(), env, forwarded)).status, 404);
     assert.equal((await canaryFetch(request('/api/public-app?fresh=1'), env, forwarded)).status, 404);
     assert.equal((await canaryFetch(request('/api/public-app', 'GET', 'wrong'), env, forwarded)).status, 404);
     assert.equal((await canaryFetch(request(), { ...env, PUBLIC_SNAPSHOT_CANARY_ENABLED: 'false' }, forwarded)).status, 404);

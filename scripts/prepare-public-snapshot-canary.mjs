@@ -12,6 +12,8 @@ assert.deepEqual(config.durable_objects?.bindings, [{ name: 'PUBLIC_SNAPSHOT', c
 assert.deepEqual(config.migrations, [{ tag: 'public-snapshot-canary-v1', new_sqlite_classes: ['PublicSnapshot'] }]);
 assert.deepEqual(config.triggers?.crons, []);
 assert.equal(config.vars.PUBLIC_SNAPSHOT_CANARY_ENABLED, 'false');
+assert.equal(config.vars.JUNTAS_CANARY_DATABASE_ID, config.d1_databases[0].database_id);
+assert.equal(config.vars.PUBLIC_SNAPSHOT_CANARY_MAX_GETS, '2');
 assert.equal(config.observability?.traces?.enabled, true);
 assert.equal(config.routes, undefined);
 assert.equal(config.route, undefined);

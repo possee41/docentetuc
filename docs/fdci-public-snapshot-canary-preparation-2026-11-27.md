@@ -31,6 +31,26 @@ se conserva exactamente para reutilizar la clase y namespace existentes.
 
 ## Escrituras Canary que requerirán autorización específica
 
+### Ejecutor, bitácora y recuperación parcial
+
+Las fases SQL se ejecutan solo con `scripts/public-snapshot-canary-db.mjs` y
+`wrangler.1.2-public-snapshot-canary.jsonc`; el ejecutor no acepta un nombre o
+UUID suministrado por el operador. Antes de cada fase compara configuración
+fija e identidad interna. Ejecuta sentencias por separado y devuelve manifiesto
+ordenado. Si una respuesta falla o se pierde, su resultado se trata como
+ambiguo: no se repite esa escritura automáticamente. Consultar el inventario
+real (tablas, triggers, índices), comparar con respaldo y manifiesto, y continuar
+solo con los objetos faltantes que coincidan con los nombres/hash esperados.
+La secuencia de solicitudes independientes no es atómica. No importar el dump
+completo para “deshacer” una fase parcial.
+
+Antes/después de cada fase guardar fuera de Git el manifiesto, inventario y
+conteos/hashes. Si una migración se interrumpe, detener ensayo, inspeccionar los
+objetos ya creados; quitar únicamente los objetos de esa migración ausentes del
+inventario inicial y cuya definición coincida exactamente con el SQL autorizado.
+Si hay discrepancia, no ejecutar DROP y escalar recuperación manual limitada a
+esta D1. El fixture se elimina por el prefijo + fuente + content_hash reservado.
+
 1. Aplicar **solo** `migrations/0032_fdci_import_checkpoint.sql` y
    `migrations/0101_public_snapshot_revision.sql` a la D1 Canary; no ejecutar
    migraciones generales. Aplicar `scripts/public-snapshot-canary-fixture.sql`,
@@ -64,6 +84,49 @@ el UUID Canary antes de `deleteAll()`; el objeto cancela además cualquier alarm
 El cierre no depende de que la ventana GET siga abierta. Consultar el namespace
 por API y exigir `hasStoredData=false` para **todos** sus objetos; si no se cumple,
 detener la restauración y conservar las evidencias para un cierre manual.
+
+El cierre persiste un gate `closed` antes de esperar solicitudes ya admitidas,
+espera que concluyan, cancela la alarma y vacía el storage. Solo responde
+`closed:true` si ambas operaciones terminan; un error conserva el secreto y el
+bundle de cierre y requiere reintentar manualmente tras inspeccionar el estado.
+El gate de dos GET se guarda en el storage del objeto, no en memoria del Worker.
+Después de `deleteAll`, el marcador mínimo de cierre se vuelve a escribir para
+impedir que un reinicio acepte un tercer GET. Por eso la verificación exige que
+no queden snapshot, chunks ni alarmas; el marcador de cierre es el único dato de
+control permitido hasta retirar el runtime y secreto. Si no puede persistirse,
+mantener la ventana GET apagada y no retirar el runtime/secret. No eliminar el
+namespace ni objetos ajenos.
+
+Al iniciar ejecución, configurar el Worker a cerrado inmediatamente tras cada
+fallo. Ante despliegue fallido no abrir la ventana; ante fallo de GET, vencimiento,
+métrica faltante o CPU sobre objetivo, cerrar sin reintento de lectura. Si
+deleteAll o restauración D1 falla, conservar clave y bundle Canary, detener
+operaciones posteriores, verificar el objeto fijo por API y completar solo la
+limpieza de IDs de fixture/tablas ausentes del baseline. Una lectura ambigua se
+concilia con logs/Ray ID antes de cualquier segunda solicitud.
+
+## Umbrales y presupuesto
+
+Objetivos internos provisionales: Worker frío ≤8 ms; Worker preparado ≤5 ms;
+DO frío ≤100 ms; DO preparado ≤10 ms. Límites oficiales: Worker Free 10 ms CPU
+por HTTP; DO 30 s CPU por invocación. Seis consultas del DO frío y cero con
+snapshot preparado; cero consultas del Worker medidas aparte; escrituras D1 en
+GET = 0; lecturas D1 previstas en frío ≤400 filas de publicaciones + 1 sync +
+1 checkpoint + 1 revisión + hasta 400 fechas; snapshot 0–2 MiB en DO, sin superar
+los 8 MiB por valor; 152 sintéticas, 400 publicaciones totales; postcierre cero
+snapshot/chunks y cero fixture tras restaurar. Los valores de filas son techo
+conservador del fixture, no consumo medido. Faltan métricas nativas => inconcluso.
+
+Presupuesto remoto previsto (estimación de trabajo, no cuota restante; incluye
+preflight, ejecución, verificación, cierre y contingencias): exportar
+una vez D1 (~3 MiB esperados; confirmar bytes), como máximo 2 migraciones + hasta
+6 pasos de triggers/tabla, 1 INSERT fixture (152 filas), hasta 3 pre/postchecks,
+dos GET, 1 cierre DO, eliminación fixture (152 filas), 8 drops de objetos de
+ensayo, y hasta 20 invocaciones auxiliares de control/observabilidad. Reservar
+por lo menos 25 solicitudes Worker y 25 DO además de la cuota disponible; no
+comenzar si el preflight no confirma saldo suficiente para esos máximos y margen.
+Lecturas de diagnóstico pueden tocar hasta 400 publicaciones por query. La cuota
+real gratuita/observabilidad solo se verifica durante preflight remoto autorizado.
 
 Luego ejecutar `scripts/public-snapshot-canary-restore.sql` **solo si el preflight
 probó que ambas tablas no existían previamente**. Comparar conteos y hashes de
