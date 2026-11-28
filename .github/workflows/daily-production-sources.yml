@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write # Repository-wide, not branch-scoped; required for the separate Git ledgers.
-    environment: ${{ format('production-{0}', inputs.source || (github.event.schedule == '7 9 * * *' && 'sime') || (github.event.schedule == '7 10 * * *' && 'infd') || (github.event.schedule == '37 10 * * *' && 'cenet')) }}
+    environment: ${{ format('production-{0}', inputs.source) }}
     env:
       GH_TOKEN: ${{ github.token }}
       DAILY_SOURCES_ENABLED: ${{ vars.DAILY_PRODUCTION_ENABLED }}
@@ -31,7 +31,7 @@ jobs:
       SIME_SHA: ${{ vars.DAILY_PRODUCTION_SIME_APPROVED_SHA }}
       DAILY_DEFAULT_BRANCH: release/production-sources-ef7dc08
       DAILY_STATE_ENVIRONMENT: production
-      SYNC_SOURCE: ${{ inputs.source || (github.event.schedule == '7 9 * * *' && 'sime') || (github.event.schedule == '7 10 * * *' && 'infd') || (github.event.schedule == '37 10 * * *' && 'cenet')) }}
+      SYNC_SOURCE: ${{ inputs.source }}
       IMPORT_GATEWAY_TARGET: production
       IMPORT_GATEWAY_PRODUCTION_ENABLED: ${{ vars.DAILY_PRODUCTION_APPROVED }}
       IMPORT_GATEWAY_ORIGIN: https://docentetuc-sources-1-2.possee41.workers.dev
