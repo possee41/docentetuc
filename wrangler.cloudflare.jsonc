@@ -3,19 +3,24 @@
   "main": "dist/server/worker-entry.mjs",
   "compatibility_date": "2026-05-15",
   "compatibility_flags": ["nodejs_compat"],
+  "keep_vars": true,
+  "preview_urls": false,
   "vars": {
-    "AI_PROVIDER": "gemini",
-    "AI_MODEL": "gemini-3.5-flash-lite",
+    "LEGACY_SYNC_PAUSED": "true",
     "AI_WEB_SEARCH_ENABLED": "0",
-    "PUSH_DISPATCH_MODE": "disabled"
+    "PUSH_DISPATCH_MODE": "disabled",
+    "PUBLIC_SNAPSHOT_ENABLED": "true"
   },
   "no_bundle": true,
   "rules": [{ "type": "ESModule", "globs": ["**/*.js", "**/*.mjs"] }],
   "assets": { "directory": "dist/client" },
-  "triggers": { "crons": ["1 * * * *", "2-57/5 * * * *"] },
+  "durable_objects": { "bindings": [{ "name": "PUBLIC_SNAPSHOT", "class_name": "PublicSnapshot" }] },
+  "migrations": [{ "tag": "public-snapshot-v1", "new_sqlite_classes": ["PublicSnapshot"] }],
+  "triggers": { "crons": ["*/5 * * * *", "1 * * * *"] },
   "d1_databases": [{
     "binding": "DB",
     "database_name": "docentetuc-db",
-    "database_id": "baaf5886-0123-4948-96da-aa7106424549"
+    "database_id": "baaf5886-0123-4948-96da-aa7106424549",
+    "migrations_dir": "migrations"
   }]
 }
